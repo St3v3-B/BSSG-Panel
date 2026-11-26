@@ -31,6 +31,7 @@ const EnvSchema = z
     PANEL_ENCRYPTION_KEY: required.refine((k) => Buffer.from(k, "base64").length === 32, "moet 32 bytes base64 zijn"),
     NODE_TOKEN: required.min(16, "te kort"),
     NODE_PUBLIC_IP: optional,
+    MARIADB_ROOT_PASSWORD: optional,
     DATABASE_URL: optional.transform((v) => v ?? "postgres://panel:panel@postgres:5432/panel"),
     REDIS_URL: optional.transform((v) => v ?? "redis://redis:6379"),
     SFTP_PORT: port(2022),

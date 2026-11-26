@@ -606,7 +606,10 @@ export interface components {
             port?: number | null;
             /** @description Als gezet: 308 naar https://{redirect_to}{path} */
             redirect_to?: string | null;
-            /** @default false */
+            /**
+             * @description true alleen samen met host = *.domein; de daemon leidt het ook af uit de host
+             * @default false
+             */
             wildcard: boolean;
             /** @description Nodig voor wildcard-certificaten */
             dns_challenge?: {

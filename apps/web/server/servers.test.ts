@@ -60,13 +60,16 @@ describe("servers.list / get", () => {
     expect(row!.status).toBe("online");
   });
 
-  it("get: valt terug op de database als de daemon niet antwoordt (korte timeout)", async () => {
+  it("get/list: status unknown als de daemon niet antwoordt (korte timeout), DB blijft staan", async () => {
     h.daemon.mode = "hang";
     const t = Date.now();
     try {
       const d = await player.api.servers.get({ uuid });
-      expect(d.status).toBe("online");
+      expect(d.status).toBe("unknown");
+      expect((await player.api.servers.list())[0]!.status).toBe("unknown");
       expect(Date.now() - t).toBeLessThan(5000);
+      const [row] = await getDb().select().from(schema.servers).where(eq(schema.servers.uuid, uuid));
+      expect(row!.status).toBe("online");
     } finally {
       h.daemon.mode = "ok";
     }

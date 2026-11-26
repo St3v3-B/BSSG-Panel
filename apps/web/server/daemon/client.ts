@@ -2,7 +2,7 @@
  * Client voor de node-daemon (packages/api/openapi.yaml). Eén instantie per node.
  * Netwerkfout of timeout → DaemonUnreachableError; HTTP-fout → DaemonHttpError.
  */
-import type { DaemonServerSpec, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
+import type { DaemonFileEntry, DaemonRoute, DaemonRouteWithStatus, DaemonServerSpec, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
 
 export class DaemonUnreachableError extends Error {
   constructor(readonly nodeId: number, cause: unknown) {
@@ -40,6 +40,12 @@ export class DaemonClient {
   }
 
   private async request<T>(method: Method, path: string, body?: unknown, timeoutMs = this.timeoutMs): Promise<T> {
+    const text = await this.send(method, path, body === undefined ? undefined : { json: body }, timeoutMs);
+    return (text ? JSON.parse(text) : undefined) as T;
+  }
+
+  /** Ruwe aanroep; `raw` = octet-stream-body. Geeft de responstekst terug. */
+  private async send(method: Method, path: string, body: { json: unknown } | { raw: string } | undefined, timeoutMs = this.timeoutMs): Promise<string> {
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}${path}`, {
@@ -47,9 +53,10 @@ export class DaemonClient {
         headers: {
           authorization: `Bearer ${this.token}`,
           accept: "application/json",
-          ...(body !== undefined ? { "content-type": "application/json" } : {}),
+          ...(body && "json" in body ? { "content-type": "application/json" } : {}),
+          ...(body && "raw" in body ? { "content-type": "application/octet-stream" } : {}),
         },
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+        body: body ? ("json" in body ? JSON.stringify(body.json) : body.raw) : undefined,
         signal: AbortSignal.timeout(timeoutMs),
         cache: "no-store",
       });
@@ -76,14 +83,14 @@ export class DaemonClient {
       if (res.status === 502 || res.status === 503 || res.status === 504) throw new DaemonUnreachableError(this.nodeId, new Error(`${res.status} ${message}`));
       throw new DaemonHttpError(res.status, code, message || code);
     }
-    return (text ? JSON.parse(text) : undefined) as T;
+    return text;
   }
 
   system(timeoutMs?: number) {
     return this.request<DaemonSystemInfo>("GET", "/api/system", undefined, timeoutMs);
   }
-  listServers() {
-    return this.request<DaemonServerState[]>("GET", "/api/servers");
+  listServers(timeoutMs?: number) {
+    return this.request<DaemonServerState[]>("GET", "/api/servers", undefined, timeoutMs);
   }
   createServer(spec: DaemonServerSpec) {
     return this.request<DaemonServerState>("POST", "/api/servers", spec, 30_000);
@@ -111,5 +118,42 @@ export class DaemonClient {
   }
   logs(uuid: string, lines = 100) {
     return this.request<{ lines: string[] }>("GET", `/api/servers/${uuid}/logs?lines=${lines}`);
+  }
+
+  // ---------- bestanden ----------
+  listFiles(uuid: string, path: string) {
+    return this.request<DaemonFileEntry[]>("GET", `/api/servers/${uuid}/files/list?path=${encodeURIComponent(path)}`);
+  }
+  readFile(uuid: string, path: string) {
+    return this.send("GET", `/api/servers/${uuid}/files/contents?path=${encodeURIComponent(path)}`, undefined, 30_000);
+  }
+  async writeFile(uuid: string, path: string, content: string) {
+    await this.send("PUT", `/api/servers/${uuid}/files/contents?path=${encodeURIComponent(path)}`, { raw: content }, 30_000);
+  }
+  mkdir(uuid: string, path: string) {
+    return this.request<void>("POST", `/api/servers/${uuid}/files/mkdir`, { path });
+  }
+  rename(uuid: string, from: string, to: string) {
+    return this.request<void>("POST", `/api/servers/${uuid}/files/rename`, { from, to });
+  }
+  deleteFiles(uuid: string, paths: string[]) {
+    return this.request<void>("POST", `/api/servers/${uuid}/files/delete`, { paths }, 60_000);
+  }
+  compress(uuid: string, root: string, paths: string[]) {
+    return this.request<DaemonFileEntry>("POST", `/api/servers/${uuid}/files/compress`, { root, paths }, 300_000);
+  }
+  decompress(uuid: string, path: string) {
+    return this.request<void>("POST", `/api/servers/${uuid}/files/decompress`, { path }, 300_000);
+  }
+
+  // ---------- routes (web) ----------
+  routes(timeoutMs?: number) {
+    return this.request<DaemonRouteWithStatus[]>("GET", "/api/routes", undefined, timeoutMs);
+  }
+  putRoute(route: DaemonRoute) {
+    return this.request<DaemonRouteWithStatus>("PUT", `/api/routes/${encodeURIComponent(route.host)}`, route, 30_000);
+  }
+  deleteRoute(host: string) {
+    return this.request<void>("DELETE", `/api/routes/${encodeURIComponent(host)}`, undefined, 30_000);
   }
 }

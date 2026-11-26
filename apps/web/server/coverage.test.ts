@@ -19,11 +19,27 @@ export const PHASE1 = [
   "admin.settings.get",
 ];
 
-describe("dekking fase 1", () => {
+/** Fase 2. */
+export const PHASE2 = [
+  "account.apiKeys", "account.createApiKey", "account.revokeApiKey", "account.setSftpPassword",
+  "files.list", "files.read", "files.write", "files.mkdir", "files.rename", "files.delete", "files.compress", "files.decompress",
+  "files.uploadUrl", "files.downloadUrl", "files.sftpDetails",
+  "subusers.list", "subusers.invite", "subusers.update", "subusers.remove",
+];
+
+/** Fase 3 (deels; Cloudflare/applyDns en dnsProviders volgen). */
+export const PHASE3 = [
+  "domains.list", "domains.add", "domains.update", "domains.remove", "domains.check", "domains.lastCheck", "domains.target",
+  "databases.list", "databases.create", "databases.resetPassword", "databases.delete",
+  "admin.databaseHosts.list", "admin.databaseHosts.create", "admin.databaseHosts.update", "admin.databaseHosts.delete", "admin.databaseHosts.test",
+];
+
+describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    for (const p of PHASE1) expect(contract.has(p), p).toBe(true);
-    expect(implementedPaths().sort()).toEqual([...PHASE1].sort());
+    const all = [...PHASE1, ...PHASE2, ...PHASE3];
+    for (const p of all) expect(contract.has(p), p).toBe(true);
+    expect(implementedPaths().sort()).toEqual(all.sort());
   });
   it("de router bouwt met de volledige implementatie", () => {
     expect(() => buildRouter(implementation)).not.toThrow();

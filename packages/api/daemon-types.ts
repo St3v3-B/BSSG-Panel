@@ -27,6 +27,10 @@ export interface BrowserJwtClaims {
   sub: string;
   server_uuid: string;
   permissions: string[];
+  /** Alleen bij download: het pad uit de URL moet hieraan gelijk zijn. */
+  path?: string;
+  /** Alleen bij upload: de map uit de URL moet hieraan gelijk zijn. */
+  directory?: string;
   jti: string;
   iat: number;
   exp: number;

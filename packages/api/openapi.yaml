@@ -20,7 +20,8 @@ info:
       `iss` = PANEL_URL, `aud` = NODE_DOMAIN, `sub` = user-id (string), `server_uuid`,
       `permissions` (array, zie Permission), `jti`, `iat`, `exp` (max 10 min).
       Bij de websocket gaat de JWT in het eerste bericht; bij upload/download in `?token=`.
-      Download/upload-JWT's zijn eenmalig (`jti` wordt onthouden tot `exp`).
+      Download/upload-JWT's zijn eenmalig (`jti` wordt onthouden tot `exp`). Bij upload staat
+      `directory` in de JWT, bij download `path`; wijkt de query-parameter af, dan 403.
 
     ## Fouten
     Altijd `application/json` met het `Error`-schema en een passende statuscode.
@@ -820,7 +821,7 @@ components:
         server_uuid: { type: string, format: uuid }
         port: { type: [integer, "null"], description: "poort in de container; null = http_port uit de spec" }
         redirect_to: { type: [string, "null"], description: "Als gezet: 308 naar https://{redirect_to}{path}" }
-        wildcard: { type: boolean, default: false }
+        wildcard: { type: boolean, default: false, description: "true alleen samen met host = *.domein; de daemon leidt het ook af uit de host" }
         dns_challenge:
           type: [object, "null"]
           description: Nodig voor wildcard-certificaten

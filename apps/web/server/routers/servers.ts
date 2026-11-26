@@ -32,7 +32,9 @@ export async function liveState(b: ServerBundle): Promise<{ status: ServerStatus
   try {
     st = await daemonFor(b.node).getServer(b.server.uuid, LIVE_TIMEOUT_MS);
   } catch (e) {
-    if (e instanceof DaemonUnreachableError || e instanceof DaemonHttpError || e instanceof TRPCError) return fallback;
+    // Onbereikbaar (of geen token voor die node): status onbekend, niet de DB-status.
+    if (e instanceof DaemonUnreachableError || e instanceof TRPCError) return { ...fallback, status: "unknown" };
+    if (e instanceof DaemonHttpError) return fallback;
     throw e;
   }
   const status = st.state as ServerStatus;
@@ -43,6 +45,30 @@ export async function liveState(b: ServerBundle): Promise<{ status: ServerStatus
   return { status, installedAt };
 }
 
+/** Status per server via één GET /api/servers per node; onbereikbare node → unknown. */
+export async function liveStatuses(rows: ServerBundle[]): Promise<Map<string, ServerStatus>> {
+  const out = new Map<string, ServerStatus>();
+  const byNode = new Map<number, ServerBundle[]>();
+  for (const b of rows) byNode.set(b.node.id, [...(byNode.get(b.node.id) ?? []), b]);
+  await Promise.all(
+    [...byNode.values()].map(async (list) => {
+      let states;
+      try {
+        states = await daemonFor(list[0]!.node).listServers(LIVE_TIMEOUT_MS);
+      } catch (e) {
+        if (e instanceof DaemonUnreachableError || e instanceof TRPCError) for (const b of list) out.set(b.server.uuid, "unknown");
+        return; // HTTP-fout: DB-status
+      }
+      const m = new Map(states.map((st) => [st.uuid, st.state as ServerStatus]));
+      for (const b of list) {
+        const st = m.get(b.server.uuid);
+        if (st) out.set(b.server.uuid, st);
+      }
+    }),
+  );
+  return out;
+}
+
 export const servers: Pick<
   Implementation["servers"],
   "list" | "get" | "stats" | "power" | "sendCommand" | "consoleToken" | "rename" | "updateVariables" | "reinstall" | "activity"
@@ -51,7 +77,8 @@ export const servers: Pick<
     const uid = ctx.session!.userId;
     const subOf = getDb().select({ id: schema.subusers.serverId }).from(schema.subusers).where(eq(schema.subusers.userId, uid));
     const rows = await fetchServers(or(eq(schema.servers.ownerId, uid), inArray(schema.servers.id, subOf)));
-    return rows.map((b) => toSummary(b, uid));
+    const live = await liveStatuses(rows);
+    return rows.map((b) => toSummary(b, uid, live.get(b.server.uuid)));
   },
 
   get: async ({ input, ctx }) => {

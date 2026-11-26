@@ -96,16 +96,16 @@ export async function finishLogin(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const secure = cookieSecure(req);
   const clearState = cookie(STATE_COOKIE, "", { secure, maxAgeSeconds: 0, path: "/api/auth/discord" });
-  const fail = (code: string) => redirect(`/login?error=${code}`, [clearState]);
+  const stored = parseCookies(req.headers.get("cookie")).get(STATE_COOKIE);
+  const [storedState, redirB64] = (stored ?? "").split(".");
+  const redirectTo = safeRedirect(Buffer.from(redirB64 ?? "", "base64url").toString());
+  const fail = (code: "blocked" | "discord" | "denied" | "state") =>
+    redirect(`/login?error=${code}&redirectTo=${encodeURIComponent(redirectTo)}`, [clearState]);
 
-  if (url.searchParams.get("error")) return fail("discord_denied");
+  if (url.searchParams.get("error")) return fail("denied");
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
-  const stored = parseCookies(req.headers.get("cookie")).get(STATE_COOKIE);
-  if (!code || !state || !stored) return fail("state");
-  const [storedState, redirB64] = stored.split(".");
-  if (!storedState || !safeEqual(storedState, state)) return fail("state");
-  const redirectTo = safeRedirect(Buffer.from(redirB64 ?? "", "base64url").toString());
+  if (!code || !state || !stored || !storedState || !safeEqual(storedState, state)) return fail("state");
 
   let profile: DiscordProfile;
   try {

@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 const docker = async (...args: string[]) => (await run("docker", args, { timeout: 120_000 })).stdout.trim();
 
-async function reapStale(): Promise<void> {
+export async function reapStale(): Promise<void> {
   const out = await docker("ps", "-a", "--filter", "label=panel.test=true", "--filter", "label=panel.agent=panel-api", "--format", '{{.ID}} {{.Label "panel.instance"}} {{.Label "panel.api.pid"}}');
   for (const line of out.split("\n").filter(Boolean)) {
     const [id, instance, pid] = line.split(" ");
