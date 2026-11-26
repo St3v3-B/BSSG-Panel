@@ -6,14 +6,9 @@ export { ConsoleConnection, backoffDelay, DEFAULT_BACKOFF, type ConsoleToken, ty
 export { CommandHistory } from "./history";
 export { MockSocket } from "./mock-socket";
 
-/** Mock-transport als het panel in mock-modus draait of de socket-host op .test eindigt. */
-export function isMockTransport(socketUrl: string, env: string | undefined = process.env.NEXT_PUBLIC_PANEL_MOCK): boolean {
-  if (env === "1") return true;
-  try {
-    return new URL(socketUrl).hostname.endsWith(".test");
-  } catch {
-    return false;
-  }
+/** Mock-transport alleen als het panel in mock-modus draait (NEXT_PUBLIC_PANEL_MOCK=1). */
+export function isMockTransport(_socketUrl: string, env: string | undefined = process.env.NEXT_PUBLIC_PANEL_MOCK): boolean {
+  return env === "1";
 }
 
 /** Kiest per URL de echte WebSocket of de mock-socket. */

@@ -297,9 +297,9 @@ describe("MockSocket (mock-transport)", () => {
 });
 
 describe("isMockTransport", () => {
-  it("mock bij NEXT_PUBLIC_PANEL_MOCK=1 of een .test-host", () => {
+  it("mock alleen bij NEXT_PUBLIC_PANEL_MOCK=1, niet op een .test-host", () => {
     expect(isMockTransport("wss://node1.example.nl/ws", "1")).toBe(true);
-    expect(isMockTransport("wss://node1.test/api/servers/x/ws", undefined)).toBe(true);
+    expect(isMockTransport("wss://node1.test/api/servers/x/ws", undefined)).toBe(false);
     expect(isMockTransport("wss://node1.example.nl/ws", undefined)).toBe(false);
   });
 });

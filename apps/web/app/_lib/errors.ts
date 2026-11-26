@@ -22,6 +22,13 @@ export const isTotpPending = (err: unknown) => {
   return i.code === "FORBIDDEN" && i.message === "TOTP_PENDING";
 };
 
+export const isDiskExceeded = (err: unknown) => {
+  const i = errorInfo(err);
+  return i.message === "DISK_EXCEEDED" || (i.code === "PRECONDITION_FAILED" && i.message.startsWith("DISK_EXCEEDED"));
+};
+
+export const isForbidden = (err: unknown) => errorInfo(err).code === "FORBIDDEN";
+
 export const isUnauthorized = (err: unknown) => errorInfo(err).code === "UNAUTHORIZED";
 
 const MESSAGES: Record<string, string> = {
@@ -31,6 +38,7 @@ const MESSAGES: Record<string, string> = {
   NOT_ADMIN: "Hiervoor moet je beheerder zijn.",
   DAEMON_UNREACHABLE: "De node is op dit moment niet bereikbaar. Probeer het straks opnieuw.",
   INVALID_CODE: "Die code klopt niet. Probeer het opnieuw.",
+  DISK_EXCEEDED: "De schijf van deze server is vol. Verwijder eerst bestanden of vraag een beheerder om meer ruimte.",
 };
 
 const CODES: Record<string, string> = {

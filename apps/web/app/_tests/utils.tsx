@@ -1,5 +1,5 @@
 /** Testhulp: rendert componenten met een echte tRPC-client tegen een verse mock (in-process). */
-import { buildRouter, type SessionCtx } from "@panel/api";
+import { buildRouter, type Implementation, type SessionCtx } from "@panel/api";
 import { createMock, mockSession, type MockRole } from "@panel/api/mock";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
@@ -14,8 +14,11 @@ export function sessionFor(role: MockRole, patch: Partial<SessionCtx> = {}): Ses
   return s ? { ...s, ...patch } : null;
 }
 
-export function renderWithTrpc(ui: ReactElement, opts: { session: SessionCtx | null }) {
-  const router = buildRouter(createMock());
+/** `patch` kan procedures van de mock vervangen, bv. om een fout als DISK_EXCEEDED na te bootsen. */
+export function renderWithTrpc(ui: ReactElement, opts: { session: SessionCtx | null; patch?: (mock: Implementation) => void }) {
+  const mock = createMock();
+  opts.patch?.(mock);
+  const router = buildRouter(mock);
   const calls: string[] = [];
   const bodies: Array<{ path: string; input: unknown }> = [];
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
