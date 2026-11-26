@@ -50,6 +50,48 @@ type Routes struct {
 
 	mu     sync.Mutex
 	routes map[string]Route
+
+	refreshMu sync.Mutex
+}
+
+// placeholder geeft de standaardpagina voor de staat van een website.
+func placeholder(state string) proxy.Placeholder {
+	switch state {
+	case server.StateInstalling, server.StateInstallFailed:
+		return proxy.PlaceholderInstalling
+	case server.StateOffline, server.StateStopping:
+		return proxy.PlaceholderOffline
+	case server.StateDiskExceeded:
+		return proxy.PlaceholderDisk
+	}
+	return proxy.PlaceholderNone
+}
+
+// Refresh zet de routes van een website opnieuw in de Router met de placeholder van
+// zijn huidige staat. Geserialiseerd, en de staat wordt pas binnen de lock gelezen, zodat
+// de laatste aanroep altijd de actuele staat zet.
+func (r *Routes) Refresh(ctx context.Context, uuid string) {
+	r.refreshMu.Lock()
+	defer r.refreshMu.Unlock()
+	if s, ok := r.mgr.Get(uuid); !ok || !s.IsWeb() {
+		return
+	}
+	r.mu.Lock()
+	var list []proxy.Route
+	for _, rt := range r.routes {
+		if rt.ServerUUID != uuid || (rt.RedirectTo != nil && *rt.RedirectTo != "") {
+			continue
+		}
+		if pr, ok := r.toProxy(rt); ok {
+			list = append(list, pr)
+		}
+	}
+	r.mu.Unlock()
+	for _, pr := range list {
+		if err := r.router.SetRoute(ctx, pr); err != nil {
+			r.log.Warn("placeholder bijwerken mislukt", "host", pr.Host, "err", err)
+		}
+	}
 }
 
 // NewRoutes laadt routes.json (als die bestaat).
@@ -97,6 +139,9 @@ func (r *Routes) toProxy(rt Route) (proxy.Route, bool) {
 	pr.Upstream = proxy.Upstream{Container: server.ContainerName(rt.ServerUUID), Port: port}
 	if s, ok := r.mgr.Get(rt.ServerUUID); ok && s.IsWeb() {
 		pr.Upstream.Network = server.SiteNetwork(rt.ServerUUID)
+		if pr.RedirectTo == "" {
+			pr.Placeholder = placeholder(s.State())
+		}
 	}
 	return pr, true
 }

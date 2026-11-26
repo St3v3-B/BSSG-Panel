@@ -220,6 +220,9 @@ func (s *Server) setStateLocked(st string) {
 	s.state = st
 	s.publishLocked(Msg{"event": "status", "state": st})
 	s.m.rep.ReportStatus(s.uuid, st)
+	if s.m.onState != nil {
+		s.m.onState(s.uuid, st)
+	}
 }
 
 func (s *Server) setState(st string) {

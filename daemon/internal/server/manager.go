@@ -95,7 +95,13 @@ type Manager struct {
 
 	mu      sync.RWMutex
 	servers map[string]*Server
+
+	onState func(uuid, state string)
 }
+
+// OnState registreert een functie die bij elke statuswijziging wordt aangeroepen (onder
+// de serverlock: hij moet direct terugkeren). Aanroepen vóór Recover.
+func (m *Manager) OnState(fn func(uuid, state string)) { m.onState = fn }
 
 // NewManager maakt een manager. Roep daarna Recover aan.
 func NewManager(cfg Config, eng engine.Engine, rep Reporter, log *slog.Logger) *Manager {

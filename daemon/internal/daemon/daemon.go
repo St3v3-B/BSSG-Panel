@@ -102,6 +102,13 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 		return nil, fmt.Errorf("routes.json: %w", err)
 	}
 	d.routes = routes
+	d.mgr.OnState(func(uuid, _ string) {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			d.routes.Refresh(ctx, uuid)
+		}()
+	})
 	verifier := auth.NewVerifier(d.panel.JWKS, cfg.NodeDomain)
 	d.api = api.New(api.Options{NodeToken: cfg.NodeToken, AllowedOrigins: cfg.AllowedOrigins(), AuthTimeout: deps.WSAuthTimeout}, d.mgr, routes, verifier, d.systemInfo, deps.Log)
 	return d, nil
