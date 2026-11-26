@@ -60,6 +60,13 @@ func dockerAvailable() bool {
 
 func setupCaddy(t *testing.T) *caddyEnv {
 	t.Helper()
+	return setupCaddyWith(t, "caddy:2", "local-certs.caddy")
+}
+
+// setupCaddyWith: andere image (bv. de eigen build met caddy-dns/cloudflare) en
+// ander voorbeeld uit deploy/caddy/examples als global.d.
+func setupCaddyWith(t *testing.T, image, example string) *caddyEnv {
+	t.Helper()
 	if testing.Short() || os.Getenv("PANEL_SKIP_DOCKER_TESTS") == "1" {
 		t.Skip("Docker-tests overgeslagen")
 	}
@@ -76,7 +83,7 @@ func setupCaddy(t *testing.T) *caddyEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	example, err := os.ReadFile("../../deploy/caddy/examples/local-certs.caddy")
+	exampleBody, err := os.ReadFile("../../deploy/caddy/examples/" + example)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +95,7 @@ func setupCaddy(t *testing.T) *caddyEnv {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(globalD, "local-certs.caddy"), example, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalD, example), exampleBody, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	startDaemonSocket(t, filepath.Join(runDir, "daemon.sock"))
@@ -112,7 +119,7 @@ func setupCaddy(t *testing.T) *caddyEnv {
 		"-e", "PANEL_DOMAIN=panel.test", "-e", "NODE_DOMAIN=node1.test", "-e", "ACME_EMAIL=admin@panel.test",
 		"-v", caddyfile + ":/etc/caddy/Caddyfile:ro",
 		"-v", globalD + ":/etc/caddy/global.d:ro",
-		"-v", runDir + ":/run/panel"}, labels...), "caddy:2")...)
+		"-v", runDir + ":/run/panel"}, labels...), image)...)
 	// Admin-API alleen op de unix-socket in de gedeelde map (zoals in productie).
 	e.admin, e.httpAddr, e.tlsAddr = "unix://"+filepath.Join(runDir, "caddy-admin.sock"), httpAddr, tlsAddr
 	if e.adminURL, e.adminHC, err = adminClient(e.admin, nil); err != nil {

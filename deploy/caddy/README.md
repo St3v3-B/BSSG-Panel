@@ -26,7 +26,8 @@ Eigenaar: web-hosting. Caddy is de enige ingang voor HTTP(S) op de node.
 ```yaml
 services:
   caddy:
-    image: caddy:2                      # fase 3: eigen build met caddy-dns/cloudflare
+    build: ./caddy                      # deploy/caddy/Dockerfile: caddy + caddy-dns/cloudflare
+    image: panel-caddy:local
     container_name: panel-caddy         # = CADDY_CONTAINER in panel.env
     restart: unless-stopped
     env_file: /etc/panel/panel.env      # gebruikt PANEL_DOMAIN, NODE_DOMAIN, ACME_EMAIL
@@ -76,6 +77,30 @@ Punten die ertoe doen:
   `extra_hosts: ["${NODE_DOMAIN}:host-gateway"]` zodat dat ook zonder externe DNS (hairpin) werkt.
 - `/data` niet weggooien: daar staan de certificaten. Zonder volume vraagt Caddy bij elke
   herstart nieuwe aan en loop je tegen de rate limits van Let's Encrypt aan.
+
+## Wildcards en de DNS-challenge
+
+De image wordt gebouwd uit `Dockerfile` (xcaddy, Caddy en `caddy-dns/cloudflare` gepind).
+Een route met `DNSChallenge{Provider: "cloudflare", APIToken}` krijgt een TLS-policy
+`panel-tls-<host>` in `apps/tls/automation/policies` met subjects `*.domein` en `domein`,
+de ACME-issuers (e-mail, CA) van de basisconfig en `challenges.dns.provider`. De router
+zet die policy vóór die van de basisconfig en ruimt hem op bij `RemoveRoute`/`Sync`.
+Het token staat alleen in de Caddy-config (niet in de route, niet in foutmeldingen).
+Testen met de eigen build:
+
+```sh
+docker build -t panel-caddy-test:web-hosting deploy/caddy
+cd daemon && PANEL_CADDY_IMAGE=panel-caddy-test:web-hosting go test ./proxy -run TestDockerCaddyDNSChallenge -v
+```
+
+## SSL-status
+
+`Status` geeft `active` als Caddy een geldig certificaat serveert. Anders kijkt de router
+in Caddy's log (Docker-logs van `CADDY_CONTAINER`, laatste 6 uur): een mislukte poging met
+een DNS- of bereikbaarheidsfout van de CA → `dns_wrong`, een andere fout → `failed` (reden
+in `Error`). Zonder uitsluitsel vergelijkt hij de A/AAAA-records van de host met de IP's
+van deze node (`NODE_DOMAIN` + eigen interfaces): geen record of geen overlap → `dns_wrong`.
+Let op: een host achter de Cloudflare-proxy geeft `dns_wrong` tot er een certificaat is.
 
 ## Lokaal testen met `tls internal`
 

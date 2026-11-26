@@ -40,6 +40,7 @@ const (
 	varHost    = "panel_host"
 	varServer  = "panel_server_uuid"
 	varNetwork = "panel_network"
+	varDNS     = "panel_dns" // DNS-provider van de route (zonder token); de policy staat in apps/tls
 )
 
 // CaddyOptions zijn extra instellingen naast Config, vooral voor tests.
@@ -57,6 +58,14 @@ type CaddyOptions struct {
 	// ExtraRoots worden naast de systeem-CA's vertrouwd bij de SSL-controle
 	// (bv. de staging-root van Let's Encrypt in tests).
 	ExtraRoots *x509.CertPool
+	// Resolver voor de DNS-controle (dns_wrong); standaard net.DefaultResolver.
+	Resolver IPResolver
+	// NodeIPs: de publieke IP's van deze node. Leeg = de adressen van NODE_DOMAIN
+	// (uit de omgeving) plus de globale adressen van de eigen interfaces.
+	NodeIPs []net.IP
+	// Logs leest Caddy's log sinds een tijdstip (voor dns_wrong/failed met reden);
+	// standaard de Docker-logs van Config.CaddyContainer.
+	Logs func(ctx context.Context, since time.Time) ([]byte, error)
 }
 
 // Caddy is de Router (en HealthChecker) tegen de Caddy admin-API.
@@ -68,6 +77,9 @@ type Caddy struct {
 	hc      *http.Client
 	docker  Networker
 	extra   *x509.CertPool
+	res     IPResolver
+	nodeIPs []net.IP
+	logs    func(ctx context.Context, since time.Time) ([]byte, error)
 
 	mu sync.Mutex // serialiseert wijzigingen en Healthy
 	// expected: IDs van de dynamische routes die we het laatst hebben gezet.
@@ -132,6 +144,9 @@ func NewCaddyWithOptions(cfg Config, opt CaddyOptions) (*Caddy, error) {
 		hc:       hc,
 		docker:   opt.Docker,
 		extra:    opt.ExtraRoots,
+		res:      opt.Resolver,
+		nodeIPs:  opt.NodeIPs,
+		logs:     opt.Logs,
 		expected: map[string]bool{},
 	}
 	if c.server == "" {
@@ -149,6 +164,17 @@ func NewCaddyWithOptions(cfg Config, opt CaddyOptions) (*Caddy, error) {
 			return nil, err
 		}
 		c.docker = d
+	}
+	if c.res == nil {
+		c.res = net.DefaultResolver
+	}
+	if c.logs == nil && cfg.CaddyContainer != "" {
+		if lr, ok := c.docker.(interface {
+			ContainerLogs(ctx context.Context, container string, since time.Time) ([]byte, error)
+		}); ok {
+			name := cfg.CaddyContainer
+			c.logs = func(ctx context.Context, since time.Time) ([]byte, error) { return lr.ContainerLogs(ctx, name, since) }
+		}
 	}
 	return c, nil
 }
@@ -181,6 +207,14 @@ func normRoute(r Route) (Route, error) {
 		return r, fmt.Errorf("proxy: %s: Wildcard=true maar de hostnaam begint niet met \"*.\"", h)
 	}
 	r.Wildcard = strings.HasPrefix(h, "*.")
+	if d := r.DNSChallenge; d != nil {
+		if d.Provider != "cloudflare" {
+			return r, fmt.Errorf("proxy: %s: DNS-provider %q niet ondersteund (alleen cloudflare)", h, d.Provider)
+		}
+		if !tokenRe.MatchString(d.APIToken) {
+			return r, fmt.Errorf("proxy: %s: ongeldig of leeg DNS-API-token", h)
+		}
+	}
 	if r.RedirectTo != "" {
 		t, err := normHost(r.RedirectTo)
 		if err != nil || strings.HasPrefix(t, "*.") {
@@ -220,7 +254,9 @@ type dynRoute struct {
 	id      string
 	host    string
 	network string
-	raw     any // genormaliseerde JSON (map[string]any)
+	dns     string        // DNS-provider als de route een DNS-challenge heeft
+	chal    *DNSChallenge // alleen bij routes die net binnenkomen (SetRoute/Sync), niet uit Caddy
+	raw     any           // genormaliseerde JSON (map[string]any)
 }
 
 func canon(v any) (any, error) {
@@ -236,6 +272,9 @@ func buildRoute(r Route) (dynRoute, error) {
 	vars := map[string]any{"handler": "vars", varHost: r.Host}
 	if r.ServerUUID != "" {
 		vars[varServer] = r.ServerUUID
+	}
+	if r.DNSChallenge != nil {
+		vars[varDNS] = r.DNSChallenge.Provider
 	}
 	var h map[string]any
 	var err error
@@ -263,7 +302,10 @@ func buildRoute(r Route) (dynRoute, error) {
 	if err != nil {
 		return dynRoute{}, err
 	}
-	d := dynRoute{id: routeID(r.Host), host: r.Host, raw: raw}
+	d := dynRoute{id: routeID(r.Host), host: r.Host, raw: raw, chal: r.DNSChallenge}
+	if r.DNSChallenge != nil {
+		d.dns = r.DNSChallenge.Provider
+	}
 	if r.RedirectTo == "" {
 		d.network = r.Upstream.Network
 	}
@@ -317,6 +359,7 @@ func split(routes []any) (fixed []any, dyn map[string]dynRoute, fixedHosts map[s
 		if hs, _ := m["handle"].([]any); len(hs) > 0 {
 			if v, _ := hs[0].(map[string]any); v != nil && v["handler"] == "vars" {
 				d.network, _ = v[varNetwork].(string)
+				d.dns, _ = v[varDNS].(string)
 				if h, ok := v[varHost].(string); ok {
 					d.host = h
 				}
@@ -463,6 +506,11 @@ func (c *Caddy) apply(ctx context.Context, change func(dyn map[string]dynRoute, 
 		if err := change(dyn, fixedHosts); err != nil {
 			return err
 		}
+		// Eerst de TLS-policies (DNS-challenge), zodat Caddy een nieuwe wildcard-route
+		// meteen met de juiste challenge aanvraagt.
+		if err := c.syncPolicies(ctx, dyn); err != nil {
+			return err
+		}
 		keep, netErr := c.connectNetworks(ctx, dyn)
 		next := assemble(fixed, dyn)
 		if !reflect.DeepEqual(cur, next) {
@@ -572,6 +620,9 @@ func (c *Caddy) Status(ctx context.Context, host string) (RouteStatus, error) {
 	}
 	st := RouteStatus{Host: h, CheckedAt: time.Now()}
 	st.SSL, st.Error = c.checkTLS(ctx, h)
+	if st.SSL == SSLIssuing {
+		st.SSL, st.Error = c.diagnose(ctx, h, st.Error)
+	}
 	return st, nil
 }
 

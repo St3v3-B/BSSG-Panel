@@ -235,3 +235,43 @@ func (d *DockerAPI) Connect(ctx context.Context, networkID, container string) er
 func (d *DockerAPI) Disconnect(ctx context.Context, networkID, container string) error {
 	return d.call(ctx, http.MethodPost, "/networks/"+url.PathEscape(networkID)+"/disconnect", map[string]any{"Container": container, "Force": false}, nil)
 }
+
+// ContainerLogs geeft stdout+stderr van een container sinds een tijdstip (max. de
+// laatste 5000 regels), zonder de multiplex-headers van Docker.
+func (d *DockerAPI) ContainerLogs(ctx context.Context, container string, since time.Time) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		fmt.Sprintf("%s/containers/%s/logs?stdout=1&stderr=1&tail=5000&since=%d", d.base, url.PathEscape(container), since.Unix()), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := d.hc.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("proxy: Docker-logs: %w", err)
+	}
+	defer resp.Body.Close()
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("proxy: Docker-logs van %s: %s", container, resp.Status)
+	}
+	return demuxLogs(b), nil
+}
+
+// demuxLogs haalt de 8-byte frame-headers weg (containers zonder TTY).
+func demuxLogs(b []byte) []byte {
+	var out []byte
+	for len(b) >= 8 && b[0] <= 2 && b[1] == 0 && b[2] == 0 && b[3] == 0 {
+		n := int(b[4])<<24 | int(b[5])<<16 | int(b[6])<<8 | int(b[7])
+		if 8+n > len(b) {
+			break
+		}
+		out = append(out, b[8:8+n]...)
+		b = b[8+n:]
+	}
+	if out == nil {
+		return b
+	}
+	return out
+}

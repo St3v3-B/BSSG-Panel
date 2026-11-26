@@ -20,7 +20,7 @@ import (
 //   - geen of ongeldig certificaat terwijl de route bestaat → issuing
 //   - Caddy niet bereikbaar op TLSAddr → pending, met reden in Error
 //
-// dns_wrong en failed komen in fase 3 (uit Caddy-logs/-events).
+// Lukt dat niet, dan bepaalt diagnose (status.go) of het dns_wrong of failed is.
 func (c *Caddy) checkTLS(ctx context.Context, host string) (SSLStatus, string) {
 	sni := host
 	if strings.HasPrefix(host, "*.") {

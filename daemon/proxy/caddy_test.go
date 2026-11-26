@@ -27,6 +27,10 @@ type fakeAdmin struct {
 	down     bool
 	srv      *httptest.Server
 	basePath string
+	// TLS-policies (apps/tls/automation/policies); nil = apps/tls bestaat niet.
+	policies []any
+	tlsApp   bool
+	polBody  []string // alle geschreven policy-bodies (om te zoeken naar het token)
 }
 
 func fixedRoutes() []any {
@@ -55,6 +59,10 @@ func (f *fakeAdmin) serve(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	if f.down {
 		http.Error(w, "down", http.StatusServiceUnavailable)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/config/apps/tls") {
+		f.serveTLS(w, r)
 		return
 	}
 	if r.URL.Path != f.basePath {
@@ -119,6 +127,10 @@ func (f *fakeAdmin) find(id string) map[string]any {
 func newTestCaddy(t *testing.T, f *fakeAdmin, opt CaddyOptions) *Caddy {
 	t.Helper()
 	cfg := Config{AdminURL: f.srv.URL, Instance: "t1"}
+	if opt.Resolver == nil { // hermetisch: elke host wijst naar deze node
+		opt.Resolver = fakeResolver{"*": {"192.0.2.10"}}
+		opt.NodeIPs = []net.IP{net.ParseIP("192.0.2.10")}
+	}
 	if opt.Docker != nil {
 		cfg.CaddyContainer = "caddy-t1"
 	}
@@ -524,4 +536,63 @@ func TestNetworkCoupling(t *testing.T) {
 	if d.attached["id-site1"] {
 		t.Fatal("redirect mag geen netwerk koppelen")
 	}
+}
+
+func (f *fakeAdmin) serveTLS(w http.ResponseWriter, r *http.Request) {
+	b, _ := io.ReadAll(r.Body)
+	if r.Method != http.MethodGet {
+		f.polBody = append(f.polBody, string(b))
+	}
+	ptag := func() string { j, _ := json.Marshal(f.policies); return fmt.Sprintf(`"%x"`, sha256.Sum256(j)) }
+	switch {
+	case r.URL.Path == "/config/apps/tls" && r.Method == http.MethodGet:
+		if !f.tlsApp {
+			fmt.Fprint(w, "null")
+			return
+		}
+		fmt.Fprint(w, "{}")
+	case r.URL.Path == "/config/apps/tls" && r.Method == http.MethodPut:
+		var v struct{ Automation struct{ Policies []any } }
+		_ = json.Unmarshal(b, &v)
+		f.tlsApp, f.policies = true, v.Automation.Policies
+	case r.URL.Path == "/config/apps/tls/automation" && r.Method == http.MethodPut:
+		var v struct{ Policies []any }
+		_ = json.Unmarshal(b, &v)
+		f.policies = v.Policies
+	case r.URL.Path == "/config/apps/tls/automation/policies" && r.Method == http.MethodGet:
+		if f.policies == nil {
+			http.Error(w, "unknown path", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Etag", ptag())
+		_ = json.NewEncoder(w).Encode(f.policies)
+	case r.URL.Path == "/config/apps/tls/automation/policies" && r.Method == http.MethodPatch:
+		if r.Header.Get("If-Match") != ptag() {
+			http.Error(w, "etag", http.StatusPreconditionFailed)
+			return
+		}
+		var next []any
+		_ = json.Unmarshal(b, &next)
+		f.policies = next
+	default:
+		http.Error(w, "niet ondersteund in de fake", http.StatusBadRequest)
+	}
+}
+
+// fakeResolver: host → IP's; "*" geldt voor elke andere host; ontbreekt → NXDOMAIN.
+type fakeResolver map[string][]string
+
+func (f fakeResolver) LookupIPAddr(_ context.Context, host string) ([]net.IPAddr, error) {
+	ips, ok := f[host]
+	if !ok {
+		ips, ok = f["*"]
+	}
+	if !ok {
+		return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+	}
+	var out []net.IPAddr
+	for _, s := range ips {
+		out = append(out, net.IPAddr{IP: net.ParseIP(s)})
+	}
+	return out, nil
 }
