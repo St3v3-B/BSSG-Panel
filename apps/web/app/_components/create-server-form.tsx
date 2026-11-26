@@ -1,7 +1,7 @@
 "use client";
 import { Check, Star, UserPlus } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { Limits as LimitsT, ServerDetail } from "@panel/api";
+import type { Limits as LimitsT, ServerDetail, ServerType } from "@panel/api";
 import { DiscordId, Limits } from "@panel/api/schemas";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
@@ -50,7 +50,7 @@ export function variableError(value: string, pattern: string | null): string | n
   }
 }
 
-export function CreateServerForm({ onCreated }: { onCreated: (server: ServerDetail) => void }) {
+export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreated: (server: ServerDetail) => void; initialKind?: ServerType }) {
   const utils = trpc.useUtils();
 
   // ---------- data ----------
@@ -63,6 +63,7 @@ export function CreateServerForm({ onCreated }: { onCreated: (server: ServerDeta
   const [ownerId, setOwnerId] = useState<number | null>(null);
   const [ownerSearch, setOwnerSearch] = useState("");
   const [nodeId, setNodeId] = useState<number | null>(null);
+  const [kind, setKind] = useState<ServerType>(initialKind);
   const [templateId, setTemplateId] = useState<number | null>(null);
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [allocationIds, setAllocationIds] = useState<number[]>([]);
@@ -74,9 +75,12 @@ export function CreateServerForm({ onCreated }: { onCreated: (server: ServerDeta
   useEffect(() => {
     if (nodeId == null && nodes.data?.length) setNodeId((nodes.data.find((n) => n.isLocal) ?? nodes.data[0])!.id);
   }, [nodes.data, nodeId]);
+  const kindTemplates = useMemo(() => (templates.data ?? []).filter((t) => t.type === kind), [templates.data, kind]);
   useEffect(() => {
-    if (templateId == null && templates.data?.length) setTemplateId(templates.data[0]!.id);
-  }, [templates.data, templateId]);
+    // bij wisselen tussen game-server en website: eerste template van dat soort
+    if (!templates.data) return;
+    if (templateId == null || !kindTemplates.some((t) => t.id === templateId)) setTemplateId(kindTemplates[0]?.id ?? null);
+  }, [templates.data, kindTemplates, templateId]);
   useEffect(() => {
     const d = settings.data?.defaultLimits;
     if (d && !limits) setLimits({ cpuPct: String(d.cpuPct), ramMb: String(d.ramMb), swapMb: String(d.swapMb), diskMb: String(d.diskMb) });
@@ -260,7 +264,20 @@ export function CreateServerForm({ onCreated }: { onCreated: (server: ServerDeta
         </div>
       </Section>
 
-      <Section title="Node en template">
+      <Section title="Soort, node en template">
+        <div className="inline-flex rounded-lg border border-border p-0.5" role="group" aria-label="Soort">
+          {(["game", "web"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              aria-pressed={kind === k}
+              onClick={() => setKind(k)}
+              className={cn("rounded-md px-3 py-1.5 text-sm", kind === k ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}
+            >
+              {k === "game" ? "Game-server" : "Website"}
+            </button>
+          ))}
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field id="server-node" label="Node" error={show(errors.node)}>
             <Select id="server-node" value={nodeId ?? ""} onChange={(e) => setNodeId(e.target.value ? Number(e.target.value) : null)}>
@@ -272,16 +289,38 @@ export function CreateServerForm({ onCreated }: { onCreated: (server: ServerDeta
               ))}
             </Select>
           </Field>
+          {kind === "web" && templates.data && kindTemplates.length === 0 && <p className="self-end text-sm text-muted-foreground">Er zijn nog geen webtemplates.</p>}
+          {kind === "game" && (
           <Field id="server-template" label="Template" error={show(errors.template)} hint={templates.data?.find((t) => t.id === templateId)?.description ?? undefined}>
             <Select id="server-template" value={templateId ?? ""} onChange={(e) => setTemplateId(e.target.value ? Number(e.target.value) : null)}>
-              {templates.data?.map((t) => (
+              {templates.data && kindTemplates.length === 0 && <option value="">Geen game-templates</option>}
+              {kindTemplates.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.name} · {t.type === "web" ? "website" : "game"}
+                  {t.name}
                 </option>
               ))}
             </Select>
           </Field>
+          )}
         </div>
+        {errors.template && kind === "web" && show(errors.template) && <p className="text-xs text-destructive">{errors.template}</p>}
+        {kind === "web" && kindTemplates.length > 0 && (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Kies een webtemplate" data-testid="web-templates">
+            {kindTemplates.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="radio"
+                aria-checked={t.id === templateId}
+                onClick={() => setTemplateId(t.id)}
+                className={cn("rounded-lg border border-border p-3 text-left text-sm hover:border-foreground/30", t.id === templateId && "border-primary bg-primary/5")}
+              >
+                <span className="block font-medium">{t.name}</span>
+                {t.description && <span className="block text-xs text-muted-foreground">{t.description}</span>}
+              </button>
+            ))}
+          </div>
+        )}
 
         {template.isFetching && templateVars.length === 0 ? (
           <Skeleton className="h-16" />

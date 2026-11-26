@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ServerDetail } from "@panel/api";
 import { CreateServerForm, variableError } from "@/app/_components/create-server-form";
@@ -65,7 +65,10 @@ describe("CreateServerForm", () => {
     await screen.findByTestId("create-server-form");
     fireEvent.change(screen.getByLabelText("Naam"), { target: { value: "site" } });
     fireEvent.click(await screen.findByRole("option", { name: /blokgenoot/ }));
-    fireEvent.change(screen.getByLabelText("Template"), { target: { value: "2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Website" }));
+    const web = await screen.findByTestId("web-templates");
+    fireEvent.click(within(web).getByRole("radio", { name: /Statische site/ }));
+    expect(within(web).getByRole("radio", { name: /Statische site/ }).getAttribute("aria-checked")).toBe("true");
     await waitFor(() => expect(screen.queryByTestId("allocations")).toBeNull());
     submit();
     await waitFor(() => expect(onCreated).toHaveBeenCalled());
