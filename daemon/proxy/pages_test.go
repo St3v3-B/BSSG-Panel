@@ -17,6 +17,9 @@ func TestPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	css := style.FindString(ready)
+	if len(ready) > 20<<10 || !strings.Contains(ready, "prefers-reduced-motion") || !strings.Contains(ready, "prefers-color-scheme") {
+		t.Error("ready.html: te groot of mist reduced-motion/kleurschema")
+	}
 	for _, p := range []Placeholder{PlaceholderInstalling, PlaceholderOffline, PlaceholderDisk, PlaceholderUnavailable} {
 		b, err := placeholderPage(p)
 		if err != nil {

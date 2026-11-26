@@ -142,6 +142,21 @@ func (e *caddyEnv) runSite(t *testing.T, w webTemplate, files map[string]string)
 		}
 		time.Sleep(300 * time.Millisecond)
 	}
+	// Heeft de image een HEALTHCHECK, dan moet de container healthy worden.
+	if dockerCmd(t, "inspect", "-f", "{{if .State.Health}}ja{{end}}", s.name) == "ja" {
+		deadline := time.Now().Add(90 * time.Second)
+		for {
+			h := dockerCmd(t, "inspect", "-f", "{{.State.Health.Status}}", s.name)
+			if h == "healthy" {
+				break
+			}
+			if h == "unhealthy" || time.Now().After(deadline) {
+				log := dockerCmd(t, "inspect", "-f", "{{range .State.Health.Log}}{{.Output}}{{end}}", s.name)
+				t.Fatalf("%s: healthcheck %s: %s", w.Slug, h, log)
+			}
+			time.Sleep(time.Second)
+		}
+	}
 	return s
 }
 
@@ -194,7 +209,7 @@ func webTemplateCases() []webTemplateCase {
 			file:  "static",
 			files: map[string]string{"public/sub/index.html": "submap ok", "public/.env": "GEHEIM=1", "nginx/extra.conf": "location = /eigen { return 200 'eigen regel'; }"},
 			check: func(t *testing.T, e *caddyEnv, host string) {
-				e.get(t, "https://"+host+"/", bodyContains("Deze website is klaar voor gebruik", "public/"))
+				e.get(t, "https://"+host+"/", bodyContains("<title>Je website staat live 🎉</title>", "public/"))
 				e.get(t, "https://"+host+"/sub/", bodyContains("submap ok"))
 				e.get(t, "https://"+host+"/eigen", bodyContains("eigen regel"))
 				e.get(t, "https://"+host+"/.env", func(code int, _, _ string) bool { return code == 403 })
@@ -211,7 +226,7 @@ func webTemplateCases() []webTemplateCase {
 		{
 			file: "node",
 			check: func(t *testing.T, e *caddyEnv, host string) {
-				e.get(t, "https://"+host+"/iets", bodyContains("Deze website is klaar voor gebruik"))
+				e.get(t, "https://"+host+"/iets", bodyContains("<title>Je website staat live 🎉</title>"))
 			},
 		},
 		{
@@ -338,6 +353,7 @@ func phpCase(file, version string) webTemplateCase {
 		db:   true,
 		files: map[string]string{
 			"public/index.php":     "<?php echo 'index.php PHP ', PHP_VERSION;",
+			"public/healthcheck":   "eigen bestand",
 			"public/info.php":      phpTestPage,
 			"public/upload.php":    phpUploadPage,
 			"public/uploads/x.php": "<?php echo 'mag niet';",
@@ -350,7 +366,8 @@ func phpCase(file, version string) webTemplateCase {
 			e.get(t, "https://"+host+"/2026/11/hallo-wereld/", bodyContains("index.php PHP "+version))
 			// De standaardpagina van de installatie staat er, maar index.php gaat voor.
 			e.get(t, "https://"+host+"/", bodyContains("index.php PHP "+version))
-			e.get(t, "https://"+host+"/index.html", bodyContains("Deze website is klaar voor gebruik"))
+			e.get(t, "https://"+host+"/index.html", bodyContains("<title>Je website staat live 🎉</title>"))
+			e.get(t, "https://"+host+"/healthcheck", bodyContains("eigen bestand"))
 			e.get(t, "https://"+host+"/uploads/x.php", func(code int, _, _ string) bool { return code == 403 })
 			// Upload van 5 MB via Caddy (tijdelijke bestanden in de tmpfs).
 			var buf bytes.Buffer

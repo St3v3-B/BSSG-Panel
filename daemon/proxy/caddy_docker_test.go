@@ -469,7 +469,7 @@ func TestDockerCaddy(t *testing.T) {
 			}
 			e.get(t, "https://staat.test/pad", func(code int, _, b string) bool {
 				return code == 503 && strings.Contains(b, text) && strings.Contains(b, `<div class="host">staat.test</div>`) &&
-					strings.Contains(b, "@keyframes slide{0%{transform:translateX(-100%)}") && !strings.Contains(b, "site1-echo")
+					strings.Contains(b, "@keyframes slide{0%{transform:translateX(-110%)}") && !strings.Contains(b, "site1-echo")
 			})
 		}
 		// Alleen de pagina, zonder upstream.
