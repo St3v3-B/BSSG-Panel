@@ -241,7 +241,7 @@ export const contract = {
     databaseHosts: {
       list: query("admin", none, z.array(s.DatabaseHost)),
       create: mutation("admin", s.DatabaseHostInput, s.DatabaseHost),
-      update: mutation("admin", byId.extend(s.DatabaseHostInput.partial().shape), s.DatabaseHost),
+      update: mutation("admin", byId.extend(s.DatabaseHostInput.extend({ port: z.number().int() }).partial().shape), s.DatabaseHost),
       delete: mutation("admin", byId, s.Ok),
       test: mutation("admin", byId, z.object({ ok: z.boolean(), error: z.string().nullable() })),
     },
@@ -249,7 +249,7 @@ export const contract = {
     s3Targets: {
       list: query("admin", none, z.array(s.S3Target)),
       create: mutation("admin", s.S3TargetInput, s.S3Target),
-      update: mutation("admin", byId.extend(s.S3TargetInput.partial().shape), s.S3Target),
+      update: mutation("admin", byId.extend(s.S3TargetInput.extend({ region: z.string(), pathStyle: z.boolean() }).partial().shape), s.S3Target),
       delete: mutation("admin", byId, s.Ok),
       test: mutation("admin", byId, z.object({ ok: z.boolean(), error: z.string().nullable() })),
     },
