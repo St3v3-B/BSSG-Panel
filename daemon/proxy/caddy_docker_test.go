@@ -33,7 +33,9 @@ type caddyEnv struct {
 	t        *testing.T
 	inst     string
 	caddy    string // containernaam
-	admin    string // http://127.0.0.1:port
+	admin    string // unix:///.../caddy-admin.sock
+	adminHC  *http.Client
+	adminURL string // basis-URL voor adminHC
 	httpAddr string
 	tlsAddr  string
 	siteNet  string
@@ -90,27 +92,31 @@ func setupCaddy(t *testing.T) *caddyEnv {
 	}
 	startDaemonSocket(t, filepath.Join(runDir, "daemon.sock"))
 
-	// Basisnetwerk zonder panel.managed: zo hoort het compose-netwerk niet bij de
+	// Basisnetwerk zoals het compose-netwerk (panel.role=infra): mag nooit los.
 	// netwerken die de router mag loskoppelen.
 	base := e.inst + "-base"
-	dockerCmd(t, append(append([]string{"network", "create"}, labels...), base)...)
+	dockerCmd(t, append(append([]string{"network", "create", "--label", "panel.managed=true", "--label", "panel.role=infra"}, labels...), base)...)
 	e.siteNet = e.inst + "-site"
-	dockerCmd(t, append(append([]string{"network", "create", "--internal", "--label", "panel.managed=true"}, labels...), e.siteNet)...)
+	dockerCmd(t, append(append([]string{"network", "create", "--internal", "--label", "panel.managed=true", "--label", "panel.role=site"}, labels...), e.siteNet)...)
 
 	dockerCmd(t, append(append([]string{"run", "-d", "--name", e.inst + "-panel", "--network", base, "--network-alias", "panel"}, labels...), "traefik/whoami", "--port", "3000", "--name", "panel-echo")...)
 	e.siteCtr = e.inst + "-site1"
 	dockerCmd(t, append(append([]string{"run", "-d", "--name", e.siteCtr, "--network", e.siteNet}, labels...), "traefik/whoami", "--port", "80", "--name", "site1-echo")...)
 
 	// Vaste vrije poorten (niet door Docker gekozen): die blijven gelijk na een herstart.
-	adminAddr, httpAddr, tlsAddr := freeAddr(t), freeAddr(t), freeAddr(t)
+	httpAddr, tlsAddr := freeAddr(t), freeAddr(t)
 	e.caddy = e.inst + "-caddy"
 	dockerCmd(t, append(append([]string{"run", "-d", "--name", e.caddy, "--network", base,
-		"-p", adminAddr + ":2019", "-p", httpAddr + ":80", "-p", tlsAddr + ":443",
+		"-p", httpAddr + ":80", "-p", tlsAddr + ":443",
 		"-e", "PANEL_DOMAIN=panel.test", "-e", "NODE_DOMAIN=node1.test", "-e", "ACME_EMAIL=admin@panel.test",
 		"-v", caddyfile + ":/etc/caddy/Caddyfile:ro",
 		"-v", globalD + ":/etc/caddy/global.d:ro",
 		"-v", runDir + ":/run/panel"}, labels...), "caddy:2")...)
-	e.admin, e.httpAddr, e.tlsAddr = "http://"+adminAddr, httpAddr, tlsAddr
+	// Admin-API alleen op de unix-socket in de gedeelde map (zoals in productie).
+	e.admin, e.httpAddr, e.tlsAddr = "unix://"+filepath.Join(runDir, "caddy-admin.sock"), httpAddr, tlsAddr
+	if e.adminURL, e.adminHC, err = adminClient(e.admin, nil); err != nil {
+		t.Fatal(err)
+	}
 	e.waitAdmin(t)
 
 	e.roots = e.localRoots()
@@ -160,7 +166,7 @@ func (e *caddyEnv) waitAdmin(t *testing.T) {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
-		resp, err := http.Get(e.admin + "/config/apps/http/servers/panel/routes")
+		resp, err := e.adminHC.Get(e.adminURL + "/config/apps/http/servers/panel/routes")
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -175,7 +181,7 @@ func (e *caddyEnv) waitAdmin(t *testing.T) {
 
 func (e *caddyEnv) localRoots() *x509.CertPool {
 	e.t.Helper()
-	resp, err := http.Get(e.admin + "/pki/ca/local")
+	resp, err := e.adminHC.Get(e.adminURL + "/pki/ca/local")
 	if err != nil {
 		e.t.Fatal(err)
 	}

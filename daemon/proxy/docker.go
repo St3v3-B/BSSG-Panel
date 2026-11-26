@@ -33,15 +33,10 @@ type Networker interface {
 
 // ---- regels voor de netwerk-koppeling ----
 
-// ownNetwork: alleen netwerken met panel.managed=true én panel.instance=Instance.
-func (c *Caddy) ownNetwork(n NetworkInfo) bool {
-	return n.Labels["panel.managed"] == "true" && n.Labels["panel.instance"] == c.cfg.Instance
-}
-
-// detachable: eigen netwerk dat niet door docker-compose is gemaakt. Het
-// compose-netwerk (Caddy ↔ panel) heeft ook de panel-labels maar mag nooit los.
-func (c *Caddy) detachable(n NetworkInfo) bool {
-	return c.ownNetwork(n) && n.Labels["com.docker.compose.project"] == "" && n.Labels["com.docker.compose.network"] == ""
+// siteNetwork: alleen netwerken met panel.managed=true, panel.instance=Instance
+// én panel.role=site worden gekoppeld en losgekoppeld (zie Upstream.Network).
+func (c *Caddy) siteNetwork(n NetworkInfo) bool {
+	return n.Labels["panel.managed"] == "true" && n.Labels["panel.instance"] == c.cfg.Instance && n.Labels["panel.role"] == "site"
 }
 
 func (c *Caddy) checkNetwork(ctx context.Context, r Route) error {
@@ -55,8 +50,8 @@ func (c *Caddy) checkNetwork(ctx context.Context, r Route) error {
 	if err != nil {
 		return fmt.Errorf("proxy: %s: %w", r.Host, err)
 	}
-	if !c.ownNetwork(n) {
-		return fmt.Errorf("proxy: %s: netwerk %q is niet van deze panel-instance (labels panel.managed/panel.instance)", r.Host, r.Upstream.Network)
+	if !c.siteNetwork(n) {
+		return fmt.Errorf("proxy: %s: netwerk %q is geen site-netwerk van deze panel-instance (labels panel.managed, panel.instance, panel.role=site)", r.Host, r.Upstream.Network)
 	}
 	return nil
 }
@@ -89,8 +84,8 @@ func (c *Caddy) connectNetworks(ctx context.Context, dyn map[string]dynRoute) (m
 			continue
 		}
 		keep[n.ID] = true // ook bij een fout hieronder niet loskoppelen
-		if !c.ownNetwork(n) {
-			errs = append(errs, fmt.Errorf("proxy: netwerk %q is niet van deze panel-instance; niet gekoppeld", name))
+		if !c.siteNetwork(n) {
+			errs = append(errs, fmt.Errorf("proxy: netwerk %q is geen site-netwerk van deze panel-instance; niet gekoppeld", name))
 			continue
 		}
 		if _, ok := have[n.ID]; ok {
@@ -122,7 +117,7 @@ func (c *Caddy) disconnectNetworks(ctx context.Context, keep map[string]bool) er
 			errs = append(errs, err)
 			continue
 		}
-		if !c.detachable(n) {
+		if !c.siteNetwork(n) {
 			continue
 		}
 		if err := c.docker.Disconnect(ctx, id, c.cfg.CaddyContainer); err != nil {
