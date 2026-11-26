@@ -17,6 +17,8 @@ vi.mock("@monaco-editor/react", () => ({
 
 afterEach(cleanup);
 
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+
 const UUID = "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6";
 const owner = { uuid: UUID, permissions: [...ALL_PERMISSIONS] };
 const diskFull = () => {
@@ -122,7 +124,7 @@ describe("FileManager", () => {
     renderWithTrpc(<FileManager server={owner} path="/" onNavigate={() => {}} onEdit={() => {}} />, {
       session: sessionFor("admin"),
       patch: (m) => {
-        m.files.list = () => {
+        (m.files as Mutable<typeof m.files>).list = () => {
           throw new TRPCError({ code: "FORBIDDEN", message: "files.read" });
         };
       },
@@ -137,8 +139,9 @@ describe("FileEditor", () => {
     const { bodies } = renderWithTrpc(<FileEditor uuid={UUID} path="/server.properties" readOnly={false} onClose={() => {}} />, {
       session: sessionFor("admin"),
       patch: (m) => {
-        const orig = m.files.write;
-        m.files.write = (opts) => (fail ? diskFull() : orig(opts));
+        const files = m.files as Mutable<typeof m.files>;
+        const orig = files.write;
+        files.write = (opts: Parameters<typeof orig>[0]) => (fail ? diskFull() : orig(opts));
       },
     });
     const editor = (await screen.findByLabelText("editor")) as HTMLTextAreaElement;
