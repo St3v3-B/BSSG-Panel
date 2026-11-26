@@ -1,0 +1,4 @@
+# Lokaal testen zonder internet: alle certificaten van Caddy's eigen CA (tls internal).
+# Kopieer naar global.d/ of mount als /etc/caddy/global.d/local-certs.caddy.
+local_certs
+skip_install_trust
