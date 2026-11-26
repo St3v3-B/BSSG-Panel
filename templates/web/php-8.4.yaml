@@ -8,7 +8,7 @@ description: >-
   De database heet vanuit de site `panel-mariadb:3306`. Eigen PHP-instellingen in
   `php/*.ini`, eigen nginx-regels (binnen het server-blok) in `nginx/*.conf`; daarna herstarten.
 type: web
-version: 2
+version: 3
 # serversideup/php: officiële PHP-build met nginx erbij. We gebruiken alleen de binaries;
 # hun s6-entrypoint niet (dat wil als root schrijven op de rootfs).
 image: serversideup/php:8.4-fpm-nginx-alpine
@@ -56,6 +56,8 @@ startup: |
   catch_workers_output = yes
   decorate_workers_output = no
   security.limit_extensions = .php
+  ping.path = /healthcheck
+  ping.response = OK
   EOF
   cat > /tmp/nginx/nginx.conf <<'EOF'
   worker_processes 2;
@@ -102,6 +104,20 @@ startup: |
         fastcgi_pass unix:/tmp/php/fpm.sock;
       }
       include /home/container/nginx/*.conf;
+    }
+    # HEALTHCHECK van de image (curl http://localhost:8080/healthcheck): alleen via
+    # 127.0.0.1, test nginx en PHP-FPM (fpm-ping). Een bestand public/healthcheck
+    # blijft van buitenaf gewoon bereikbaar via de server hierboven.
+    server {
+      listen 127.0.0.1:8080;
+      access_log off;
+      location = /healthcheck {
+        include /etc/nginx/fastcgi_params;
+        fastcgi_param SCRIPT_NAME /healthcheck;
+        fastcgi_param SCRIPT_FILENAME /healthcheck;
+        fastcgi_pass unix:/tmp/php/fpm.sock;
+      }
+      location / { return 404; }
     }
   }
   EOF
