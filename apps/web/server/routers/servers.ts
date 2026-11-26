@@ -1,0 +1,155 @@
+import { type Implementation, type ServerStatus } from "@panel/api";
+import { TRPCError } from "@trpc/server";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { logActivity } from "../activity";
+import { activityPage } from "../activity-query";
+import { DaemonHttpError, DaemonUnreachableError, call, daemonFor, toTrpcError } from "../daemon";
+import { getDb, schema } from "../db";
+import { getEnv } from "../env";
+import { signBrowserJwt } from "../lib/jwt";
+import { buildServerSpec, validateVariables } from "../spec";
+import { fetchServers, limitsOf, requireServer, serverVariables, toDetail, toSummary, type ServerBundle } from "../servers-data";
+
+const ok = { ok: true as const };
+const LIVE_TIMEOUT_MS = 1500;
+
+/** Spec zoals hij nu in de database staat. */
+export async function currentSpec(b: ServerBundle, opts: { startOnInstall?: boolean; skipInstall?: boolean } = {}) {
+  return buildServerSpec({
+    uuid: b.server.uuid,
+    template: b.template,
+    variables: await serverVariables(b.server.id),
+    limits: limitsOf(b.server),
+    allocations: b.allocations,
+    ...opts,
+  });
+}
+
+/** Status live bij de daemon (korte timeout), anders uit de database. Werkt de database bij. */
+export async function liveState(b: ServerBundle): Promise<{ status: ServerStatus; installedAt: Date | null }> {
+  const fallback = { status: b.server.status, installedAt: b.server.installedAt };
+  let st;
+  try {
+    st = await daemonFor(b.node).getServer(b.server.uuid, LIVE_TIMEOUT_MS);
+  } catch (e) {
+    if (e instanceof DaemonUnreachableError || e instanceof DaemonHttpError || e instanceof TRPCError) return fallback;
+    throw e;
+  }
+  const status = st.state as ServerStatus;
+  const installedAt = b.server.installedAt ?? (st.installed_at ? new Date(st.installed_at) : null);
+  if (status !== b.server.status || installedAt?.getTime() !== b.server.installedAt?.getTime()) {
+    await getDb().update(schema.servers).set({ status, installedAt }).where(eq(schema.servers.id, b.server.id));
+  }
+  return { status, installedAt };
+}
+
+export const servers: Pick<
+  Implementation["servers"],
+  "list" | "get" | "stats" | "power" | "sendCommand" | "consoleToken" | "rename" | "updateVariables" | "reinstall" | "activity"
+> = {
+  list: async ({ ctx }) => {
+    const uid = ctx.session!.userId;
+    const subOf = getDb().select({ id: schema.subusers.serverId }).from(schema.subusers).where(eq(schema.subusers.userId, uid));
+    const rows = await fetchServers(or(eq(schema.servers.ownerId, uid), inArray(schema.servers.id, subOf)));
+    return rows.map((b) => toSummary(b, uid));
+  },
+
+  get: async ({ input, ctx }) => {
+    const a = await requireServer(ctx, input.uuid, "any");
+    const [live, vars, [viewer]] = await Promise.all([
+      liveState(a.bundle),
+      serverVariables(a.bundle.server.id),
+      getDb().select().from(schema.users).where(eq(schema.users.id, ctx.session!.userId)),
+    ]);
+    return toDetail(a.bundle, { id: viewer!.id, name: viewer!.name, discordId: viewer!.discordId }, a.permissions, vars, live);
+  },
+
+  stats: async ({ input, ctx }) => {
+    const a = await requireServer(ctx, input.uuid, "console.read");
+    let st;
+    try {
+      st = await daemonFor(a.bundle.node).stats(input.uuid, 5000);
+    } catch (e) {
+      if (e instanceof DaemonHttpError && e.status === 404) return null;
+      throw toTrpcError(e);
+    }
+    return {
+      cpuPct: st.cpu_pct,
+      memoryBytes: st.memory_bytes,
+      memoryLimitBytes: st.memory_limit_bytes,
+      networkRxBytes: st.network_rx_bytes,
+      networkTxBytes: st.network_tx_bytes,
+      diskBytes: st.disk_bytes,
+      diskLimitBytes: st.disk_limit_bytes,
+      uptimeMs: st.uptime_ms,
+    };
+  },
+
+  power: async ({ input, ctx }) => {
+    const a = await requireServer(ctx, input.uuid, "power");
+    await call(() => daemonFor(a.bundle.node).power(input.uuid, input.action));
+    await logActivity({ action: `server.power.${input.action}`, userId: ctx.session!.userId, serverId: a.bundle.server.id, ip: ctx.ip });
+    return ok;
+  },
+
+  sendCommand: async ({ input, ctx }) => {
+    const a = await requireServer(ctx, input.uuid, "console.write");
+    await call(() => daemonFor(a.bundle.node).sendCommands(input.uuid, [input.command]));
+    await logActivity({ action: "server.console.command", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { command: input.command }, ip: ctx.ip });
+    return ok;
+  },
+
+  consoleToken: async ({ input, ctx }) => {
+    const a = await requireServer(ctx, input.uuid, "console.read");
+    const env = getEnv();
+    const { token, claims } = await signBrowserJwt({
+      iss: env.PANEL_URL,
+      aud: a.bundle.node.fqdn,
+      sub: String(ctx.session!.userId),
+      serverUuid: a.bundle.server.uuid,
+      permissions: a.permissions,
+    });
+    return { token, socketUrl: `wss://${a.bundle.node.fqdn}/api/servers/${a.bundle.server.uuid}/ws`, expiresAt: new Date(claims.exp * 1000) };
+  },
+
+  rename: async ({ input, ctx }) => {
+    const a = await requireServer(ctx, input.uuid, "owner");
+    const name = input.name.trim();
+    if (!name) throw new TRPCError({ code: "BAD_REQUEST", message: "NAME_EMPTY" });
+    await getDb().update(schema.servers).set({ name }).where(eq(schema.servers.id, a.bundle.server.id));
+    await logActivity({ action: "server.rename", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { from: a.bundle.server.name, to: name }, ip: ctx.ip });
+    return ok;
+  },
+
+  updateVariables: async ({ input, ctx }) => {
+    const a = await requireServer(ctx, input.uuid, "owner");
+    const b = a.bundle;
+    const errors = validateVariables(b.template.variables, input.variables, { onlyUserEditable: true });
+    if (errors.length) throw new TRPCError({ code: "BAD_REQUEST", message: `INVALID_VARIABLES: ${errors.join("; ")}` });
+    const merged = { ...(await serverVariables(b.server.id)), ...input.variables };
+    const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: merged, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: true });
+    await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
+    const entries = Object.entries(input.variables);
+    if (entries.length) {
+      await getDb()
+        .insert(schema.serverVariables)
+        .values(entries.map(([key, value]) => ({ serverId: b.server.id, key, value })))
+        .onConflictDoUpdate({ target: [schema.serverVariables.serverId, schema.serverVariables.key], set: { value: sql`excluded.value` } });
+    }
+    await logActivity({ action: "server.variables.update", userId: ctx.session!.userId, serverId: b.server.id, metadata: { keys: entries.map(([k]) => k) }, ip: ctx.ip });
+    return ok;
+  },
+
+  reinstall: async ({ input, ctx }) => {
+    const a = await requireServer(ctx, input.uuid, "owner");
+    await call(() => daemonFor(a.bundle.node).reinstall(input.uuid));
+    await getDb().update(schema.servers).set({ status: "installing" }).where(eq(schema.servers.id, a.bundle.server.id));
+    await logActivity({ action: "server.reinstall", userId: ctx.session!.userId, serverId: a.bundle.server.id, ip: ctx.ip });
+    return ok;
+  },
+
+  activity: async ({ input, ctx }) => {
+    const a = await requireServer(ctx, input.uuid, "any");
+    return activityPage(and(eq(schema.activityLog.serverId, a.bundle.server.id)), input);
+  },
+};

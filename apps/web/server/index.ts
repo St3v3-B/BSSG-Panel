@@ -1,16 +1,25 @@
 /**
  * Ingang van de echte backend. Eigenaar: panel-api.
- * Fase 0: alles NOT_IMPLEMENTED en geen sessie. panel-api vervangt dit.
+ * Procedures die nog niet aan de beurt zijn (latere fases) blijven NOT_IMPLEMENTED.
  */
-import { notImplemented, type Ctx, type Implementation } from "@panel/api";
+import { notImplemented, type Implementation } from "@panel/api";
+import { admin } from "./routers/admin";
+import { account, auth } from "./routers/auth";
+import { servers } from "./routers/servers";
 
-export const implementation: Implementation = notImplemented();
+export { createContext } from "./context";
 
-export async function createContext(req: Request, resHeaders: Headers): Promise<Ctx> {
-  return {
-    session: null,
-    ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
-    userAgent: req.headers.get("user-agent"),
-    resHeaders,
-  };
+type Tree = { [k: string]: Tree | ((...a: never[]) => unknown) };
+
+function merge(base: Tree, over: Tree): Tree {
+  const out: Tree = { ...base };
+  for (const [k, v] of Object.entries(over)) {
+    const b = base[k];
+    out[k] = typeof v === "function" || typeof b === "function" || !b ? v : merge(b, v);
+  }
+  return out;
 }
+
+const phase1 = { auth, account, servers, admin };
+
+export const implementation: Implementation = merge(notImplemented() as unknown as Tree, phase1 as unknown as Tree) as unknown as Implementation;
