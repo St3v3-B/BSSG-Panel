@@ -38,6 +38,8 @@ type Deps struct {
 	Server server.Config
 	// Panel, als gezet, vervangt de standaard panel-client.
 	Panel *panel.Client
+	// WSAuthTimeout: tijd voor het eerste auth-bericht (standaard 10 s).
+	WSAuthTimeout time.Duration
 	// SyncInterval voor Router.Sync (standaard 5 min) en HealthInterval (15 s).
 	SyncInterval, HealthInterval time.Duration
 }
@@ -91,7 +93,7 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	}
 	d.routes = routes
 	verifier := auth.NewVerifier(d.panel.JWKS, cfg.NodeDomain)
-	d.api = api.New(api.Options{NodeToken: cfg.NodeToken, AllowedOrigins: cfg.AllowedOrigins()}, d.mgr, routes, verifier, d.systemInfo, deps.Log)
+	d.api = api.New(api.Options{NodeToken: cfg.NodeToken, AllowedOrigins: cfg.AllowedOrigins(), AuthTimeout: deps.WSAuthTimeout}, d.mgr, routes, verifier, d.systemInfo, deps.Log)
 	return d, nil
 }
 

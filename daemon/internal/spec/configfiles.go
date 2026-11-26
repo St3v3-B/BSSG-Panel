@@ -89,6 +89,7 @@ func ApplyConfigFiles(root string, files []ConfigFile, vars map[string]string, u
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("config %s: %w", f.Path, err)
 		}
+		err = nil
 		var out []byte
 		switch f.Format {
 		case "properties":

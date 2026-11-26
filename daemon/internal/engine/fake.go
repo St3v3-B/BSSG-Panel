@@ -1,0 +1,403 @@
+package engine
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"strings"
+	"sync"
+	"time"
+)
+
+// Fake is een Engine in geheugen voor tests. Elke gestarte container draait Behavior
+// (of DefaultBehavior) in een goroutine: die leest stdin-regels en schrijft uitvoer.
+type Fake struct {
+	mu         sync.Mutex
+	containers map[string]*FakeContainer
+	byName     map[string]string
+	images     map[string]bool
+	seq        int
+
+	// Behavior bepaalt wat een container doet; standaard DefaultBehavior.
+	Behavior func(c *FakeContainer)
+	// Pulls telt EnsureImage-aanroepen die moesten "ophalen".
+	Pulls int
+	// FailCreate, als gezet, laat Create falen.
+	FailCreate error
+}
+
+var _ Engine = (*Fake)(nil)
+
+// NewFake maakt een lege fake.
+func NewFake() *Fake {
+	return &Fake{containers: map[string]*FakeContainer{}, byName: map[string]string{}, images: map[string]bool{}}
+}
+
+// FakeContainer is een container in de fake.
+type FakeContainer struct {
+	ID     string
+	Config ContainerConfig
+
+	f       *Fake
+	mu      sync.Mutex
+	cond    *sync.Cond
+	out     []byte
+	running bool
+	started time.Time
+	exit    int
+	exited  chan struct{}
+	stdin   chan string
+	updates []Resources
+}
+
+// Stdin geeft de regels die naar stdin geschreven zijn.
+func (c *FakeContainer) Stdin() <-chan string { return c.stdin }
+
+// Println schrijft een regel naar de uitvoer.
+func (c *FakeContainer) Println(s string) {
+	c.mu.Lock()
+	c.out = append(c.out, s...)
+	c.out = append(c.out, '\n')
+	c.mu.Unlock()
+	c.cond.Broadcast()
+}
+
+// Exit laat de container stoppen met code.
+func (c *FakeContainer) Exit(code int) {
+	c.mu.Lock()
+	if !c.running {
+		c.mu.Unlock()
+		return
+	}
+	c.running = false
+	c.exit = code
+	close(c.exited)
+	c.mu.Unlock()
+	c.cond.Broadcast()
+}
+
+// Exited is gesloten zodra de container gestopt is.
+func (c *FakeContainer) Exited() <-chan struct{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.exited
+}
+
+// Running geeft aan of de container draait.
+func (c *FakeContainer) Running() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.running
+}
+
+// Updates zijn de Update-aanroepen.
+func (c *FakeContainer) Updates() []Resources {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]Resources(nil), c.updates...)
+}
+
+// DefaultBehavior: install-containers schrijven twee regels en stoppen met 0; andere
+// containers printen een startregel en "Done (1.0s)!", echoën stdin als
+// "[Server] <regel>" en stoppen bij "stop".
+func DefaultBehavior(c *FakeContainer) {
+	if c.Config.Labels["panel.role"] == "install" {
+		c.Println("installing")
+		c.Println("install done")
+		c.Exit(0)
+		return
+	}
+	exited := c.Exited()
+	c.Println("Starting fake server")
+	c.Println("Done (1.0s)! For help, type \"help\"")
+	for {
+		select {
+		case l := <-c.stdin:
+			if l == "stop" {
+				c.Println("Stopping server")
+				c.Exit(0)
+				return
+			}
+			c.Println("[Server] " + strings.TrimPrefix(l, "say "))
+		case <-exited:
+			return
+		}
+	}
+}
+
+func (f *Fake) get(id string) (*FakeContainer, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if c, ok := f.containers[id]; ok {
+		return c, nil
+	}
+	if real, ok := f.byName[id]; ok {
+		return f.containers[real], nil
+	}
+	return nil, fmt.Errorf("%w: %s", ErrNotFound, id)
+}
+
+// Container zoekt een container op id of naam (nil als hij niet bestaat).
+func (f *Fake) Container(idOrName string) *FakeContainer {
+	c, _ := f.get(idOrName)
+	return c
+}
+
+// All geeft alle containers.
+func (f *Fake) All() []*FakeContainer {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*FakeContainer, 0, len(f.containers))
+	for _, c := range f.containers {
+		out = append(out, c)
+	}
+	return out
+}
+
+func (f *Fake) Version(context.Context) (string, error) { return "fake-1.0", nil }
+
+func (f *Fake) EnsureImage(_ context.Context, image string, progress func(string)) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.images[image] {
+		f.images[image] = true
+		f.Pulls++
+		if progress != nil {
+			progress("pulled " + image)
+		}
+	}
+	return nil
+}
+
+func (f *Fake) Create(_ context.Context, cfg ContainerConfig) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.FailCreate != nil {
+		return "", f.FailCreate
+	}
+	if _, ok := f.byName[cfg.Name]; ok {
+		return "", fmt.Errorf("naam %s bestaat al", cfg.Name)
+	}
+	f.seq++
+	c := &FakeContainer{ID: fmt.Sprintf("fake%04d", f.seq), Config: cfg, f: f, exited: make(chan struct{}), stdin: make(chan string, 100)}
+	c.cond = sync.NewCond(&c.mu)
+	f.containers[c.ID] = c
+	f.byName[cfg.Name] = c.ID
+	return c.ID, nil
+}
+
+func (f *Fake) Start(_ context.Context, id string) error {
+	c, err := f.get(id)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	if c.running {
+		c.mu.Unlock()
+		return nil
+	}
+	c.running = true
+	c.started = time.Now()
+	c.exited = make(chan struct{})
+	c.mu.Unlock()
+	b := f.Behavior
+	if b == nil {
+		b = DefaultBehavior
+	}
+	go b(c)
+	return nil
+}
+
+func (f *Fake) Kill(_ context.Context, id, _ string) error {
+	c, err := f.get(id)
+	if err != nil {
+		return err
+	}
+	c.Exit(137)
+	return nil
+}
+
+func (f *Fake) Remove(_ context.Context, id string) error {
+	c, err := f.get(id)
+	if err != nil {
+		return err
+	}
+	c.Exit(137)
+	f.mu.Lock()
+	delete(f.containers, c.ID)
+	delete(f.byName, c.Config.Name)
+	f.mu.Unlock()
+	return nil
+}
+
+func (f *Fake) Inspect(_ context.Context, id string) (Container, error) {
+	c, err := f.get(id)
+	if err != nil {
+		return Container{}, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return Container{ID: c.ID, Name: c.Config.Name, Labels: c.Config.Labels, Running: c.running, StartedAt: c.started, ExitCode: c.exit}, nil
+}
+
+func (f *Fake) List(_ context.Context, labels map[string]string) ([]Container, error) {
+	var out []Container
+	for _, c := range f.All() {
+		ok := true
+		for k, v := range labels {
+			if c.Config.Labels[k] != v {
+				ok = false
+			}
+		}
+		if ok {
+			c.mu.Lock()
+			out = append(out, Container{ID: c.ID, Name: c.Config.Name, Labels: c.Config.Labels, Running: c.running, StartedAt: c.started})
+			c.mu.Unlock()
+		}
+	}
+	return out, nil
+}
+
+type fakeStdin struct {
+	c      *FakeContainer
+	mu     sync.Mutex
+	buf    []byte
+	closed bool
+}
+
+func (s *fakeStdin) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return 0, io.ErrClosedPipe
+	}
+	s.buf = append(s.buf, p...)
+	for {
+		i := strings.IndexByte(string(s.buf), '\n')
+		if i < 0 {
+			break
+		}
+		line := string(s.buf[:i])
+		s.buf = s.buf[i+1:]
+		select {
+		case s.c.stdin <- line:
+		default:
+		}
+	}
+	return len(p), nil
+}
+
+func (s *fakeStdin) Close() error {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+	return nil
+}
+
+func (f *Fake) AttachStdin(_ context.Context, id string) (Attachment, error) {
+	c, err := f.get(id)
+	if err != nil {
+		return nil, err
+	}
+	return &fakeStdin{c: c}, nil
+}
+
+type fakeLogs struct {
+	c      *FakeContainer
+	off    int
+	follow bool
+	ctx    context.Context
+	closed bool
+}
+
+func (l *fakeLogs) Read(p []byte) (int, error) {
+	c := l.c
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for {
+		if l.closed || l.ctx.Err() != nil {
+			return 0, io.EOF
+		}
+		if l.off < len(c.out) {
+			n := copy(p, c.out[l.off:])
+			l.off += n
+			return n, nil
+		}
+		if !l.follow || !c.running {
+			return 0, io.EOF
+		}
+		c.cond.Wait()
+	}
+}
+
+func (l *fakeLogs) Close() error {
+	l.c.mu.Lock()
+	l.closed = true
+	l.c.mu.Unlock()
+	l.c.cond.Broadcast()
+	return nil
+}
+
+func (f *Fake) Logs(ctx context.Context, id string, follow bool) (io.ReadCloser, error) {
+	c, err := f.get(id)
+	if err != nil {
+		return nil, err
+	}
+	l := &fakeLogs{c: c, follow: follow, ctx: ctx}
+	go func() {
+		<-ctx.Done()
+		c.cond.Broadcast()
+	}()
+	return l, nil
+}
+
+func (f *Fake) Wait(ctx context.Context, id string) (int, error) {
+	c, err := f.get(id)
+	if err != nil {
+		return -1, err
+	}
+	c.mu.Lock()
+	ch := c.exited
+	running := c.running
+	c.mu.Unlock()
+	if running {
+		select {
+		case <-ch:
+		case <-ctx.Done():
+			return -1, ctx.Err()
+		}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.exit, nil
+}
+
+func (f *Fake) Stats(ctx context.Context, id string, fn func(StatsSample)) error {
+	c, err := f.get(id)
+	if err != nil {
+		return err
+	}
+	t := time.NewTicker(50 * time.Millisecond)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-c.Exited():
+			return nil
+		case <-t.C:
+			fn(StatsSample{CPUPct: 12.5, MemoryBytes: 64 << 20, MemoryLimit: c.Config.Resources.Memory, RxBytes: 100, TxBytes: 200})
+		}
+	}
+}
+
+func (f *Fake) Update(_ context.Context, id string, r Resources) error {
+	c, err := f.get(id)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.updates = append(c.updates, r)
+	c.mu.Unlock()
+	return nil
+}
