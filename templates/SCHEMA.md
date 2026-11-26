@@ -35,9 +35,15 @@ opgeslagen versie. Admins kunnen daarnaast templates importeren of bewerken in /
 - `pattern` is een regex die de hele waarde moet matchen; het panel controleert hem bij opslaan.
 - `user_editable: false` betekent dat alleen een admin de waarde kan zetten.
 
+## Waarden in config_files
+
+Bij yaml, json en toml schrijft de daemon `true`, `false` en getallen kaal; al het andere als
+string. Een bestaande sleutel houdt zijn type. Sleutels met punten komen in de geneste tabel/map
+(`proxies.velocity.secret`, bij toml in `[proxies.velocity]`).
+
 ## Containerregels (afgedwongen door de daemon, niet door de template)
 
-Niet-root, geen privileged, alle capabilities eruit, `no-new-privileges`, PID-limiet, label
+Een init-proces (PID 1, stuurt signalen door), niet-root, geen privileged, alle capabilities eruit, `no-new-privileges`, PID-limiet, label
 `panel.managed=true`. De data van de server is `/home/container`; installeer alles daar.
 Het install-script draait als root in een tijdelijke container (met netwerk), daarna zet de
 daemon de eigenaar van `/home/container` op uid 1000.
