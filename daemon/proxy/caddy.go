@@ -46,10 +46,10 @@ const (
 type CaddyOptions struct {
 	// ServerName, standaard DefaultServerName.
 	ServerName string
-	// TLSAddr is waar Status een TLS-verbinding opent om het certificaat te
-	// controleren. Standaard de host van AdminURL op poort 443.
+	// TLSAddr overschrijft Config.TLSAddr (tests).
 	TLSAddr string
-	// HTTPClient voor de admin-API; standaard een client met 15 s timeout.
+	// HTTPClient voor de admin-API; standaard een client met 15 s timeout
+	// (bij een unix://-AdminURL met een transport naar de socket).
 	HTTPClient *http.Client
 	// Docker voor de netwerk-koppeling; standaard de Docker-API via DOCKER_HOST
 	// of /var/run/docker.sock. Alleen gebruikt als Config.CaddyContainer gezet is.
@@ -80,6 +80,38 @@ var (
 	_ HealthChecker = (*Caddy)(nil)
 )
 
+// DefaultTLSAddr is het standaardadres voor de SSL-controle (CADDY_TLS_ADDR).
+const DefaultTLSAddr = "127.0.0.1:443"
+
+// adminClient geeft de basis-URL en HTTP-client voor de admin-API.
+//   - unix:///run/panel/caddy-admin.sock (productie): requests naar http://caddy/...
+//     over de socket. Caddy doet geen Host-check op een unix-socket.
+//   - http://127.0.0.1:<poort> (tests).
+func adminClient(adminURL string, hc *http.Client) (string, *http.Client, error) {
+	u, err := url.Parse(adminURL)
+	if err != nil {
+		return "", nil, fmt.Errorf("proxy: ongeldige Caddy admin-URL %q", adminURL)
+	}
+	switch {
+	case u.Scheme == "unix" && u.Path != "" && u.Host == "":
+		if hc == nil {
+			path := u.Path
+			hc = &http.Client{Timeout: 15 * time.Second, Transport: &http.Transport{
+				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+					return (&net.Dialer{}).DialContext(ctx, "unix", path)
+				},
+			}}
+		}
+		return "http://caddy", hc, nil
+	case (u.Scheme == "http" || u.Scheme == "https") && u.Host != "":
+		if hc == nil {
+			hc = &http.Client{Timeout: 15 * time.Second}
+		}
+		return strings.TrimRight(adminURL, "/"), hc, nil
+	}
+	return "", nil, fmt.Errorf("proxy: ongeldige Caddy admin-URL %q (verwacht unix:///pad/naar.sock of http://host:poort)", adminURL)
+}
+
 // NewCaddy maakt de echte Router tegen de Caddy admin-API (cfg.AdminURL).
 // Het resultaat implementeert ook HealthChecker.
 func NewCaddy(cfg Config) (Router, error) {
@@ -88,16 +120,16 @@ func NewCaddy(cfg Config) (Router, error) {
 
 // NewCaddyWithOptions is NewCaddy met extra instellingen.
 func NewCaddyWithOptions(cfg Config, opt CaddyOptions) (*Caddy, error) {
-	u, err := url.Parse(cfg.AdminURL)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, fmt.Errorf("proxy: ongeldige Caddy admin-URL %q", cfg.AdminURL)
+	admin, hc, err := adminClient(cfg.AdminURL, opt.HTTPClient)
+	if err != nil {
+		return nil, err
 	}
 	c := &Caddy{
 		cfg:      cfg,
-		admin:    strings.TrimRight(cfg.AdminURL, "/"),
+		admin:    admin,
 		server:   opt.ServerName,
 		tlsAddr:  opt.TLSAddr,
-		hc:       opt.HTTPClient,
+		hc:       hc,
 		docker:   opt.Docker,
 		extra:    opt.ExtraRoots,
 		expected: map[string]bool{},
@@ -106,10 +138,10 @@ func NewCaddyWithOptions(cfg Config, opt CaddyOptions) (*Caddy, error) {
 		c.server = DefaultServerName
 	}
 	if c.tlsAddr == "" {
-		c.tlsAddr = net.JoinHostPort(u.Hostname(), "443")
+		c.tlsAddr = cfg.TLSAddr
 	}
-	if c.hc == nil {
-		c.hc = &http.Client{Timeout: 15 * time.Second}
+	if c.tlsAddr == "" {
+		c.tlsAddr = DefaultTLSAddr
 	}
 	if c.docker == nil && cfg.CaddyContainer != "" {
 		d, err := NewDockerAPI(os.Getenv("DOCKER_HOST"))

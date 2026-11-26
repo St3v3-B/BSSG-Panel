@@ -16,7 +16,7 @@
 
 	# Binnen de container op alle interfaces; docker-compose publiceert hem
 	# alleen op 127.0.0.1:2019. Niet aan internet blootstellen.
-	admin 0.0.0.0:2019
+	admin unix//run/panel/caddy-admin.sock
 
 	# Vaste naam voor de HTTPS-server: hier landen de dynamische routes.
 	# Contract met daemon/proxy/caddy.go.
