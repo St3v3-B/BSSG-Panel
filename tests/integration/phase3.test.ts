@@ -15,8 +15,8 @@ let uuid = "";
 const routes = async () =>
   (await (await fetch(`${DAEMON()}/api/routes`, { headers: { authorization: `Bearer ${env("NODE_TOKEN")}` } })).json()) as Array<{ host: string; server_uuid: string; redirect_to: string | null }>;
 
-/** Draait een PHP-bestand uit public/ met de PHP-CLI in de sitecontainer. */
-const php = (file: string) => execFileSync("docker", ["exec", `panel-${uuid}`, "php", `/home/container/public/${file}`], { encoding: "utf8" }).trim();
+/** Vraagt een PHP-bestand op via de webserver in de sitecontainer (zoals een bezoeker). */
+const php = (file: string) => execFileSync("docker", ["exec", `panel-${uuid}`, "sh", "-c", `curl -s http://$(hostname -i | cut -d" " -f1):8080/${file}`], { encoding: "utf8" }).trim();
 
 const dbScript = (host: string, user: string, pass: string, name: string) => `<?php
 mysqli_report(MYSQLI_REPORT_OFF);
@@ -80,7 +80,10 @@ describe("fase 3: website met domein en database", () => {
     const mine = await site.api.databases.create.mutate({ uuid, name: "wp" });
     expect(mine.host).toBe(env("MARIADB_CONTAINER"));
     await site.api.files.write.mutate({ uuid, path: "/public/db.php", content: dbScript(mine.host, mine.username, mine.password, mine.name) });
-    await waitFor("database bereikbaar vanuit de site", async () => php("db.php") === "OK", 60_000, 3000);
+    let last = "";
+    await waitFor("database bereikbaar vanuit de site", async () => (last = php("db.php")) === "OK", 60_000, 3000).catch((e) => {
+      throw new Error(`${(e as Error).message}; laatste uitvoer: ${last.slice(0, 300)}`);
+    });
 
     // Een tweede database: de gebruiker van de eerste mag er niet bij.
     const other = await site.api.databases.create.mutate({ uuid, name: "ander" });
