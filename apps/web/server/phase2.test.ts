@@ -84,7 +84,8 @@ describe("files.*", () => {
     expect(`${u.origin}${u.pathname}`).toBe(`https://node1.test/api/servers/${uuid}/files/download`);
     expect(u.searchParams.get("path")).toBe("/readme.txt");
     const c = verifyJwt(u.searchParams.get("token")!, key.publicKey)!.claims;
-    expect(c).toMatchObject({ aud: "node1.test", sub: String(player.id), server_uuid: uuid, permissions: ["files.read"] });
+    expect(c).toMatchObject({ aud: "node1.test", sub: String(player.id), server_uuid: uuid, permissions: ["files.read"], path: "/readme.txt" });
+    expect(c.directory).toBeUndefined();
     expect(c.exp - c.iat).toBeLessThanOrEqual(600);
     expect(down.expiresAt.getTime()).toBe(c.exp * 1000);
 
@@ -93,6 +94,7 @@ describe("files.*", () => {
     expect(up.searchParams.get("directory")).toBe("/plugins");
     const c2 = verifyJwt(up.searchParams.get("token")!, key.publicKey)!.claims;
     expect(c2.permissions).toEqual(["files.write"]);
+    expect(c2.directory).toBe("/plugins");
     expect(c2.jti).not.toBe(c.jti);
   });
 

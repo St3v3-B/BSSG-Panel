@@ -27,10 +27,17 @@ export const PHASE2 = [
   "subusers.list", "subusers.invite", "subusers.update", "subusers.remove",
 ];
 
-describe("dekking fase 1 + 2", () => {
+/** Fase 3 (deels; Cloudflare/applyDns en dnsProviders volgen). */
+export const PHASE3 = [
+  "domains.list", "domains.add", "domains.update", "domains.remove", "domains.check", "domains.lastCheck", "domains.target",
+  "databases.list", "databases.create", "databases.resetPassword", "databases.delete",
+  "admin.databaseHosts.list", "admin.databaseHosts.create", "admin.databaseHosts.update", "admin.databaseHosts.delete", "admin.databaseHosts.test",
+];
+
+describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    const all = [...PHASE1, ...PHASE2];
+    const all = [...PHASE1, ...PHASE2, ...PHASE3];
     for (const p of all) expect(contract.has(p), p).toBe(true);
     expect(implementedPaths().sort()).toEqual(all.sort());
   });

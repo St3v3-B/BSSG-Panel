@@ -56,10 +56,13 @@ export async function jwks(): Promise<{ keys: Array<{ kty: "OKP"; crv: "Ed25519"
 
 export const JWT_TTL_SECONDS = 600;
 
-export async function signBrowserJwt(c: { iss: string; aud: string; sub: string; serverUuid: string; permissions: string[]; ttlSeconds?: number }): Promise<{ token: string; claims: BrowserJwtClaims }> {
+/** Extra claims voor up/download: de URL-parameters, zodat de daemon kan zien dat ze niet zijn aangepast. */
+export type TransferClaims = { path?: string; directory?: string };
+
+export async function signBrowserJwt(c: { iss: string; aud: string; sub: string; serverUuid: string; permissions: string[]; ttlSeconds?: number; extra?: TransferClaims }): Promise<{ token: string; claims: BrowserJwtClaims & TransferClaims }> {
   const k = await getSigningKey();
   const iat = Math.floor(Date.now() / 1000);
-  const claims: BrowserJwtClaims = {
+  const claims: BrowserJwtClaims & TransferClaims = {
     iss: c.iss,
     aud: c.aud,
     sub: c.sub,
@@ -68,6 +71,7 @@ export async function signBrowserJwt(c: { iss: string; aud: string; sub: string;
     jti: randomUUID(),
     iat,
     exp: iat + Math.min(c.ttlSeconds ?? JWT_TTL_SECONDS, JWT_TTL_SECONDS),
+    ...c.extra,
   };
   const head = b64url(JSON.stringify({ alg: "EdDSA", typ: "JWT", kid: k.kid }));
   const body = b64url(JSON.stringify(claims));
@@ -76,7 +80,7 @@ export async function signBrowserJwt(c: { iss: string; aud: string; sub: string;
 }
 
 /** Controle zoals de daemon hem doet; voor tests. */
-export function verifyJwt(token: string, publicKey: KeyObject): { header: Record<string, unknown>; claims: BrowserJwtClaims } | null {
+export function verifyJwt(token: string, publicKey: KeyObject): { header: Record<string, unknown>; claims: BrowserJwtClaims & TransferClaims } | null {
   const [h, b, s] = token.split(".");
   if (!h || !b || !s) return null;
   if (!verify(null, Buffer.from(`${h}.${b}`), publicKey, Buffer.from(s, "base64url"))) return null;

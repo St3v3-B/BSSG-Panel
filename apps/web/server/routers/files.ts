@@ -35,6 +35,7 @@ async function signedUrl(ctx: Parameters<Implementation["files"]["uploadUrl"]>[0
     sub: String(ctx.session!.userId),
     serverUuid: uuid,
     permissions: [perm],
+    extra: query,
   });
   const qs = new URLSearchParams({ ...query, token });
   return { a, url: `https://${a.bundle.node.fqdn}/api/servers/${uuid}/files/${kind}?${qs}`, expiresAt: new Date(claims.exp * 1000) };

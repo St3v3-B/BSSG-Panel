@@ -49,3 +49,13 @@ export async function startContainer(o: { image: string; port: number; env?: Rec
 
 export const startRedis = () =>
   startContainer({ image: "redis:7-alpine", port: 6379, args: ["--save", ""], ready: async (id) => void (await docker("exec", id, "redis-cli", "ping")) });
+
+export const startMariadb = (rootPassword: string) =>
+  startContainer({
+    image: "mariadb:11",
+    port: 3306,
+    env: { MARIADB_ROOT_PASSWORD: rootPassword },
+    args: ["--innodb-buffer-pool-size=32M", "--performance-schema=OFF"],
+    timeoutMs: 120_000,
+    ready: async (id) => void (await docker("exec", id, "mariadb", "-h127.0.0.1", "-uroot", `-p${rootPassword}`, "-e", "select 1")),
+  });

@@ -6,15 +6,16 @@
  * 2. migraties
  * 3. OWNER_DISCORD_ID in admin_discord_ids
  * 4. lokale node upserten (is_local, fqdn = NODE_DOMAIN, token_hash = sha256(NODE_TOKEN), poorten)
+ * 4b. lokale MariaDB als database-host `local` (als MARIADB_ROOT_PASSWORD gezet is)
  * 5. standaardinstellingen
  * 6. Ed25519-sleutelpaar voor browser-JWT's
  * 7. templates uit TEMPLATES_DIR
  */
 import { runMigrations } from "@panel/db/migrate";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import { EnvError, getEnv } from "./env";
-import { sha256 } from "./lib/crypto";
+import { encrypt, sha256 } from "./lib/crypto";
 import { ensureSigningKey } from "./lib/jwt";
 import { ensureSettingDefaults } from "./settings";
 import { loadTemplatesFromDir } from "./templates";
@@ -46,12 +47,26 @@ export async function upsertLocalNode(): Promise<number> {
   });
 }
 
+/** Lokale MariaDB (compose: panel-mariadb) als database-host `local`, als die er nog niet is. */
+export async function ensureLocalDatabaseHost(nodeId: number): Promise<void> {
+  const env = getEnv();
+  if (!env.MARIADB_ROOT_PASSWORD) return;
+  const db = getDb();
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(4242001)`);
+    const [have] = await tx.select({ id: schema.databaseHosts.id }).from(schema.databaseHosts).where(eq(schema.databaseHosts.name, "local"));
+    if (have) return;
+    await tx.insert(schema.databaseHosts).values({ name: "local", host: "panel-mariadb", port: 3306, adminUser: "root", adminPasswordEnc: encrypt(env.MARIADB_ROOT_PASSWORD!), nodeId });
+  });
+}
+
 async function runBoot(): Promise<void> {
   const env = getEnv();
   await runMigrations(env.DATABASE_URL);
   const db = getDb();
   await db.insert(schema.adminDiscordIds).values({ discordId: env.OWNER_DISCORD_ID }).onConflictDoNothing();
-  await upsertLocalNode();
+  const localNodeId = await upsertLocalNode();
+  await ensureLocalDatabaseHost(localNodeId);
   await ensureSettingDefaults();
   await ensureSigningKey();
   const t = await loadTemplatesFromDir(env.TEMPLATES_DIR);

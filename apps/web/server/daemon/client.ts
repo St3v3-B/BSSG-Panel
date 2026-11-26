@@ -147,8 +147,8 @@ export class DaemonClient {
   }
 
   // ---------- routes (web) ----------
-  routes() {
-    return this.request<DaemonRouteWithStatus[]>("GET", "/api/routes");
+  routes(timeoutMs?: number) {
+    return this.request<DaemonRouteWithStatus[]>("GET", "/api/routes", undefined, timeoutMs);
   }
   putRoute(route: DaemonRoute) {
     return this.request<DaemonRouteWithStatus>("PUT", `/api/routes/${encodeURIComponent(route.host)}`, route, 30_000);
