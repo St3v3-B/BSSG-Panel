@@ -120,7 +120,7 @@ export function notImplemented(): Implementation {
           k,
           isProc(v)
             ? () => {
-                throw new TRPCError({ code: "METHOD_NOT_SUPPORTED", message: `NOT_IMPLEMENTED: ${p}` });
+                throw new TRPCError({ code: "NOT_IMPLEMENTED", message: `NOT_IMPLEMENTED: ${p}` });
               }
             : walk(v as Record<string, unknown>, p),
         ];

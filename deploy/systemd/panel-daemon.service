@@ -1,0 +1,30 @@
+# Node-daemon van het panel. Geïnstalleerd door deploy/install.sh naar
+# /etc/systemd/system/panel-daemon.service; binary in /usr/local/bin/panel-daemon.
+#
+# Een herstart of stop van deze unit laat de game-containers draaien: die zijn kinderen van
+# dockerd/containerd (niet van deze unit), KillMode=process stopt alleen de daemon zelf, en
+# de daemon stopt nooit containers als hij afsluit.
+[Unit]
+Description=Panel node-daemon
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/panel/panel.env
+ExecStart=/usr/local/bin/panel-daemon
+# /run/panel (DAEMON_SOCKET). Preserve: de map blijft bestaan tussen herstarts, zodat de
+# bind mount in de Caddy-container naar dezelfde map blijft wijzen.
+RuntimeDirectory=panel
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+Restart=always
+RestartSec=2
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=30
+LimitNOFILE=1048576
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

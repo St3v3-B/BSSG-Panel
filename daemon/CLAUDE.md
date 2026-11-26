@@ -12,12 +12,13 @@ Module `panel/daemon`, binary `cmd/panel-daemon`. Toegestane dependencies o.a.:
 
 `NODE_TOKEN`, `NODE_DOMAIN`, `PANEL_URL` (leeg → `https://$PANEL_DOMAIN`), `DAEMON_SOCKET`,
 `DAEMON_PORT`, `SFTP_PORT`, `DATA_DIR`, `CADDY_ADMIN_URL` (leeg → `proxy.NewFake()`),
-`CADDY_CONTAINER`, `PANEL_INSTANCE`, `DOCKER_EXTRA_LABELS` (`k=v,k2=v2`).
+`CADDY_CONTAINER`, `CADDY_TLS_ADDR`, `PANEL_INSTANCE`, `DOCKER_EXTRA_LABELS` (`k=v,k2=v2`).
 
 ## Fase 1 — taak
 
 1. **HTTP-server** op unix-socket `DAEMON_SOCKET` (map aanmaken, rechten 0660) én
-   `127.0.0.1:$DAEMON_PORT`. Alle endpoints uit `openapi.yaml` die in fase 1 vallen:
+   `127.0.0.1:$DAEMON_PORT`. Verwijder een bestaand (oud) socketbestand vóór `listen`
+   (systemd bewaart `/run/panel` tussen herstarts). Alle endpoints uit `openapi.yaml` die in fase 1 vallen:
    `/api/system`, `/api/servers` (GET/POST), `/api/servers/{uuid}` (GET/PUT/DELETE),
    `/install`, `/power`, `/commands`, `/logs`, `/stats`, `/ws`, en `/api/routes*` (opslaan +
    doorgeven aan de Router). Files/backups: 501 met `{"error":"not_implemented"}`.

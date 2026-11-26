@@ -29,6 +29,8 @@ type Upstream struct {
 	// Network is het Docker-netwerk van de site. De implementatie zorgt dat Caddy aan
 	// dit netwerk gekoppeld is zolang er routes naar verwijzen, en koppelt hem los
 	// als de laatste route weg is. Leeg = Caddy kan de container al bereiken.
+	// Alleen netwerken met panel.managed=true, panel.instance=<Config.Instance> en
+	// panel.role=site worden gekoppeld en losgekoppeld (de daemon zet die labels).
 	Network string
 	// Port in de container.
 	Port int
@@ -93,7 +95,11 @@ type HealthChecker interface {
 // (CADDY_ADMIN_URL, CADDY_CONTAINER, PANEL_INSTANCE) en roept NewCaddy aan
 // (caddy.go, door web-hosting). Is CADDY_ADMIN_URL leeg, dan gebruikt de daemon NewFake.
 type Config struct {
-	AdminURL       string // bv. http://127.0.0.1:2019
+	// AdminURL: unix:///run/panel/caddy-admin.sock (productie) of http://127.0.0.1:<poort> (tests).
+	AdminURL       string
 	CaddyContainer string // containernaam van Caddy, voor koppelen aan site-netwerken
 	Instance       string // PANEL_INSTANCE; alleen netwerken met dit label aanraken
+	// TLSAddr: waar Caddy HTTPS serveert, voor de SSL-controle (CADDY_TLS_ADDR,
+	// standaard 127.0.0.1:443).
+	TLSAddr string
 }

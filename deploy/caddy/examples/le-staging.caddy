@@ -1,0 +1,3 @@
+# Let's Encrypt staging: echte ACME-flow, geen rate limits, certificaat niet vertrouwd.
+# Kopieer naar global.d/ of mount als /etc/caddy/global.d/le-staging.caddy.
+acme_ca https://acme-staging-v02.api.letsencrypt.org/directory

@@ -1,0 +1,42 @@
+# Caddy-basisconfig van het panel (eigenaar: web-hosting).
+#
+# Niet per installatie aanpassen: alle installatiekeuzes komen uit de omgeving
+# (/etc/panel/panel.env via docker-compose). Zie README.md.
+#
+# Vaste routes (dit bestand): $PANEL_DOMAIN -> panel, $NODE_DOMAIN -> daemon.
+# Dynamische routes (klantdomeinen) zet de daemon via de admin-API in de server
+# met de naam "panel" (zie `servers :443 { name panel }` hieronder), als routes met
+# "@id": "panel-dyn-<host>". Ze komen achter de vaste routes en worden bij elke
+# Caddy-herstart door de daemon opnieuw gezet (Sync). Zet hier dus geen catch-all
+# site (zoals `:443` of `https://`): die zou de dynamische routes overschaduwen.
+#
+# HTTP -> HTTPS doet Caddy zelf (automatic HTTPS), ook voor de dynamische routes.
+{
+	email {$ACME_EMAIL}
+
+	# Binnen de container op alle interfaces; docker-compose publiceert hem
+	# alleen op 127.0.0.1:2019. Niet aan internet blootstellen.
+	admin 0.0.0.0:2019
+
+	# Vaste naam voor de HTTPS-server: hier landen de dynamische routes.
+	# Contract met daemon/proxy/caddy.go.
+	servers :443 {
+		name panel
+	}
+
+	# Extra globale opties voor tests en staging (bv. `local_certs` of
+	# `acme_ca ...`). In productie is deze map leeg. Zie examples/.
+	import /etc/caddy/global.d/*.caddy
+}
+
+{$PANEL_DOMAIN} {
+	reverse_proxy panel:3000
+}
+
+{$NODE_DOMAIN} {
+	# Daemon op de unix-socket (/run/panel wordt in de container gemount).
+	# Websockets werken vanzelf; flush_interval -1 voor de log-streams.
+	reverse_proxy unix//run/panel/daemon.sock {
+		flush_interval -1
+	}
+}
