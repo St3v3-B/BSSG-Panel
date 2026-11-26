@@ -115,6 +115,7 @@ type Server struct {
 	diskExceeded  bool
 	diskWarned    bool
 	diskStopping  bool
+	diskGrowth    int64 // recente groei (afnemend gemiddelde)
 	deleted       bool
 }
 

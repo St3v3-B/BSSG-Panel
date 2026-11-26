@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -383,5 +384,39 @@ func TestWebSiteNetwork(t *testing.T) {
 	h.expect("DELETE", "/api/servers/"+u1, nil, 204)
 	if eng.Network(net) == nil {
 		t.Fatal("vreemd netwerk verwijderd")
+	}
+}
+
+func TestFreeSpaceWatch(t *testing.T) {
+	var full atomic.Bool
+	h := newHarnessWith(t, engine.NewFake(), nil, nil, "", nil, "", func(d *Deps) {
+		d.FreeInterval = 50 * time.Millisecond
+		d.Statfs = func(string) (int64, int64, error) {
+			if full.Load() {
+				return 100, 3, nil
+			}
+			return 100, 50, nil
+		}
+	})
+	const u2 = "0b7c2d1e-2222-4222-8333-444455556666"
+	for _, u := range []string{u1, u2} {
+		sp := testSpec(u)
+		sp["limits"] = map[string]any{"cpu_pct": 100, "memory_mb": 512, "swap_mb": 0, "disk_mb": 0}
+		sp["config_files"] = []any{}
+		sp["allocations"] = []any{}
+		sp["start_on_install"] = true
+		h.expect("POST", "/api/servers", sp, 202)
+		h.waitState(u, "online", 5*time.Second)
+	}
+	time.Sleep(300 * time.Millisecond) // eerste metingen
+	if err := os.WriteFile(filepath.Join(h.cfg.DataDir, "volumes", u2, "groei.bin"), make([]byte, 1<<20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "groei gemeten", 3*time.Second, func() bool { return h.state(u2).DiskBytes >= 1<<20 })
+	full.Store(true)
+	h.waitState(u2, "offline", 5*time.Second)
+	time.Sleep(100 * time.Millisecond)
+	if h.state(u1).State != "online" {
+		t.Fatal("verkeerde server gestopt")
 	}
 }

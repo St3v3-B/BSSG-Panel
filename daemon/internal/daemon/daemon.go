@@ -45,6 +45,10 @@ type Deps struct {
 	SyncInterval, HealthInterval time.Duration
 	// SFTPAddr vervangt ":$SFTP_PORT" (tests: 127.0.0.1:0). Leeg en SFTP_PORT 0 = geen SFTP.
 	SFTPAddr string
+	// FreeInterval: hoe vaak de vrije schijfruimte gecontroleerd wordt (standaard 15 s).
+	FreeInterval time.Duration
+	// Statfs vervangt server.FreeSpace (tests).
+	Statfs func(string) (int64, int64, error)
 	// SFTPFailDelay na een mislukte SFTP-login (standaard 1 s).
 	SFTPFailDelay time.Duration
 }
@@ -69,7 +73,7 @@ type Daemon struct {
 	closeOnce sync.Once
 }
 
-// DiskQuotaMode: XFS-detectie komt in fase 2.
+// DiskQuotaMode: harde XFS-quota zijn nog niet geïmplementeerd (alleen gedetecteerd en gelogd).
 const DiskQuotaMode = "soft"
 
 // New bouwt de daemon; Start zet hem aan.
@@ -173,6 +177,15 @@ func (d *Daemon) Start(ctx context.Context) error {
 		}
 		d.log.Info("sftp luistert", "addr", d.sftp.Addr())
 	}
+
+	if server.DetectXFSPrjquota(filepath.Join(d.cfg.DataDir, "volumes")) {
+		d.log.Warn("XFS met prjquota gedetecteerd; harde quota zijn nog niet geïmplementeerd, de daemon gebruikt de softe limiet")
+	}
+	fi := d.deps.FreeInterval
+	if fi == 0 {
+		fi = 15 * time.Second
+	}
+	go d.mgr.FreeWatch(fi, d.deps.Statfs)
 
 	d.panel.Hello(d.deps.Version, DiskQuotaMode)
 	d.wg.Add(1)

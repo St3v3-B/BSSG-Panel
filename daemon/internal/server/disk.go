@@ -96,6 +96,7 @@ func (s *Server) measureDisk() {
 // applyDisk zet de gemeten grootte en handhaaft de limiet.
 func (s *Server) applyDisk(n int64) {
 	s.mu.Lock()
+	s.diskGrowth = n - s.diskBytes + s.diskGrowth/2 // recente groei weegt het zwaarst
 	s.diskBytes = n
 	stop := s.evaluateDiskLocked()
 	s.mu.Unlock()
