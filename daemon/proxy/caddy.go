@@ -193,6 +193,14 @@ func normRoute(r Route) (Route, error) {
 		r.Upstream = Upstream{}
 		return r, nil
 	}
+	if r.Placeholder != PlaceholderNone {
+		if _, err := placeholderPage(r.Placeholder); err != nil {
+			return r, fmt.Errorf("proxy: %s: %w", h, err)
+		}
+		if r.Upstream.Container == "" && r.Upstream.Network == "" {
+			return r, nil // alleen de pagina, geen upstream nodig
+		}
+	}
 	u := r.Upstream
 	if !plainRe.MatchString(u.Container) {
 		return r, fmt.Errorf("proxy: %s: ongeldige upstream-container %q", h, u.Container)
@@ -207,19 +215,6 @@ func normRoute(r Route) (Route, error) {
 }
 
 // ---- Caddy-JSON ----
-
-// UnavailablePage is de pagina (status 503, Retry-After: 30) als de container van
-// een site niet bereikbaar is, bv. tijdens de installatie. Caddy vult
-// {http.request.host} in; verder geen accolades (die zouden placeholders zijn).
-const UnavailablePage = `<!doctype html>
-<html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex"><title>Deze website wordt ingericht</title></head>
-<body style="margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f7f9;color:#1f2933">
-<main style="max-width:36rem;margin:15vh auto;padding:2rem;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)">
-<h1 style="margin:0 0 .75rem;font-size:1.5rem">Deze website wordt ingericht</h1>
-<p style="margin:0 0 .5rem;line-height:1.5">{http.request.host} is nog niet beschikbaar. Probeer het over een minuut opnieuw.</p>
-</main></body></html>
-`
 
 type dynRoute struct {
 	id      string
@@ -243,6 +238,7 @@ func buildRoute(r Route) (dynRoute, error) {
 		vars[varServer] = r.ServerUUID
 	}
 	var h map[string]any
+	var err error
 	if r.RedirectTo != "" {
 		h = map[string]any{
 			"handler":     "static_response",
@@ -253,28 +249,9 @@ func buildRoute(r Route) (dynRoute, error) {
 		if r.Upstream.Network != "" {
 			vars[varNetwork] = r.Upstream.Network
 		}
-		// De proxy in een subroute met eigen errors-routes: is de upstream niet
-		// bereikbaar (dial-fout 502, timeout 504, 503), dan de standaardpagina.
-		// Zo geldt dit alleen voor dynamische hosts; de vaste routes blijven onaangeroerd.
-		h = map[string]any{
-			"handler": "subroute",
-			"routes": []any{map[string]any{"handle": []any{map[string]any{
-				"handler":   "reverse_proxy",
-				"upstreams": []map[string]string{{"dial": net.JoinHostPort(r.Upstream.Container, strconv.Itoa(r.Upstream.Port))}},
-			}}}},
-			"errors": map[string]any{"routes": []any{map[string]any{
-				"match": []map[string]any{{"expression": "{http.error.status_code} in [502, 503, 504]"}},
-				"handle": []any{map[string]any{
-					"handler":     "static_response",
-					"status_code": 503,
-					"headers": map[string][]string{
-						"Content-Type":  {"text/html; charset=utf-8"},
-						"Retry-After":   {"30"},
-						"Cache-Control": {"no-store"},
-					},
-					"body": UnavailablePage,
-				}},
-			}}},
+		h, err = upstreamHandler(r)
+		if err != nil {
+			return dynRoute{}, err
 		}
 	}
 	raw, err := canon(map[string]any{
@@ -291,6 +268,31 @@ func buildRoute(r Route) (dynRoute, error) {
 		d.network = r.Upstream.Network
 	}
 	return d, nil
+}
+
+// upstreamHandler: met Placeholder direct de standaardpagina (503), anders de proxy
+// in een subroute met eigen errors-routes: is de upstream niet bereikbaar (dial-fout
+// 502, timeout 504, 503), dan de pagina "unavailable". Dit geldt alleen voor
+// dynamische hosts; de vaste routes blijven onaangeroerd.
+func upstreamHandler(r Route) (map[string]any, error) {
+	if r.Placeholder != PlaceholderNone {
+		return placeholderHandler(r.Placeholder)
+	}
+	page, err := placeholderHandler(PlaceholderUnavailable)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"handler": "subroute",
+		"routes": []any{map[string]any{"handle": []any{map[string]any{
+			"handler":   "reverse_proxy",
+			"upstreams": []map[string]string{{"dial": net.JoinHostPort(r.Upstream.Container, strconv.Itoa(r.Upstream.Port))}},
+		}}}},
+		"errors": map[string]any{"routes": []any{map[string]any{
+			"match":  []map[string]any{{"expression": "{http.error.status_code} in [502, 503, 504]"}},
+			"handle": []any{page},
+		}}},
+	}, nil
 }
 
 // split verdeelt de routes van de server in vaste (ongewijzigd, op volgorde) en

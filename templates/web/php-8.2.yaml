@@ -181,13 +181,44 @@ install:
       mkdir -p /home/container/public
       cat > /home/container/public/index.html <<'EOF'
     <!doctype html>
-    <html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Deze website is klaar voor gebruik</title></head>
-    <body style="margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f7f9;color:#1f2933">
-    <main style="max-width:36rem;margin:15vh auto;padding:2rem;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)">
-    <h1 style="margin:0 0 .75rem;font-size:1.5rem">Deze website is klaar voor gebruik</h1>
-    <p style="margin:0;line-height:1.5">Upload je bestanden naar <code>public/</code> via de filemanager of SFTP.</p>
-    </main></body></html>
+    <html lang="nl">
+    <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>Deze website is klaar voor gebruik</title>
+    <style>
+    :root{color-scheme:light dark;--bg1:#eef2f7;--bg2:#f8fafc;--card:rgba(255,255,255,.86);--line:rgba(15,23,42,.08);--text:#0f172a;--muted:#55627a;--accent:#2563eb;--accent2:#7c3aed;--pill:rgba(37,99,235,.08)}
+    @media (prefers-color-scheme:dark){:root{--bg1:#0b1020;--bg2:#111a2e;--card:rgba(17,24,39,.78);--line:rgba(255,255,255,.08);--text:#e5e9f2;--muted:#9aa6bd;--accent:#60a5fa;--accent2:#a78bfa;--pill:rgba(96,165,250,.12)}}
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;display:grid;place-items:center;padding:24px;font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;color:var(--text);background:radial-gradient(1200px 600px at 10% -10%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 60%),radial-gradient(900px 500px at 110% 110%,color-mix(in srgb,var(--accent2) 14%,transparent),transparent 60%),linear-gradient(180deg,var(--bg1),var(--bg2));-webkit-font-smoothing:antialiased}
+    main{width:100%;max-width:520px;padding:40px 36px;border:1px solid var(--line);border-radius:20px;background:var(--card);box-shadow:0 1px 2px rgba(0,0,0,.04),0 20px 50px -20px rgba(15,23,42,.25);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);animation:in .5s ease-out both}
+    .icon{width:56px;height:56px;display:grid;place-items:center;border-radius:16px;margin-bottom:22px;color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 10px 24px -10px var(--accent)}
+    .icon svg{width:28px;height:28px}
+    h1{margin:0 0 10px;font-size:clamp(1.4rem,4vw,1.75rem);line-height:1.25;letter-spacing:-.01em}
+    p{margin:0;color:var(--muted)}
+    .host{display:inline-block;max-width:100%;margin-top:22px;padding:6px 12px;border-radius:999px;background:var(--pill);color:var(--accent);font:500 .9rem/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-wrap:anywhere}
+    .bar{position:relative;height:4px;margin-top:26px;border-radius:4px;background:var(--line);overflow:hidden}
+    .bar::after{content:"";position:absolute;inset:0;width:40%;border-radius:4px;background:linear-gradient(90deg,var(--accent),var(--accent2));animation:slide 1.6s ease-in-out infinite}
+    code{font:.92em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:1px 6px;border-radius:6px;background:var(--pill);color:var(--text)}
+    @keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(250%)}}
+    @media (prefers-reduced-motion:reduce){main,.bar::after{animation:none}}
+    @media (max-width:480px){main{padding:30px 22px;border-radius:16px}}
+    </style>
+    </head>
+    <body>
+    <main>
+    <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div>
+    <h1>Deze website is klaar voor gebruik</h1>
+    <p>Upload je bestanden naar <code>public/</code> via de filemanager of SFTP.</p>
+    <div class="host"><span id="h">deze website</span></div>
+    </main>
+    <script>document.getElementById("h").textContent=location.hostname||"deze website"</script>
+
+    </body>
+    </html>
     EOF
     fi
     [ -e $H/php/README.txt ] || echo "Bestanden *.ini in deze map komen na de standaardinstellingen (na een herstart)." > $H/php/README.txt
