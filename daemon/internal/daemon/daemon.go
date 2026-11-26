@@ -96,6 +96,9 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	sc.DataDir = cfg.DataDir
 	sc.Instance = cfg.Instance
 	sc.ExtraLabels = cfg.ExtraLabels
+	if sc.MariaDB == "" {
+		sc.MariaDB = cfg.MariaDBContainer
+	}
 	d.mgr = server.NewManager(sc, deps.Engine, d.panel, deps.Log)
 	routes, err := api.NewRoutes(filepath.Join(cfg.DataDir, "state", "routes.json"), deps.Router, d.mgr, deps.Log)
 	if err != nil {

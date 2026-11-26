@@ -98,6 +98,8 @@ func ApplyConfigFiles(root string, files []ConfigFile, vars map[string]string, u
 			out, err = UpdateYAML(old, set)
 		case "json":
 			out, err = UpdateJSON(old, set)
+		case "toml":
+			out = UpdateTOML(old, set)
 		default:
 			err = fmt.Errorf("onbekend formaat %q", f.Format)
 		}

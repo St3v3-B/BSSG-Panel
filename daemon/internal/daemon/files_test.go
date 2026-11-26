@@ -16,6 +16,7 @@ import (
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 
+	"panel/daemon/internal/config"
 	"panel/daemon/internal/engine"
 	"panel/daemon/internal/testpanel"
 	"panel/daemon/proxy"
@@ -389,7 +390,7 @@ func TestWebSiteNetwork(t *testing.T) {
 
 func TestFreeSpaceWatch(t *testing.T) {
 	var full atomic.Bool
-	h := newHarnessWith(t, engine.NewFake(), nil, nil, "", nil, "", func(d *Deps) {
+	h := newHarnessWith(t, engine.NewFake(), nil, nil, "", nil, "", func(_ *config.Config, d *Deps) {
 		d.FreeInterval = 50 * time.Millisecond
 		d.Statfs = func(string) (int64, int64, error) {
 			if full.Load() {
@@ -481,4 +482,21 @@ func TestSitePlaceholder(t *testing.T) {
 	release <- struct{}{}
 	h.waitState(u1, "offline", 5*time.Second)
 	ph(proxy.PlaceholderOffline)
+}
+
+func TestMariaDBContainerFromEnv(t *testing.T) {
+	eng := engine.NewFake()
+	for _, n := range []string{"panel-mariadb", "it-mariadb"} {
+		if _, err := eng.Create(context.Background(), engine.ContainerConfig{Name: n}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	h := newHarnessWith(t, eng, nil, nil, "", nil, "", func(c *config.Config, _ *Deps) { c.MariaDBContainer = "it-mariadb" })
+	sp := testSpec(u1)
+	sp["type"], sp["http_port"], sp["allocations"], sp["config_files"] = "web", 8080, []any{}, []any{}
+	h.expect("POST", "/api/servers", sp, 202)
+	n := eng.Network("panel-site-" + u1)
+	if n == nil || !n.Connected["it-mariadb"] || n.Connected["panel-mariadb"] {
+		t.Fatalf("%+v", n)
+	}
 }

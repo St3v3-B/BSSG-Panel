@@ -13,7 +13,7 @@ func TestLoadDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	if c.PanelURL != "https://panel.test" || c.NodeDomain != "node1.test" || c.DaemonPort != 8080 || c.SFTPPort != 2022 ||
-		c.DataDir != "/var/lib/panel" || c.DaemonSocket != "/run/panel/daemon.sock" || c.Instance != "main" || c.CaddyAdminURL != "" {
+		c.DataDir != "/var/lib/panel" || c.DaemonSocket != "/run/panel/daemon.sock" || c.Instance != "main" || c.CaddyAdminURL != "" || c.MariaDBContainer != "panel-mariadb" {
 		t.Fatalf("%+v", c)
 	}
 	if o := c.AllowedOrigins(); len(o) != 1 || o[0] != "https://panel.test" {
@@ -25,12 +25,12 @@ func TestLoadOverrides(t *testing.T) {
 	c, err := Load(env(map[string]string{
 		"NODE_TOKEN": "t", "NODE_DOMAIN": "node1.test", "PANEL_DOMAIN": "panel.test",
 		"PANEL_URL": "http://127.0.0.1:4000/", "DAEMON_PORT": "0", "PANEL_INSTANCE": "it-1",
-		"DOCKER_EXTRA_LABELS": "panel.test=true, a=b",
+		"DOCKER_EXTRA_LABELS": "panel.test=true, a=b", "MARIADB_CONTAINER": "it-mariadb",
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.PanelURL != "http://127.0.0.1:4000" || c.DaemonPort != 0 || c.Instance != "it-1" || c.ExtraLabels["panel.test"] != "true" || c.ExtraLabels["a"] != "b" {
+	if c.PanelURL != "http://127.0.0.1:4000" || c.DaemonPort != 0 || c.Instance != "it-1" || c.MariaDBContainer != "it-mariadb" || c.ExtraLabels["panel.test"] != "true" || c.ExtraLabels["a"] != "b" {
 		t.Fatalf("%+v", c)
 	}
 	o := c.AllowedOrigins()

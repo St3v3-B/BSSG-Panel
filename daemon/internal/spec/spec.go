@@ -164,7 +164,7 @@ func (s *ServerSpec) Validate() error {
 		add("install.script ontbreekt")
 	}
 	for i, f := range s.ConfigFiles {
-		if f.Format != "properties" && f.Format != "yaml" && f.Format != "json" {
+		if f.Format != "properties" && f.Format != "yaml" && f.Format != "json" && f.Format != "toml" {
 			add("config_files[%d].format ongeldig", i)
 		}
 		if _, err := CleanRel(f.Path); err != nil {
