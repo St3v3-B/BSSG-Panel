@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -413,6 +414,44 @@ func TestDockerCaddy(t *testing.T) {
 		}
 		e.get(t, "https://site.test/", func(code int, _, _ string) bool { return code == 200 })
 		e.get(t, "https://panel.test/", func(code int, _, _ string) bool { return code == 200 })
+	})
+
+	t.Run("gestopte container geeft 503 met de standaardpagina", func(t *testing.T) {
+		before, _, err := c.getRoutes(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fixedBefore, _, _ := split(before)
+		stopped := e.inst + "-stopped"
+		dockerCmd(t, "run", "-d", "--name", stopped, "--network", e.siteNet, "--label", "panel.test=true", "--label", "panel.instance="+e.inst, "traefik/whoami", "--port", "80")
+		if err := c.SetRoute(ctx, Route{Host: "installeert.test", Upstream: Upstream{Container: stopped, Network: e.siteNet, Port: 80}}); err != nil {
+			t.Fatal(err)
+		}
+		e.get(t, "https://installeert.test/", func(code int, _, _ string) bool { return code == 200 })
+		dockerCmd(t, "stop", "-t", "1", stopped)
+		var retry string
+		e.get(t, "https://installeert.test/x", func(code int, _, b string) bool {
+			return code == 503 && strings.Contains(b, "Deze website wordt ingericht") && strings.Contains(b, "installeert.test is nog niet beschikbaar")
+		})
+		if resp, err := e.client.Get("https://installeert.test/"); err == nil {
+			retry = resp.Header.Get("Retry-After")
+			resp.Body.Close()
+		}
+		if retry != "30" {
+			t.Errorf("Retry-After = %q", retry)
+		}
+		// Vaste routes ongewijzigd en nog steeds bereikbaar.
+		after, _, err := c.getRoutes(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fixedAfter, _, _ := split(after); !reflect.DeepEqual(fixedBefore, fixedAfter) {
+			t.Fatal("vaste routes gewijzigd")
+		}
+		e.get(t, "https://panel.test/", func(code int, _, _ string) bool { return code == 200 })
+		if err := c.RemoveRoute(ctx, "installeert.test"); err != nil {
+			t.Fatal(err)
+		}
 	})
 
 	t.Run("opruimen: laatste route weg koppelt los", func(t *testing.T) {
