@@ -33,7 +33,7 @@ export function toTrpcError(e: unknown): unknown {
       : e.status === 507 ? "PRECONDITION_FAILED"
       : e.status === 413 ? "PAYLOAD_TOO_LARGE"
       : "INTERNAL_SERVER_ERROR";
-    if (e.status === 507) return new TRPCError({ code: "PRECONDITION_FAILED", message: "DISK_EXCEEDED", cause: e });
+    if (e.status === 507 || e.code === "disk_exceeded") return new TRPCError({ code: "PRECONDITION_FAILED", message: "DISK_EXCEEDED", cause: e });
     return new TRPCError({ code, message: `DAEMON_${e.code.toUpperCase()}: ${e.message}`, cause: e });
   }
   return e;

@@ -57,7 +57,7 @@ export async function jwks(): Promise<{ keys: Array<{ kty: "OKP"; crv: "Ed25519"
 export const JWT_TTL_SECONDS = 600;
 
 /** Extra claims voor up/download: de URL-parameters, zodat de daemon kan zien dat ze niet zijn aangepast. */
-export type TransferClaims = { path?: string; directory?: string };
+export type TransferClaims = Pick<BrowserJwtClaims, "path" | "directory">;
 
 export async function signBrowserJwt(c: { iss: string; aud: string; sub: string; serverUuid: string; permissions: string[]; ttlSeconds?: number; extra?: TransferClaims }): Promise<{ token: string; claims: BrowserJwtClaims & TransferClaims }> {
   const k = await getSigningKey();

@@ -5,6 +5,7 @@ import { and, asc, count, eq, gt, ilike, inArray, isNull, lt, or, sql, type SQL 
 import { alias } from "drizzle-orm/pg-core";
 import { logActivity } from "../activity";
 import { dropServerDatabases } from "./databases";
+import { removeServerRoutes } from "./domains";
 import { activityPage } from "../activity-query";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema, type Db } from "../db";
@@ -411,7 +412,7 @@ export const admin = {
       } catch (e) {
         if (!(e instanceof DaemonHttpError && e.status === 404)) await call(() => Promise.reject(e));
       }
-      for (const host of b.domains) await daemonFor(b.node).deleteRoute(host).catch(() => {});
+      await removeServerRoutes(b.server.id, b.node);
       const dbFailed = await dropServerDatabases(b.server.id);
       await logActivity({ action: "admin.server.delete", userId: uid(ctx), serverId: b.server.id, metadata: { serverUuid: b.server.uuid, serverName: b.server.name, ownerId: b.server.ownerId, ...(dbFailed.length ? { databasesNotDropped: dbFailed } : {}) }, ip: ctx.ip });
       await getDb().transaction(async (tx) => {
