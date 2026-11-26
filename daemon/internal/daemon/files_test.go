@@ -344,7 +344,7 @@ func TestWebSiteNetwork(t *testing.T) {
 	h.waitState(u1, "offline", 5*time.Second)
 	net := "panel-site-" + u1
 	n := eng.Network(net)
-	if n == nil || !n.Internal || n.Labels["panel.role"] != "site" || n.Labels["panel.managed"] != "true" || n.Labels["panel.instance"] != "unit" || !n.Connected["panel-mariadb"] {
+	if n == nil || n.Internal || n.Labels["panel.role"] != "site" || n.Labels["panel.managed"] != "true" || n.Labels["panel.instance"] != "unit" || !n.Connected["panel-mariadb"] {
 		t.Fatalf("netwerk: %+v", n)
 	}
 	h.expect("POST", "/api/servers/"+u1+"/power", map[string]string{"action": "start"}, 202)
