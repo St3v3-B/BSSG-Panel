@@ -11,17 +11,19 @@ import { displayName } from "@/app/_components/user-avatar";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
 import { useServer } from "@/app/_hooks/use-server";
 import { errorInfo } from "@/app/_lib/errors";
+import { useT } from "@/app/_lib/i18n";
 
 export default function ServerLayout({ children }: { children: ReactNode }) {
   const server = useServer();
-  useDocumentTitle(server.data?.name ?? "Server");
+  const t = useT();
+  useDocumentTitle(server.data?.name ?? t.docTitle.server);
 
   if (server.error) {
     const code = errorInfo(server.error).code;
     return (
       <div className="space-y-4">
         <BackLink />
-        <QueryError error={server.error} title={code === "NOT_FOUND" || code === "BAD_REQUEST" ? "Server niet gevonden" : "Server laden mislukt"} />
+        <QueryError error={server.error} title={code === "NOT_FOUND" || code === "BAD_REQUEST" ? t.server.notFound : t.server.loadFailed} />
       </div>
     );
   }
@@ -48,7 +50,7 @@ export default function ServerLayout({ children }: { children: ReactNode }) {
             {s.primaryAddress && <CopyText value={s.primaryAddress} className="text-foreground" />}
             <span>{s.templateName}</span>
             <span>· {s.node.name}</span>
-            {!s.isOwner && <span>· van {displayName(s.owner)}</span>}
+            {!s.isOwner && <span>· {t.server.of(displayName(s.owner))}</span>}
           </div>
         </div>
         <ServerTabs server={s} />
@@ -59,9 +61,10 @@ export default function ServerLayout({ children }: { children: ReactNode }) {
 }
 
 function BackLink() {
+  const t = useT();
   return (
     <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-      <ArrowLeft className="size-4" /> Mijn servers
+      <ArrowLeft className="size-4" /> {t.nav.myServers}
     </Link>
   );
 }

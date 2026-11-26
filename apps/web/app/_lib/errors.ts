@@ -1,4 +1,5 @@
-/** Hulpfuncties om tRPC-fouten te lezen en in het Nederlands te tonen. */
+/** Hulpfuncties om tRPC-fouten te lezen en vertaald te tonen. */
+import { getT, type Dict } from "@/app/_lib/i18n";
 
 export interface ErrorInfo {
   code: string | null; // tRPC-code, bv. "FORBIDDEN"
@@ -31,39 +32,26 @@ export const isForbidden = (err: unknown) => errorInfo(err).code === "FORBIDDEN"
 
 export const isUnauthorized = (err: unknown) => errorInfo(err).code === "UNAUTHORIZED";
 
-const MESSAGES: Record<string, string> = {
-  BLOCKED: "Je account is geblokkeerd. Neem contact op met een beheerder.",
-  TOTP_PENDING: "Voer eerst je 2FA-code in.",
-  TOTP_REQUIRED: "Zet eerst tweestapsverificatie (2FA) aan op je accountpagina.",
-  NOT_ADMIN: "Hiervoor moet je beheerder zijn.",
-  DAEMON_UNREACHABLE: "De node is op dit moment niet bereikbaar. Probeer het straks opnieuw.",
-  INVALID_CODE: "Die code klopt niet. Probeer het opnieuw.",
-  DISK_EXCEEDED: "De schijf van deze server is vol. Verwijder eerst bestanden of vraag een beheerder om meer ruimte.",
-};
-
-const CODES: Record<string, string> = {
-  UNAUTHORIZED: "Je bent niet (meer) ingelogd.",
-  FORBIDDEN: "Je hebt hier geen rechten voor.",
-  NOT_FOUND: "Niet gevonden.",
-  CONFLICT: "Dit bestaat al of botst met iets anders.",
-  BAD_REQUEST: "Ongeldige invoer.",
-  PRECONDITION_FAILED: "Dit kan nu niet (bijvoorbeeld omdat de schijf vol is).",
-  TOO_MANY_REQUESTS: "Te veel pogingen. Wacht even en probeer het opnieuw.",
-  INTERNAL_SERVER_ERROR: "Er ging iets mis op de server.",
-};
-
-/** Leesbare Nederlandse foutmelding voor een tRPC-fout. */
-export function errorText(err: unknown): string {
+/** Leesbare foutmelding in de huidige taal voor een tRPC-fout. */
+export function errorText(err: unknown, t: Dict = getT()): string {
   const { code, message } = errorInfo(err);
   const key = message.split(/[\s(:]/)[0] ?? "";
-  if (MESSAGES[key]) {
+  const messages = t.errors.messages as Record<string, string>;
+  const codes = t.errors.codes as Record<string, string>;
+  if (messages[key]) {
+    if (key === "MISSING_PERMISSION") {
+      // "MISSING_PERMISSION: files.write" → naam van het recht erbij
+      const perm = message.slice(key.length).replace(/^[:\s]+/, "").trim() as keyof Dict["permissions"];
+      const label = perm && perm !== "all" ? (t.permissions[perm] as { label: string } | undefined)?.label : undefined;
+      return label ? `${messages[key]} (${label})` : messages[key]!;
+    }
     // mock-hints zoals "(mock: gebruik 123456)" laten we zien
     const hint = message.match(/\((mock[^)]*)\)/)?.[1];
-    return hint ? `${MESSAGES[key]} (${hint})` : MESSAGES[key]!;
+    return hint ? `${messages[key]} (${hint})` : messages[key]!;
   }
-  if (code && CODES[code]) {
+  if (code && codes[code]) {
     // korte, bruikbare messages van de server tonen we erbij
-    return message && message !== code && message.length < 200 && !message.startsWith("[") ? `${CODES[code]} ${message}` : CODES[code]!;
+    return message && message !== code && message.length < 200 && !message.startsWith("[") ? `${codes[code]} ${message}` : codes[code]!;
   }
-  return message || "Onbekende fout.";
+  return message || t.errors.unknown;
 }

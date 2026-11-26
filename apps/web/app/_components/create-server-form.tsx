@@ -17,6 +17,7 @@ import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { displayName, UserAvatar } from "@/app/_components/user-avatar";
 import { errorText } from "@/app/_lib/errors";
+import { getT, useT } from "@/app/_lib/i18n";
 
 function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return (
@@ -44,7 +45,7 @@ function Field({ id, label, hint, error, children, className }: { id: string; la
 export function variableError(value: string, pattern: string | null): string | null {
   if (!pattern) return null;
   try {
-    return new RegExp(pattern).test(value) ? null : `Voldoet niet aan het patroon ${pattern}`;
+    return new RegExp(pattern).test(value) ? null : getT().settings.pattern(pattern);
   } catch {
     return null; // ongeldig patroon in de template: niet blokkeren
   }
@@ -52,6 +53,8 @@ export function variableError(value: string, pattern: string | null): string | n
 
 export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreated: (server: ServerDetail) => void; initialKind?: ServerType }) {
   const utils = trpc.useUtils();
+  const i18n = useT();
+  const f = i18n.createForm;
 
   // ---------- data ----------
   const nodes = trpc.admin.nodes.list.useQuery();
@@ -120,18 +123,18 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
   if (parsedLimits && !parsedLimits.success) {
     for (const issue of parsedLimits.error.issues) {
       const k = issue.path[0] as keyof LimitsT;
-      limitErrors[k] ??= Number.isNaN(Number(limits?.[k])) ? "Geen getal" : issue.code === "too_small" ? "Te laag" : issue.code === "too_big" ? "Te hoog" : "Ongeldig (hele getallen)";
+      limitErrors[k] ??= Number.isNaN(Number(limits?.[k])) ? f.limitNaN : issue.code === "too_small" ? f.limitLow : issue.code === "too_big" ? f.limitHigh : f.limitInvalid;
     }
   }
   const varErrors = Object.fromEntries(templateVars.map((v) => [v.key, variableError(variables[v.key] ?? "", v.pattern)]));
   const errors = {
-    name: !name.trim() ? "Geef de server een naam" : name.length > 100 ? "Maximaal 100 tekens" : null,
-    owner: ownerId == null ? "Kies een eigenaar" : null,
-    node: nodeId == null ? "Kies een node" : null,
-    template: templateId == null ? "Kies een template" : null,
-    allocations: templateType === "game" && allocationIds.length === 0 ? "Een game-server heeft minstens één poort nodig" : null,
-    limits: !parsedLimits || !parsedLimits.success ? "Controleer de limieten" : null,
-    variables: Object.values(varErrors).some(Boolean) ? "Controleer de variabelen" : null,
+    name: !name.trim() ? f.errName : name.length > 100 ? f.errNameMax : null,
+    owner: ownerId == null ? f.errOwner : null,
+    node: nodeId == null ? f.errNode : null,
+    template: templateId == null ? f.errTemplate : null,
+    allocations: templateType === "game" && allocationIds.length === 0 ? f.errPorts : null,
+    limits: !parsedLimits || !parsedLimits.success ? f.errLimits : null,
+    variables: Object.values(varErrors).some(Boolean) ? f.errVariables : null,
   };
   const valid = Object.values(errors).every((e) => !e);
   const show = (e: string | null) => (submitted ? e : null);
@@ -174,7 +177,7 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
     return (
       <Alert variant="destructive">
         <div>
-          <AlertTitle>Formulier laden mislukt</AlertTitle>
+          <AlertTitle>{f.loadFailed}</AlertTitle>
           <AlertDescription>{errorText(loadError)}</AlertDescription>
         </div>
       </Alert>
@@ -191,13 +194,13 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
       }}
       data-testid="create-server-form"
     >
-      <Section title="Algemeen">
-        <Field id="server-name" label="Naam" error={show(errors.name)}>
-          <Input id="server-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} placeholder="bv. SMP" aria-invalid={!!show(errors.name) || undefined} />
+      <Section title={f.general}>
+        <Field id="server-name" label={f.name} error={show(errors.name)}>
+          <Input id="server-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={100} placeholder={f.namePlaceholder} aria-invalid={!!show(errors.name) || undefined} />
         </Field>
 
         <div className="space-y-1.5">
-          <Label htmlFor="owner-search">Eigenaar</Label>
+          <Label htmlFor="owner-search">{f.owner}</Label>
           {owner && (
             <div className="flex items-center gap-3 rounded-md border border-primary/40 bg-primary/5 px-3 py-2" data-testid="selected-owner">
               <UserAvatar user={owner} className="size-7" />
@@ -206,7 +209,7 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
                 <div className="font-mono text-xs text-muted-foreground">{owner.discordId}</div>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setOwnerId(null)}>
-                Wijzigen
+                {f.change}
               </Button>
             </div>
           )}
@@ -216,10 +219,10 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
                 id="owner-search"
                 value={ownerSearch}
                 onChange={(e) => setOwnerSearch(e.target.value)}
-                placeholder="Zoek op naam of plak een Discord-ID"
+                placeholder={f.ownerSearch}
                 autoComplete="off"
               />
-              <div className="max-h-56 overflow-y-auto rounded-md border border-border" role="listbox" aria-label="Gebruikers">
+              <div className="max-h-56 overflow-y-auto rounded-md border border-border" role="listbox" aria-label={f.users}>
                 {users.data?.items.map((u) => (
                   <button
                     key={u.id}
@@ -237,23 +240,23 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
                       <span className="block truncate">{displayName(u)}</span>
                       <span className="block font-mono text-xs text-muted-foreground">{u.discordId}</span>
                     </span>
-                    {!u.name && <Badge variant="secondary">nog niet ingelogd</Badge>}
-                    {u.blocked && <Badge variant="destructive">geblokkeerd</Badge>}
+                    {!u.name && <Badge variant="secondary">{f.notSignedIn}</Badge>}
+                    {u.blocked && <Badge variant="destructive">{f.blocked}</Badge>}
                   </button>
                 ))}
                 {users.data && users.data.items.length === 0 && !searchIsDiscordId && (
-                  <p className="px-3 py-3 text-sm text-muted-foreground">Geen gebruikers gevonden. Plak een Discord-ID om iemand vooraf aan te maken.</p>
+                  <p className="px-3 py-3 text-sm text-muted-foreground">{f.noUsers}</p>
                 )}
-                {users.isPending && <p className="px-3 py-3 text-sm text-muted-foreground">Laden…</p>}
+                {users.isPending && <p className="px-3 py-3 text-sm text-muted-foreground">{i18n.common.loading}</p>}
               </div>
               {searchIsDiscordId && !exactMatch && (
                 <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm">
                   <span className="flex-1 text-muted-foreground">
-                    Nog geen account met Discord-ID <code className="font-mono text-foreground">{ownerSearch.trim()}</code>. Naam en avatar komen bij de
-                    eerste login.
+                    {f.noAccountPre} <code className="font-mono text-foreground">{ownerSearch.trim()}</code>
+                    {f.noAccountPost}
                   </span>
                   <Button size="sm" variant="secondary" onClick={() => createUser.mutate({ discordId: ownerSearch.trim() })} disabled={createUser.isPending}>
-                    {createUser.isPending ? <Spinner /> : <UserPlus />} Vooraf aanmaken
+                    {createUser.isPending ? <Spinner /> : <UserPlus />} {f.precreate}
                   </Button>
                 </div>
               )}
@@ -264,8 +267,8 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
         </div>
       </Section>
 
-      <Section title="Soort, node en template">
-        <div className="inline-flex rounded-lg border border-border p-0.5" role="group" aria-label="Soort">
+      <Section title={f.kindSection}>
+        <div className="inline-flex rounded-lg border border-border p-0.5" role="group" aria-label={f.kind}>
           {(["game", "web"] as const).map((k) => (
             <button
               key={k}
@@ -274,14 +277,14 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
               onClick={() => setKind(k)}
               className={cn("rounded-md px-3 py-1.5 text-sm", kind === k ? "bg-muted font-medium text-foreground" : "text-muted-foreground hover:text-foreground")}
             >
-              {k === "game" ? "Game-server" : "Website"}
+              {k === "game" ? f.kindGame : f.kindWeb}
             </button>
           ))}
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field id="server-node" label="Node" error={show(errors.node)}>
+          <Field id="server-node" label={f.node} error={show(errors.node)}>
             <Select id="server-node" value={nodeId ?? ""} onChange={(e) => setNodeId(e.target.value ? Number(e.target.value) : null)}>
-              {nodes.data?.length === 0 && <option value="">Geen nodes</option>}
+              {nodes.data?.length === 0 && <option value="">{f.noNodes}</option>}
               {nodes.data?.map((n) => (
                 <option key={n.id} value={n.id}>
                   {n.name} ({n.fqdn})
@@ -289,11 +292,11 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
               ))}
             </Select>
           </Field>
-          {kind === "web" && templates.data && kindTemplates.length === 0 && <p className="self-end text-sm text-muted-foreground">Er zijn nog geen webtemplates.</p>}
+          {kind === "web" && templates.data && kindTemplates.length === 0 && <p className="self-end text-sm text-muted-foreground">{f.noWebTemplates}</p>}
           {kind === "game" && (
-          <Field id="server-template" label="Template" error={show(errors.template)} hint={templates.data?.find((t) => t.id === templateId)?.description ?? undefined}>
+          <Field id="server-template" label={f.template} error={show(errors.template)} hint={templates.data?.find((t) => t.id === templateId)?.description ?? undefined}>
             <Select id="server-template" value={templateId ?? ""} onChange={(e) => setTemplateId(e.target.value ? Number(e.target.value) : null)}>
-              {templates.data && kindTemplates.length === 0 && <option value="">Geen game-templates</option>}
+              {templates.data && kindTemplates.length === 0 && <option value="">{f.noGameTemplates}</option>}
               {kindTemplates.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -305,7 +308,7 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
         </div>
         {errors.template && kind === "web" && show(errors.template) && <p className="text-xs text-destructive">{errors.template}</p>}
         {kind === "web" && kindTemplates.length > 0 && (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Kies een webtemplate" data-testid="web-templates">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label={f.pickWebTemplate} data-testid="web-templates">
             {kindTemplates.map((t) => (
               <button
                 key={t.id}
@@ -326,7 +329,7 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
           <Skeleton className="h-16" />
         ) : templateVars.length > 0 ? (
           <div className="space-y-4 rounded-lg border border-border p-4" data-testid="template-variables">
-            <div className="text-sm font-medium">Variabelen</div>
+            <div className="text-sm font-medium">{f.variables}</div>
             <div className="grid gap-4 sm:grid-cols-2">
               {templateVars.map((v) => (
                 <Field
@@ -338,7 +341,7 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
                     <>
                       <code className="font-mono">{v.key}</code>
                       {v.description && <> · {v.description}</>}
-                      {v.userEditable && <> · gebruiker kan aanpassen</>}
+                      {v.userEditable && <> · {f.userEditable}</>}
                     </>
                   }
                 >
@@ -357,11 +360,11 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
       </Section>
 
       {templateType !== "web" && (
-        <Section title="Poorten" description="Vrije allocations van deze node. De eerste is het primaire adres.">
+        <Section title={f.ports} description={f.portsText}>
           {allocations.isPending ? (
             <Skeleton className="h-20" />
           ) : freeAllocations.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Deze node heeft geen vrije poorten. Voeg eerst allocations toe.</p>
+            <p className="text-sm text-muted-foreground">{f.noPorts}</p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3" data-testid="allocations">
               {freeAllocations.map((a) => {
@@ -378,12 +381,12 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
                     </label>
                     {idx === 0 && (
                       <Badge>
-                        <Star /> primair
+                        <Star /> {f.primary}
                       </Badge>
                     )}
                     {idx > 0 && (
                       <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => makePrimary(a.id)}>
-                        Maak primair
+                        {f.makePrimary}
                       </Button>
                     )}
                   </div>
@@ -395,15 +398,15 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
         </Section>
       )}
 
-      <Section title="Limieten" description="Standaard uit de instellingen. CPU: 100 = één core, 0 = onbeperkt. Swap: -1 = onbeperkt, 0 = geen.">
+      <Section title={f.limits} description={f.limitsText}>
         {limits && (
           <div className="grid gap-4 sm:grid-cols-4">
             {(
               [
-                ["cpuPct", "CPU (%)"],
-                ["ramMb", "Geheugen (MB)"],
-                ["swapMb", "Swap (MB)"],
-                ["diskMb", "Schijf (MB)"],
+                ["cpuPct", f.cpu],
+                ["ramMb", f.ram],
+                ["swapMb", f.swap],
+                ["diskMb", f.disk],
               ] as const
             ).map(([k, label]) => (
               <Field key={k} id={`limit-${k}`} label={label} error={show(limitErrors[k] ?? null)}>
@@ -421,27 +424,27 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
         )}
         <label className="flex items-center gap-2 text-sm">
           <Checkbox checked={startOnInstall} onChange={(e) => setStartOnInstall(e.target.checked)} />
-          Direct starten na de installatie
+          {f.startOnInstall}
         </label>
       </Section>
 
       {create.error && (
         <Alert variant="destructive" data-testid="create-error">
           <div>
-            <AlertTitle>Aanmaken mislukt</AlertTitle>
+            <AlertTitle>{f.createFailed}</AlertTitle>
             <AlertDescription>{errorText(create.error)}</AlertDescription>
           </div>
         </Alert>
       )}
       {submitted && !valid && (
         <p className="text-sm text-destructive" data-testid="form-invalid">
-          Niet alles is goed ingevuld: {Object.values(errors).filter(Boolean).join(", ").toLowerCase()}.
+          {f.invalid(Object.values(errors).filter(Boolean).join(", ").toLowerCase())}
         </p>
       )}
 
       <div className="flex items-center justify-end gap-2">
         <Button type="submit" disabled={create.isPending || create.isSuccess}>
-          {create.isPending ? <Spinner /> : <Check />} Server aanmaken
+          {create.isPending ? <Spinner /> : <Check />} {f.submit}
         </Button>
       </div>
     </form>

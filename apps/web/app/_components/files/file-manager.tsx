@@ -37,6 +37,7 @@ import { Spinner } from "@/app/_components/ui/spinner";
 import { QueryError } from "@/app/_components/query-error";
 import { formatBytes, formatDate } from "@/app/_lib/format";
 import { breadcrumbs, fileNameError, isArchive, isEditable, joinPath, parentPath, startDownload, UploadError, uploadErrorText, uploadFiles } from "@/app/_lib/files";
+import { useT } from "@/app/_lib/i18n";
 
 type Prompt = { kind: "mkdir" } | { kind: "newfile" } | { kind: "rename"; entry: FileEntry };
 
@@ -55,6 +56,7 @@ export function sortEntries(entries: FileEntry[]): FileEntry[] {
 
 export function FileManager({ server, path, onNavigate, onEdit, upload = uploadFiles }: FileManagerProps) {
   const uuid = server.uuid;
+  const t = useT();
   const canWrite = server.permissions.includes("files.write");
   const utils = trpc.useUtils();
   const list = trpc.files.list.useQuery({ uuid, path }, { retry: false });
@@ -78,12 +80,12 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
     void refresh();
   };
 
-  const mkdir = trpc.files.mkdir.useMutation({ onSuccess: () => (setPrompt(null), done("Map aangemaakt.")), onError: fail });
+  const mkdir = trpc.files.mkdir.useMutation({ onSuccess: () => (setPrompt(null), done(t.files.folderCreated)), onError: fail });
   const write = trpc.files.write.useMutation({ onError: fail });
-  const rename = trpc.files.rename.useMutation({ onSuccess: () => (setPrompt(null), done("Hernoemd.")), onError: fail });
-  const del = trpc.files.delete.useMutation({ onSuccess: () => (setConfirmDelete(null), done("Verwijderd.")), onError: fail });
-  const compress = trpc.files.compress.useMutation({ onSuccess: (r) => done(`Ingepakt als ${r.archive.name}.`), onError: fail });
-  const decompress = trpc.files.decompress.useMutation({ onSuccess: () => done("Uitgepakt."), onError: fail });
+  const rename = trpc.files.rename.useMutation({ onSuccess: () => (setPrompt(null), done(t.files.renamed)), onError: fail });
+  const del = trpc.files.delete.useMutation({ onSuccess: () => (setConfirmDelete(null), done(t.files.deleted)), onError: fail });
+  const compress = trpc.files.compress.useMutation({ onSuccess: (r) => done(t.files.compressed(r.archive.name)), onError: fail });
+  const decompress = trpc.files.decompress.useMutation({ onSuccess: () => done(t.files.decompressed), onError: fail });
   const uploadUrl = trpc.files.uploadUrl.useMutation();
   const downloadUrl = trpc.files.downloadUrl.useMutation();
   const busy = mkdir.isPending || rename.isPending || del.isPending || compress.isPending || decompress.isPending || write.isPending;
@@ -101,11 +103,11 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
     if (!canWrite || files.length === 0) return;
     setError(null);
     setNotice(null);
-    setUploading({ names: files.length === 1 ? files[0]!.name : `${files.length} bestanden`, fraction: 0 });
+    setUploading({ names: files.length === 1 ? files[0]!.name : t.files.nFiles(files.length), fraction: 0 });
     try {
       const signed = await uploadUrl.mutateAsync({ uuid, directory: path });
       await upload(signed.url, path, files, (fraction) => setUploading((u) => (u ? { ...u, fraction } : u)));
-      done(files.length === 1 ? `${files[0]!.name} geüpload.` : `${files.length} bestanden geüpload.`);
+      done(t.files.uploaded(files.length === 1 ? files[0]!.name : t.files.nFiles(files.length)));
     } catch (e) {
       setError(e instanceof UploadError ? { text: uploadErrorText(e) } : { error: e });
     } finally {
@@ -144,7 +146,7 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
   return (
     <div className="space-y-4" data-testid="file-manager">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <nav className="flex min-w-0 flex-wrap items-center gap-0.5 text-sm" aria-label="Pad">
+        <nav className="flex min-w-0 flex-wrap items-center gap-0.5 text-sm" aria-label={t.files.pathLabel}>
           {breadcrumbs(path).map((c, i, all) => (
             <span key={c.path} className="inline-flex items-center gap-0.5">
               {i > 0 && <ChevronRight className="size-3.5 text-muted-foreground" />}
@@ -153,25 +155,25 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
                 onClick={() => onNavigate(c.path)}
                 className={cn("rounded px-1.5 py-0.5 font-mono hover:bg-muted", i === all.length - 1 ? "text-foreground" : "text-muted-foreground")}
               >
-                {i === 0 ? "home" : c.name}
+                {i === 0 ? t.files.home : c.name}
               </button>
             </span>
           ))}
         </nav>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="ghost" size="icon-sm" onClick={() => void list.refetch()} aria-label="Vernieuwen" title="Vernieuwen">
+          <Button variant="ghost" size="icon-sm" onClick={() => void list.refetch()} aria-label={t.common.refresh} title={t.common.refresh}>
             <RefreshCw className={cn(list.isFetching && "animate-spin")} />
           </Button>
           {canWrite && (
             <>
               <Button variant="outline" size="sm" onClick={() => setPrompt({ kind: "mkdir" })}>
-                <FolderPlus /> Nieuwe map
+                <FolderPlus /> {t.files.newFolder}
               </Button>
               <Button variant="outline" size="sm" onClick={() => setPrompt({ kind: "newfile" })}>
-                <FilePlus /> Nieuw bestand
+                <FilePlus /> {t.files.newFile}
               </Button>
               <Button size="sm" onClick={() => fileInput.current?.click()} disabled={!!uploading}>
-                <Upload /> Uploaden
+                <Upload /> {t.files.upload}
               </Button>
               <input
                 ref={fileInput}
@@ -195,7 +197,7 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
       {uploading && (
         <div className="space-y-1.5 rounded-lg border border-border p-3 text-sm" data-testid="upload-progress">
           <div className="flex items-center gap-2">
-            <Spinner /> {uploading.names} uploaden… {Math.round(uploading.fraction * 100)}%
+            <Spinner /> {t.files.uploading(uploading.names, Math.round(uploading.fraction * 100))}
           </div>
           <Progress value={uploading.fraction * 100} />
         </div>
@@ -204,36 +206,36 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
 
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm" data-testid="selection-bar">
-          <span className="mr-auto">{selected.size} geselecteerd</span>
+          <span className="mr-auto">{t.files.selected(selected.size)}</span>
           {confirmDelete ? (
             <>
-              <span className="text-destructive">{confirmDelete.length === 1 ? "Dit item" : `${confirmDelete.length} items`} definitief verwijderen?</span>
+              <span className="text-destructive">{t.files.confirmDelete(confirmDelete.length)}</span>
               <Button size="sm" variant="destructive" disabled={del.isPending} onClick={() => del.mutate({ uuid, paths: confirmDelete })}>
-                {del.isPending && <Spinner />} Verwijderen
+                {del.isPending && <Spinner />} {t.common.delete}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(null)}>
-                Annuleren
+                {t.common.cancel}
               </Button>
             </>
           ) : (
             <>
               {selected.size === 1 && !entries.find((e) => selected.has(e.path))?.isDirectory && (
                 <Button size="sm" variant="outline" onClick={() => void doDownload([...selected][0]!)}>
-                  <Download /> Downloaden
+                  <Download /> {t.files.download}
                 </Button>
               )}
               {canWrite && (
                 <>
                   <Button size="sm" variant="outline" disabled={compress.isPending} onClick={() => compress.mutate({ uuid, root: path, paths: [...selected] })}>
-                    {compress.isPending ? <Spinner /> : <Archive />} Inpakken
+                    {compress.isPending ? <Spinner /> : <Archive />} {t.files.compress}
                   </Button>
                   <Button size="sm" variant="outline" className="text-destructive" onClick={() => setConfirmDelete([...selected])}>
-                    <Trash2 /> Verwijderen
+                    <Trash2 /> {t.common.delete}
                   </Button>
                 </>
               )}
               <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
-                Wissen
+                {t.files.clearSelection}
               </Button>
             </>
           )}
@@ -257,7 +259,7 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
       >
         {list.error ? (
           <div className="p-4">
-            <QueryError error={list.error} title="Map laden mislukt" />
+            <QueryError error={list.error} title={t.files.loadFailed} />
           </div>
         ) : list.isPending ? (
           <div className="space-y-2 p-4">
@@ -272,14 +274,14 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
                 <tr>
                   <th className="w-10 px-4 py-2.5">
                     <Checkbox
-                      aria-label="Alles selecteren"
+                      aria-label={t.files.selectAll}
                       checked={allSelected}
                       onChange={() => setSelected(allSelected ? new Set() : new Set(entries.map((e) => e.path)))}
                     />
                   </th>
-                  <th className="px-2 py-2.5 font-medium">Naam</th>
-                  <th className="hidden px-4 py-2.5 text-right font-medium sm:table-cell">Grootte</th>
-                  <th className="hidden px-4 py-2.5 font-medium md:table-cell">Gewijzigd</th>
+                  <th className="px-2 py-2.5 font-medium">{t.files.colName}</th>
+                  <th className="hidden px-4 py-2.5 text-right font-medium sm:table-cell">{t.files.colSize}</th>
+                  <th className="hidden px-4 py-2.5 font-medium md:table-cell">{t.files.colModified}</th>
                   <th className="w-12 px-2 py-2.5" />
                 </tr>
               </thead>
@@ -297,7 +299,7 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
                 {entries.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
-                      Deze map is leeg.{canWrite && " Sleep bestanden hierheen om te uploaden."}
+                      {t.files.empty}{canWrite && t.files.dropHint}
                     </td>
                   </tr>
                 )}
@@ -324,7 +326,7 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
           </div>
         )}
       </Card>
-      {!canWrite && <p className="text-xs text-muted-foreground">Je kunt bestanden bekijken en downloaden, maar niet wijzigen (geen recht files.write).</p>}
+      {!canWrite && <p className="text-xs text-muted-foreground">{t.files.readOnlyHint}</p>}
     </div>
   );
 }
@@ -341,12 +343,13 @@ function FileRow(props: {
   onDecompress: () => void;
   onDelete: () => void;
 }) {
+  const t = useT();
   const { entry: e, canWrite } = props;
   const Icon = e.isDirectory ? Folder : isArchive(e.name) ? FileArchive : FileIcon;
   return (
     <tr className={cn("hover:bg-muted/30", props.selected && "bg-primary/5")} data-testid="file-row">
       <td className="px-4 py-2">
-        <Checkbox aria-label={`${e.name} selecteren`} checked={props.selected} onChange={props.onToggle} />
+        <Checkbox aria-label={t.files.select(e.name)} checked={props.selected} onChange={props.onToggle} />
       </td>
       <td className="px-2 py-2">
         <button type="button" onClick={props.onOpen} className="inline-flex min-w-0 items-center gap-2 text-left hover:underline">
@@ -360,34 +363,34 @@ function FileRow(props: {
       <td className="px-2 py-1 text-right">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label={`Acties voor ${e.name}`}>
+            <Button variant="ghost" size="icon-sm" aria-label={t.files.actions(e.name)}>
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {!e.isDirectory && isEditable(e) && (
               <DropdownMenuItem onSelect={props.onEdit}>
-                <Pencil /> {canWrite ? "Bewerken" : "Bekijken"}
+                <Pencil /> {canWrite ? t.files.edit : t.files.view}
               </DropdownMenuItem>
             )}
             {!e.isDirectory && (
               <DropdownMenuItem onSelect={props.onDownload}>
-                <Download /> Downloaden
+                <Download /> {t.files.download}
               </DropdownMenuItem>
             )}
             {canWrite && (
               <>
                 <DropdownMenuItem onSelect={props.onRename}>
-                  <Pencil /> Hernoemen
+                  <Pencil /> {t.files.rename}
                 </DropdownMenuItem>
                 {isArchive(e.name) && (
                   <DropdownMenuItem onSelect={props.onDecompress}>
-                    <Archive /> Uitpakken
+                    <Archive /> {t.files.extract}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={props.onDelete} className="text-destructive">
-                  <Trash2 /> Verwijderen
+                  <Trash2 /> {t.common.delete}
                 </DropdownMenuItem>
               </>
             )}
@@ -399,10 +402,11 @@ function FileRow(props: {
 }
 
 function NamePrompt({ prompt, pending, onSubmit, onCancel }: { prompt: Prompt; pending: boolean; onSubmit: (name: string) => void; onCancel: () => void }) {
+  const t = useT();
   const [name, setName] = useState(prompt.kind === "rename" ? prompt.entry.name : "");
   const [touched, setTouched] = useState(false);
   const err = fileNameError(name);
-  const label = prompt.kind === "mkdir" ? "Naam van de nieuwe map" : prompt.kind === "newfile" ? "Naam van het nieuwe bestand" : `Nieuwe naam voor ${prompt.entry.name}`;
+  const label = prompt.kind === "mkdir" ? t.files.promptMkdir : prompt.kind === "newfile" ? t.files.promptNewFile : t.files.promptRename(prompt.entry.name);
   const submit = (ev: FormEvent) => {
     ev.preventDefault();
     setTouched(true);
@@ -423,10 +427,10 @@ function NamePrompt({ prompt, pending, onSubmit, onCancel }: { prompt: Prompt; p
         {touched && err && <p className="text-xs text-destructive">{err}</p>}
       </div>
       <Button type="submit" disabled={pending}>
-        {pending && <Spinner />} {prompt.kind === "rename" ? "Hernoemen" : "Aanmaken"}
+        {pending && <Spinner />} {prompt.kind === "rename" ? t.files.rename : t.common.create}
       </Button>
       <Button variant="ghost" onClick={onCancel}>
-        Annuleren
+        {t.common.cancel}
       </Button>
     </form>
   );

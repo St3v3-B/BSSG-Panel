@@ -1,11 +1,13 @@
 import { CircleAlert, HardDrive } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/app/_components/ui/alert";
 import { errorText, isDiskExceeded, isForbidden } from "@/app/_lib/errors";
+import { useT } from "@/app/_lib/i18n";
 
 /** Fout van een bestandsactie; schijf vol en ontbrekende rechten krijgen een eigen titel. */
 export function FileActionError({ error, text, onDismiss }: { error?: unknown; text?: string; onDismiss?: () => void }) {
-  const disk = text ? /schijf.*vol/i.test(text) : isDiskExceeded(error);
-  const title = disk ? "Schijf vol" : !text && isForbidden(error) ? "Geen rechten" : "Actie mislukt";
+  const t = useT();
+  const disk = text ? text === t.files.uploadDisk : isDiskExceeded(error);
+  const title = disk ? t.files.errDisk : !text && isForbidden(error) ? t.files.errForbidden : t.files.errAction;
   return (
     <Alert variant="destructive" data-testid={disk ? "disk-exceeded" : "file-error"}>
       {disk ? <HardDrive /> : <CircleAlert />}
@@ -15,7 +17,7 @@ export function FileActionError({ error, text, onDismiss }: { error?: unknown; t
       </div>
       {onDismiss && (
         <button type="button" onClick={onDismiss} className="text-xs underline-offset-2 hover:underline">
-          Sluiten
+          {t.common.close}
         </button>
       )}
     </Alert>

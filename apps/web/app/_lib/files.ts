@@ -1,4 +1,5 @@
 /** Hulpcode voor de filemanager: paden, talen voor Monaco en upload/download naar de daemon. */
+import { getT } from "@/app/_lib/i18n";
 
 /** Normaliseert naar een pad dat met "/" begint, zonder dubbele of afsluitende slashes. */
 export function normalizePath(p: string): string {
@@ -28,11 +29,12 @@ export function breadcrumbs(p: string): Array<{ name: string; path: string }> {
 
 /** Geldige bestandsnaam (geen slashes, niet . of ..). */
 export function fileNameError(name: string): string | null {
+  const t = getT().files;
   const n = name.trim();
-  if (!n) return "Vul een naam in";
-  if (n.includes("/") || n.includes("\\")) return "Geen slashes in de naam";
-  if (n === "." || n === "..") return "Ongeldige naam";
-  if (n.length > 255) return "Naam is te lang";
+  if (!n) return t.nameEmpty;
+  if (n.includes("/") || n.includes("\\")) return t.nameSlash;
+  if (n === "." || n === "..") return t.nameInvalid;
+  if (n.length > 255) return t.nameTooLong;
   return null;
 }
 
@@ -86,14 +88,15 @@ export class UploadError extends Error {
 
 /** Tekst voor een mislukte upload; 507 = schijf vol (daemon: disk_exceeded). */
 export function uploadErrorText(err: unknown): string {
+  const t = getT().files;
   if (err instanceof UploadError) {
-    if (err.status === 507) return "Upload mislukt: de schijf van deze server is vol.";
-    if (err.status === 401 || err.status === 403) return "Upload mislukt: geen rechten (of de upload-link is verlopen).";
-    if (err.status === 413) return "Upload mislukt: het bestand is te groot.";
-    if (err.status === 0) return "Upload mislukt: de node is niet bereikbaar.";
-    return `Upload mislukt (HTTP ${err.status}).`;
+    if (err.status === 507) return t.uploadDisk;
+    if (err.status === 401 || err.status === 403) return t.uploadAuth;
+    if (err.status === 413) return t.uploadTooLarge;
+    if (err.status === 0) return t.uploadNetwork;
+    return t.uploadHttp(err.status);
   }
-  return err instanceof Error ? err.message : "Upload mislukt.";
+  return err instanceof Error ? err.message : t.uploadFailed;
 }
 
 /**
@@ -136,7 +139,7 @@ export function uploadFiles(
 export function startDownload(url: string, path: string) {
   const href = withParam(url, "path", path);
   if (isMockMode()) {
-    window.alert(`Mock-modus: de download zou starten via\n${href}`);
+    window.alert(getT().files.mockDownload(href));
     return;
   }
   const a = document.createElement("a");

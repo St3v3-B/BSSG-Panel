@@ -8,11 +8,13 @@ import { NoPermission } from "@/app/_components/server/no-permission";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { useServer } from "@/app/_hooks/use-server";
 import { normalizePath, parentPath } from "@/app/_lib/files";
+import { useT } from "@/app/_lib/i18n";
 
 export default function FilesPage() {
   const server = useServer();
+  const t = useT();
   if (!server.data) return null;
-  if (!server.data.permissions.includes("files.read")) return <NoPermission>Je hebt geen recht om de bestanden van deze server te bekijken.</NoPermission>;
+  if (!server.data.permissions.includes("files.read")) return <NoPermission>{t.files.noRead}</NoPermission>;
   return (
     <Suspense fallback={<Skeleton className="h-96 rounded-xl" />}>
       <Files server={server.data} />

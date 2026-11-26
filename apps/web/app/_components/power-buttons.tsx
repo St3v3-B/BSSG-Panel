@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { PowerAction, ServerStatus } from "@panel/api";
 import { Button } from "@/app/_components/ui/button";
 import { Spinner } from "@/app/_components/ui/spinner";
+import { useT } from "@/app/_lib/i18n";
 
 /** Welke power-acties zinvol zijn in deze status. */
 export function powerAvailability(status: ServerStatus): Record<PowerAction, boolean> {
@@ -18,6 +19,7 @@ export function powerAvailability(status: ServerStatus): Record<PowerAction, boo
 }
 
 export function PowerButtons({ status, pending, onPower }: { status: ServerStatus; pending?: PowerAction; onPower: (a: PowerAction) => void }) {
+  const t = useT();
   const can = powerAvailability(status);
   const [confirmKill, setConfirmKill] = useState(false);
   useEffect(() => {
@@ -29,13 +31,13 @@ export function PowerButtons({ status, pending, onPower }: { status: ServerStatu
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="power-buttons">
       <Button size="sm" onClick={() => onPower("start")} disabled={!can.start || !!pending}>
-        {icon("start", Play)} Starten
+        {icon("start", Play)} {t.power.start}
       </Button>
       <Button size="sm" variant="secondary" onClick={() => onPower("restart")} disabled={!can.restart || !!pending}>
-        {icon("restart", RotateCw)} Herstarten
+        {icon("restart", RotateCw)} {t.power.restart}
       </Button>
       <Button size="sm" variant="secondary" onClick={() => onPower("stop")} disabled={!can.stop || !!pending}>
-        {icon("stop", Square)} Stoppen
+        {icon("stop", Square)} {t.power.stop}
       </Button>
       <Button
         size="sm"
@@ -46,9 +48,9 @@ export function PowerButtons({ status, pending, onPower }: { status: ServerStatu
           onPower("kill");
         }}
         disabled={!can.kill || !!pending}
-        title="Proces direct beëindigen (kan data kosten)"
+        title={t.power.killTitle}
       >
-        {icon("kill", Skull)} {confirmKill ? "Echt killen?" : "Kill"}
+        {icon("kill", Skull)} {confirmKill ? t.power.killConfirm : t.power.kill}
       </Button>
     </div>
   );

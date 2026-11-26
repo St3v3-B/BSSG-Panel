@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { BrandMark } from "@/app/_components/branding";
+import { LocaleSwitcher } from "@/app/_components/locale-switcher";
 import { isTotpCode, TotpCodeInput } from "@/app/_components/totp-code-input";
 import { Alert, AlertDescription, AlertTitle } from "@/app/_components/ui/alert";
 import { Button } from "@/app/_components/ui/button";
@@ -13,11 +14,14 @@ import { Spinner } from "@/app/_components/ui/spinner";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
 import { safeRedirect } from "@/app/_lib/auth-routing";
 import { errorText } from "@/app/_lib/errors";
+import { useT } from "@/app/_lib/i18n";
 
 export default function LoginPage() {
-  useDocumentTitle("Inloggen");
+  const t = useT();
+  useDocumentTitle(t.login.docTitle);
   return (
     <div className="relative grid min-h-screen place-items-center overflow-hidden p-4">
+      <LocaleSwitcher className="absolute right-4 top-4 z-10" />
       <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-96 bg-gradient-to-b from-primary/10 to-transparent" />
       <div className="relative w-full max-w-sm space-y-8">
         <BrandMark size="lg" className="justify-center" />
@@ -29,16 +33,10 @@ export default function LoginPage() {
   );
 }
 
-/** Foutcodes die de Discord-callback als ?error= kan meegeven. */
-const CALLBACK_ERRORS: Record<string, { title: string; text: string; blocked?: boolean }> = {
-  blocked: { title: "Account geblokkeerd", text: "Je account is geblokkeerd door een beheerder. Neem contact op als je denkt dat dit een vergissing is.", blocked: true },
-  discord: { title: "Inloggen via Discord mislukt", text: "Discord gaf een fout terug. Probeer het opnieuw." },
-  denied: { title: "Inloggen geannuleerd", text: "Je hebt de toegang in Discord geweigerd." },
-  state: { title: "Inlogsessie verlopen", text: "Het inloggen duurde te lang of de link was ongeldig. Probeer het opnieuw." },
-};
 
 function LoginFlow() {
   const router = useRouter();
+  const t = useT();
   const params = useSearchParams();
   const redirectTo = safeRedirect(params.get("redirectTo"));
   const callbackError = params.get("error");
@@ -58,7 +56,12 @@ function LoginFlow() {
   }
   if (me.data && me.data.totpEnabled && !me.data.totpVerified) return <TotpStep redirectTo={redirectTo} name={me.data.user.name} />;
 
-  const err = callbackError ? (CALLBACK_ERRORS[callbackError.toLowerCase()] ?? { title: "Inloggen mislukt", text: "Er ging iets mis. Probeer het opnieuw." }) : null;
+  // Foutcodes die de Discord-callback als ?error= kan meegeven.
+  const callbacks = t.login.callback as Record<string, { title: string; text: string }>;
+  const key = callbackError?.toLowerCase() ?? "";
+  const err = callbackError
+    ? { ...(callbacks[key] ?? { title: t.login.failedTitle, text: t.login.failedText }), blocked: key === "blocked" }
+    : null;
   return (
     <div className="space-y-4">
       {err && (
@@ -85,11 +88,12 @@ function DiscordIcon(props: { className?: string }) {
 
 function DiscordStep({ redirectTo }: { redirectTo: string }) {
   const login = trpc.auth.discordLoginUrl.useQuery({ redirectTo }, { retry: 1, staleTime: 60_000 });
+  const t = useT();
   return (
     <Card>
       <CardHeader className="text-center">
-        <CardTitle className="text-lg">Inloggen</CardTitle>
-        <CardDescription>Log in met je Discord-account om verder te gaan.</CardDescription>
+        <CardTitle className="text-lg">{t.login.title}</CardTitle>
+        <CardDescription>{t.login.description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {login.error ? (
@@ -97,11 +101,11 @@ function DiscordStep({ redirectTo }: { redirectTo: string }) {
         ) : (
           <Button asChild size="lg" className="w-full bg-[#5865F2] text-white hover:bg-[#4752c4]" aria-disabled={!login.data}>
             <a href={login.data?.url ?? "#"} data-testid="discord-login" onClick={(e) => !login.data && e.preventDefault()}>
-              <DiscordIcon className="size-5" /> Inloggen met Discord
+              <DiscordIcon className="size-5" /> {t.login.discord}
             </a>
           </Button>
         )}
-        <p className="text-center text-xs text-muted-foreground">Nog geen account? Dat wordt aangemaakt bij je eerste login.</p>
+        <p className="text-center text-xs text-muted-foreground">{t.login.noAccount}</p>
       </CardContent>
     </Card>
   );
@@ -110,6 +114,7 @@ function DiscordStep({ redirectTo }: { redirectTo: string }) {
 function TotpStep({ redirectTo, name }: { redirectTo: string; name: string | null }) {
   const router = useRouter();
   const utils = trpc.useUtils();
+  const t = useT();
   const [code, setCode] = useState("");
   const verify = trpc.auth.verifyTotp.useMutation({
     onSuccess: async () => {
@@ -126,10 +131,8 @@ function TotpStep({ redirectTo, name }: { redirectTo: string; name: string | nul
         <span className="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-primary/15 text-primary">
           <KeyRound className="size-5" />
         </span>
-        <CardTitle className="text-lg">Tweestapsverificatie</CardTitle>
-        <CardDescription>
-          {name ? `Hoi ${name}! ` : ""}Voer de 6-cijferige code uit je authenticator-app in.
-        </CardDescription>
+        <CardTitle className="text-lg">{t.login.totpTitle}</CardTitle>
+        <CardDescription>{t.login.totpText(name)}</CardDescription>
       </CardHeader>
       <CardContent>
         <form
@@ -141,16 +144,16 @@ function TotpStep({ redirectTo, name }: { redirectTo: string; name: string | nul
         >
           <div className="space-y-2">
             <Label htmlFor="totp-code" className="sr-only">
-              Code
+              {t.login.code}
             </Label>
             <TotpCodeInput value={code} onChange={setCode} autoFocus disabled={verify.isPending} invalid={!!verify.error} />
             {verify.error && <p className="text-center text-sm text-destructive">{errorText(verify.error)}</p>}
           </div>
           <Button type="submit" className="w-full" disabled={!isTotpCode(code) || verify.isPending}>
-            {verify.isPending && <Spinner />} Bevestigen
+            {verify.isPending && <Spinner />} {t.login.confirm}
           </Button>
           <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => logout.mutate()} disabled={logout.isPending}>
-            <LogOut /> Uitloggen
+            <LogOut /> {t.nav.logout}
           </Button>
         </form>
       </CardContent>

@@ -9,6 +9,7 @@ import { Button } from "@/app/_components/ui/button";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { decideGate } from "@/app/_lib/auth-routing";
 import { isBlocked, isTotpPending, isUnauthorized } from "@/app/_lib/errors";
+import { useT } from "@/app/_lib/i18n";
 
 /**
  * Laat de kinderen alleen zien met een volledige sessie (ingelogd, 2FA afgerond, niet
@@ -44,6 +45,7 @@ export function AuthGate({ children }: { children: (me: Me) => ReactNode }) {
 }
 
 export function BlockedScreen() {
+  const t = useT();
   const logout = trpc.auth.logout.useMutation({ onSettled: () => window.location.assign("/login") });
   return (
     <div className="grid min-h-screen place-items-center p-4" data-testid="blocked">
@@ -51,14 +53,11 @@ export function BlockedScreen() {
         <BrandMark size="lg" className="justify-center" />
         <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-6">
           <Ban className="mx-auto mb-3 size-8 text-destructive" />
-          <h1 className="text-lg font-semibold">Account geblokkeerd</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Je account is geblokkeerd door een beheerder. Je kunt het panel niet gebruiken zolang de blokkade actief is. Denk je dat dit
-            een vergissing is? Neem contact op met een beheerder.
-          </p>
+          <h1 className="text-lg font-semibold">{t.blocked.title}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{t.blocked.text}</p>
         </div>
         <Button variant="outline" onClick={() => logout.mutate()} disabled={logout.isPending}>
-          Uitloggen
+          {t.nav.logout}
         </Button>
       </div>
     </div>

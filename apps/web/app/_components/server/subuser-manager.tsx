@@ -3,7 +3,7 @@ import { Trash2, UserPlus } from "lucide-react";
 import { useState } from "react";
 import type { Permission, Subuser } from "@panel/api";
 import { trpc } from "@/lib/trpc";
-import { PERMISSION_LABEL, PermissionPicker } from "@/app/_components/permission-picker";
+import { permissionLabel, PermissionPicker } from "@/app/_components/permission-picker";
 import { QueryError } from "@/app/_components/query-error";
 import { Badge } from "@/app/_components/ui/badge";
 import { Button } from "@/app/_components/ui/button";
@@ -15,18 +15,20 @@ import { Spinner } from "@/app/_components/ui/spinner";
 import { displayName, UserAvatar } from "@/app/_components/user-avatar";
 import { errorText } from "@/app/_lib/errors";
 import { formatDate } from "@/app/_lib/format";
+import { useT } from "@/app/_lib/i18n";
 
 const DEFAULT_PERMS: Permission[] = ["console.read", "console.write", "power", "files.read", "files.write"];
 
 export function SubuserManager({ uuid }: { uuid: string }) {
   const list = trpc.subusers.list.useQuery({ uuid });
+  const t = useT();
   return (
     <div className="max-w-4xl space-y-6">
       <InviteCard uuid={uuid} />
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Gebruikers met toegang</CardTitle>
-          <CardDescription>Jij bent de eigenaar en hebt alle rechten. Beheerders kunnen ook altijd bij de server.</CardDescription>
+          <CardTitle className="text-base">{t.subusers.listTitle}</CardTitle>
+          <CardDescription>{t.subusers.listText}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {list.error ? (
@@ -34,7 +36,7 @@ export function SubuserManager({ uuid }: { uuid: string }) {
           ) : !list.data ? (
             <Skeleton className="h-20" />
           ) : list.data.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nog niemand anders heeft toegang.</p>
+            <p className="text-sm text-muted-foreground">{t.subusers.none}</p>
           ) : (
             list.data.map((s) => <SubuserRow key={s.user.id} uuid={uuid} sub={s} />)
           )}
@@ -46,6 +48,7 @@ export function SubuserManager({ uuid }: { uuid: string }) {
 
 function InviteCard({ uuid }: { uuid: string }) {
   const utils = trpc.useUtils();
+  const t = useT();
   const [who, setWho] = useState("");
   const [perms, setPerms] = useState<Permission[]>(DEFAULT_PERMS);
   const invite = trpc.subusers.invite.useMutation({
@@ -58,11 +61,8 @@ function InviteCard({ uuid }: { uuid: string }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Gebruiker toevoegen</CardTitle>
-        <CardDescription>
-          Vul een Discord-ID in, of de naam van iemand die al eens heeft ingelogd. Een onbekend Discord-ID krijgt een account dat actief wordt bij de
-          eerste login.
-        </CardDescription>
+        <CardTitle className="text-base">{t.subusers.addTitle}</CardTitle>
+        <CardDescription>{t.subusers.addText}</CardDescription>
       </CardHeader>
       <CardContent>
         <form
@@ -73,13 +73,13 @@ function InviteCard({ uuid }: { uuid: string }) {
           }}
         >
           <div className="max-w-md space-y-1.5">
-            <Label htmlFor="subuser-who">Discord-ID of naam</Label>
-            <Input id="subuser-who" value={who} onChange={(e) => setWho(e.target.value)} placeholder="bv. 123456789012345678" />
+            <Label htmlFor="subuser-who">{t.subusers.who}</Label>
+            <Input id="subuser-who" value={who} onChange={(e) => setWho(e.target.value)} placeholder={t.subusers.whoPlaceholder} />
           </div>
           <PermissionPicker idPrefix="invite" value={perms} onChange={setPerms} />
           {invite.error && <p className="text-sm text-destructive">{errorText(invite.error)}</p>}
           <Button type="submit" disabled={!who.trim() || invite.isPending}>
-            {invite.isPending ? <Spinner /> : <UserPlus />} Toevoegen
+            {invite.isPending ? <Spinner /> : <UserPlus />} {t.subusers.add}
           </Button>
         </form>
       </CardContent>
@@ -89,6 +89,7 @@ function InviteCard({ uuid }: { uuid: string }) {
 
 function SubuserRow({ uuid, sub }: { uuid: string; sub: Subuser }) {
   const utils = trpc.useUtils();
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [perms, setPerms] = useState<Permission[]>(sub.permissions);
   const [confirm, setConfirm] = useState(false);
@@ -102,25 +103,25 @@ function SubuserRow({ uuid, sub }: { uuid: string; sub: Subuser }) {
         <div className="min-w-0 flex-1">
           <div className="font-medium">{displayName(sub.user)}</div>
           <div className="text-xs text-muted-foreground">
-            {sub.user.name ? "" : "nog niet ingelogd · "}toegevoegd {formatDate(sub.createdAt)}
+            {sub.user.name ? "" : t.subusers.notSignedIn}{t.subusers.added(formatDate(sub.createdAt))}
           </div>
         </div>
         {!editing && (
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => (setPerms(sub.permissions), setEditing(true))}>
-              Rechten wijzigen
+              {t.subusers.edit}
             </Button>
             {confirm ? (
               <>
                 <Button size="sm" variant="destructive" disabled={remove.isPending} onClick={() => remove.mutate({ uuid, userId: sub.user.id })}>
-                  {remove.isPending && <Spinner />} Echt verwijderen
+                  {remove.isPending && <Spinner />} {t.subusers.confirmRemove}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
-                  Annuleren
+                  {t.common.cancel}
                 </Button>
               </>
             ) : (
-              <Button size="icon-sm" variant="ghost" aria-label={`${displayName(sub.user)} verwijderen`} onClick={() => setConfirm(true)}>
+              <Button size="icon-sm" variant="ghost" aria-label={t.subusers.remove(displayName(sub.user))} onClick={() => setConfirm(true)}>
                 <Trash2 />
               </Button>
             )}
@@ -133,19 +134,19 @@ function SubuserRow({ uuid, sub }: { uuid: string; sub: Subuser }) {
           {update.error && <p className="text-sm text-destructive">{errorText(update.error)}</p>}
           <div className="flex gap-2">
             <Button size="sm" disabled={update.isPending} onClick={() => update.mutate({ uuid, userId: sub.user.id, permissions: perms })}>
-              {update.isPending && <Spinner />} Opslaan
+              {update.isPending && <Spinner />} {t.common.save}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
-              Annuleren
+              {t.common.cancel}
             </Button>
           </div>
         </div>
       ) : (
         <div className="flex flex-wrap gap-1.5">
-          {sub.permissions.length === 0 && <span className="text-xs text-muted-foreground">Geen rechten</span>}
+          {sub.permissions.length === 0 && <span className="text-xs text-muted-foreground">{t.subusers.noPerms}</span>}
           {sub.permissions.map((p) => (
             <Badge key={p} variant="secondary">
-              {PERMISSION_LABEL[p].label}
+              {permissionLabel(p).label}
             </Badge>
           ))}
         </div>
