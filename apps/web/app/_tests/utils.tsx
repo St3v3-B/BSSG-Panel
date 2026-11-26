@@ -17,6 +17,7 @@ export function sessionFor(role: MockRole, patch: Partial<SessionCtx> = {}): Ses
 export function renderWithTrpc(ui: ReactElement, opts: { session: SessionCtx | null }) {
   const router = buildRouter(createMock());
   const calls: string[] = [];
+  const bodies: Array<{ path: string; input: unknown }> = [];
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const client = trpc.createClient({
     links: [
@@ -25,7 +26,12 @@ export function renderWithTrpc(ui: ReactElement, opts: { session: SessionCtx | n
         transformer: superjson,
         fetch: async (url, init) => {
           const req = new Request(String(url), init as RequestInit);
-          calls.push(new URL(req.url).pathname.replace("/api/trpc/", ""));
+          const path = new URL(req.url).pathname.replace("/api/trpc/", "");
+          calls.push(path);
+          if (req.method === "POST") {
+            const raw = JSON.parse(await req.clone().text()) as Record<string, { json: unknown }>;
+            path.split(",").forEach((p, i) => bodies.push({ path: p, input: superjson.deserialize(raw[String(i)] as never) }));
+          }
           return fetchRequestHandler({
             endpoint: "/api/trpc",
             req,
@@ -41,5 +47,5 @@ export function renderWithTrpc(ui: ReactElement, opts: { session: SessionCtx | n
       <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
     </trpc.Provider>,
   );
-  return { ...result, calls, queryClient };
+  return { ...result, calls, bodies, queryClient };
 }
