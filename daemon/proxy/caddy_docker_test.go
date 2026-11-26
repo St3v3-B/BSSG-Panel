@@ -431,7 +431,7 @@ func TestDockerCaddy(t *testing.T) {
 		dockerCmd(t, "stop", "-t", "1", stopped)
 		var retry string
 		e.get(t, "https://installeert.test/x", func(code int, _, b string) bool {
-			return code == 503 && strings.Contains(b, "Deze website is tijdelijk niet bereikbaar") && strings.Contains(b, `<div class="host">installeert.test</div>`)
+			return code == 503 && strings.Contains(b, "<title>This website can't be reached right now</title>") && strings.Contains(b, `<div class="host">installeert.test</div>`)
 		})
 		if resp, err := e.client.Get("https://installeert.test/"); err == nil {
 			retry = resp.Header.Get("Retry-After")
@@ -456,10 +456,10 @@ func TestDockerCaddy(t *testing.T) {
 
 	t.Run("placeholder per staat, daarna weer proxyen", func(t *testing.T) {
 		want := map[Placeholder]string{
-			PlaceholderInstalling:  "Deze website wordt ingericht",
-			PlaceholderOffline:     "Deze website staat momenteel uit",
-			PlaceholderDisk:        "De opslagruimte van deze website is vol",
-			PlaceholderUnavailable: "Deze website is tijdelijk niet bereikbaar",
+			PlaceholderInstalling:  "<title>This website is being set up</title>",
+			PlaceholderOffline:     "<title>This website is currently offline</title>",
+			PlaceholderDisk:        "<title>This website is temporarily unavailable</title>",
+			PlaceholderUnavailable: "<title>This website can't be reached right now</title>",
 		}
 		r := Route{Host: "staat.test", Upstream: Upstream{Container: e.siteCtr, Network: e.siteNet, Port: 80}}
 		for p, text := range want {
@@ -469,14 +469,14 @@ func TestDockerCaddy(t *testing.T) {
 			}
 			e.get(t, "https://staat.test/pad", func(code int, _, b string) bool {
 				return code == 503 && strings.Contains(b, text) && strings.Contains(b, `<div class="host">staat.test</div>`) &&
-					strings.Contains(b, "@keyframes slide{0%{transform:translateX(-110%)}") && !strings.Contains(b, "site1-echo")
+					strings.Contains(b, "@keyframes slide{0%{transform:translateX(-110%)}") && strings.Contains(b, `function set(l){d.lang=l;document.title=t[l];`) && !strings.Contains(b, "site1-echo")
 			})
 		}
 		// Alleen de pagina, zonder upstream.
 		if err := c.SetRoute(ctx, Route{Host: "leeg.test", Placeholder: PlaceholderInstalling}); err != nil {
 			t.Fatal(err)
 		}
-		e.get(t, "https://leeg.test/", func(code int, _, b string) bool { return code == 503 && strings.Contains(b, "wordt ingericht") })
+		e.get(t, "https://leeg.test/", func(code int, _, b string) bool { return code == 503 && strings.Contains(b, "is being set up") })
 		r.Placeholder = PlaceholderNone
 		if err := c.SetRoute(ctx, r); err != nil {
 			t.Fatal(err)
