@@ -1,4 +1,4 @@
-# Panel-stack: panel (Next.js), PostgreSQL, Redis en Caddy. De daemon draait niet hier maar
+# Panel-stack: panel (Next.js), PostgreSQL, Redis, MariaDB (klantdatabases) en Caddy. De daemon draait niet hier maar
 # als systemd-unit op de host (deploy/systemd/panel-daemon.service).
 #
 # Altijd starten met het env-bestand als --env-file (voor ${...} hieronder):
@@ -96,6 +96,46 @@ services:
     networks: [backend]
     logging: *logging
 
+  # MariaDB voor de databases van klanten (niet voor het panel zelf; dat is Postgres).
+  # - Geen gepubliceerde poorten; 3306 is alleen bereikbaar op twee interne netwerken:
+  #   backend (het panel maakt databases/gebruikers aan als root, host `mariadb`) en
+  #   panel-db (de daemon koppelt sites met een database hieraan, host `mariadb`).
+  # - Het panel zit niet op panel-db, zodat sites via dat netwerk alleen MariaDB zien.
+  # - MARIADB_ROOT_PASSWORD geldt alleen bij de eerste start (lege volume), net als bij Postgres.
+  # - Draait als mysql (999) met read-only rootfs; de named volume krijgt bij aanmaak de
+  #   eigenaar van /var/lib/mysql uit de image.
+  mariadb:
+    image: mariadb:11
+    container_name: panel-mariadb
+    restart: unless-stopped
+    labels: *labels
+    user: "999:999"
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD ontbreekt in het env-bestand (deploy/install.sh opnieuw draaien)}
+      MARIADB_AUTO_UPGRADE: "1"
+      TZ: Europe/Amsterdam
+    command: ["--skip-name-resolve", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    read_only: true
+    tmpfs:
+      - /tmp:uid=999,gid=999
+      - /run/mysqld:uid=999,gid=999
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      backend: {}
+      db:
+        aliases: [mariadb]
+    logging: *logging
+
   # Basisconfig van web-hosting (deploy/caddy/, zie de README daar):
   # - Caddyfile gebruikt {$PANEL_DOMAIN}, {$NODE_DOMAIN}, {$ACME_EMAIL} en importeert
   #   /etc/caddy/global.d/*.caddy (in productie leeg; tests/staging zetten daar opties);
@@ -147,6 +187,12 @@ networks:
     name: panel-backend
     internal: true
     labels: *labels
+  # MariaDB + sites met een database (de daemon koppelt ze, naam = vast). Intern: geen internet,
+  # geen gepubliceerde poorten; MariaDB is hier de enige dienst (alleen 3306).
+  db:
+    name: panel-db
+    internal: true
+    labels: *labels
 
 volumes:
   postgres_data:
@@ -160,4 +206,7 @@ volumes:
     labels: *labels
   caddy_config:
     name: panel-caddy-config
+    labels: *labels
+  mariadb_data:
+    name: panel-mariadb-data
     labels: *labels

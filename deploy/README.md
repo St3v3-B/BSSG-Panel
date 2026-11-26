@@ -6,7 +6,7 @@ behalve `caddy/` (web-hosting).
 | Bestand | Wat |
 |---|---|
 | `install.sh` | installeert alles vanuit deze checkout (zie hieronder) |
-| `docker-compose.yml` | `panel` (Next.js), `postgres:16`, `redis:7`, `caddy:2` |
+| `docker-compose.yml` | `panel` (Next.js), `postgres:16`, `redis:7`, `mariadb:11` (klantdatabases), `caddy:2` |
 | `panel.Dockerfile` | image van het panel: monorepo bouwen, Next standalone, draait als uid 1000 |
 | `systemd/panel-daemon.service` | de Go-daemon op de host |
 | `panel.env.example` | alle variabelen (contract; namen wijzigt alleen de orchestrator) |
@@ -25,8 +25,8 @@ kant-en-klare `panel-daemon`). Het script
 
 1. vraagt de verplichte waarden (domeinen, ACME-e-mail, Discord-ID van de eigenaar, Discord
    OAuth2-app) en schrijft `/etc/panel/panel.env` (chmod 600). Bestaande waarden blijven
-   staan; `PANEL_ENCRYPTION_KEY`, `NODE_TOKEN` en `POSTGRES_PASSWORD` (+ `DATABASE_URL`)
-   worden alleen gegenereerd als ze er nog niet zijn. Onbekende sleutels blijven behouden.
+   staan; `PANEL_ENCRYPTION_KEY`, `NODE_TOKEN`, `POSTGRES_PASSWORD` (+ `DATABASE_URL`) en
+   `MARIADB_ROOT_PASSWORD` worden alleen gegenereerd als ze er nog niet zijn. Onbekende sleutels blijven behouden.
 2. bouwt de daemon naar `/usr/local/bin/panel-daemon`,
 3. installeert de unit, `systemctl enable` + `restart panel-daemon`,
 4. `docker compose up -d --build`.
@@ -69,15 +69,16 @@ redirect-URI in het Discord-portaal bijwerken.
 internet ─► caddy :80/:443 ─► panel:3000              (netwerk panel-frontend)
                           └─► unix//run/panel/daemon.sock (bind mount van de host)
 panel ─► DAEMON_URL = https://$NODE_DOMAIN ─► extra_hosts → host-gateway ─► caddy :443 ─► daemon
-panel ─► postgres:5432, redis:6379                     (netwerk panel-backend, internal)
+panel ─► postgres:5432, redis:6379, mariadb:3306       (netwerk panel-backend, internal)
+site-container ─► mariadb:3306                         (netwerk panel-db, internal; de daemon koppelt sites met een database)
 daemon (host) ─► Caddy admin unix:///run/panel/caddy-admin.sock, Docker, PANEL_URL (install.sh: http://127.0.0.1:3000)
 ```
 
 - Gepubliceerd: Caddy `80`, `443` (tcp+udp); panel `127.0.0.1:3000`. Niet: de Caddy-admin
-  (unix-socket in `/run/panel`), Postgres en Redis.
+  (unix-socket in `/run/panel`), Postgres, Redis en MariaDB.
 - Alle containers, netwerken en volumes hebben `panel.managed=true`, `panel.instance=main` en
   `panel.role=infra`. Namen staan vast (`panel-web`, `panel-postgres`, `panel-redis`,
-  `panel-caddy`, `panel-frontend`, `panel-backend`, `panel-*-data`), zodat `CADDY_CONTAINER`
+  `panel-mariadb`, `panel-caddy`, `panel-frontend`, `panel-backend`, `panel-db`, `panel-*-data`), zodat `CADDY_CONTAINER`
   klopt en `uninstall.sh` (fase 4) ze vindt.
 - `/run/panel` komt van systemd (`RuntimeDirectory=panel`) met `RuntimeDirectoryPreserve=yes`:
   anders wist systemd de map bij een herstart van de daemon en wijst de bind mount in Caddy
@@ -88,6 +89,19 @@ daemon (host) ─► Caddy admin unix:///run/panel/caddy-admin.sock, Docker, PAN
 - `install.sh` zet `PANEL_URL=http://127.0.0.1:3000` (als hij nog niet gezet is), zodat de
   daemon het panel zonder externe DNS of hairpin-NAT bereikt. `CADDY_ADMIN_URL` en
   `CADDY_TLS_ADDR` krijgen de waarden uit het voorbeeld als ze ontbreken of leeg zijn.
+
+## MariaDB
+
+- `panel-mariadb` (`mariadb:11`), als uid 999 met read-only rootfs, geen capabilities,
+  `utf8mb4`, `--skip-name-resolve`, data in volume `panel-mariadb-data`.
+- Beheer als `root` met `MARIADB_ROOT_PASSWORD` uit `panel.env` (door `install.sh`
+  gegenereerd; geldt alleen bij een lege volume). Het panel bereikt hem als `mariadb:3306`
+  via `panel-backend`; de daemon (host) heeft geen gepubliceerde poort en gebruikt een
+  container op `panel-db` (bv. `mariadb-dump` voor backups).
+- `panel-db` is `internal`: sites met een database worden er door de daemon aan gekoppeld en
+  zien daar alleen MariaDB (host `mariadb` of `panel-mariadb`, poort 3306). Let op: sites op
+  dit netwerk kunnen elkaar ook bereiken; isolatie tussen sites zit in de MariaDB-rechten
+  (eigen gebruiker per database).
 
 ## Aannames over `caddy/` (web-hosting)
 

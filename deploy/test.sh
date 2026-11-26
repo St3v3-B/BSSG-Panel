@@ -25,6 +25,10 @@ cleanup() {
   local ids
   mapfile -t ids < <(docker ps -aq --filter label=panel.test=true --filter "label=panel.instance=$INSTANCE")
   [ "${#ids[@]}" -gt 0 ] && docker rm -f "${ids[@]}" >/dev/null
+  mapfile -t ids < <(docker network ls -q --filter label=panel.test=true --filter "label=panel.instance=$INSTANCE")
+  [ "${#ids[@]}" -gt 0 ] && docker network rm "${ids[@]}" >/dev/null
+  mapfile -t ids < <(docker volume ls -q --filter label=panel.test=true --filter "label=panel.instance=$INSTANCE")
+  [ "${#ids[@]}" -gt 0 ] && docker volume rm "${ids[@]}" >/dev/null
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -56,6 +60,8 @@ sed -e 's/^PANEL_DOMAIN=.*/PANEL_DOMAIN=panel.test/' \
     -e 's/^NODE_DOMAIN=.*/NODE_DOMAIN=node1.test/' \
     -e 's/^ACME_EMAIL=.*/ACME_EMAIL=it@panel.test/' \
     "$DEPLOY/panel.env.example" > "$TEST_ENV"
+# Fase 3: MARIADB_ROOT_PASSWORD staat (nog) niet in het voorbeeld (contractvraag).
+grep -q '^MARIADB_ROOT_PASSWORD=' "$TEST_ENV" || echo "MARIADB_ROOT_PASSWORD=testtesttesttest" >> "$TEST_ENV"
 compose() { PANEL_ENV_FILE="$TEST_ENV" docker compose --env-file "$TEST_ENV" -f "$DEPLOY/docker-compose.yml" "$@"; }
 compose config -q || fail "compose config"
 CFG="$(compose config --format json)"
@@ -63,13 +69,24 @@ check_cfg() { # beschrijving, node-expressie op c (de config)
   node -e "const c=JSON.parse(require('fs').readFileSync(0,'utf8')); if(!($2)) process.exit(1)" <<<"$CFG" \
     && pass "$1" || fail "$1"
 }
-check_cfg "services panel, postgres, redis, caddy" \
-  "['panel','postgres','redis','caddy'].every(s=>c.services[s])"
+check_cfg "services panel, postgres, redis, mariadb, caddy" \
+  "['panel','postgres','redis','mariadb','caddy'].every(s=>c.services[s])"
 check_cfg "labels panel.managed/instance op alle services, netwerken en volumes" \
   "[...Object.values(c.services),...Object.values(c.networks),...Object.values(c.volumes)].every(o=>o.labels&&o.labels['panel.managed']==='true'&&o.labels['panel.instance']==='main')"
 check_cfg "panel publiceert alleen 127.0.0.1:3000" \
   "c.services.panel.ports.length===1&&c.services.panel.ports[0].host_ip==='127.0.0.1'&&c.services.panel.ports[0].published==='3000'"
-check_cfg "postgres en redis publiceren niets" "!c.services.postgres.ports&&!c.services.redis.ports"
+check_cfg "postgres, redis en mariadb publiceren niets" "!c.services.postgres.ports&&!c.services.redis.ports&&!c.services.mariadb.ports&&!c.services.mariadb.expose"
+check_cfg "mariadb: panel-mariadb, mariadb:11, root-wachtwoord uit env, volume panel-mariadb-data" \
+  "(m=>m.container_name==='panel-mariadb'&&m.image==='mariadb:11'&&m.environment.MARIADB_ROOT_PASSWORD==='testtesttesttest'&&m.volumes.some(v=>v.target==='/var/lib/mysql'&&v.source==='mariadb_data')&&c.volumes.mariadb_data.name==='panel-mariadb-data')(c.services.mariadb)"
+check_cfg "mariadb: niet-root, read-only, caps eruit, no-new-privileges, healthcheck" \
+  "(m=>m.user==='999:999'&&m.read_only&&m.cap_drop.includes('ALL')&&m.security_opt.some(o=>o.startsWith('no-new-privileges'))&&m.healthcheck.test.includes('healthcheck.sh'))(c.services.mariadb)"
+check_cfg "netwerk panel-db: intern, alleen mariadb (alias mariadb) — panel en caddy niet" \
+  "c.networks.db.name==='panel-db'&&c.networks.db.internal===true&&Object.entries(c.services).filter(([,v])=>v.networks&&'db' in v.networks).map(([k])=>k).join()==='mariadb'&&c.services.mariadb.networks.db.aliases.includes('mariadb')"
+check_cfg "mariadb op panel-backend (panel bereikt hem als mariadb:3306)" "'backend' in c.services.mariadb.networks&&'backend' in c.services.panel.networks"
+if PANEL_ENV_FILE="$TEST_ENV" docker compose --env-file <(grep -v '^MARIADB_ROOT_PASSWORD=' "$TEST_ENV") -f "$DEPLOY/docker-compose.yml" config -q >/dev/null 2>&1; then
+  fail "compose zonder MARIADB_ROOT_PASSWORD zou moeten falen"
+fi
+pass "compose zonder MARIADB_ROOT_PASSWORD faalt (geen leeg rootwachtwoord)"
 check_cfg "caddy publiceert 80 en 443, admin-API (2019) niet" \
   "(p=>p.some(x=>x.published==='80'&&!x.host_ip)&&p.some(x=>x.published==='443'&&!x.host_ip)&&!p.some(x=>x.target===2019||x.published==='2019'))(c.services.caddy.ports)"
 check_cfg "caddy mount /run/panel, Caddyfile, global.d, /data en /config" \
@@ -122,8 +139,9 @@ getv() { sed -n "s/^$1=//p" "$E"; }
 pw="$(getv POSTGRES_PASSWORD)"
 [ "$pw" != panel ] && [ "$(getv DATABASE_URL)" = "postgres://panel:$pw@postgres:5432/panel" ] \
   && pass "POSTGRES_PASSWORD gegenereerd en DATABASE_URL past erbij" || fail "postgres-wachtwoord"
-diff <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$DEPLOY/panel.env.example") <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$E") >/dev/null \
+diff <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$DEPLOY/panel.env.example") <(sed -n '/^# --- overig/q; s/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$E") >/dev/null \
   && pass "zelfde variabelen in dezelfde volgorde als panel.env.example" || fail "variabelen wijken af van panel.env.example"
+[[ "$(getv MARIADB_ROOT_PASSWORD)" =~ ^[0-9a-f]{48}$ ]] && pass "MARIADB_ROOT_PASSWORD gegenereerd" || fail "MARIADB_ROOT_PASSWORD"
 [ -x "$ROOT/usr/local/bin/panel-daemon" ] && pass "daemon geïnstalleerd (stub)" || fail "daemon"
 cmp -s "$UNIT" "$ROOT/etc/systemd/system/panel-daemon.service" && pass "unit geïnstalleerd" || fail "unit"
 grep -q '^\[dry-run\] systemctl restart panel-daemon.service$' "$WORK/install1.log" && pass "systemctl alleen geprint" || fail "systemctl"
@@ -134,7 +152,8 @@ grep -q '^\[dry-run\] systemctl restart panel-daemon.service$' "$WORK/install1.l
 grep -q 'docker compose config: in orde' "$WORK/install1.log" && pass "compose config met geschreven env" || fail "compose met geschreven env"
 
 # Idempotent: tweede run behoudt alles; een extra sleutel blijft staan.
-before="$(grep -v '^# /etc/panel' "$E")"
+mariadb_pw="$(getv MARIADB_ROOT_PASSWORD)"
+before="$(grep -v '^# /etc/panel' "$E" | sed '/^# --- overig/,$d')"
 echo "MIJN_EIGEN=waarde" >> "$E"
 sed -i 's#^PANEL_URL=.*#PANEL_URL=https://panel.test#; s#^CADDY_TLS_ADDR=.*#CADDY_TLS_ADDR=127.0.0.1:8443#; s#^CADDY_ADMIN_URL=.*#CADDY_ADMIN_URL=#' "$E"
 before="$(printf '%s\n' "$before" | sed 's#^PANEL_URL=.*#PANEL_URL=https://panel.test#; s#^CADDY_TLS_ADDR=.*#CADDY_TLS_ADDR=127.0.0.1:8443#')"
@@ -143,6 +162,8 @@ env "${inst_env[@]}" bash "$DEPLOY/install.sh" --dry-run --non-interactive --roo
 after="$(grep -v '^# /etc/panel' "$E" | grep -v '^MIJN_EIGEN=' | sed '/^# --- overig/,$d')"
 [ "$(printf '%s\n' "$before" | sed '/^$/d')" = "$(printf '%s\n' "$after" | sed '/^$/d')" ] && pass "tweede run: sleutels en waarden behouden" || fail "tweede run wijzigt panel.env"
 grep -qx 'MIJN_EIGEN=waarde' "$E" && pass "onbekende sleutel behouden" || fail "onbekende sleutel weg"
+[ "$(getv MARIADB_ROOT_PASSWORD)" = "$mariadb_pw" ] && [ "$(grep -c '^MARIADB_ROOT_PASSWORD=' "$E")" = 1 ] \
+  && pass "MARIADB_ROOT_PASSWORD behouden (één keer)" || fail "MARIADB_ROOT_PASSWORD gewijzigd of dubbel"
 ! grep -q gegenereerd "$WORK/install2.log" && pass "geen nieuwe geheimen bij tweede run" || fail "geheimen opnieuw gegenereerd"
 # Zonder verplichte waarde faalt --non-interactive.
 if env -u PANEL_DOMAIN bash "$DEPLOY/install.sh" --dry-run --non-interactive --root "$WORK/root2" --daemon-bin "$BIN_STUB" >/dev/null 2>&1; then
@@ -155,6 +176,44 @@ env "${inst_env[@]}" PANEL_DOMAIN='bad domain' bash "$DEPLOY/install.sh" --dry-r
 # ------------------------------------------------------------------ template
 step "templates/game"
 (cd "$REPO" && pnpm --filter @panel/api exec vitest run contract.test.ts >/dev/null) && pass "contract-test (zod-schema)" || fail "contract-test"
+
+# ------------------------------------------------------------------ MariaDB
+# Zoals in compose (zelfde image, user, read-only, tmpfs, caps, command, healthcheck), maar met
+# eigen netwerk/volume/labels. Daarna: een site-achtige container op het interne netwerk maakt
+# als root een database + gebruiker aan en verbindt als die gebruiker.
+step "MariaDB (compose-instellingen in een testcontainer)"
+mcfg() { node -e "const c=JSON.parse(require('fs').readFileSync(0,'utf8')).services.mariadb; process.stdout.write(String($1))" <<<"$CFG"; }
+M_IMAGE="$(mcfg c.image)"; M_USER="$(mcfg c.user)"
+mapfile -t M_CMD < <(mcfg "c.command.join('\\n')")
+mapfile -t M_TMPFS < <(mcfg "c.tmpfs.join('\\n')")
+tmpfs_args=(); for t in "${M_TMPFS[@]}"; do tmpfs_args+=(--tmpfs "$t"); done
+M_NET="panel-test-$INSTANCE-db"; M_VOL="panel-test-$INSTANCE-mariadb"; M_NAME="panel-test-$INSTANCE-mariadb"
+M_PW="$(head -c 18 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+docker network create --internal "${LABELS[@]}" "$M_NET" >/dev/null
+docker volume create "${LABELS[@]}" "$M_VOL" >/dev/null
+docker run -d "${LABELS[@]}" --name "$M_NAME" --network "$M_NET" --network-alias mariadb \
+  --user "$M_USER" --read-only "${tmpfs_args[@]}" --cap-drop ALL --security-opt no-new-privileges \
+  --memory 512m -e MARIADB_ROOT_PASSWORD="$M_PW" -e MARIADB_AUTO_UPGRADE=1 -e TZ=Europe/Amsterdam \
+  -v "$M_VOL:/var/lib/mysql" "$M_IMAGE" "${M_CMD[@]}" >/dev/null
+t0=$(date +%s); healthy=0
+while [ $(( $(date +%s) - t0 )) -lt 120 ]; do
+  [ "$(docker inspect -f '{{.State.Running}}' "$M_NAME" 2>/dev/null)" = true ] || break
+  if docker exec "$M_NAME" healthcheck.sh --connect --innodb_initialized >/dev/null 2>&1; then healthy=1; break; fi
+  sleep 2
+done
+[ "$healthy" = 1 ] || { docker logs --tail 40 "$M_NAME"; fail "MariaDB niet gezond"; }
+pass "MariaDB gezond na $(( $(date +%s) - t0 )) s ($M_IMAGE als $M_USER, read-only rootfs, caps eruit)"
+[ -z "$(docker port "$M_NAME")" ] && pass "geen gepubliceerde poorten" || fail "MariaDB publiceert poorten"
+client() { docker run --rm "${LABELS[@]}" --network "$M_NET" --user 999:999 --read-only --cap-drop ALL \
+  --security-opt no-new-privileges "$M_IMAGE" mariadb --skip-ssl -h mariadb -P 3306 "$@"; }
+client -uroot -p"$M_PW" -e "CREATE DATABASE s1_test; CREATE USER 'u1_test'@'%' IDENTIFIED BY 'sitepw-12345'; GRANT ALL ON s1_test.* TO 'u1_test'@'%';" \
+  && pass "root via netwerk (host mariadb:3306): database + gebruiker aangemaakt" || fail "root via netwerk"
+[ "$(client -uu1_test -psitepw-12345 -N -e "CREATE TABLE s1_test.t (x INT); INSERT INTO s1_test.t VALUES (42); SELECT x FROM s1_test.t;")" = 42 ] \
+  && pass "sitegebruiker schrijft/leest eigen database" || fail "sitegebruiker"
+client -uu1_test -psitepw-12345 -e "CREATE DATABASE andere" >/dev/null 2>&1 && fail "sitegebruiker mag andere database maken" \
+  || pass "sitegebruiker kan geen andere database maken"
+[ "$(client -uroot -p"$M_PW" -N -e "SELECT @@character_set_server")" = utf8mb4 ] && pass "utf8mb4" || fail "character set"
+docker rm -f "$M_NAME" >/dev/null
 
 if [ "${SKIP_PAPER:-0}" = 1 ]; then
   echo; echo "SKIP_PAPER=1: Paper-rooktest overgeslagen"; echo; echo "deploy/test.sh: groen"; exit 0
