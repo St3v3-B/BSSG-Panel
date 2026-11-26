@@ -120,7 +120,7 @@ func TestServerLifecycle(t *testing.T) {
 	cfg := c.Config
 	if cfg.User != "1000:1000" || !cfg.ReadOnlyRootfs || !slices.Equal(cfg.CapDrop, []string{"ALL"}) || !slices.Contains(cfg.SecurityOpt, "no-new-privileges") ||
 		cfg.Resources.PidsLimit != 512 || cfg.Resources.Memory != 512<<20 || cfg.Resources.MemorySwap != 512<<20 || cfg.Resources.NanoCPUs != 1e9 ||
-		cfg.Tmpfs["/tmp"] == "" || cfg.WorkingDir != "/home/container" || !cfg.OpenStdin {
+		cfg.Tmpfs["/tmp"] == "" || cfg.WorkingDir != "/home/container" || !cfg.OpenStdin || !cfg.Init {
 		t.Fatalf("containerconfig: %+v", cfg)
 	}
 	if cfg.Labels["panel.managed"] != "true" || cfg.Labels["panel.instance"] != "unit" || cfg.Labels["panel.server_uuid"] != u1 || cfg.Labels["panel.role"] != "server" || cfg.Labels["panel.test"] != "true" {

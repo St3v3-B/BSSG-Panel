@@ -190,6 +190,30 @@ func TestRealDockerSiteAndDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.expect("DELETE", "/api/servers/"+game, nil, 204)
+
+	// Init (tini): een proces zonder eigen SIGTERM-handler stopt direct op SIGTERM.
+	sleeper := randUUID()
+	ss := map[string]any{
+		"uuid": sleeper, "type": "game", "image": "alpine:3.20",
+		"startup": "echo ready; exec sleep 600", "stop": map[string]string{"type": "signal", "value": "SIGTERM"},
+		"ready_pattern": "^ready$", "environment": map[string]string{},
+		"limits":      map[string]any{"cpu_pct": 50, "memory_mb": 64, "swap_mb": 0, "disk_mb": 0},
+		"allocations": []any{}, "skip_install": true,
+		"install": map[string]string{"image": "alpine:3.20", "script": "true"},
+	}
+	h.expect("POST", "/api/servers", ss, 202)
+	h.expect("POST", "/api/servers/"+sleeper+"/power", map[string]string{"action": "start"}, 202)
+	h.waitState(sleeper, "online", 60*time.Second)
+	t0 := time.Now()
+	h.expect("POST", "/api/servers/"+sleeper+"/power", map[string]string{"action": "stop"}, 202)
+	h.waitState(sleeper, "offline", 10*time.Second)
+	if d := time.Since(t0); d > 2500*time.Millisecond {
+		t.Fatalf("stop duurde %v (SIGTERM kwam niet aan)", d)
+	}
+	if c, err := cli.ContainerInspect(ctx, server.ContainerName(sleeper)); err != nil || c.State.ExitCode != 143 {
+		t.Fatalf("exitcode: %v %+v", err, c.State)
+	}
+	h.expect("DELETE", "/api/servers/"+sleeper, nil, 204)
 }
 
 func randUUID() string {
