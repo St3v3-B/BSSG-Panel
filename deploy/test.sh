@@ -60,8 +60,9 @@ sed -e 's/^PANEL_DOMAIN=.*/PANEL_DOMAIN=panel.test/' \
     -e 's/^NODE_DOMAIN=.*/NODE_DOMAIN=node1.test/' \
     -e 's/^ACME_EMAIL=.*/ACME_EMAIL=it@panel.test/' \
     "$DEPLOY/panel.env.example" > "$TEST_ENV"
-# Fase 3: MARIADB_ROOT_PASSWORD staat (nog) niet in het voorbeeld (contractvraag).
-grep -q '^MARIADB_ROOT_PASSWORD=' "$TEST_ENV" || echo "MARIADB_ROOT_PASSWORD=testtesttesttest" >> "$TEST_ENV"
+# MARIADB_ROOT_PASSWORD staat leeg in het voorbeeld; voor de test een vaste waarde.
+sed -i '/^MARIADB_ROOT_PASSWORD=/d' "$TEST_ENV"
+echo "MARIADB_ROOT_PASSWORD=testtesttesttest" >> "$TEST_ENV"
 compose() { PANEL_ENV_FILE="$TEST_ENV" docker compose --env-file "$TEST_ENV" -f "$DEPLOY/docker-compose.yml" "$@"; }
 compose config -q || fail "compose config"
 CFG="$(compose config --format json)"

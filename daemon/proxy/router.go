@@ -97,6 +97,8 @@ type Router interface {
 	// (toevoegen, bijwerken én verwijderen wat er niet in staat).
 	Sync(ctx context.Context, routes []Route) error
 	// Status geeft de SSL-status van één hostnaam; ErrNotFound als er geen route is.
+	// Kan enkele seconden duren (TLS-dial, Docker-logs, DNS-lookup): niet in een strakke
+	// lus aanroepen, maar periodiek (bv. per minuut) of op verzoek, en het resultaat cachen.
 	Status(ctx context.Context, host string) (RouteStatus, error)
 }
 

@@ -148,7 +148,8 @@ services:
   #   container aan site-netwerken.
   # Alleen de drie domein/ACME-variabelen gaan mee, niet het hele panel.env (geheimen).
   caddy:
-    image: caddy:2
+    build: ./caddy
+    image: panel-caddy:local
     container_name: panel-caddy
     restart: unless-stopped
     labels: *labels
