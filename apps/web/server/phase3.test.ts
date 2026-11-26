@@ -2,6 +2,9 @@ import { eq } from "drizzle-orm";
 import { createConnection } from "mariadb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getDb, schema } from "./db";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import { setCloudflareBase } from "./lib/cloudflare";
 import { setDnsLookup, type DnsLookup } from "./lib/dns";
 import { resetNodeIpCache } from "./routers/domains";
 import { startMariadb, type TestContainer } from "./test/docker";
@@ -22,8 +25,43 @@ const fakeDns: DnsLookup = {
   ns: async (n) => zone[n]?.ns ?? [],
 };
 
+/** Nep-Cloudflare-API. */
+const CF_TOKEN = "cf-test-token";
+let cfServer: Server;
+let nextRec = 1;
+const cfRecords: Array<{ id: string; zone: string; type: string; name: string; content: string; proxied: boolean }> = [];
+const cfZones = [{ id: "z1", name: "blokgenoten.test" }, { id: "z2", name: "anders.test" }];
+
+async function startCloudflare() {
+  cfServer = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const c of req) chunks.push(c as Buffer);
+    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : undefined;
+    const send = (status: number, j: unknown) => res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(j));
+    if (req.headers.authorization !== `Bearer ${CF_TOKEN}`) return send(403, { success: false, errors: [{ code: 9109, message: "Invalid access token" }], result: null });
+    const u = new URL(req.url!, "http://x");
+    if (u.pathname === "/zones") return send(200, { success: true, result: cfZones, result_info: { page: 1, total_pages: 1 } });
+    const m = /^\/zones\/(\w+)\/dns_records(?:\/(\w+))?$/.exec(u.pathname);
+    if (!m) return send(404, { success: false, errors: [{ code: 7003, message: "no route" }], result: null });
+    const [, zone, rid] = m;
+    if (req.method === "GET") return send(200, { success: true, result: cfRecords.filter((r) => r.zone === zone && r.name === u.searchParams.get("name")) });
+    if (req.method === "POST") {
+      const r = { id: `r${nextRec++}`, zone: zone!, ...body };
+      cfRecords.push(r);
+      return send(200, { success: true, result: r });
+    }
+    const i = cfRecords.findIndex((r) => r.id === rid);
+    if (req.method === "PUT") Object.assign(cfRecords[i]!, body);
+    if (req.method === "DELETE") cfRecords.splice(i, 1);
+    return send(200, { success: true, result: { id: rid } });
+  });
+  await new Promise<void>((r) => cfServer.listen(0, "127.0.0.1", () => r()));
+  setCloudflareBase(`http://127.0.0.1:${(cfServer.address() as AddressInfo).port}`);
+}
+
 beforeAll(async () => {
   setDnsLookup(fakeDns);
+  await startCloudflare();
   maria = await startMariadb(ROOT_PW);
   admin = await h.user({ discordId: OWNER, name: "eigenaar", admin: true, totp: true });
   player = await h.user({ discordId: "270000000000000001", name: "webber" });
@@ -44,6 +82,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   setDnsLookup(null);
+  setCloudflareBase(null);
+  cfServer?.close();
   await maria?.stop();
 });
 
@@ -133,6 +173,55 @@ describe("domains.*", () => {
     await player.api.domains.remove({ id });
     expect(h.daemon.routes.has("blokgenoten.test")).toBe(false);
     await expect(player.api.domains.lastCheck({ id })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});
+
+describe("Cloudflare: admin.dnsProviders.* en domains.applyDns", () => {
+  let providerId = 0;
+
+  it("create controleert het token en haalt zones op; token versleuteld", async () => {
+    await expect(admin.api.admin.dnsProviders.create({ type: "cloudflare", name: "fout", apiToken: "nee" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    const p = await admin.api.admin.dnsProviders.create({ type: "cloudflare", name: "CF", apiToken: CF_TOKEN });
+    providerId = p.id;
+    expect(p.zones.map((z) => z.name)).toEqual(["anders.test", "blokgenoten.test"]);
+    const [row] = await getDb().select().from(schema.dnsProviders).where(eq(schema.dnsProviders.id, p.id));
+    expect(row!.apiTokenEnc).toMatch(/^v1:/);
+    expect(JSON.stringify(await admin.api.admin.dnsProviders.list())).not.toContain(CF_TOKEN);
+    cfZones.push({ id: "z3", name: "nieuw.test" });
+    expect((await admin.api.admin.dnsProviders.refreshZones({ id: p.id })).zones).toHaveLength(3);
+    await expect(player.api.admin.dnsProviders.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("wildcard: route-host *.<naam>, applyDns zet A-records zonder proxy en ruimt CNAME/AAAA op", async () => {
+    cfRecords.push({ id: "old1", zone: "z1", type: "CNAME", name: "shop.blokgenoten.test", content: "elders.example", proxied: true });
+    cfRecords.push({ id: "old2", zone: "z1", type: "AAAA", name: "shop.blokgenoten.test", content: "2001:db8::1", proxied: false });
+    const d = await player.api.domains.add({ uuid, hostname: "shop.blokgenoten.test", targetPort: null, redirectTo: null, wildcard: true, dnsProviderId: providerId });
+    expect(d).toMatchObject({ hostname: "shop.blokgenoten.test", wildcard: true });
+    expect(h.daemon.routes.get("*.shop.blokgenoten.test")).toMatchObject({ host: "*.shop.blokgenoten.test", dns_challenge: { provider: "cloudflare", api_token: CF_TOKEN } });
+
+    zone["shop.blokgenoten.test"] = { a: ["203.0.113.10"] };
+    const c = await player.api.domains.applyDns({ id: d.id });
+    expect(c.records[0]).toMatchObject({ status: "ok" });
+    expect(cfRecords.filter((r) => r.zone === "z1").map((r) => [r.type, r.name, r.content, r.proxied]).sort()).toEqual([
+      ["A", "*.shop.blokgenoten.test", "203.0.113.10", false],
+      ["A", "shop.blokgenoten.test", "203.0.113.10", false],
+    ]);
+    // nog een keer: niets dubbel
+    await player.api.domains.applyDns({ id: d.id });
+    expect(cfRecords.filter((r) => r.zone === "z1")).toHaveLength(2);
+    await expect(sub.api.domains.applyDns({ id: d.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    await player.api.domains.remove({ id: d.id });
+    expect(h.daemon.routes.has("*.shop.blokgenoten.test")).toBe(false);
+  });
+
+  it("applyDns zonder provider → PRECONDITION_FAILED; provider weg → domein houdt geen provider", async () => {
+    const d = await player.api.domains.add({ uuid, hostname: "los.anders.test", targetPort: null, redirectTo: null, wildcard: false, dnsProviderId: null });
+    await expect(player.api.domains.applyDns({ id: d.id })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: "NO_DNS_PROVIDER" });
+    await expect(player.api.domains.add({ uuid, hostname: "x.anders.test", targetPort: null, redirectTo: null, wildcard: false, dnsProviderId: 9999 })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await admin.api.admin.dnsProviders.delete({ id: providerId });
+    expect(await admin.api.admin.dnsProviders.list()).toEqual([]);
+    await player.api.domains.remove({ id: d.id });
   });
 });
 

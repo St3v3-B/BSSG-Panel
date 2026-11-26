@@ -27,9 +27,10 @@ export const PHASE2 = [
   "subusers.list", "subusers.invite", "subusers.update", "subusers.remove",
 ];
 
-/** Fase 3 (deels; Cloudflare/applyDns en dnsProviders volgen). */
+/** Fase 3. */
 export const PHASE3 = [
-  "domains.list", "domains.add", "domains.update", "domains.remove", "domains.check", "domains.lastCheck", "domains.target",
+  "domains.list", "domains.add", "domains.update", "domains.remove", "domains.check", "domains.lastCheck", "domains.target", "domains.applyDns",
+  "admin.dnsProviders.list", "admin.dnsProviders.create", "admin.dnsProviders.delete", "admin.dnsProviders.refreshZones",
   "databases.list", "databases.create", "databases.resetPassword", "databases.delete",
   "admin.databaseHosts.list", "admin.databaseHosts.create", "admin.databaseHosts.update", "admin.databaseHosts.delete", "admin.databaseHosts.test",
 ];

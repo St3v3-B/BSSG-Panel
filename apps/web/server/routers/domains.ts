@@ -10,7 +10,9 @@ import { call, DaemonHttpError, daemonFor, toTrpcError, type NodeRef } from "../
 import { getDb, schema } from "../db";
 import { getEnv } from "../env";
 import { decrypt } from "../lib/crypto";
+import { CloudflareError, setARecord, zoneFor } from "../lib/cloudflare";
 import { checkDomain, dns } from "../lib/dns";
+import { zonesOrThrow } from "./dns-providers";
 import { requireServer, type ServerAccess } from "../servers-data";
 
 type DomainRow = typeof schema.domains.$inferSelect;
@@ -39,6 +41,9 @@ async function domainById(ctx: Ctx, id: number, need: "any" | "domain.manage") {
   return { d: r.d, a: await requireServer(ctx, r.uuid, need) };
 }
 
+/** Caddy leidt wildcard af uit de host: `*.<hostname>`. */
+export const routeHost = (d: Pick<DomainRow, "hostname" | "wildcard">) => (d.wildcard ? `*.${d.hostname}` : d.hostname);
+
 async function routeFor(d: Pick<DomainRow, "hostname" | "targetPort" | "redirectTo" | "wildcard" | "dnsProviderId">, serverUuid: string): Promise<DaemonRoute> {
   let dns_challenge: DaemonRoute["dns_challenge"] = null;
   if (d.wildcard) {
@@ -46,7 +51,7 @@ async function routeFor(d: Pick<DomainRow, "hostname" | "targetPort" | "redirect
     if (!p) throw new TRPCError({ code: "BAD_REQUEST", message: "WILDCARD_NEEDS_DNS_PROVIDER" });
     dns_challenge = { provider: "cloudflare", api_token: decrypt(p.apiTokenEnc) };
   }
-  return { host: d.hostname, server_uuid: serverUuid, port: d.targetPort, redirect_to: d.redirectTo, wildcard: d.wildcard, dns_challenge };
+  return { host: routeHost(d), server_uuid: serverUuid, port: d.targetPort, redirect_to: d.redirectTo, wildcard: d.wildcard, dns_challenge };
 }
 
 /** IP waar de records naar moeten wijzen: NODE_PUBLIC_IP (lokale node) of het A-record van de node. */
@@ -79,7 +84,7 @@ async function runCheck(d: DomainRow, a: ServerAccess): Promise<DnsCheck> {
   return result;
 }
 
-export const domains: Omit<Implementation["domains"], "applyDns"> = {
+export const domains: Implementation["domains"] = {
   list: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "any");
     const db = getDb();
@@ -90,7 +95,7 @@ export const domains: Omit<Implementation["domains"], "applyDns"> = {
         const routes = await daemonFor(a.bundle.node).routes(2000);
         const ssl = new Map(routes.map((r) => [r.host, r.ssl_status as SslStatus]));
         for (const d of rows) {
-          const st = ssl.get(d.hostname);
+          const st = ssl.get(routeHost(d));
           if (st && st !== d.sslStatus) {
             d.sslStatus = st;
             await db.update(schema.domains).set({ sslStatus: st }).where(eq(schema.domains.id, d.id));
@@ -106,11 +111,17 @@ export const domains: Omit<Implementation["domains"], "applyDns"> = {
   add: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "domain.manage");
     assertWeb(a);
-    const hostname = input.hostname.toLowerCase();
+    // "*.x" als hostnaam betekent wildcard op x; opgeslagen zonder "*.".
+    const wildcard = input.wildcard || input.hostname.startsWith("*.");
+    const hostname = input.hostname.toLowerCase().replace(/^\*\./, "");
+    if (input.dnsProviderId) {
+      const [p] = await getDb().select({ id: schema.dnsProviders.id }).from(schema.dnsProviders).where(eq(schema.dnsProviders.id, input.dnsProviderId));
+      if (!p) throw new TRPCError({ code: "NOT_FOUND", message: "DNS_PROVIDER_NOT_FOUND" });
+    }
     if (input.redirectTo && input.redirectTo === hostname) throw new TRPCError({ code: "BAD_REQUEST", message: "REDIRECT_TO_SELF" });
     const [dup] = await getDb().select({ id: schema.domains.id }).from(schema.domains).where(eq(schema.domains.hostname, hostname));
     if (dup) throw new TRPCError({ code: "CONFLICT", message: "DOMAIN_TAKEN" });
-    const fields = { hostname, targetPort: input.targetPort, redirectTo: input.redirectTo, wildcard: input.wildcard, dnsProviderId: input.dnsProviderId };
+    const fields = { hostname, targetPort: input.targetPort, redirectTo: input.redirectTo, wildcard, dnsProviderId: input.dnsProviderId };
     const route = await routeFor(fields, input.uuid);
     const res = await call(() => daemonFor(a.bundle.node).putRoute(route));
     const [row] = await getDb()
@@ -138,7 +149,7 @@ export const domains: Omit<Implementation["domains"], "applyDns"> = {
   remove: async ({ input, ctx }) => {
     const { d, a } = await domainById(ctx, input.id, "domain.manage");
     try {
-      await daemonFor(a.bundle.node).deleteRoute(d.hostname);
+      await daemonFor(a.bundle.node).deleteRoute(routeHost(d));
     } catch (e) {
       if (!(e instanceof DaemonHttpError && e.status === 404)) throw toTrpcError(e);
     }
@@ -159,8 +170,41 @@ export const domains: Omit<Implementation["domains"], "applyDns"> = {
     return { ...c, checkedAt: new Date(c.checkedAt) };
   },
 
+  /** Zet A-records (zonder proxy) via de gekoppelde Cloudflare-provider en checkt daarna. */
+  applyDns: async ({ input, ctx }) => {
+    const { d, a } = await domainById(ctx, input.id, "domain.manage");
+    if (!d.dnsProviderId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_DNS_PROVIDER" });
+    const [p] = await getDb().select().from(schema.dnsProviders).where(eq(schema.dnsProviders.id, d.dnsProviderId));
+    if (!p) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_DNS_PROVIDER" });
+    const token = decrypt(p.apiTokenEnc);
+    let zone = zoneFor(p.zones, d.hostname);
+    if (!zone) {
+      const zones = await zonesOrThrow(token);
+      await getDb().update(schema.dnsProviders).set({ zones }).where(eq(schema.dnsProviders.id, p.id));
+      zone = zoneFor(zones, d.hostname);
+    }
+    if (!zone) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "ZONE_NOT_FOUND" });
+    const ip = await nodeIp(a.bundle.node);
+    const names = d.wildcard ? [d.hostname, `*.${d.hostname}`] : [d.hostname];
+    const changes: Record<string, unknown> = {};
+    try {
+      for (const n of names) changes[n] = await setARecord(token, zone.id, n, ip);
+    } catch (e) {
+      if (e instanceof CloudflareError) throw new TRPCError({ code: "BAD_GATEWAY", message: `CLOUDFLARE_ERROR: ${e.message}` });
+      throw e;
+    }
+    await logActivity({ action: "server.domain.apply_dns", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname: d.hostname, zone: zone.name, ip, changes }, ip: ctx.ip });
+    return runCheck(d, a);
+  },
+
   target: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "any");
     return { ip: await nodeIp(a.bundle.node), nodeFqdn: a.bundle.node.fqdn };
   },
 };
+
+/** Bij het verwijderen van een server: alle routes weg (best effort). */
+export async function removeServerRoutes(serverId: number, node: NodeRef): Promise<void> {
+  const rows = await getDb().select().from(schema.domains).where(eq(schema.domains.serverId, serverId));
+  for (const d of rows) await daemonFor(node).deleteRoute(routeHost(d)).catch(() => {});
+}

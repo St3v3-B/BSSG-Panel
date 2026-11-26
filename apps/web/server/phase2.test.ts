@@ -68,6 +68,15 @@ describe("files.*", () => {
     await expect(player.api.files.mkdir({ uuid, path: "/y" })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: "DISK_EXCEEDED" });
   });
 
+  it("start bij volle disk (409 disk_exceeded) → PRECONDITION_FAILED DISK_EXCEEDED", async () => {
+    h.daemon.override = (r) => (r.path.endsWith("/power") ? { status: 409, body: { error: "disk_exceeded", message: "vol" } } : undefined);
+    try {
+      await expect(player.api.servers.power({ uuid, action: "start" })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: "DISK_EXCEEDED" });
+    } finally {
+      h.daemon.override = null;
+    }
+  });
+
   it("daemon onbereikbaar → DAEMON_UNREACHABLE", async () => {
     h.daemon.mode = "error500";
     try {
