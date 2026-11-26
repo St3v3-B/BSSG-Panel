@@ -2,18 +2,29 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Dark mode is standaard (class "dark" op <html>). De accentkleur komt uit auth.branding
+   en wordt client-side op --primary gezet (zie _components/branding.tsx). */
 :root {
   --radius: 0.5rem;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
+  --card: oklch(0.185 0 0);
   --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
   --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
   --primary: oklch(0.72 0.19 150);
   --primary-foreground: oklch(0.145 0 0);
   --destructive: oklch(0.65 0.22 25);
+  --success: oklch(0.72 0.19 150);
+  --warning: oklch(0.8 0.16 80);
+  --info: oklch(0.7 0.13 240);
 }
 
 @theme inline {
@@ -21,16 +32,43 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
   --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    color-scheme: dark;
+  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/* xterm: laat de terminal de achtergrond van de kaart overnemen */
+.console-host .xterm,
+.console-host .xterm-viewport {
+  background-color: transparent !important;
 }

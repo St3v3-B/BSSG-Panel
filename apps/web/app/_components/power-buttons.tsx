@@ -1,0 +1,55 @@
+"use client";
+import { Play, RotateCw, Skull, Square } from "lucide-react";
+import { useEffect, useState } from "react";
+import type { PowerAction, ServerStatus } from "@panel/api";
+import { Button } from "@/app/_components/ui/button";
+import { Spinner } from "@/app/_components/ui/spinner";
+
+/** Welke power-acties zinvol zijn in deze status. */
+export function powerAvailability(status: ServerStatus): Record<PowerAction, boolean> {
+  const busy = status === "installing" || status === "install_failed";
+  const running = status === "online" || status === "starting" || status === "stopping";
+  return {
+    start: !busy && !running && status !== "disk_exceeded",
+    restart: !busy && running && status !== "stopping",
+    stop: !busy && (status === "online" || status === "starting"),
+    kill: !busy && running,
+  };
+}
+
+export function PowerButtons({ status, pending, onPower }: { status: ServerStatus; pending?: PowerAction; onPower: (a: PowerAction) => void }) {
+  const can = powerAvailability(status);
+  const [confirmKill, setConfirmKill] = useState(false);
+  useEffect(() => {
+    if (!confirmKill) return;
+    const t = setTimeout(() => setConfirmKill(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirmKill]);
+  const icon = (a: PowerAction, I: typeof Play) => (pending === a ? <Spinner /> : <I />);
+  return (
+    <div className="flex flex-wrap items-center gap-2" data-testid="power-buttons">
+      <Button size="sm" onClick={() => onPower("start")} disabled={!can.start || !!pending}>
+        {icon("start", Play)} Starten
+      </Button>
+      <Button size="sm" variant="secondary" onClick={() => onPower("restart")} disabled={!can.restart || !!pending}>
+        {icon("restart", RotateCw)} Herstarten
+      </Button>
+      <Button size="sm" variant="secondary" onClick={() => onPower("stop")} disabled={!can.stop || !!pending}>
+        {icon("stop", Square)} Stoppen
+      </Button>
+      <Button
+        size="sm"
+        variant={confirmKill ? "destructive" : "outline"}
+        onClick={() => {
+          if (!confirmKill) return setConfirmKill(true);
+          setConfirmKill(false);
+          onPower("kill");
+        }}
+        disabled={!can.kill || !!pending}
+        title="Proces direct beëindigen (kan data kosten)"
+      >
+        {icon("kill", Skull)} {confirmKill ? "Echt killen?" : "Kill"}
+      </Button>
+    </div>
+  );
+}
