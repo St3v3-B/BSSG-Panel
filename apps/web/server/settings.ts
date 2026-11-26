@@ -5,7 +5,7 @@ import { getDb, schema } from "./db";
 
 export const SETTING_DEFAULTS = {
   panel_name: "Panel",
-  logo_url: null as string | null,
+  logo_url: "", // leeg = geen logo (JSON-null wordt SQL-NULL)
   accent_color: "#22c55e",
   default_limits: { cpuPct: 200, ramMb: 2048, swapMb: 0, diskMb: 10_240 } satisfies Limits,
 };

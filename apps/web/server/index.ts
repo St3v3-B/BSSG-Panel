@@ -22,4 +22,9 @@ function merge(base: Tree, over: Tree): Tree {
 
 const phase1 = { auth, account, servers, admin };
 
+/** Paden die echt geïmplementeerd zijn (de rest is NOT_IMPLEMENTED). */
+export function implementedPaths(tree: Tree = phase1 as unknown as Tree, prefix = ""): string[] {
+  return Object.entries(tree).flatMap(([k, v]) => (typeof v === "function" ? [`${prefix}${k}`] : implementedPaths(v, `${prefix}${k}.`)));
+}
+
 export const implementation: Implementation = merge(notImplemented() as unknown as Tree, phase1 as unknown as Tree) as unknown as Implementation;
