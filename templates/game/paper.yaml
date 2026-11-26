@@ -5,20 +5,26 @@ description: >-
   Minecraft Java Edition met Paper (papermc.io). Kies een Minecraft-versie of `latest`
   (nieuwste stabiele versie); de installatie haalt de jar via de PaperMC-API en controleert
   de SHA-256. Draait op Java 25 (Minecraft 1.20.5 en nieuwer; zie de generieke Java-template
-  voor oudere versies). Heap = 80% van het RAM-limiet van de server.
+  voor oudere versies). Heap = RAM-limiet min 15% (minstens 384 MB) voor de JVM zelf.
   Achter een Velocity-proxy: zet `VELOCITY_FORWARDING` op `true` en `VELOCITY_SECRET` op
   dezelfde secret als de proxy (zie deploy/README.md, "Velocity met twee Paper-servers").
 type: game
 version: 2
 image: eclipse-temurin:25-jre
-# Heap: 80% van SERVER_MEMORY (rest voor metaspace, threads, netty-buffers).
+# Heap: SERVER_MEMORY min 15% (minstens 384 MB) voor metaspace, threads, netty-buffers en
+# /tmp (tmpfs, telt mee); met 80% werd Paper 1.21.x bij 1280 MB door de cgroup OOM-killed.
 # Flags: Aikar/PaperMC-aanbevolen G1-instellingen (zonder AlwaysPreTouch, zodat een
 # server niet bij de start meteen zijn hele heap vastlegt).
 # -Duser.home en de netty-map: de rootfs is read-only en /tmp is een tmpfs (noexec).
+# Achter Velocity moet online-mode in server.properties uit (Velocity doet de login en Paper
+# controleert de secret); config_files zet hem eerst op ONLINE_MODE, dus bij
+# VELOCITY_FORWARDING=false komt de eigen waarde vanzelf terug.
 startup: >-
+  if [ "{{VELOCITY_FORWARDING}}" = true ]; then sed -i 's/^online-mode=.*/online-mode=false/' server.properties; fi &&
+  HEADROOM=$(( {{SERVER_MEMORY}} * 15 / 100 > 384 ? {{SERVER_MEMORY}} * 15 / 100 : 384 )) &&
   mkdir -p .cache/netty &&
   exec java
-  -Xms$(( {{SERVER_MEMORY}} * 80 / 100 ))M -Xmx$(( {{SERVER_MEMORY}} * 80 / 100 ))M
+  -Xms$(( {{SERVER_MEMORY}} - HEADROOM ))M -Xmx$(( {{SERVER_MEMORY}} - HEADROOM ))M
   -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200
   -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+PerfDisableSharedMem
   -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M
@@ -63,6 +69,15 @@ variables:
     default: ""
     user_editable: true
     pattern: "^([A-Za-z0-9_-]{12,128})?$"
+  - key: ONLINE_MODE
+    name: Online-mode
+    description: >-
+      `true` = spelers moeten een echt Minecraft-account hebben (aanbevolen). Met
+      VELOCITY_FORWARDING=true staat hij in server.properties automatisch uit (de proxy
+      controleert de accounts).
+    default: "true"
+    user_editable: true
+    pattern: "^(true|false)$"
   - key: SERVER_JARFILE
     name: Jar-bestand
     description: Naam van de server-jar in de hoofdmap.
@@ -122,6 +137,7 @@ config_files:
       server-port: "{{SERVER_PORT}}"
       server-ip: "0.0.0.0"
       query.port: "{{SERVER_PORT}}"
+      online-mode: "{{ONLINE_MODE}}"
   # Velocity modern forwarding. Standaard uit; Paper vult de rest van het bestand zelf aan.
   - path: config/paper-global.yml
     format: yaml

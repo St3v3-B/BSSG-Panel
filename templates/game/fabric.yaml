@@ -7,14 +7,15 @@ description: >-
   `mods/` (bijvoorbeeld Fabric API). De installatie haalt de server-launcher via de
   Fabric-meta-API; bij de eerste start downloadt die de Minecraft-server en de libraries in
   de servermap (eenmalig, daarom duurt de eerste start langer). Java 25 (Minecraft 1.20.5 en
-  nieuwer), heap = 80% van het RAM-limiet.
+  nieuwer), heap = RAM-limiet min 15% (minstens 384 MB).
 type: game
 version: 1
 image: eclipse-temurin:25-jre
 startup: >-
+  HEADROOM=$(( {{SERVER_MEMORY}} * 15 / 100 > 384 ? {{SERVER_MEMORY}} * 15 / 100 : 384 )) &&
   mkdir -p .cache/netty mods &&
   exec java
-  -Xms$(( {{SERVER_MEMORY}} * 80 / 100 ))M -Xmx$(( {{SERVER_MEMORY}} * 80 / 100 ))M
+  -Xms$(( {{SERVER_MEMORY}} - HEADROOM ))M -Xmx$(( {{SERVER_MEMORY}} - HEADROOM ))M
   -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200
   -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+PerfDisableSharedMem
   -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M

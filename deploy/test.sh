@@ -8,7 +8,7 @@
 #   deploy/test.sh              # alles; Minecraft één tegelijk, Velocity + 2x Paper als laatste
 #   SKIP_MC=1 deploy/test.sh    # zonder Minecraft-servers (snel; SKIP_PAPER=1 werkt ook)
 #   TESTS="node java velocity paper folia fabric proxy"  # selectie van de game-tests
-#   PAPER_MEMORY=1280           # RAM-limiet per Minecraft-rooktest in MB (heap = 80%, max 1 GB)
+#   PAPER_MEMORY=1280           # RAM-limiet per Minecraft-rooktest in MB (heap = RAM min 384 MB)
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,7 +30,7 @@ cleanup() {
   [ "${#ids[@]}" -gt 0 ] && docker network rm "${ids[@]}" >/dev/null
   mapfile -t ids < <(docker volume ls -q --filter label=panel.test=true --filter "label=panel.instance=$INSTANCE")
   [ "${#ids[@]}" -gt 0 ] && docker volume rm "${ids[@]}" >/dev/null
-  rm -rf "$WORK"
+  [ "${KEEP_WORK:-0}" = 1 ] && echo "werkmap bewaard: $WORK" || rm -rf "$WORK"
 }
 trap cleanup EXIT
 
@@ -269,7 +269,7 @@ srv_start() {
   chown -R 1000:1000 "$dir"
   startup="$(srv_tpl "$name" startup)"; ready="$(srv_tpl "$name" get ready_pattern)"
   rm -f "$dir.stdin"; mkfifo "$dir.stdin"
-  docker run --rm -i "${LABELS[@]}" --label panel.role=server --name "panel-test-$INSTANCE-$name" \
+  docker run -i "${LABELS[@]}" --label panel.role=server --name "panel-test-$INSTANCE-$name" \
     --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
     --pids-limit 512 --memory "${mem}m" --memory-swap "${mem}m" --cpus 2 \
     -p "$ip:$port:$port/tcp" -p "$ip:$port:$port/udp" \
@@ -288,7 +288,8 @@ srv_start() {
     kill -0 "$(sv "$name" pid)" 2>/dev/null && [ $(( $(date +%s) - t0 )) -lt 600 ] || break
     sleep 2
   done
-  tail -40 "$dir.log"; fail "$name: ready_pattern niet gezien"
+  tail -40 "$dir.log"
+  fail "$name: ready_pattern niet gezien ($(docker inspect -f 'exit {{.State.ExitCode}}, OOMKilled {{.State.OOMKilled}}' "panel-test-$INSTANCE-$name" 2>&1))"
 }
 
 srv_cmd() { local fd; fd="$(sv "$1" fd)"; printf '%s\n' "$2" >&"$fd"; }
@@ -363,6 +364,7 @@ if want paper; then
   srv_start paper
   mc_checks paper
   srv_stop paper
+  grep -qx 'online-mode=true' "$S_paper_dir/server.properties" && pass "paper: online-mode=true (standaard)" || fail "paper: online-mode"
   # Paper heeft paper-global.yml aangevuld; de waarden van config_files staan er nog.
   node -e 'const y=require(process.argv[2]).parse(require("fs").readFileSync(process.argv[1],"utf8")); process.exit(y.proxies.velocity.enabled===false&&y._version?0:1)' \
     "$S_paper_dir/config/paper-global.yml" "$(cd "$REPO/packages/api" && node -p 'require.resolve("yaml")')" \
@@ -395,7 +397,7 @@ fi
 # (mineflayer, offline-mode) logt in via de proxy en wisselt met /server naar de tweede server.
 if want proxy; then
   PROXY_MC="${PROXY_MC_VERSION:-1.21.11}"   # versie die mineflayer ondersteunt
-  PMEM="${PROXY_PAPER_MEMORY:-1024}"
+  PMEM="${PROXY_PAPER_MEMORY:-1280}"   # heap 896 MB (template: RAM min 384 MB)
   step "Velocity met twee Paper-servers (Paper $PROXY_MC, 2x ${PMEM} MB, Velocity 512 MB)"
   SECRET="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   srv_prepare pa paper "$PMEM" "$GW" MINECRAFT_VERSION="$PROXY_MC" VELOCITY_FORWARDING=true VELOCITY_SECRET="$SECRET"
@@ -409,6 +411,7 @@ if want proxy; then
     /^\[/ { skip=0 } !skip { print }' "$S_pv_dir/velocity.toml" > "$S_pv_dir/velocity.toml.new"
   mv "$S_pv_dir/velocity.toml.new" "$S_pv_dir/velocity.toml"
   srv_start pa
+  grep -qx 'online-mode=false' "$S_pa_dir/server.properties" && pass "pa: online-mode uit door VELOCITY_FORWARDING" || fail "pa: online-mode"
   srv_start pb
   srv_start pv
   grep -q 'secret' "$S_pv_dir.log" && grep -i 'secret' "$S_pv_dir.log" | head -3 | sed 's/^/  info /'
