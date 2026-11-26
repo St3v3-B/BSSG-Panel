@@ -8,7 +8,7 @@ description: >-
   De database heet vanuit de site `panel-mariadb:3306`. Eigen PHP-instellingen in
   `php/*.ini`, eigen nginx-regels (binnen het server-blok) in `nginx/*.conf`; daarna herstarten.
 type: web
-version: 5
+version: 6
 # serversideup/php: officiële PHP-build met nginx erbij. We gebruiken alleen de binaries;
 # hun s6-entrypoint niet (dat wil als root schrijven op de rootfs).
 image: serversideup/php:8.4-fpm-nginx-alpine
@@ -155,6 +155,20 @@ variables:
     default: 64M
     user_editable: true
     pattern: "^[0-9]{1,4}M$"
+  # Intern: zodat ook `php` op de command line (WP-CLI, cronjobs, console) dezelfde
+  # ini's en zelfgebouwde extensies laadt als PHP-FPM. Niet wijzigen.
+  - key: PHP_INI_SCAN_DIR
+    name: PHP-ini-mappen (intern)
+    default: /usr/local/etc/php/conf.d:/tmp/php/conf.d:/home/container/php
+    user_editable: false
+  - key: LD_LIBRARY_PATH
+    name: Bibliotheken voor PHP-extensies (intern)
+    default: /home/container/.php/lib
+    user_editable: false
+  - key: ICU_DATA
+    name: ICU-data voor intl (intern)
+    default: /home/container/.php/icu
+    user_editable: false
 install:
   image: serversideup/php:8.4-fpm-nginx-alpine
   script: |
@@ -163,6 +177,8 @@ install:
     # runtime) en zet ze met de benodigde bibliotheken in /home/container/.php.
     # Draait als root in een tijdelijke container; bestaande sitebestanden blijven staan.
     set -eu
+    # De runtime-variabelen hieronder horen niet bij het bouwen (oude bibliotheken).
+    unset PHP_INI_SCAN_DIR LD_LIBRARY_PATH ICU_DATA
     H=/home/container
     mkdir -p $H/php $H/nginx $H/.php/sessions
     rm -rf $H/.php/ext $H/.php/lib $H/.php/icu
