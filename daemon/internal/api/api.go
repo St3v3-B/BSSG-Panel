@@ -54,6 +54,8 @@ type API struct {
 	system func(ctx context.Context) SystemInfo
 	log    *slog.Logger
 
+	jti jtiStore
+
 	wsMu   sync.Mutex
 	wsConn map[*session]struct{}
 }
@@ -105,26 +107,25 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("GET /api/servers/{uuid}/stats", p(a.withServer(a.stats)))
 	mux.HandleFunc("GET /api/servers/{uuid}/ws", a.websocket)
 
-	// Fase 2/4: nog niet geïmplementeerd.
+	mux.Handle("GET /api/servers/{uuid}/files/list", p(a.withServer(a.listFiles)))
+	mux.Handle("GET /api/servers/{uuid}/files/contents", p(a.withServer(a.readFile)))
+	mux.Handle("PUT /api/servers/{uuid}/files/contents", p(a.withServer(a.writeFile)))
+	mux.Handle("POST /api/servers/{uuid}/files/mkdir", p(a.withServer(a.mkdir)))
+	mux.Handle("POST /api/servers/{uuid}/files/rename", p(a.withServer(a.rename)))
+	mux.Handle("POST /api/servers/{uuid}/files/delete", p(a.withServer(a.deleteFiles)))
+	mux.Handle("POST /api/servers/{uuid}/files/compress", p(a.withServer(a.compress)))
+	mux.Handle("POST /api/servers/{uuid}/files/decompress", p(a.withServer(a.decompress)))
+	mux.HandleFunc("POST /api/servers/{uuid}/files/upload", a.cors(a.upload))
+	mux.HandleFunc("GET /api/servers/{uuid}/files/download", a.cors(a.download))
+	mux.HandleFunc("OPTIONS /api/servers/{uuid}/files/upload", a.cors(preflight))
+	mux.HandleFunc("OPTIONS /api/servers/{uuid}/files/download", a.cors(preflight))
+
+	// Fase 4: nog niet geïmplementeerd.
 	ni := func(w http.ResponseWriter, _ *http.Request) {
 		writeErr(w, http.StatusNotImplemented, "not_implemented", "nog niet geïmplementeerd")
 	}
-	for _, pat := range []string{
-		"GET /api/servers/{uuid}/files/list",
-		"GET /api/servers/{uuid}/files/contents",
-		"PUT /api/servers/{uuid}/files/contents",
-		"POST /api/servers/{uuid}/files/mkdir",
-		"POST /api/servers/{uuid}/files/rename",
-		"POST /api/servers/{uuid}/files/delete",
-		"POST /api/servers/{uuid}/files/compress",
-		"POST /api/servers/{uuid}/files/decompress",
-		"POST /api/servers/{uuid}/backups",
-		"POST /api/servers/{uuid}/backups/{backup_id}/restore",
-	} {
-		mux.Handle(pat, p(ni))
-	}
-	mux.HandleFunc("POST /api/servers/{uuid}/files/upload", ni)
-	mux.HandleFunc("GET /api/servers/{uuid}/files/download", ni)
+	mux.Handle("POST /api/servers/{uuid}/backups", p(ni))
+	mux.Handle("POST /api/servers/{uuid}/backups/{backup_id}/restore", p(ni))
 
 	mux.Handle("GET /api/routes", p(a.listRoutes))
 	mux.Handle("GET /api/routes/{host}", p(a.getRoute))
@@ -195,6 +196,8 @@ func stateErr(w http.ResponseWriter, err error) {
 		writeErr(w, http.StatusConflict, "invalid_state", err.Error())
 	case errors.Is(err, server.ErrNotRunning):
 		writeErr(w, http.StatusConflict, "not_running", err.Error())
+	case errors.Is(err, server.ErrDiskExceeded):
+		writeErr(w, http.StatusConflict, "disk_exceeded", err.Error())
 	case errors.Is(err, server.ErrExists):
 		writeErr(w, http.StatusConflict, "conflict", err.Error())
 	default:

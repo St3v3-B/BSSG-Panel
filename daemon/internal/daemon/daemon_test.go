@@ -40,7 +40,7 @@ func TestAuthAndSystem(t *testing.T) {
 	}
 	h.expect("GET", "/api/onbekend", nil, 404)
 	h.expect("GET", "/api/servers/"+u1, nil, 404)
-	h.expect("GET", "/api/servers/"+u1+"/files/list?path=/", nil, 501)
+	h.expect("GET", "/api/servers/"+u1+"/files/list?path=/", nil, 404)
 	h.expect("POST", "/api/servers/"+u1+"/backups", map[string]any{}, 501)
 	if r := h.doTok("GET", "/api/servers/"+u1+"/files/list?path=/", nil, ""); r.Code != 401 {
 		t.Fatal("files zonder token", r.Code)

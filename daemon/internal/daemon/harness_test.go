@@ -72,6 +72,7 @@ func newHarness(t *testing.T, eng engine.Engine, router proxy.Router, p *testpan
 		Engine: eng, Router: router, Log: log, Version: "test", Panel: pc,
 		Server:        server.Config{StopTimeout: 3 * time.Second, DiskInterval: 200 * time.Millisecond, StatsInterval: 100 * time.Millisecond},
 		WSAuthTimeout: 500 * time.Millisecond,
+		SFTPAddr:      "127.0.0.1:0", SFTPFailDelay: 10 * time.Millisecond,
 	}
 	h := &harness{t: t, eng: eng, router: router, panel: p, cfg: cfg, deps: deps}
 	h.start()

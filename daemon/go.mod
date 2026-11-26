@@ -8,6 +8,8 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/klauspost/compress v1.17.11
+	github.com/pkg/sftp v1.13.7
+	golang.org/x/crypto v0.35.0
 	golang.org/x/sys v0.30.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -22,6 +24,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/kr/fs v0.1.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect

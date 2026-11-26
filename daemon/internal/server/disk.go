@@ -192,3 +192,6 @@ func (s *Server) diskLoop(offset time.Duration) {
 		}
 	}
 }
+
+// RemeasureDisk meet opnieuw op de achtergrond (na verwijderen of uitpakken).
+func (s *Server) RemeasureDisk() { go s.measureDisk() }
