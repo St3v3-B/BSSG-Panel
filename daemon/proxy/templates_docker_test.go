@@ -7,8 +7,12 @@ package proxy
 // Upstream.Network. Zelfde labels en overslaan-regels als caddy_docker_test.go.
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"io/fs"
+	"mime/multipart"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,9 +47,9 @@ type webTemplate struct {
 	} `yaml:"install"`
 }
 
-func loadWebTemplate(t *testing.T, slug string) webTemplate {
+func loadWebTemplate(t *testing.T, file string) webTemplate {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("../../templates/web", slug+".yaml"))
+	b, err := os.ReadFile(filepath.Join("../../templates/web", file+".yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,8 +57,8 @@ func loadWebTemplate(t *testing.T, slug string) webTemplate {
 	if err := yaml.Unmarshal(b, &w); err != nil {
 		t.Fatal(err)
 	}
-	if w.Slug != slug || w.Type != "web" || w.HTTPPort <= 1024 {
-		t.Fatalf("%s: slug/type/http_port klopt niet: %+v", slug, w)
+	if !regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,48}$`).MatchString(w.Slug) || w.Type != "web" || w.HTTPPort <= 1024 {
+		t.Fatalf("%s: slug/type/http_port klopt niet: %+v", file, w)
 	}
 	return w
 }
@@ -161,7 +165,8 @@ func (e *caddyEnv) stopSite(t *testing.T, w webTemplate, s site) {
 
 // webTemplateCase: wat er na de installatie bij komt en wat we via Caddy controleren.
 type webTemplateCase struct {
-	slug  string
+	file  string // templates/web/<file>.yaml
+	db    bool   // MariaDB als panel-mariadb op het site-netwerk
 	files map[string]string
 	check func(t *testing.T, e *caddyEnv, host string)
 }
@@ -183,7 +188,7 @@ func bodyContains(want ...string) func(int, string, string) bool {
 func webTemplateCases() []webTemplateCase {
 	return []webTemplateCase{
 		{
-			slug:  "static",
+			file:  "static",
 			files: map[string]string{"public/sub/index.html": "submap ok", "public/.env": "GEHEIM=1", "nginx/extra.conf": "location = /eigen { return 200 'eigen regel'; }"},
 			check: func(t *testing.T, e *caddyEnv, host string) {
 				e.get(t, "https://"+host+"/", bodyContains("Het werkt"))
@@ -197,6 +202,9 @@ func webTemplateCases() []webTemplateCase {
 				}
 			},
 		},
+		phpCase("php-8.2", "8.2."),
+		phpCase("php-8.3", "8.3."),
+		phpCase("php-8.4", "8.4."),
 	}
 }
 
@@ -206,13 +214,19 @@ func TestDockerWebTemplates(t *testing.T) {
 	c := e.router()
 	only := os.Getenv("PANEL_WEB_TEMPLATES") // bv. "static,php-8.3"; leeg = alle
 	for _, tc := range webTemplateCases() {
-		if only != "" && !strings.Contains(","+only+",", ","+tc.slug+",") {
+		if only != "" && !strings.Contains(","+only+",", ","+tc.file+",") {
 			continue
 		}
-		t.Run(tc.slug, func(t *testing.T) {
-			w := loadWebTemplate(t, tc.slug)
+		t.Run(tc.file, func(t *testing.T) {
+			w := loadWebTemplate(t, tc.file)
+			if tc.db {
+				e.startMariaDB(t)
+			}
 			s := e.runSite(t, w, tc.files)
-			host := tc.slug + ".site.test"
+			if tc.db {
+				dockerCmd(t, "network", "connect", "--alias", "panel-mariadb", s.network, e.inst+"-mariadb")
+			}
+			host := w.Slug + ".site.test"
 			if err := c.SetRoute(ctx, Route{Host: host, ServerUUID: w.Slug, Upstream: Upstream{Container: s.name, Network: s.network, Port: w.HTTPPort}}); err != nil {
 				t.Fatal(err)
 			}
@@ -231,6 +245,87 @@ func TestDockerWebTemplates(t *testing.T) {
 				t.Errorf("Caddy na de laatste route nog aan %s", s.network)
 			}
 			e.stopSite(t, w, s)
+			if tc.db {
+				dockerCmd(t, "network", "disconnect", s.network, e.inst+"-mariadb")
+			}
 		})
+	}
+}
+
+// startMariaDB start (één keer per test) een MariaDB zoals panel-mariadb, met
+// database/gebruiker wp/wp/wpgeheim. Hij hangt aan geen enkel netwerk tot een site
+// hem koppelt (zoals de daemon panel-mariadb aan panel-site-<uuid> koppelt).
+func (e *caddyEnv) startMariaDB(t *testing.T) {
+	t.Helper()
+	name := e.inst + "-mariadb"
+	if exec.Command("docker", "inspect", name).Run() == nil {
+		return
+	}
+	dockerCmd(t, "run", "-d", "--name", name, "--label", "panel.test=true", "--label", "panel.instance="+e.inst,
+		"--network", "none", "--memory", "512m",
+		"-e", "MARIADB_RANDOM_ROOT_PASSWORD=1", "-e", "MARIADB_DATABASE=wp", "-e", "MARIADB_USER=wp", "-e", "MARIADB_PASSWORD=wpgeheim",
+		"mariadb:11")
+	dockerCmd(t, "network", "disconnect", "none", name)
+}
+
+const phpTestPage = `<?php
+header('Content-Type: text/plain');
+foreach (['mysqli', 'pdo_mysql', 'gd', 'intl', 'zip', 'exif', 'curl', 'mbstring', 'Zend OPcache'] as $x)
+  echo $x, '=', extension_loaded($x) ? 'ja' : 'nee', "\n";
+echo 'upload=', ini_get('upload_max_filesize'), ' post=', ini_get('post_max_size'), "\n";
+echo 'https=', $_SERVER['HTTPS'] ?? '', "\n";
+echo 'version=', PHP_VERSION, "\n";
+$m = null;
+for ($i = 0; $i < 30 && !$m; $i++) { try { $m = new mysqli('panel-mariadb', 'wp', 'wpgeheim', 'wp', 3306); } catch (Throwable $e) { sleep(1); } }
+$m->query('CREATE TABLE IF NOT EXISTS t (v VARCHAR(20))');
+$m->query("INSERT INTO t VALUES ('mysqli-ok')");
+echo 'db=', $m->query('SELECT v FROM t LIMIT 1')->fetch_row()[0], "\n";
+$p = new PDO('mysql:host=panel-mariadb;dbname=wp', 'wp', 'wpgeheim');
+echo 'pdo=', $p->query('SELECT 40+2')->fetchColumn(), "\n";
+$im = imagecreatetruecolor(8, 8); ob_start(); imagewebp($im); imagepng($im); imagejpeg($im); $n = strlen(ob_get_clean());
+echo 'gd=', $n > 0 ? 'ok' : 'nee', "\n";
+echo 'intl=', (new NumberFormatter('nl_NL', NumberFormatter::DECIMAL))->format(1234.5), "\n";
+session_start(); $_SESSION['x'] = 1; session_write_close();
+echo 'session=', count(glob(session_save_path() . '/sess_*')) > 0 ? 'ok' : 'nee', "\n";
+`
+
+const phpUploadPage = `<?php
+header('Content-Type: text/plain');
+$f = $_FILES['f'] ?? null;
+echo 'size=', $f ? $f['size'] : -1, ' err=', $f ? $f['error'] : -1, ' moved=', ($f && move_uploaded_file($f['tmp_name'], __DIR__ . '/uploads/x.bin')) ? 'ja' : 'nee';
+`
+
+func phpCase(file, version string) webTemplateCase {
+	return webTemplateCase{
+		file: file,
+		db:   true,
+		files: map[string]string{
+			"public/info.php":      phpTestPage,
+			"public/upload.php":    phpUploadPage,
+			"public/uploads/x.php": "<?php echo 'mag niet';",
+		},
+		check: func(t *testing.T, e *caddyEnv, host string) {
+			e.get(t, "https://"+host+"/info.php", bodyContains("version="+version, "mysqli=ja", "pdo_mysql=ja", "gd=ja", "intl=ja",
+				"zip=ja", "exif=ja", "curl=ja", "mbstring=ja", "Zend OPcache=ja", "upload=64M post=64M", "https=on",
+				"db=mysqli-ok", "pdo=42", "gd=ok", "intl=1.234,5", "session=ok"))
+			// Permalinks gaan naar index.php.
+			e.get(t, "https://"+host+"/2026/11/hallo-wereld/", bodyContains("Het werkt", "PHP "+version))
+			e.get(t, "https://"+host+"/uploads/x.php", func(code int, _, _ string) bool { return code == 403 })
+			// Upload van 5 MB via Caddy (tijdelijke bestanden in de tmpfs).
+			var buf bytes.Buffer
+			mw := multipart.NewWriter(&buf)
+			fw, _ := mw.CreateFormFile("f", "x.bin")
+			_, _ = fw.Write(bytes.Repeat([]byte("a"), 5<<20))
+			_ = mw.Close()
+			resp, err := e.client.Post("https://"+host+"/upload.php", mw.FormDataContentType(), &buf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if want := fmt.Sprintf("size=%d err=0 moved=ja", 5<<20); string(b) != want {
+				t.Errorf("upload = %q, want %q", b, want)
+			}
+		},
 	}
 }
