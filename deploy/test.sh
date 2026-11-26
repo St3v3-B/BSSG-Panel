@@ -200,6 +200,9 @@ if (exec 4<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then pass "poort $PORT bere
 ! grep -qiE 'read-only file system|AccessDeniedException' "$WORK/paper.log" && pass "geen schrijffouten (read-only rootfs)" \
   || { grep -iE 'read-only file system|AccessDeniedException' "$WORK/paper.log" | head -5; fail "schrijffouten"; }
 
+# Ter info: waarschuwingen van de JVM/Paper (geen test).
+grep -E 'WARN|ERROR|Exception' "$WORK/paper.log" | grep -v 'Done (' | head -10 | sed 's/^/  info /' || true
+
 # Stop zoals de daemon: stop-commando op stdin, binnen 30 s weg.
 tpl get stop.value >&3; echo >&3
 t0=$(date +%s)
