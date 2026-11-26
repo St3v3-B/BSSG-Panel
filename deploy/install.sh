@@ -161,6 +161,8 @@ validate() {
       [[ "$v" =~ ^[A-Za-z0-9]{32,}$ ]] || { echo "minstens 32 tekens [A-Za-z0-9]"; return 1; } ;;
     NODE_PUBLIC_IP)
       [ -z "$v" ] || [[ "$v" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || { echo "geen IPv4-adres"; return 1; } ;;
+    MARIADB_ROOT_PASSWORD)
+      [[ "$v" =~ ^[A-Za-z0-9]{16,}$ ]] || { echo "minstens 16 tekens [A-Za-z0-9]"; return 1; } ;;
     SFTP_PORT|DAEMON_PORT)
       [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -ge 1 ] && [ "$v" -le 65535 ] || { echo "geen poortnummer"; return 1; } ;;
   esac
@@ -243,6 +245,17 @@ collect_values() {
     DATABASE_URL="postgres://panel:${VAL[POSTGRES_PASSWORD]}@postgres:5432/panel"
   fi
 
+  # MariaDB-rootwachtwoord (klantdatabases): zelfde regels als Postgres. MARIADB_ROOT_PASSWORD
+  # staat (nog) niet in panel.env.example; dan komt hij onder "overig" in panel.env.
+  if [ -z "${MARIADB_ROOT_PASSWORD:-}" ] && [ -z "${OLD[MARIADB_ROOT_PASSWORD]:-}" ] \
+     && docker volume inspect panel-mariadb-data >/dev/null 2>&1; then
+    warn "volume panel-mariadb-data bestaat al: het nieuwe MariaDB-wachtwoord geldt pas na een lege database"
+  fi
+  keep_or_generate MARIADB_ROOT_PASSWORD gen_pg_password
+  if ! grep -q '^MARIADB_ROOT_PASSWORD=' "$EXAMPLE" && [ -z "${OLD[MARIADB_ROOT_PASSWORD]+x}" ]; then
+    OLD_ORDER+=(MARIADB_ROOT_PASSWORD)
+  fi
+
   # De daemon bereikt het lokale panel rechtstreeks (127.0.0.1:3000 wordt door compose
   # gepubliceerd): geen afhankelijkheid van externe DNS of hairpin-NAT. Een gezette waarde blijft.
   if [ -z "${PANEL_URL:-}" ] && [ -z "${OLD[PANEL_URL]:-}" ]; then
@@ -290,7 +303,7 @@ write_env() {
     local extra=0
     for key in "${OLD_ORDER[@]}"; do
       [[ "$known" == *" $key "* ]] && continue
-      [ "$extra" = 1 ] || { printf '\n# --- overig (behouden uit het vorige bestand) ---\n'; extra=1; }
+      [ "$extra" = 1 ] || { printf '\n# --- overig (niet in panel.env.example) ---\n'; extra=1; }
       printf '%s=%s\n' "$key" "${VAL[$key]}"
     done
   } > "$tmp"
