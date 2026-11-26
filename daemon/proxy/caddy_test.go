@@ -217,7 +217,6 @@ func TestValidation(t *testing.T) {
 		{Host: "a.test", Upstream: Upstream{Container: "c", Port: 0}},
 		{Host: "a.test", RedirectTo: "a.test"},
 		{Host: "a.test", RedirectTo: "b.test/pad"},
-		{Host: "*.a.test", Upstream: Upstream{Container: "c", Port: 80}}, // Wildcard-vlag ontbreekt
 		{Host: "a.test", Wildcard: true, Upstream: Upstream{Container: "c", Port: 80}},
 		{Host: "a.test", Upstream: Upstream{Container: "c", Port: 80, Network: "n"}}, // geen CaddyContainer
 		{Host: "Panel.Test", Upstream: Upstream{Container: "c", Port: 80}},           // vaste route

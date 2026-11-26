@@ -144,9 +144,11 @@ func normRoute(r Route) (Route, error) {
 		return r, err
 	}
 	r.Host = h
-	if r.Wildcard != strings.HasPrefix(h, "*.") {
-		return r, fmt.Errorf("proxy: %s: Wildcard=%v past niet bij de hostnaam", h, r.Wildcard)
+	// Wildcard volgt uit de hostnaam ("*.example.nl"); Wildcard=true zonder "*." is fout.
+	if r.Wildcard && !strings.HasPrefix(h, "*.") {
+		return r, fmt.Errorf("proxy: %s: Wildcard=true maar de hostnaam begint niet met \"*.\"", h)
 	}
+	r.Wildcard = strings.HasPrefix(h, "*.")
 	if r.RedirectTo != "" {
 		t, err := normHost(r.RedirectTo)
 		if err != nil || strings.HasPrefix(t, "*.") {
