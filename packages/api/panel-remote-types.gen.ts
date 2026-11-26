@@ -268,7 +268,7 @@ export interface operations {
             content: {
                 "application/json": {
                     /** @enum {string} */
-                    state: "installing" | "install_failed" | "offline" | "starting" | "online" | "stopping" | "disk_exceeded";
+                    state: "installing" | "install_failed" | "offline" | "starting" | "online" | "stopping" | "disk_exceeded" | "sleeping";
                 };
             };
         };
