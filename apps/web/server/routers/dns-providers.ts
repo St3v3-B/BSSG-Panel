@@ -25,14 +25,14 @@ export const dnsProviders: Implementation["admin"]["dnsProviders"] = {
   create: async ({ input, ctx }) => {
     const zones = await zonesOrThrow(input.apiToken);
     const [p] = await getDb().insert(schema.dnsProviders).values({ type: input.type, name: input.name, apiTokenEnc: encrypt(input.apiToken), zones }).returning();
-    await logActivity({ action: "admin.dns_provider.create", userId: ctx.session!.userId, metadata: { id: p!.id, name: input.name, zones: zones.length }, ip: ctx.ip });
+    await logActivity({ action: "admin.dns_provider.create", userId: ctx.session!.userId, metadata: { id: p!.id, name: input.name, zones: zones.length }, ip: ctx.ip, ctx });
     return toProvider(p!);
   },
 
   delete: async ({ input, ctx }) => {
     const r = await getDb().delete(schema.dnsProviders).where(eq(schema.dnsProviders.id, input.id)).returning();
     if (!r.length) throw new TRPCError({ code: "NOT_FOUND", message: "DNS_PROVIDER_NOT_FOUND" });
-    await logActivity({ action: "admin.dns_provider.delete", userId: ctx.session!.userId, metadata: { id: input.id, name: r[0]!.name }, ip: ctx.ip });
+    await logActivity({ action: "admin.dns_provider.delete", userId: ctx.session!.userId, metadata: { id: input.id, name: r[0]!.name }, ip: ctx.ip, ctx });
     return { ok: true as const };
   },
 
@@ -41,7 +41,7 @@ export const dnsProviders: Implementation["admin"]["dnsProviders"] = {
     if (!p) throw new TRPCError({ code: "NOT_FOUND", message: "DNS_PROVIDER_NOT_FOUND" });
     const zones = await zonesOrThrow(decrypt(p.apiTokenEnc));
     const [u] = await getDb().update(schema.dnsProviders).set({ zones }).where(eq(schema.dnsProviders.id, p.id)).returning();
-    await logActivity({ action: "admin.dns_provider.refresh", userId: ctx.session!.userId, metadata: { id: p.id, zones: zones.length }, ip: ctx.ip });
+    await logActivity({ action: "admin.dns_provider.refresh", userId: ctx.session!.userId, metadata: { id: p.id, zones: zones.length }, ip: ctx.ip, ctx });
     return toProvider(u!);
   },
 };

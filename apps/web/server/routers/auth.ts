@@ -2,6 +2,7 @@ import type { Implementation, Me } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { logActivity } from "../activity";
+import { forbidApiKey } from "../apikey";
 import { secureFor } from "../context";
 import { getDb, schema } from "../db";
 import { loginUrl } from "../discord";
@@ -47,19 +48,20 @@ export const auth: Pick<Implementation["auth"], "me" | "branding" | "discordLogi
     const u = await userRow(s.userId);
     if (!u.totpEnabled) throw new TRPCError({ code: "BAD_REQUEST", message: "TOTP_NOT_ENABLED" });
     if (!checkCode(u.totpSecretEnc, input.code)) {
-      await logActivity({ action: "auth.totp.failed", userId: u.id, ip: ctx.ip });
+      await logActivity({ action: "auth.totp.failed", userId: u.id, ip: ctx.ip, ctx });
       throw invalidCode();
     }
     await getDb().update(schema.sessions).set({ totpVerified: true }).where(eq(schema.sessions.id, s.sessionId));
-    await logActivity({ action: "auth.totp.verified", userId: u.id, ip: ctx.ip });
+    await logActivity({ action: "auth.totp.verified", userId: u.id, ip: ctx.ip, ctx });
     return ok;
   },
 
   logout: async ({ ctx }) => {
+    forbidApiKey(ctx);
     const s = ctx.session!;
     await deleteSession(s.sessionId);
     ctx.resHeaders.append("set-cookie", clearSessionCookie(secureFor(ctx)));
-    await logActivity({ action: "auth.logout", userId: s.userId, ip: ctx.ip });
+    await logActivity({ action: "auth.logout", userId: s.userId, ip: ctx.ip, ctx });
     return ok;
   },
 };
@@ -68,6 +70,7 @@ export const account: Pick<Implementation["account"], "get" | "totpSetup" | "tot
   get: async ({ ctx }) => meFor(ctx.session!),
 
   totpSetup: async ({ ctx }: { ctx: Ctx }) => {
+    forbidApiKey(ctx);
     const u = await userRow(ctx.session!.userId);
     if (u.totpEnabled) throw new TRPCError({ code: "CONFLICT", message: "TOTP_ALREADY_ENABLED" });
     const secret = generateTotpSecret();
@@ -77,6 +80,7 @@ export const account: Pick<Implementation["account"], "get" | "totpSetup" | "tot
   },
 
   totpEnable: async ({ input, ctx }) => {
+    forbidApiKey(ctx);
     const s = ctx.session!;
     const u = await userRow(s.userId);
     if (u.totpEnabled) throw new TRPCError({ code: "CONFLICT", message: "TOTP_ALREADY_ENABLED" });
@@ -89,16 +93,17 @@ export const account: Pick<Implementation["account"], "get" | "totpSetup" | "tot
       await tx.update(schema.sessions).set({ totpVerified: false }).where(eq(schema.sessions.userId, u.id));
       await tx.update(schema.sessions).set({ totpVerified: true }).where(eq(schema.sessions.id, s.sessionId));
     });
-    await logActivity({ action: "account.totp.enable", userId: u.id, ip: ctx.ip });
+    await logActivity({ action: "account.totp.enable", userId: u.id, ip: ctx.ip, ctx });
     return { ok: true as const };
   },
 
   totpDisable: async ({ input, ctx }) => {
+    forbidApiKey(ctx);
     const u = await userRow(ctx.session!.userId);
     if (!u.totpEnabled) throw new TRPCError({ code: "BAD_REQUEST", message: "TOTP_NOT_ENABLED" });
     if (!checkCode(u.totpSecretEnc, input.code)) throw invalidCode();
     await getDb().update(schema.users).set({ totpEnabled: false, totpSecretEnc: null }).where(eq(schema.users.id, u.id));
-    await logActivity({ action: "account.totp.disable", userId: u.id, ip: ctx.ip });
+    await logActivity({ action: "account.totp.disable", userId: u.id, ip: ctx.ip, ctx });
     return { ok: true as const };
   },
 };

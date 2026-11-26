@@ -115,14 +115,14 @@ export const servers: Pick<
   power: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "power");
     await call(() => daemonFor(a.bundle.node).power(input.uuid, input.action));
-    await logActivity({ action: `server.power.${input.action}`, userId: ctx.session!.userId, serverId: a.bundle.server.id, ip: ctx.ip });
+    await logActivity({ action: `server.power.${input.action}`, userId: ctx.session!.userId, serverId: a.bundle.server.id, ip: ctx.ip, ctx });
     return ok;
   },
 
   sendCommand: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "console.write");
     await call(() => daemonFor(a.bundle.node).sendCommands(input.uuid, [input.command]));
-    await logActivity({ action: "server.console.command", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { command: input.command }, ip: ctx.ip });
+    await logActivity({ action: "server.console.command", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { command: input.command }, ip: ctx.ip, ctx });
     return ok;
   },
 
@@ -144,7 +144,7 @@ export const servers: Pick<
     const name = input.name.trim();
     if (!name) throw new TRPCError({ code: "BAD_REQUEST", message: "NAME_EMPTY" });
     await getDb().update(schema.servers).set({ name }).where(eq(schema.servers.id, a.bundle.server.id));
-    await logActivity({ action: "server.rename", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { from: a.bundle.server.name, to: name }, ip: ctx.ip });
+    await logActivity({ action: "server.rename", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { from: a.bundle.server.name, to: name }, ip: ctx.ip, ctx });
     return ok;
   },
 
@@ -163,7 +163,7 @@ export const servers: Pick<
         .values(entries.map(([key, value]) => ({ serverId: b.server.id, key, value })))
         .onConflictDoUpdate({ target: [schema.serverVariables.serverId, schema.serverVariables.key], set: { value: sql`excluded.value` } });
     }
-    await logActivity({ action: "server.variables.update", userId: ctx.session!.userId, serverId: b.server.id, metadata: { keys: entries.map(([k]) => k) }, ip: ctx.ip });
+    await logActivity({ action: "server.variables.update", userId: ctx.session!.userId, serverId: b.server.id, metadata: { keys: entries.map(([k]) => k) }, ip: ctx.ip, ctx });
     return ok;
   },
 
@@ -171,7 +171,7 @@ export const servers: Pick<
     const a = await requireServer(ctx, input.uuid, "owner");
     await call(() => daemonFor(a.bundle.node).reinstall(input.uuid));
     await getDb().update(schema.servers).set({ status: "installing" }).where(eq(schema.servers.id, a.bundle.server.id));
-    await logActivity({ action: "server.reinstall", userId: ctx.session!.userId, serverId: a.bundle.server.id, ip: ctx.ip });
+    await logActivity({ action: "server.reinstall", userId: ctx.session!.userId, serverId: a.bundle.server.id, ip: ctx.ip, ctx });
     return ok;
   },
 

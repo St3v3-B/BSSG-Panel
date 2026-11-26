@@ -3,6 +3,7 @@
  * alleen die database. Namen worden door ons gemaakt en gecontroleerd ([a-zA-Z0-9_]).
  */
 import { createConnection, type Connection } from "mariadb";
+import { getEnv } from "../env";
 import { decrypt } from "./crypto";
 
 export interface HostConn {
@@ -18,8 +19,19 @@ const ident = (s: string) => {
   return `\`${s}\``;
 };
 
+/**
+ * Adres waarmee het panel zelf verbindt. `host` is de naam die sites gebruiken; voor de lokale
+ * MariaDB (host = MARIADB_CONTAINER) is dat voor het panel MARIADB_ADMIN_ADDR.
+ */
+export function adminAddress(h: Pick<HostConn, "host" | "port">): { host: string; port: number } {
+  const env = getEnv();
+  if (h.host !== env.MARIADB_CONTAINER) return { host: h.host, port: h.port };
+  const m = /^(.*):(\d+)$/.exec(env.MARIADB_ADMIN_ADDR);
+  return m ? { host: m[1]!.replace(/^\[|\]$/g, ""), port: Number(m[2]) } : { host: env.MARIADB_ADMIN_ADDR, port: 3306 };
+}
+
 export async function withHost<T>(h: HostConn, fn: (c: Connection) => Promise<T>): Promise<T> {
-  const c = await createConnection({ host: h.host, port: h.port, user: h.adminUser, password: decrypt(h.adminPasswordEnc), connectTimeout: 5000 });
+  const c = await createConnection({ ...adminAddress(h), user: h.adminUser, password: decrypt(h.adminPasswordEnc), connectTimeout: 5000 });
   try {
     return await fn(c);
   } finally {

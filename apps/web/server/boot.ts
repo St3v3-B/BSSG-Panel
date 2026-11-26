@@ -47,7 +47,7 @@ export async function upsertLocalNode(): Promise<number> {
   });
 }
 
-/** Lokale MariaDB (compose: panel-mariadb) als database-host `local`, als die er nog niet is. */
+/** Lokale MariaDB als database-host `local` (host = MARIADB_CONTAINER, zoals sites hem zien), als die er nog niet is. */
 export async function ensureLocalDatabaseHost(nodeId: number): Promise<void> {
   const env = getEnv();
   if (!env.MARIADB_ROOT_PASSWORD) return;
@@ -56,7 +56,7 @@ export async function ensureLocalDatabaseHost(nodeId: number): Promise<void> {
     await tx.execute(sql`select pg_advisory_xact_lock(4242001)`);
     const [have] = await tx.select({ id: schema.databaseHosts.id }).from(schema.databaseHosts).where(eq(schema.databaseHosts.name, "local"));
     if (have) return;
-    await tx.insert(schema.databaseHosts).values({ name: "local", host: "panel-mariadb", port: 3306, adminUser: "root", adminPasswordEnc: encrypt(env.MARIADB_ROOT_PASSWORD!), nodeId });
+    await tx.insert(schema.databaseHosts).values({ name: "local", host: env.MARIADB_CONTAINER, port: 3306, adminUser: "root", adminPasswordEnc: encrypt(env.MARIADB_ROOT_PASSWORD!), nodeId });
   });
 }
 

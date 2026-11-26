@@ -23,7 +23,7 @@ type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 // ---------- nodes ----------
 
-function nodeOut(n: NodeRow): NodeOut {
+export function nodeOut(n: NodeRow): NodeOut {
   return {
     id: n.id,
     name: n.name,
@@ -78,7 +78,7 @@ export async function nodeHealth(n: NodeRow, serverCount: number): Promise<NodeH
   }
 }
 
-async function nodeById(id: number): Promise<NodeRow> {
+export async function nodeById(id: number): Promise<NodeRow> {
   const [n] = await getDb().select().from(schema.nodes).where(eq(schema.nodes.id, id));
   if (!n) throw notFound("NODE_NOT_FOUND");
   return n;
@@ -264,7 +264,7 @@ export const admin = {
         .values(ports.map((port) => ({ nodeId: input.nodeId, ip: input.ip, port })))
         .onConflictDoNothing()
         .returning({ id: schema.allocations.id });
-      await logActivity({ action: "admin.allocation.create", userId: uid(ctx), metadata: { nodeId: input.nodeId, ip: input.ip, ports: input.ports, created: rows.length }, ip: ctx.ip });
+      await logActivity({ action: "admin.allocation.create", userId: uid(ctx), metadata: { nodeId: input.nodeId, ip: input.ip, ports: input.ports, created: rows.length }, ip: ctx.ip, ctx });
       return { created: rows.length };
     },
     delete: async ({ input, ctx }) => {
@@ -272,7 +272,7 @@ export const admin = {
       if (!a) throw notFound("ALLOCATION_NOT_FOUND");
       if (a.serverId !== null) throw new TRPCError({ code: "CONFLICT", message: "ALLOCATION_IN_USE" });
       await getDb().delete(schema.allocations).where(and(eq(schema.allocations.id, input.id), isNull(schema.allocations.serverId)));
-      await logActivity({ action: "admin.allocation.delete", userId: uid(ctx), metadata: { nodeId: a.nodeId, ip: a.ip, port: a.port }, ip: ctx.ip });
+      await logActivity({ action: "admin.allocation.delete", userId: uid(ctx), metadata: { nodeId: a.nodeId, ip: a.ip, port: a.port }, ip: ctx.ip, ctx });
       return ok;
     },
   } satisfies A["allocations"],
@@ -366,7 +366,7 @@ export const admin = {
         .update(schema.servers)
         .set({ cpuPct: input.limits.cpuPct, ramMb: input.limits.ramMb, swapMb: input.limits.swapMb, diskMb: input.limits.diskMb })
         .where(eq(schema.servers.id, b.server.id));
-      await logActivity({ action: "admin.server.limits", userId: uid(ctx), serverId: b.server.id, metadata: { from: limitsOf(b.server), to: input.limits }, ip: ctx.ip });
+      await logActivity({ action: "admin.server.limits", userId: uid(ctx), serverId: b.server.id, metadata: { from: limitsOf(b.server), to: input.limits }, ip: ctx.ip, ctx });
       return ok;
     },
 
@@ -378,7 +378,7 @@ export const admin = {
         await tx.update(schema.servers).set({ ownerId: u.id }).where(eq(schema.servers.id, b.server.id));
         await tx.delete(schema.subusers).where(and(eq(schema.subusers.serverId, b.server.id), eq(schema.subusers.userId, u.id)));
       });
-      await logActivity({ action: "admin.server.owner", userId: uid(ctx), serverId: b.server.id, metadata: { from: b.server.ownerId, to: u.id }, ip: ctx.ip });
+      await logActivity({ action: "admin.server.owner", userId: uid(ctx), serverId: b.server.id, metadata: { from: b.server.ownerId, to: u.id }, ip: ctx.ip, ctx });
       return ok;
     },
 
@@ -401,7 +401,7 @@ export const admin = {
         // Binnen de transactie: faalt de daemon, dan blijft de database ongewijzigd.
         await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
       });
-      await logActivity({ action: "admin.server.allocations", userId: uid(ctx), serverId: b.server.id, metadata: { from: b.allocations.map((a) => a.id), to: input.allocationIds }, ip: ctx.ip });
+      await logActivity({ action: "admin.server.allocations", userId: uid(ctx), serverId: b.server.id, metadata: { from: b.allocations.map((a) => a.id), to: input.allocationIds }, ip: ctx.ip, ctx });
       return ok;
     },
 
@@ -414,7 +414,7 @@ export const admin = {
       }
       await removeServerRoutes(b.server.id, b.node);
       const dbFailed = await dropServerDatabases(b.server.id);
-      await logActivity({ action: "admin.server.delete", userId: uid(ctx), serverId: b.server.id, metadata: { serverUuid: b.server.uuid, serverName: b.server.name, ownerId: b.server.ownerId, ...(dbFailed.length ? { databasesNotDropped: dbFailed } : {}) }, ip: ctx.ip });
+      await logActivity({ action: "admin.server.delete", userId: uid(ctx), serverId: b.server.id, metadata: { serverUuid: b.server.uuid, serverName: b.server.name, ownerId: b.server.ownerId, ...(dbFailed.length ? { databasesNotDropped: dbFailed } : {}) }, ip: ctx.ip, ctx });
       await getDb().transaction(async (tx) => {
         await tx.update(schema.allocations).set({ serverId: null, isPrimary: false }).where(eq(schema.allocations.serverId, b.server.id));
         await tx.delete(schema.servers).where(eq(schema.servers.id, b.server.id));
@@ -450,7 +450,7 @@ export const admin = {
     create: async ({ input, ctx }) => {
       const [u] = await getDb().insert(schema.users).values({ discordId: input.discordId }).onConflictDoNothing().returning({ id: schema.users.id });
       if (!u) throw new TRPCError({ code: "CONFLICT", message: "USER_EXISTS" });
-      await logActivity({ action: "admin.user.create", userId: uid(ctx), metadata: { targetUserId: u.id, discordId: input.discordId }, ip: ctx.ip });
+      await logActivity({ action: "admin.user.create", userId: uid(ctx), metadata: { targetUserId: u.id, discordId: input.discordId }, ip: ctx.ip, ctx });
       return adminUser(u.id);
     },
     setBlocked: async ({ input, ctx }) => {
@@ -463,13 +463,13 @@ export const admin = {
         await tx.update(schema.users).set({ blocked: input.blocked }).where(eq(schema.users.id, input.id));
         if (input.blocked) await tx.delete(schema.sessions).where(eq(schema.sessions.userId, input.id));
       });
-      await logActivity({ action: input.blocked ? "admin.user.block" : "admin.user.unblock", userId: uid(ctx), metadata: { targetUserId: input.id }, ip: ctx.ip });
+      await logActivity({ action: input.blocked ? "admin.user.block" : "admin.user.unblock", userId: uid(ctx), metadata: { targetUserId: input.id }, ip: ctx.ip, ctx });
       return ok;
     },
     resetTotp: async ({ input, ctx }) => {
       await adminUser(input.id);
       await getDb().update(schema.users).set({ totpEnabled: false, totpSecretEnc: null }).where(eq(schema.users.id, input.id));
-      await logActivity({ action: "admin.user.reset_totp", userId: uid(ctx), metadata: { targetUserId: input.id }, ip: ctx.ip });
+      await logActivity({ action: "admin.user.reset_totp", userId: uid(ctx), metadata: { targetUserId: input.id }, ip: ctx.ip, ctx });
       return ok;
     },
   } satisfies Partial<A["users"]>,
@@ -495,14 +495,14 @@ export const admin = {
     },
     add: async ({ input, ctx }) => {
       const r = await getDb().insert(schema.adminDiscordIds).values({ discordId: input.discordId, addedBy: uid(ctx) }).onConflictDoNothing().returning();
-      if (r.length) await logActivity({ action: "admin.admins.add", userId: uid(ctx), metadata: { discordId: input.discordId }, ip: ctx.ip });
+      if (r.length) await logActivity({ action: "admin.admins.add", userId: uid(ctx), metadata: { discordId: input.discordId }, ip: ctx.ip, ctx });
       return ok;
     },
     remove: async ({ input, ctx }) => {
       if (input.discordId === getEnv().OWNER_DISCORD_ID) throw new TRPCError({ code: "FORBIDDEN", message: "CANNOT_REMOVE_OWNER" });
       const r = await getDb().delete(schema.adminDiscordIds).where(eq(schema.adminDiscordIds.discordId, input.discordId)).returning();
       if (!r.length) throw notFound("ADMIN_NOT_FOUND");
-      await logActivity({ action: "admin.admins.remove", userId: uid(ctx), metadata: { discordId: input.discordId }, ip: ctx.ip });
+      await logActivity({ action: "admin.admins.remove", userId: uid(ctx), metadata: { discordId: input.discordId }, ip: ctx.ip, ctx });
       return ok;
     },
   } satisfies A["admins"],
