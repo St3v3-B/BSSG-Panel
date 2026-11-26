@@ -36,6 +36,24 @@ type Panel struct {
 	KeyFetchs int
 	// FailNext laat zoveel verzoeken (behalve jwt-key) met 500 falen.
 	FailNext int
+	sftp     map[string]SFTPUser
+}
+
+// SFTPUser is een login die /api/remote/sftp/auth accepteert.
+type SFTPUser struct {
+	Password    string
+	Server      string
+	Permissions []string
+}
+
+// AddSFTPUser registreert een SFTP-login.
+func (p *Panel) AddSFTPUser(username string, u SFTPUser) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.sftp == nil {
+		p.sftp = map[string]SFTPUser{}
+	}
+	p.sftp[username] = u
 }
 
 // New start een nep-panel.
@@ -71,6 +89,22 @@ func (p *Panel) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	var body map[string]any
 	_ = json.NewDecoder(r.Body).Decode(&body)
+	if r.URL.Path == "/api/remote/sftp/auth" {
+		p.mu.Lock()
+		name, _ := body["username"].(string)
+		pw, _ := body["password"].(string)
+		u, ok := p.sftp[name]
+		p.calls = append(p.calls, Call{Path: r.URL.Path, Body: body})
+		p.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if !ok || u.Password != pw {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":"forbidden"}`))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"server_uuid": u.Server, "user_id": "7", "permissions": u.Permissions})
+		return
+	}
 	p.mu.Lock()
 	if p.FailNext > 0 {
 		p.FailNext--

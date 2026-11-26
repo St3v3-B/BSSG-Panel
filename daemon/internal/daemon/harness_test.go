@@ -47,6 +47,11 @@ func testLogger(t *testing.T) *slog.Logger {
 // newHarness start een daemon tegen eng met een nep-panel. dataDir mag leeg zijn.
 func newHarness(t *testing.T, eng engine.Engine, router proxy.Router, p *testpanel.Panel, dataDir string, extra map[string]string, instance string) *harness {
 	t.Helper()
+	return newHarnessWith(t, eng, router, p, dataDir, extra, instance, nil)
+}
+
+func newHarnessWith(t *testing.T, eng engine.Engine, router proxy.Router, p *testpanel.Panel, dataDir string, extra map[string]string, instance string, mutate func(*Deps)) *harness {
+	t.Helper()
 	if p == nil {
 		p = testpanel.New(nodeToken, "node1.test")
 		t.Cleanup(p.Close)
@@ -72,6 +77,10 @@ func newHarness(t *testing.T, eng engine.Engine, router proxy.Router, p *testpan
 		Engine: eng, Router: router, Log: log, Version: "test", Panel: pc,
 		Server:        server.Config{StopTimeout: 3 * time.Second, DiskInterval: 200 * time.Millisecond, StatsInterval: 100 * time.Millisecond},
 		WSAuthTimeout: 500 * time.Millisecond,
+		SFTPAddr:      "127.0.0.1:0", SFTPFailDelay: 10 * time.Millisecond,
+	}
+	if mutate != nil {
+		mutate(&deps)
 	}
 	h := &harness{t: t, eng: eng, router: router, panel: p, cfg: cfg, deps: deps}
 	h.start()

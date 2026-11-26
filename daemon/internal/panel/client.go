@@ -214,3 +214,21 @@ func (c *Client) async(what string, fn func(context.Context) error) {
 
 // Wait wacht tot alle lopende verzoeken klaar zijn (voor tests).
 func (c *Client) Wait() { c.wg.Wait() }
+
+// SFTPAuth is het antwoord van POST /api/remote/sftp/auth.
+type SFTPAuth struct {
+	ServerUUID  string   `json:"server_uuid"`
+	UserID      string   `json:"user_id"`
+	Permissions []string `json:"permissions"`
+}
+
+// SFTPAuth controleert een SFTP-login bij het panel (synchroon, geen retry).
+// Bij een weigering is de fout een *StatusError (403/429).
+func (c *Client) SFTPAuth(ctx context.Context, username, password, ip string) (*SFTPAuth, error) {
+	var out SFTPAuth
+	err := c.do(ctx, http.MethodPost, "/api/remote/sftp/auth", map[string]string{"username": username, "password": password, "ip": ip}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

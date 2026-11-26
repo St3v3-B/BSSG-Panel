@@ -25,6 +25,7 @@ import (
 	"panel/daemon/internal/engine"
 	"panel/daemon/internal/panel"
 	"panel/daemon/internal/server"
+	"panel/daemon/internal/sftpd"
 	"panel/daemon/proxy"
 )
 
@@ -42,6 +43,14 @@ type Deps struct {
 	WSAuthTimeout time.Duration
 	// SyncInterval voor Router.Sync (standaard 5 min) en HealthInterval (15 s).
 	SyncInterval, HealthInterval time.Duration
+	// SFTPAddr vervangt ":$SFTP_PORT" (tests: 127.0.0.1:0). Leeg en SFTP_PORT 0 = geen SFTP.
+	SFTPAddr string
+	// FreeInterval: hoe vaak de vrije schijfruimte gecontroleerd wordt (standaard 15 s).
+	FreeInterval time.Duration
+	// Statfs vervangt server.FreeSpace (tests).
+	Statfs func(string) (int64, int64, error)
+	// SFTPFailDelay na een mislukte SFTP-login (standaard 1 s).
+	SFTPFailDelay time.Duration
 }
 
 // Daemon is een draaiende daemon.
@@ -53,6 +62,7 @@ type Daemon struct {
 	mgr    *server.Manager
 	routes *api.Routes
 	api    *api.API
+	sftp   *sftpd.Server
 
 	healthy   atomic.Int32 // 0 onbekend, 1 gezond, 2 ongezond
 	needSync  atomic.Bool
@@ -63,7 +73,7 @@ type Daemon struct {
 	closeOnce sync.Once
 }
 
-// DiskQuotaMode: XFS-detectie komt in fase 2.
+// DiskQuotaMode: harde XFS-quota zijn nog niet geïmplementeerd (alleen gedetecteerd en gelogd).
 const DiskQuotaMode = "soft"
 
 // New bouwt de daemon; Start zet hem aan.
@@ -97,6 +107,24 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	return d, nil
 }
 
+func (d *Daemon) sftpAddr() string {
+	if d.deps.SFTPAddr != "" {
+		return d.deps.SFTPAddr
+	}
+	if d.cfg.SFTPPort == 0 {
+		return ""
+	}
+	return ":" + strconv.Itoa(d.cfg.SFTPPort)
+}
+
+// SFTPAddr is het adres van de SFTP-server ("" als die uit staat).
+func (d *Daemon) SFTPAddr() string {
+	if d.sftp == nil {
+		return ""
+	}
+	return d.sftp.Addr()
+}
+
 // Manager geeft de servermanager (voor tests).
 func (d *Daemon) Manager() *server.Manager { return d.mgr }
 
@@ -116,6 +144,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 	if err := d.mgr.Recover(ctx); err != nil {
 		return fmt.Errorf("staat herstellen: %w", err)
 	}
+	d.mgr.ReconcileNetworks(ctx)
 	if err := d.routes.Sync(ctx); err != nil {
 		d.log.Warn("routes synchroniseren mislukt", "err", err)
 		d.needSync.Store(true)
@@ -136,6 +165,27 @@ func (d *Daemon) Start(ctx context.Context) error {
 	d.tcpAddr = ln.Addr().String()
 	d.serve(ln, h)
 	d.log.Info("daemon luistert", "tcp", d.tcpAddr, "socket", d.cfg.DaemonSocket, "version", d.deps.Version, "servers", d.mgr.Count())
+
+	if addr := d.sftpAddr(); addr != "" {
+		key, err := sftpd.LoadHostKey(filepath.Join(d.cfg.DataDir, "state", "sftp_host_ed25519_key"))
+		if err != nil {
+			return fmt.Errorf("sftp-hostsleutel: %w", err)
+		}
+		d.sftp = &sftpd.Server{Auth: d.panel, Servers: d.mgr, Log: d.log, FailDelay: d.deps.SFTPFailDelay}
+		if err := d.sftp.Start(addr, key); err != nil {
+			return fmt.Errorf("sftp: %w", err)
+		}
+		d.log.Info("sftp luistert", "addr", d.sftp.Addr())
+	}
+
+	if server.DetectXFSPrjquota(filepath.Join(d.cfg.DataDir, "volumes")) {
+		d.log.Warn("XFS met prjquota gedetecteerd; harde quota zijn nog niet geïmplementeerd, de daemon gebruikt de softe limiet")
+	}
+	fi := d.deps.FreeInterval
+	if fi == 0 {
+		fi = 15 * time.Second
+	}
+	go d.mgr.FreeWatch(fi, d.deps.Statfs)
 
 	d.panel.Hello(d.deps.Version, DiskQuotaMode)
 	d.wg.Add(1)
@@ -199,6 +249,9 @@ func (d *Daemon) routerLoop() {
 		case <-d.stop:
 			return
 		case <-syncT.C:
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			d.mgr.ReconcileNetworks(ctx)
+			cancel()
 			doSync("periodiek")
 		case <-healthT.C:
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -224,6 +277,9 @@ func (d *Daemon) Shutdown(ctx context.Context) {
 	d.closeOnce.Do(func() {
 		close(d.stop)
 		d.api.CloseAll()
+		if d.sftp != nil {
+			d.sftp.Close()
+		}
 		for _, s := range d.httpSrv {
 			_ = s.Shutdown(ctx)
 		}

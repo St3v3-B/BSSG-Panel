@@ -95,6 +95,9 @@ func (r *Routes) toProxy(rt Route) (proxy.Route, bool) {
 		return pr, false
 	}
 	pr.Upstream = proxy.Upstream{Container: server.ContainerName(rt.ServerUUID), Port: port}
+	if s, ok := r.mgr.Get(rt.ServerUUID); ok && s.IsWeb() {
+		pr.Upstream.Network = server.SiteNetwork(rt.ServerUUID)
+	}
 	return pr, true
 }
 

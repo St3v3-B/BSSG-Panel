@@ -112,6 +112,10 @@ type Server struct {
 	sample        engine.StatsSample
 	lastStatsPub  time.Time
 	diskBytes     int64
+	diskExceeded  bool
+	diskWarned    bool
+	diskStopping  bool
+	diskGrowth    int64 // recente groei (afnemend gemiddelde)
 	deleted       bool
 }
 
@@ -132,7 +136,7 @@ func (s *Server) View() View {
 }
 
 func (s *Server) viewLocked() View {
-	return View{UUID: s.uuid, State: s.state, DiskBytes: s.diskBytes, StartedAt: s.startedAt, InstalledAt: s.installedAt}
+	return View{UUID: s.uuid, State: s.state, DiskBytes: s.diskBytes, DiskExceeded: s.diskExceeded, StartedAt: s.startedAt, InstalledAt: s.installedAt}
 }
 
 // State geeft alleen de toestand.

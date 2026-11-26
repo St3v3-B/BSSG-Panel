@@ -143,6 +143,17 @@ func (s *ServerSpec) Validate() error {
 			add("allocations[%d].port ongeldig", i)
 		}
 	}
+	seen := map[string]bool{}
+	for i, a := range s.Allocations {
+		k := a.IP + ":" + strconv.Itoa(a.Port)
+		if seen[k] {
+			add("allocations[%d]: %s dubbel", i, k)
+		}
+		seen[k] = true
+	}
+	if s.Type == "web" && len(s.Allocations) > 0 {
+		add("web heeft geen allocations")
+	}
 	if s.HTTPPort != nil && (*s.HTTPPort < 1 || *s.HTTPPort > 65535) {
 		add("http_port ongeldig")
 	}
