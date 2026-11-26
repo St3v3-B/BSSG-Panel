@@ -33,6 +33,13 @@ function sftp(username: string, password: string) {
   });
 }
 
+/** Controleert de tRPC-foutcode (niet de message). */
+const rejectsWith = async (p: Promise<unknown>, code: string) => {
+  const e = await p.then(() => null, (err: unknown) => err as { data?: { code?: string } });
+  expect(e, `verwacht ${code}`).not.toBeNull();
+  expect(e!.data?.code).toBe(code);
+};
+
 const status = async () => (await player.api.servers.get.query({ uuid })).status;
 
 beforeAll(async () => {
@@ -78,9 +85,9 @@ describe("fase 2: bestanden, rechten en limieten", () => {
   it("subuser met alleen files.read kan lezen maar niet opslaan", async () => {
     await player.api.subusers.invite.mutate({ uuid, who: SUB, permissions: ["files.read"] });
     expect((await sub.api.files.read.query({ uuid, path: "/readme.txt" })).content.trim()).toBe("hallo");
-    await expect(sub.api.files.write.mutate({ uuid, path: "/readme.txt", content: "hack" })).rejects.toThrow(/FORBIDDEN/);
-    await expect(sub.api.files.uploadUrl.mutate({ uuid, directory: "/" })).rejects.toThrow(/FORBIDDEN/);
-    await expect(sub.api.servers.power.mutate({ uuid, action: "stop" })).rejects.toThrow(/FORBIDDEN/);
+    await rejectsWith(sub.api.files.write.mutate({ uuid, path: "/readme.txt", content: "hack" }), "FORBIDDEN");
+    await rejectsWith(sub.api.files.uploadUrl.mutate({ uuid, directory: "/" }), "FORBIDDEN");
+    await rejectsWith(sub.api.servers.power.mutate({ uuid, action: "stop" }), "FORBIDDEN");
     expect((await player.api.files.read.query({ uuid, path: "/readme.txt" })).content.trim()).toBe("hallo");
 
     // Direct naar de daemon zonder geldig token: geweigerd.
