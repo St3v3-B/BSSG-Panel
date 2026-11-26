@@ -1,0 +1,158 @@
+# Panel-stack: panel (Next.js), PostgreSQL, Redis en Caddy. De daemon draait niet hier maar
+# als systemd-unit op de host (deploy/systemd/panel-daemon.service).
+#
+# Altijd starten met het env-bestand als --env-file (voor ${...} hieronder):
+#   docker compose --env-file /etc/panel/panel.env -f deploy/docker-compose.yml up -d --build
+# PANEL_ENV_FILE (alleen voor compose, niet in panel.env) wijst het env_file van het panel
+# ergens anders heen; tests gebruiken dat, standaard /etc/panel/panel.env.
+#
+# Alles krijgt panel.managed=true + panel.instance=main, plus panel.role=infra zodat de
+# daemon deze objecten kan onderscheiden van game-servers en site-netwerken.
+
+name: panel
+
+x-labels: &labels
+  panel.managed: "true"
+  panel.instance: "main"
+  panel.role: "infra"
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  panel:
+    build:
+      context: ..
+      dockerfile: deploy/panel.Dockerfile
+      labels: *labels
+    image: panel/web:local
+    container_name: panel-web
+    restart: unless-stopped
+    labels: *labels
+    env_file:
+      - ${PANEL_ENV_FILE:-/etc/panel/panel.env}
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+    # Het panel bereikt de lokale daemon via DAEMON_URL (standaard https://$NODE_DOMAIN):
+    # die naam wijst hier naar de host, waar Caddy op :443 luistert.
+    extra_hosts:
+      - "${NODE_DOMAIN:?NODE_DOMAIN ontbreekt in het env-bestand}:host-gateway"
+    ports:
+      - "127.0.0.1:3000:3000"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/apps/web/.next/cache:uid=1000,gid=1000
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [frontend, backend]
+    logging: *logging
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: panel-postgres
+    restart: unless-stopped
+    labels: *labels
+    environment:
+      POSTGRES_USER: panel
+      POSTGRES_DB: panel
+      # Geldt alleen bij de eerste start (lege volume); DATABASE_URL moet hetzelfde wachtwoord hebben.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-panel}
+      TZ: Europe/Amsterdam
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U panel -d panel"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [backend]
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    container_name: panel-redis
+    restart: unless-stopped
+    labels: *labels
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [backend]
+    logging: *logging
+
+  # Basisconfig van web-hosting (deploy/caddy/, zie de README daar). Aannames:
+  # - deploy/caddy/Caddyfile met {$PANEL_DOMAIN}, {$NODE_DOMAIN}, {$ACME_EMAIL};
+  # - admin-API op 0.0.0.0:2019 in de container (hier alleen op 127.0.0.1 gepubliceerd);
+  # - panel bereikbaar als panel:3000, daemon als unix//run/panel/daemon.sock;
+  # - containernaam = CADDY_CONTAINER (standaard panel-caddy), want de daemon koppelt deze
+  #   container aan site-netwerken.
+  caddy:
+    image: caddy:2
+    container_name: panel-caddy
+    restart: unless-stopped
+    labels: *labels
+    environment:
+      PANEL_DOMAIN: ${PANEL_DOMAIN:?PANEL_DOMAIN ontbreekt in het env-bestand}
+      NODE_DOMAIN: ${NODE_DOMAIN:?NODE_DOMAIN ontbreekt in het env-bestand}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL ontbreekt in het env-bestand}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+      - "127.0.0.1:2019:2019"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      # Socket van de daemon. De unit houdt /run/panel vast (RuntimeDirectoryPreserve=yes),
+      # zodat deze bind mount na een herstart van de daemon niet naar een oude map wijst.
+      - type: bind
+        source: /run/panel
+        target: /run/panel
+        bind:
+          create_host_path: true
+    depends_on:
+      - panel
+    networks: [frontend]
+    logging: *logging
+
+networks:
+  # Caddy + panel; het panel heeft hier ook uitgaand internet (Discord).
+  frontend:
+    name: panel-frontend
+    labels: *labels
+  # Panel + PostgreSQL + Redis, zonder internet en zonder gepubliceerde poorten.
+  backend:
+    name: panel-backend
+    internal: true
+    labels: *labels
+
+volumes:
+  postgres_data:
+    name: panel-postgres-data
+    labels: *labels
+  redis_data:
+    name: panel-redis-data
+    labels: *labels
+  caddy_data:
+    name: panel-caddy-data
+    labels: *labels
+  caddy_config:
+    name: panel-caddy-config
+    labels: *labels

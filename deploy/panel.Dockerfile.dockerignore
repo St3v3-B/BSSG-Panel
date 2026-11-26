@@ -1,0 +1,15 @@
+# Context van deploy/panel.Dockerfile (BuildKit leest <Dockerfile>.dockerignore).
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/*.tsbuildinfo
+**/*.log
+.git
+.env
+.env.*
+daemon
+docs
+tests/integration/.work
+deploy/caddy
+deploy/systemd
