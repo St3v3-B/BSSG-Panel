@@ -59,10 +59,11 @@ export function RenameCard({ server }: { server: ServerDetail }) {
 }
 
 /** Variabelen die de gebruiker mag aanpassen (servers.updateVariables); effect bij de volgende start. */
-export function VariablesCard({ server }: { server: ServerDetail }) {
+export function VariablesCard({ server, all = false }: { server: ServerDetail; all?: boolean }) {
   const utils = trpc.useUtils();
   const t = useT();
-  const editable = server.variables.filter((v) => v.userEditable);
+  // admins (all) zien ook de variabelen die gebruikers niet mogen aanpassen
+  const editable = server.variables.filter((v) => all || v.userEditable);
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(editable.map((v) => [v.key, v.value])));
   const update = trpc.servers.updateVariables.useMutation({ onSuccess: () => utils.servers.get.invalidate({ uuid: server.uuid }) });
   if (editable.length === 0) return null;
@@ -73,7 +74,7 @@ export function VariablesCard({ server }: { server: ServerDetail }) {
     <Card data-testid="variables-card">
       <CardHeader>
         <CardTitle className="text-base">{t.settings.varsTitle}</CardTitle>
-        <CardDescription>{t.settings.varsText}</CardDescription>
+        <CardDescription>{all ? t.adminServer.varsAllText : t.settings.varsText}</CardDescription>
       </CardHeader>
       <CardContent>
         <form
@@ -86,7 +87,10 @@ export function VariablesCard({ server }: { server: ServerDetail }) {
           <div className="grid gap-4 sm:grid-cols-2">
             {editable.map((v) => (
               <div key={v.key} className="space-y-1.5">
-                <Label htmlFor={`var-${v.key}`}>{v.name}</Label>
+                <Label htmlFor={`var-${v.key}`}>
+                  {v.name}
+                  {all && !v.userEditable && <span className="ml-2 text-xs font-normal text-muted-foreground">({t.adminServer.locked})</span>}
+                </Label>
                 <Input
                   id={`var-${v.key}`}
                   value={values[v.key] ?? ""}
