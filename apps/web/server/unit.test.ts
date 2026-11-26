@@ -125,3 +125,21 @@ describe("kleine hulpjes", () => {
     expect(sftpUsername(null, "123456789012345678", "abcdef12-0000")).toBe("123456789012345678.abcdef12");
   });
 });
+
+describe("echte templates uit de repo", () => {
+  it("paper.yaml parseert en wordt een geldige ServerSpec", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { parseTemplate } = await import("@panel/api");
+    const { templateRow } = await import("./templates");
+    const yaml = readFileSync(new URL("../../../templates/game/paper.yaml", import.meta.url), "utf8");
+    const r = parseTemplate(yaml);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const row = { ...templateRow(r.spec, yaml), id: 1, createdAt: new Date(), updatedAt: new Date() };
+    const spec = buildServerSpec({ uuid: "u", template: row, variables: {}, limits: { cpuPct: 200, ramMb: 1536, swapMb: 0, diskMb: 4096 }, allocations: [{ ip: "127.0.0.1", port: 25565, isPrimary: true }], startOnInstall: true });
+    expect(spec.type).toBe("game");
+    expect(spec.limits.memory_mb).toBe(1536);
+    expect(spec.allocations).toEqual([{ ip: "127.0.0.1", port: 25565, primary: true }]);
+    expect(Object.keys(spec.environment)).toEqual(r.spec.variables.map((v) => v.key));
+  });
+});
