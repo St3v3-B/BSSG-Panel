@@ -35,16 +35,24 @@ class MemoryLimiter implements Limiter {
 }
 
 class RedisLimiter implements Limiter {
-  constructor(private r: Redis, private fallback: Limiter) {}
+  private lastConnect = Date.now();
+  private everReady = false;
+  constructor(private r: Redis, private fallback: Limiter) {
+    r.on("ready", () => (this.everReady = true));
+  }
   private async safe<T>(fn: () => Promise<T>, fb: () => Promise<T>): Promise<T> {
-    if (this.r.status === "connecting" || this.r.status === "connect") {
+    // Alleen bij de allereerste verbinding even wachten; daarna nooit een login ophouden.
+    if (!this.everReady && Date.now() - this.lastConnect < 1500 && (this.r.status === "connecting" || this.r.status === "connect")) {
       await new Promise<void>((res) => {
         const t = setTimeout(res, 500);
         this.r.once("ready", () => (clearTimeout(t), res()));
       });
     }
     if (this.r.status !== "ready") {
-      if (this.r.status === "end" || this.r.status === "wait") this.r.connect().catch(() => {});
+      if ((this.r.status === "end" || this.r.status === "wait") && Date.now() - this.lastConnect > 5000) {
+        this.lastConnect = Date.now();
+        this.r.connect().catch(() => {});
+      }
       return fb();
     }
     try {
