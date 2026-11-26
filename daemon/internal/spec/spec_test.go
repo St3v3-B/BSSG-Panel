@@ -38,7 +38,7 @@ func TestValidate(t *testing.T) {
 		func(s *ServerSpec) { s.Install.Script = "" },
 		func(s *ServerSpec) { s.Environment["1BAD"] = "x" },
 		func(s *ServerSpec) { s.ConfigFiles = []ConfigFile{{Path: "/", Format: "yaml"}} },
-		func(s *ServerSpec) { s.ConfigFiles = []ConfigFile{{Path: "a.toml", Format: "toml"}} },
+		func(s *ServerSpec) { s.ConfigFiles = []ConfigFile{{Path: "a.toml", Format: "ini"}} },
 	}
 	for i, f := range bad {
 		s := validSpec()

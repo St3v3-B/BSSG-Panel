@@ -17,6 +17,7 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 
+	"panel/daemon/internal/config"
 	"panel/daemon/internal/engine"
 	"panel/daemon/internal/server"
 	"panel/daemon/internal/testpanel"
@@ -65,7 +66,7 @@ func TestRealDockerSiteAndDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h := newHarnessWith(t, eng, nil, nil, "", map[string]string{"panel.test": "true"}, instance, func(d *Deps) { d.Server.MariaDB = dbName })
+	h := newHarnessWith(t, eng, nil, nil, "", map[string]string{"panel.test": "true"}, instance, func(c *config.Config, _ *Deps) { c.MariaDBContainer = dbName })
 	site := randUUID()
 	sp := map[string]any{
 		"uuid": site, "type": "web", "image": "alpine:3.20", "http_port": 8080,

@@ -24,6 +24,8 @@ type Config struct {
 	CaddyTLSAddr   string
 	Instance       string
 	ExtraLabels    map[string]string
+	// MariaDBContainer wordt aan site-netwerken gekoppeld (MARIADB_CONTAINER).
+	MariaDBContainer string
 }
 
 // Load leest de configuratie met getenv (os.Getenv in productie).
@@ -35,16 +37,17 @@ func Load(getenv func(string) string) (Config, error) {
 		return def
 	}
 	c := Config{
-		NodeToken:      get("NODE_TOKEN", ""),
-		NodeDomain:     strings.ToLower(get("NODE_DOMAIN", "")),
-		PanelDomain:    strings.ToLower(get("PANEL_DOMAIN", "")),
-		PanelURL:       strings.TrimRight(get("PANEL_URL", ""), "/"),
-		DaemonSocket:   get("DAEMON_SOCKET", "/run/panel/daemon.sock"),
-		DataDir:        get("DATA_DIR", "/var/lib/panel"),
-		CaddyAdminURL:  get("CADDY_ADMIN_URL", ""),
-		CaddyContainer: get("CADDY_CONTAINER", "panel-caddy"),
-		CaddyTLSAddr:   get("CADDY_TLS_ADDR", "127.0.0.1:443"),
-		Instance:       get("PANEL_INSTANCE", "main"),
+		NodeToken:        get("NODE_TOKEN", ""),
+		NodeDomain:       strings.ToLower(get("NODE_DOMAIN", "")),
+		PanelDomain:      strings.ToLower(get("PANEL_DOMAIN", "")),
+		PanelURL:         strings.TrimRight(get("PANEL_URL", ""), "/"),
+		DaemonSocket:     get("DAEMON_SOCKET", "/run/panel/daemon.sock"),
+		DataDir:          get("DATA_DIR", "/var/lib/panel"),
+		CaddyAdminURL:    get("CADDY_ADMIN_URL", ""),
+		CaddyContainer:   get("CADDY_CONTAINER", "panel-caddy"),
+		CaddyTLSAddr:     get("CADDY_TLS_ADDR", "127.0.0.1:443"),
+		Instance:         get("PANEL_INSTANCE", "main"),
+		MariaDBContainer: get("MARIADB_CONTAINER", "panel-mariadb"),
 	}
 	var errs []error
 	if c.NodeToken == "" {

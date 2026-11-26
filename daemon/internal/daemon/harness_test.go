@@ -50,7 +50,7 @@ func newHarness(t *testing.T, eng engine.Engine, router proxy.Router, p *testpan
 	return newHarnessWith(t, eng, router, p, dataDir, extra, instance, nil)
 }
 
-func newHarnessWith(t *testing.T, eng engine.Engine, router proxy.Router, p *testpanel.Panel, dataDir string, extra map[string]string, instance string, mutate func(*Deps)) *harness {
+func newHarnessWith(t *testing.T, eng engine.Engine, router proxy.Router, p *testpanel.Panel, dataDir string, extra map[string]string, instance string, mutate func(*config.Config, *Deps)) *harness {
 	t.Helper()
 	if p == nil {
 		p = testpanel.New(nodeToken, "node1.test")
@@ -80,7 +80,7 @@ func newHarnessWith(t *testing.T, eng engine.Engine, router proxy.Router, p *tes
 		SFTPAddr:      "127.0.0.1:0", SFTPFailDelay: 10 * time.Millisecond,
 	}
 	if mutate != nil {
-		mutate(&deps)
+		mutate(&cfg, &deps)
 	}
 	h := &harness{t: t, eng: eng, router: router, panel: p, cfg: cfg, deps: deps}
 	h.start()
