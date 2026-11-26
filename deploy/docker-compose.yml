@@ -96,12 +96,17 @@ services:
     networks: [backend]
     logging: *logging
 
-  # Basisconfig van web-hosting (deploy/caddy/, zie de README daar). Aannames:
-  # - deploy/caddy/Caddyfile met {$PANEL_DOMAIN}, {$NODE_DOMAIN}, {$ACME_EMAIL};
-  # - admin-API op 0.0.0.0:2019 in de container (hier alleen op 127.0.0.1 gepubliceerd);
-  # - panel bereikbaar als panel:3000, daemon als unix//run/panel/daemon.sock;
+  # Basisconfig van web-hosting (deploy/caddy/, zie de README daar):
+  # - Caddyfile gebruikt {$PANEL_DOMAIN}, {$NODE_DOMAIN}, {$ACME_EMAIL} en importeert
+  #   /etc/caddy/global.d/*.caddy (in productie leeg; tests/staging zetten daar opties);
+  # - admin-API op de unix-socket /run/panel/caddy-admin.sock (CADDY_ADMIN_URL), niet via
+  #   TCP: site-containers op gedeelde netwerken kunnen er zo niet bij;
+  # - upstreams panel:3000 en unix//run/panel/daemon.sock;
+  # - standaardcommando van de image, zonder --resume (de daemon zet dynamische routes
+  #   na een herstart opnieuw);
   # - containernaam = CADDY_CONTAINER (standaard panel-caddy), want de daemon koppelt deze
   #   container aan site-netwerken.
+  # Alleen de drie domein/ACME-variabelen gaan mee, niet het hele panel.env (geheimen).
   caddy:
     image: caddy:2
     container_name: panel-caddy
@@ -115,12 +120,12 @@ services:
       - "80:80"
       - "443:443"
       - "443:443/udp"
-      - "127.0.0.1:2019:2019"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/global.d:/etc/caddy/global.d:ro
       - caddy_data:/data
       - caddy_config:/config
-      # Socket van de daemon. De unit houdt /run/panel vast (RuntimeDirectoryPreserve=yes),
+      # Map met daemon.sock en caddy-admin.sock (als map, niet de sockets zelf). De unit houdt /run/panel vast (RuntimeDirectoryPreserve=yes),
       # zodat deze bind mount na een herstart van de daemon niet naar een oude map wijst.
       - type: bind
         source: /run/panel

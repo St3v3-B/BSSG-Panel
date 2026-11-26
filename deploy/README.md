@@ -70,11 +70,11 @@ internet ─► caddy :80/:443 ─► panel:3000              (netwerk panel-fro
                           └─► unix//run/panel/daemon.sock (bind mount van de host)
 panel ─► DAEMON_URL = https://$NODE_DOMAIN ─► extra_hosts → host-gateway ─► caddy :443 ─► daemon
 panel ─► postgres:5432, redis:6379                     (netwerk panel-backend, internal)
-daemon (host) ─► Caddy admin 127.0.0.1:2019, Docker, PANEL_URL (standaard https://$PANEL_DOMAIN)
+daemon (host) ─► Caddy admin unix:///run/panel/caddy-admin.sock, Docker, PANEL_URL (install.sh: http://127.0.0.1:3000)
 ```
 
-- Gepubliceerd: Caddy `80`, `443` (tcp+udp), `127.0.0.1:2019`; panel `127.0.0.1:3000`.
-  Postgres en Redis niet.
+- Gepubliceerd: Caddy `80`, `443` (tcp+udp); panel `127.0.0.1:3000`. Niet: de Caddy-admin
+  (unix-socket in `/run/panel`), Postgres en Redis.
 - Alle containers, netwerken en volumes hebben `panel.managed=true`, `panel.instance=main` en
   `panel.role=infra`. Namen staan vast (`panel-web`, `panel-postgres`, `panel-redis`,
   `panel-caddy`, `panel-frontend`, `panel-backend`, `panel-*-data`), zodat `CADDY_CONTAINER`
@@ -85,18 +85,19 @@ daemon (host) ─► Caddy admin 127.0.0.1:2019, Docker, PANEL_URL (standaard ht
   daemon, dan maakt Docker de map aan; systemd neemt hem daarna over.
 - Herstart van de unit: `KillMode=process` stopt alleen de daemon; containers zijn van
   dockerd, en de daemon stopt ze nooit zelf bij afsluiten.
-- Lukt `https://$PANEL_DOMAIN` vanaf de host niet (DNS nog niet gezet, geen hairpin-NAT),
-  zet dan `PANEL_URL=http://127.0.0.1:3000` in `panel.env`.
+- `install.sh` zet `PANEL_URL=http://127.0.0.1:3000` (als hij nog niet gezet is), zodat de
+  daemon het panel zonder externe DNS of hairpin-NAT bereikt. `CADDY_ADMIN_URL` en
+  `CADDY_TLS_ADDR` krijgen de waarden uit het voorbeeld als ze ontbreken of leeg zijn.
 
 ## Aannames over `caddy/` (web-hosting)
 
-`caddy/Caddyfile` wordt gemount op `/etc/caddy/Caddyfile` en met het standaardcommando van de
-`caddy:2`-image gestart. De compose-file geeft hem `PANEL_DOMAIN`, `NODE_DOMAIN` en
-`ACME_EMAIL` als env (niet het hele panel.env), volumes op `/data` en `/config`, de admin-API
-op `0.0.0.0:2019` in de container, en verwacht `panel:3000` en
-`unix//run/panel/daemon.sock` als upstreams. Heeft de Caddyfile meer nodig (bv. een
-ACME-CA-override voor staging), dan voegt de orchestrator dat bij het mergen toe aan
-`services.caddy.environment`.
+`caddy/Caddyfile` op `/etc/caddy/Caddyfile` en `caddy/global.d/` op `/etc/caddy/global.d`
+(beide read-only; `global.d` is in productie leeg), standaardcommando van `caddy:2` zonder
+`--resume`, volumes op `/data` en `/config`, `/run/panel` als map (daemon-socket én
+admin-socket `caddy-admin.sock`). Caddy krijgt alleen `PANEL_DOMAIN`, `NODE_DOMAIN` en
+`ACME_EMAIL` als env (niet het hele panel.env, dus geen geheimen). Upstreams: `panel:3000` en
+`unix//run/panel/daemon.sock`. `deploy/test.sh` draait `caddy validate` met precies deze env en
+mounts.
 
 ## Testen
 

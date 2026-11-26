@@ -70,10 +70,19 @@ check_cfg "labels panel.managed/instance op alle services, netwerken en volumes"
 check_cfg "panel publiceert alleen 127.0.0.1:3000" \
   "c.services.panel.ports.length===1&&c.services.panel.ports[0].host_ip==='127.0.0.1'&&c.services.panel.ports[0].published==='3000'"
 check_cfg "postgres en redis publiceren niets" "!c.services.postgres.ports&&!c.services.redis.ports"
-check_cfg "caddy publiceert 80, 443 en 127.0.0.1:2019" \
-  "(p=>p.some(x=>x.published==='80'&&!x.host_ip)&&p.some(x=>x.published==='443'&&!x.host_ip)&&p.some(x=>x.published==='2019'&&x.host_ip==='127.0.0.1')&&!p.some(x=>x.published==='2019'&&!x.host_ip))(c.services.caddy.ports)"
-check_cfg "caddy mount /run/panel en de Caddyfile" \
-  "c.services.caddy.volumes.some(v=>v.target==='/run/panel'&&v.source==='/run/panel')&&c.services.caddy.volumes.some(v=>v.target==='/etc/caddy/Caddyfile'&&v.source.endsWith('/deploy/caddy/Caddyfile'))"
+check_cfg "caddy publiceert 80 en 443, admin-API (2019) niet" \
+  "(p=>p.some(x=>x.published==='80'&&!x.host_ip)&&p.some(x=>x.published==='443'&&!x.host_ip)&&!p.some(x=>x.target===2019||x.published==='2019'))(c.services.caddy.ports)"
+check_cfg "caddy mount /run/panel, Caddyfile, global.d, /data en /config" \
+  "(v=>v.some(x=>x.target==='/run/panel'&&x.source==='/run/panel')&&v.some(x=>x.target==='/etc/caddy/Caddyfile'&&x.source.endsWith('/deploy/caddy/Caddyfile')&&x.read_only)&&v.some(x=>x.target==='/etc/caddy/global.d'&&x.source.endsWith('/deploy/caddy/global.d')&&x.read_only)&&v.some(x=>x.target==='/data'&&x.type==='volume')&&v.some(x=>x.target==='/config'&&x.type==='volume'))(c.services.caddy.volumes)"
+check_cfg "caddy krijgt PANEL_DOMAIN, NODE_DOMAIN, ACME_EMAIL en verder geen geheimen" \
+  "(e=>e.PANEL_DOMAIN==='panel.test'&&e.NODE_DOMAIN==='node1.test'&&e.ACME_EMAIL==='it@panel.test'&&!('NODE_TOKEN' in e)&&!('PANEL_ENCRYPTION_KEY' in e))(c.services.caddy.environment)"
+check_cfg "caddy zonder --resume (standaardcommando)" "!c.services.caddy.command||!JSON.stringify(c.services.caddy.command).includes('resume')"
+# Caddyfile van web-hosting valideren met precies deze env en mounts.
+mkdir -p "$WORK/run"
+docker run --rm "${LABELS[@]}" -e PANEL_DOMAIN=panel.test -e NODE_DOMAIN=node1.test -e ACME_EMAIL=it@panel.test \
+  -v "$DEPLOY/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" -v "$DEPLOY/caddy/global.d:/etc/caddy/global.d:ro" \
+  -v "$WORK/run:/run/panel" caddy:2 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >"$WORK/caddy-validate.log" 2>&1 \
+  && pass "caddy validate (Caddyfile + global.d)" || { cat "$WORK/caddy-validate.log"; fail "caddy validate"; }
 check_cfg "caddy-containernaam = CADDY_CONTAINER (panel-caddy)" "c.services.caddy.container_name==='panel-caddy'"
 check_cfg "panel: env_file ingelezen + NODE_DOMAIN naar host-gateway" \
   "c.services.panel.extra_hosts.some(h=>/^node1\\.test[:=]host-gateway$/.test(h))&&c.services.panel.environment.NODE_DOMAIN==='node1.test'"
@@ -118,11 +127,17 @@ diff <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$DEPLOY/panel.env.example") <(s
 [ -x "$ROOT/usr/local/bin/panel-daemon" ] && pass "daemon geïnstalleerd (stub)" || fail "daemon"
 cmp -s "$UNIT" "$ROOT/etc/systemd/system/panel-daemon.service" && pass "unit geïnstalleerd" || fail "unit"
 grep -q '^\[dry-run\] systemctl restart panel-daemon.service$' "$WORK/install1.log" && pass "systemctl alleen geprint" || fail "systemctl"
+[ "$(getv PANEL_URL)" = "http://127.0.0.1:3000" ] && pass "PANEL_URL standaard http://127.0.0.1:3000" || fail "PANEL_URL"
+[ "$(getv CADDY_ADMIN_URL)" = "$(sed -n 's/^CADDY_ADMIN_URL=//p' "$DEPLOY/panel.env.example")" ] \
+  && [ "$(getv CADDY_TLS_ADDR)" = "$(sed -n 's/^CADDY_TLS_ADDR=//p' "$DEPLOY/panel.env.example")" ] \
+  && pass "CADDY_ADMIN_URL/CADDY_TLS_ADDR uit het voorbeeld" || fail "CADDY_ADMIN_URL/CADDY_TLS_ADDR"
 grep -q 'docker compose config: in orde' "$WORK/install1.log" && pass "compose config met geschreven env" || fail "compose met geschreven env"
 
 # Idempotent: tweede run behoudt alles; een extra sleutel blijft staan.
 before="$(grep -v '^# /etc/panel' "$E")"
 echo "MIJN_EIGEN=waarde" >> "$E"
+sed -i 's#^PANEL_URL=.*#PANEL_URL=https://panel.test#; s#^CADDY_TLS_ADDR=.*#CADDY_TLS_ADDR=127.0.0.1:8443#; s#^CADDY_ADMIN_URL=.*#CADDY_ADMIN_URL=#' "$E"
+before="$(printf '%s\n' "$before" | sed 's#^PANEL_URL=.*#PANEL_URL=https://panel.test#; s#^CADDY_TLS_ADDR=.*#CADDY_TLS_ADDR=127.0.0.1:8443#')"
 env "${inst_env[@]}" bash "$DEPLOY/install.sh" --dry-run --non-interactive --root "$ROOT" --daemon-bin "$BIN_STUB" \
   > "$WORK/install2.log" 2>&1 || { cat "$WORK/install2.log"; fail "install.sh tweede run"; }
 after="$(grep -v '^# /etc/panel' "$E" | grep -v '^MIJN_EIGEN=' | sed '/^# --- overig/,$d')"

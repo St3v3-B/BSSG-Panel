@@ -243,6 +243,21 @@ collect_values() {
     DATABASE_URL="postgres://panel:${VAL[POSTGRES_PASSWORD]}@postgres:5432/panel"
   fi
 
+  # De daemon bereikt het lokale panel rechtstreeks (127.0.0.1:3000 wordt door compose
+  # gepubliceerd): geen afhankelijkheid van externe DNS of hairpin-NAT. Een gezette waarde blijft.
+  if [ -z "${PANEL_URL:-}" ] && [ -z "${OLD[PANEL_URL]:-}" ]; then
+    PANEL_URL="http://127.0.0.1:3000"
+  fi
+  # Caddy-koppeling: alleen standaardwaarden invullen als ze ontbreken (leeg = ontbreekt;
+  # een lege CADDY_ADMIN_URL zou de daemon een fake router geven).
+  local k
+  for k in CADDY_ADMIN_URL CADDY_TLS_ADDR; do
+    [ -n "${OLD[$k]:-}" ] || unset "OLD[$k]"
+  done
+  if [ -n "${OLD[CADDY_ADMIN_URL]:-}" ] && [[ "${OLD[CADDY_ADMIN_URL]}" == http://127.0.0.1:2019* ]]; then
+    warn "CADDY_ADMIN_URL=${OLD[CADDY_ADMIN_URL]} is verouderd; Caddy luistert nu op $(example_default CADDY_ADMIN_URL)"
+  fi
+
   local key
   while IFS= read -r key; do
     [ -n "${VAL[$key]+x}" ] || keep_or_default "$key"
@@ -340,7 +355,7 @@ check_ports() {
   command -v ss >/dev/null || return 0
   docker ps -q --filter name=^panel-caddy$ | grep -q . && return 0
   local p
-  for p in 80 443 2019 3000; do
+  for p in 80 443 3000; do
     if ss -Hltn "sport = :$p" | grep -q .; then warn "poort $p is al in gebruik; Caddy/panel kunnen dan niet starten"; fi
   done
 }
