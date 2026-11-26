@@ -1,0 +1,41 @@
+schema: 1
+slug: adminer
+name: Adminer (databasebeheer)
+description: >-
+  Adminer 4 voor het beheren van je MariaDB-databases. De server staat standaard op
+  `panel-mariadb`; log in met de gebruiker en het wachtwoord van je database.
+type: web
+version: 1
+image: adminer:4
+# Zonder het entrypoint van de image (dat schrijft in /var/www/html, read-only hier).
+# Sessies in de tmpfs /tmp; de ingebouwde PHP-server met meerdere workers. De shell
+# blijft PID 1 en geeft SIGTERM door (php -S als PID 1 negeert hem).
+startup: |
+  export PHP_CLI_SERVER_WORKERS=4
+  php -d session.save_path=/tmp -d upload_tmp_dir=/tmp -d sys_temp_dir=/tmp \
+    -d upload_max_filesize=64M -d post_max_size=64M -d memory_limit=256M -d expose_php=0 \
+    -d variables_order=EGPCS -S 0.0.0.0:8080 -t /var/www/html 2>&1 & APP=$!
+  STOP=0
+  trap 'STOP=1; kill -TERM $APP 2>/dev/null' TERM INT
+  wait $APP; RC=$?
+  if [ "$STOP" = 1 ]; then wait $APP; exit 0; fi
+  exit $RC
+stop:
+  type: signal
+  value: SIGTERM
+# PHP 8.x Development Server (http://0.0.0.0:8080) started
+ready_pattern: "Development Server \\(http://0\\.0\\.0\\.0:8080\\) started"
+http_port: 8080
+variables:
+  - key: ADMINER_DEFAULT_SERVER
+    name: Databaseserver
+    description: Standaardserver in het inlogscherm.
+    default: panel-mariadb
+    user_editable: false
+install:
+  image: alpine:3.22
+  script: |
+    #!/bin/sh
+    # Niets te installeren: Adminer zit in de image.
+    exit 0
+config_files: []

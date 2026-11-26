@@ -13,6 +13,9 @@ import (
 	"io"
 	"io/fs"
 	"mime/multipart"
+	"net/http"
+	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -205,6 +208,40 @@ func webTemplateCases() []webTemplateCase {
 		phpCase("php-8.2", "8.2."),
 		phpCase("php-8.3", "8.3."),
 		phpCase("php-8.4", "8.4."),
+		{
+			file: "node",
+			check: func(t *testing.T, e *caddyEnv, host string) {
+				e.get(t, "https://"+host+"/iets", bodyContains("Het werkt", "Node.js v24."))
+			},
+		},
+		{
+			file: "adminer",
+			db:   true,
+			check: func(t *testing.T, e *caddyEnv, host string) {
+				e.get(t, "https://"+host+"/", bodyContains(`value="panel-mariadb"`))
+				// Inloggen (sessie in /tmp) en de database wp openen.
+				jar, _ := cookiejar.New(nil)
+				hc := &http.Client{Timeout: 30 * time.Second, Jar: jar, Transport: e.client.Transport}
+				if _, err := hc.Get("https://" + host + "/"); err != nil {
+					t.Fatal(err)
+				}
+				var body string
+				for i := 0; i < 30; i++ {
+					resp, err := hc.PostForm("https://"+host+"/", url.Values{"auth[driver]": {"server"}, "auth[server]": {"panel-mariadb"},
+						"auth[username]": {"wp"}, "auth[password]": {"wpgeheim"}, "auth[db]": {"wp"}})
+					if err != nil {
+						t.Fatal(err)
+					}
+					b, _ := io.ReadAll(resp.Body)
+					resp.Body.Close()
+					if body = string(b); strings.Contains(body, "Logout") {
+						return
+					}
+					time.Sleep(time.Second) // MariaDB start nog
+				}
+				t.Fatalf("inloggen in Adminer mislukt: %.400s", body)
+			},
+		},
 	}
 }
 

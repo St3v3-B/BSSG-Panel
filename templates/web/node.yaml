@@ -1,0 +1,63 @@
+schema: 1
+slug: node
+name: Node.js-site
+description: >-
+  Website of app met Node.js 24 (LTS). Je app moet luisteren op de poort in `PORT`
+  (3000). Staat er een `package.json`, dan installeert de installatie de dependencies
+  (`npm ci` of `npm install`, zonder devDependencies); na een wijziging opnieuw installeren.
+  Tijdens het draaien heeft de site geen internet, alleen de database (`panel-mariadb:3306`).
+type: web
+version: 1
+image: node:24-alpine
+# De daemon draait dit als uid 1000 met een read-only rootfs; alleen /home/container en
+# /tmp (tmpfs) zijn schrijfbaar. Online zodra de app op PORT luistert.
+startup: |
+  cd /home/container
+  export PORT=3000 NODE_ENV=production npm_config_cache=/tmp/npm
+  node {{MAIN_FILE}} & APP=$!
+  STOP=0
+  trap 'STOP=1; kill -TERM $APP 2>/dev/null' TERM INT
+  until nc -z 127.0.0.1 3000 2>/dev/null; do
+    kill -0 $APP 2>/dev/null || break
+    sleep 0.3
+  done
+  kill -0 $APP 2>/dev/null && echo "Node.js-site klaar op poort 3000"
+  wait $APP; RC=$?
+  if [ "$STOP" = 1 ]; then wait $APP; exit 0; fi
+  echo "De app is gestopt (exitcode $RC)" >&2; exit $RC
+stop:
+  type: signal
+  value: SIGTERM
+ready_pattern: "^Node\\.js-site klaar op poort"
+http_port: 3000
+variables:
+  - key: MAIN_FILE
+    name: Startbestand
+    description: Het JavaScript-bestand dat gestart wordt, relatief aan de hoofdmap.
+    default: index.js
+    user_editable: true
+    pattern: "^[A-Za-z0-9._/-]+\\.(js|mjs|cjs)$"
+install:
+  image: node:24-alpine
+  script: |
+    #!/bin/sh
+    # Installeert de dependencies, of zet een voorbeeld-app neer. Draait als root in een
+    # tijdelijke container met internet; de daemon zet daarna de eigenaar op 1000.
+    set -eu
+    cd /home/container
+    export npm_config_cache=/tmp/npm npm_config_update_notifier=false npm_config_fund=false
+    if [ -f package.json ]; then
+      if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
+    elif [ ! -e "$MAIN_FILE" ]; then
+      cat > "$MAIN_FILE" <<'EOF'
+    const http = require("http");
+    const port = process.env.PORT || 3000;
+    http.createServer((req, res) => {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end("<!doctype html><title>Het werkt</title><h1>Het werkt</h1><p>Node.js " + process.version + "</p>");
+    }).listen(port, () => console.log("luistert op " + port));
+    process.on("SIGTERM", () => process.exit(0));
+    EOF
+    fi
+    echo "Installatie klaar: Node.js $(node -v)"
+config_files: []
