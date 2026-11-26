@@ -157,9 +157,8 @@ Paper-servers.
 5. Start de twee Paper-servers en daarna Velocity. Spelers verbinden met het adres van de
    Velocity-server, komen op `lobby` en wisselen met `/server survival`.
 
-Tips: zet de Paper-servers alleen open voor de proxy door ze geen publiek bekende poort te
-geven, of vertrouw op de secret (Paper weigert iedereen zonder die secret). Problemen staan
-in de console: *"Backend server is online-mode"* in Velocity = `VELOCITY_FORWARDING` staat
+Rechtstreeks verbinden met een Paper-server lukt niet: Paper weigert iedereen die niet via
+de proxy met de juiste secret komt. Houd de secret dus geheim. Problemen staan in de console: *"Backend server is online-mode"* in Velocity = `VELOCITY_FORWARDING` staat
 niet aan op die Paper-server; *"Unable to verify player details"* in Paper = de secret
 verschilt.
 
