@@ -362,6 +362,19 @@ func phpCase(file, version string) webTemplateCase {
 			e.get(t, "https://"+host+"/info.php", bodyContains("version="+version, "mysqli=ja", "pdo_mysql=ja", "gd=ja", "intl=ja",
 				"zip=ja", "exif=ja", "curl=ja", "mbstring=ja", "Zend OPcache=ja", "upload=64M post=64M", "https=on",
 				"db=mysqli-ok", "pdo=42", "gd=ok", "intl=1.234,5", "session=ok"))
+			// De CLI (WP-CLI, cron) laadt dezelfde extensies als PHP-FPM.
+			out, err := exec.Command("docker", "exec", e.inst+"-"+strings.TrimSuffix(host, ".site.test"), "php", "-m").CombinedOutput()
+			if err != nil {
+				t.Fatalf("php -m: %v\n%s", err, out)
+			}
+			for _, m := range []string{"mysqli", "pdo_mysql", "gd", "intl", "exif", "zip"} {
+				if !regexp.MustCompile("(?m)^" + m + "$").Match(out) {
+					t.Errorf("php -m mist %s:\n%s", m, out)
+				}
+			}
+			if out, err := exec.Command("docker", "exec", e.inst+"-"+strings.TrimSuffix(host, ".site.test"), "php", "-r", "mysqli_report(MYSQLI_REPORT_OFF); echo (new NumberFormatter('nl_NL', NumberFormatter::DECIMAL))->format(1.5);").CombinedOutput(); err != nil || string(out) != "1,5" {
+				t.Errorf("php -r: %v %q", err, out)
+			}
 			// Permalinks gaan naar index.php.
 			e.get(t, "https://"+host+"/2026/11/hallo-wereld/", bodyContains("index.php PHP "+version))
 			// De standaardpagina van de installatie staat er, maar index.php gaat voor.
