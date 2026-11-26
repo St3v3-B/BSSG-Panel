@@ -8,7 +8,7 @@ description: >-
   De database heet vanuit de site `panel-mariadb:3306`. Eigen PHP-instellingen in
   `php/*.ini`, eigen nginx-regels (binnen het server-blok) in `nginx/*.conf`; daarna herstarten.
 type: web
-version: 4
+version: 5
 # serversideup/php: officiële PHP-build met nginx erbij. We gebruiken alleen de binaries;
 # hun s6-entrypoint niet (dat wil als root schrijven op de rootfs).
 image: serversideup/php:8.2-fpm-nginx-alpine
@@ -197,12 +197,12 @@ install:
       mkdir -p /home/container/public
       cat > /home/container/public/index.html <<'EOF'
     <!doctype html>
-    <html lang="nl">
+    <html lang="en" data-t-en="Your website is live 🎉" data-t-nl="Je website staat live 🎉">
     <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
-    <title>Je website staat live 🎉</title>
+    <title>Your website is live 🎉</title>
     <style>
     :root{color-scheme:dark light;--bg:#070a14;--text:#f3f5fb;--muted:#a3adc6;--card:rgba(255,255,255,.055);--edge:rgba(255,255,255,.12);--soft:rgba(255,255,255,.07);--a:#7c5cff;--b:#22d3ee;--c:#f472b6;--ok:#34d399;--warn:#fbbf24;--bad:#fb7185;--shadow:0 30px 80px -30px rgba(0,0,0,.7)}
     @media (prefers-color-scheme:light){:root{--bg:#f3f5fb;--text:#0b1220;--muted:#4b5672;--card:rgba(255,255,255,.72);--edge:rgba(15,23,42,.1);--soft:rgba(15,23,42,.05);--shadow:0 30px 70px -35px rgba(30,41,82,.35);--a:#6d28d9;--b:#0891b2;--c:#db2777}}
@@ -233,7 +233,7 @@ install:
     ol{list-style:none;margin:30px 0 0;padding:0;display:grid;gap:12px}
     li{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;padding:16px;border-radius:18px;background:var(--soft);border:1px solid var(--edge);animation:rise .6s cubic-bezier(.2,.8,.2,1) both}
     li:nth-child(1){animation-delay:.15s}li:nth-child(2){animation-delay:.25s}li:nth-child(3){animation-delay:.35s}
-    li span{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;font-weight:700;font-size:.95rem;color:#fff;background:linear-gradient(135deg,var(--a),var(--b))}
+    li .n{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;font-weight:700;font-size:.95rem;color:#fff;background:linear-gradient(135deg,var(--a),var(--b))}
     li strong{display:block;margin-bottom:2px;font-weight:650}
     li p{margin:0;font-size:.93rem;color:var(--muted)}
     code{font:.9em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:1px 6px;border-radius:6px;background:var(--soft);border:1px solid var(--edge);color:var(--text)}
@@ -249,23 +249,36 @@ install:
     @keyframes draw{to{stroke-dashoffset:0}}
     @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important}.draw path{stroke-dashoffset:0}}
     @media (max-width:480px){main{border-radius:22px}.top{margin-bottom:20px}.icon{width:52px;height:52px;border-radius:15px}}
+    html[lang=en] [lang=nl],html[lang=nl] [lang=en]{display:none}
+    .top{position:relative}
+    .lang{display:none;position:absolute;top:0;right:0;padding:3px;gap:2px;border-radius:999px;border:1px solid var(--edge);background:var(--soft)}
+    .js .lang{display:inline-flex}
+    .lang button{all:unset;cursor:pointer;padding:4px 10px;border-radius:999px;font-size:.75rem;font-weight:700;letter-spacing:.06em;color:var(--muted);transition:background .2s,color .2s}
+    .lang button:hover{color:var(--text)}
+    .lang button:focus-visible{outline:2px solid var(--b);outline-offset:1px}
+    html[lang=en] .lang [data-l=en],html[lang=nl] .lang [data-l=nl]{background:linear-gradient(135deg,var(--a),var(--b));color:#fff}
     </style>
     </head>
     <body>
     <div class="bg" aria-hidden="true"><i></i><i></i><i></i></div>
     <main>
-    <div class="top"><div class="icon"><svg class="draw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div><span class="pill" style="--s:var(--ok)"><span class="dot"></span>Online</span></div>
-    <h1>Je website staat <span class="nw">live <span aria-hidden="true">🎉</span></span></h1>
-    <p class="lead">Alles draait en HTTPS staat aan. Dit is de standaardpagina; zo maak je er je eigen website van:</p>
-    <div class="host big"><span id="h">je nieuwe website</span></div>
+    <div class="top"><div class="icon"><svg class="draw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div><span class="pill" style="--s:var(--ok)"><span class="dot"></span><span lang="en">Online</span><span lang="nl">Online</span></span><div class="lang" role="group" aria-label="Language / Taal"><button type="button" data-l="en" title="English">EN</button><button type="button" data-l="nl" title="Nederlands">NL</button></div></div>
+    <h1><span lang="en">Your website is <span class="nw">live <span aria-hidden="true">🎉</span></span></span><span lang="nl">Je website staat <span class="nw">live <span aria-hidden="true">🎉</span></span></span></h1>
+    <p class="lead"><span lang="en">Everything is running and HTTPS is on. This is the default page &mdash; here's how to make it your own:</span><span lang="nl">Alles draait en HTTPS staat aan. Dit is de standaardpagina; zo maak je er je eigen website van:</span></p>
+    <div class="host big"><span id="h"><span lang="en">your new website</span><span lang="nl">je nieuwe website</span></span></div>
     <ol>
-    <li><span>1</span><div><strong>Upload je bestanden</strong><p>Zet je website in de map <code>public/</code>, via de filemanager of SFTP.</p></div></li>
-    <li><span>2</span><div><strong>Maak een database aan</strong><p>Nodig voor bijvoorbeeld WordPress: maak hem aan in het panel bij deze website.</p></div></li>
-    <li><span>3</span><div><strong>Koppel je domein</strong><p>Voeg je eigen domein toe in het panel; het certificaat regelt zich vanzelf.</p></div></li>
+    <li><span class="n">1</span><div><strong><span lang="en">Upload your files</span><span lang="nl">Upload je bestanden</span></strong><p><span lang="en">Put your website in the <code>public/</code> folder using the file manager or SFTP.</span><span lang="nl">Zet je website in de map <code>public/</code>, via de filemanager of SFTP.</span></p></div></li>
+    <li><span class="n">2</span><div><strong><span lang="en">Create a database</span><span lang="nl">Maak een database aan</span></strong><p><span lang="en">Needed for WordPress, for example: create one for this website in the control panel.</span><span lang="nl">Nodig voor bijvoorbeeld WordPress: maak hem aan in het panel bij deze website.</span></p></div></li>
+    <li><span class="n">3</span><div><strong><span lang="en">Connect your domain</span><span lang="nl">Koppel je domein</span></strong><p><span lang="en">Add your own domain in the control panel; the certificate is set up automatically.</span><span lang="nl">Voeg je eigen domein toe in het panel; het certificaat regelt zich vanzelf.</span></p></div></li>
     </ol>
-    <p class="foot">Deze pagina verdwijnt zodra je een eigen <code>index.html</code> of <code>index.php</code> in <code>public/</code> zet.</p>
+    <p class="foot"><span lang="en">This page disappears as soon as you put your own <code>index.html</code> or <code>index.php</code> in <code>public/</code>.</span><span lang="nl">Deze pagina verdwijnt zodra je een eigen <code>index.html</code> of <code>index.php</code> in <code>public/</code> zet.</span></p>
     </main>
-    <script>var h=location.hostname;if(h)document.getElementById("h").textContent=h</script>
+    <script>
+    (function(){var d=document.documentElement,t={en:d.getAttribute("data-t-en"),nl:d.getAttribute("data-t-nl")};
+    function set(l){d.lang=l;document.title=t[l];try{localStorage.setItem("lang",l)}catch(e){}}
+    d.className+=" js";var s=null;try{s=localStorage.getItem("lang")}catch(e){}if(s==="nl")set("nl");
+    document.querySelectorAll(".lang button").forEach(function(b){b.onclick=function(){set(b.getAttribute("data-l"))}});if(location.hostname)document.getElementById("h").textContent=location.hostname;})();
+    </script>
     </body>
     </html>
     EOF

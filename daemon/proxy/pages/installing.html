@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="nl">
+<html lang="en" data-t-en="This website is being set up" data-t-nl="Deze website wordt ingericht">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <meta http-equiv="refresh" content="30">
-<title>Deze website wordt ingericht</title>
+<title>This website is being set up</title>
 <style>
 :root{color-scheme:dark light;--bg:#070a14;--text:#f3f5fb;--muted:#a3adc6;--card:rgba(255,255,255,.055);--edge:rgba(255,255,255,.12);--soft:rgba(255,255,255,.07);--a:#7c5cff;--b:#22d3ee;--c:#f472b6;--ok:#34d399;--warn:#fbbf24;--bad:#fb7185;--shadow:0 30px 80px -30px rgba(0,0,0,.7)}
 @media (prefers-color-scheme:light){:root{--bg:#f3f5fb;--text:#0b1220;--muted:#4b5672;--card:rgba(255,255,255,.72);--edge:rgba(15,23,42,.1);--soft:rgba(15,23,42,.05);--shadow:0 30px 70px -35px rgba(30,41,82,.35);--a:#6d28d9;--b:#0891b2;--c:#db2777}}
@@ -36,7 +36,7 @@ h1{margin:0 0 12px;font-size:clamp(2rem,6vw,3rem);line-height:1.08;letter-spacin
 ol{list-style:none;margin:30px 0 0;padding:0;display:grid;gap:12px}
 li{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;padding:16px;border-radius:18px;background:var(--soft);border:1px solid var(--edge);animation:rise .6s cubic-bezier(.2,.8,.2,1) both}
 li:nth-child(1){animation-delay:.15s}li:nth-child(2){animation-delay:.25s}li:nth-child(3){animation-delay:.35s}
-li span{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;font-weight:700;font-size:.95rem;color:#fff;background:linear-gradient(135deg,var(--a),var(--b))}
+li .n{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;font-weight:700;font-size:.95rem;color:#fff;background:linear-gradient(135deg,var(--a),var(--b))}
 li strong{display:block;margin-bottom:2px;font-weight:650}
 li p{margin:0;font-size:.93rem;color:var(--muted)}
 code{font:.9em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:1px 6px;border-radius:6px;background:var(--soft);border:1px solid var(--edge);color:var(--text)}
@@ -52,17 +52,31 @@ code{font:.9em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:1px 
 @keyframes draw{to{stroke-dashoffset:0}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important}.draw path{stroke-dashoffset:0}}
 @media (max-width:480px){main{border-radius:22px}.top{margin-bottom:20px}.icon{width:52px;height:52px;border-radius:15px}}
+html[lang=en] [lang=nl],html[lang=nl] [lang=en]{display:none}
+.top{position:relative}
+.lang{display:none;position:absolute;top:0;right:0;padding:3px;gap:2px;border-radius:999px;border:1px solid var(--edge);background:var(--soft)}
+.js .lang{display:inline-flex}
+.lang button{all:unset;cursor:pointer;padding:4px 10px;border-radius:999px;font-size:.75rem;font-weight:700;letter-spacing:.06em;color:var(--muted);transition:background .2s,color .2s}
+.lang button:hover{color:var(--text)}
+.lang button:focus-visible{outline:2px solid var(--b);outline-offset:1px}
+html[lang=en] .lang [data-l=en],html[lang=nl] .lang [data-l=nl]{background:linear-gradient(135deg,var(--a),var(--b));color:#fff}
 </style>
 </head>
 <body>
 <div class="bg" aria-hidden="true"><i></i><i></i><i></i></div>
 <main>
-<div class="top"><div class="icon"><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></div><span class="pill" style="--s:var(--b)"><span class="dot"></span>Bezig</span></div>
-<h1>Deze website wordt ingericht</h1>
-<p class="lead">We zetten alles voor je klaar. Kom over een minuut terug; deze pagina ververst vanzelf.</p>
+<div class="top"><div class="icon"><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg></div><span class="pill" style="--s:var(--b)"><span class="dot"></span><span lang="en">Setting up</span><span lang="nl">Bezig</span></span><div class="lang" role="group" aria-label="Language / Taal"><button type="button" data-l="en" title="English">EN</button><button type="button" data-l="nl" title="Nederlands">NL</button></div></div>
+<h1><span lang="en">This website is being set up</span><span lang="nl">Deze website wordt ingericht</span></h1>
+<p class="lead"><span lang="en">We're getting everything ready. Check back in a minute &mdash; this page refreshes automatically.</span><span lang="nl">We zetten alles voor je klaar. Kom over een minuut terug; deze pagina ververst vanzelf.</span></p>
 <div class="host">{http.request.host}</div>
-<div class="bar" role="progressbar" aria-label="Bezig met inrichten"><b></b></div>
+<div class="bar" role="progressbar" aria-label="Setting up"><b></b></div>
 
 </main>
+<script>
+(function(){var d=document.documentElement,t={en:d.getAttribute("data-t-en"),nl:d.getAttribute("data-t-nl")};
+function set(l){d.lang=l;document.title=t[l];try{localStorage.setItem("lang",l)}catch(e){}}
+d.className+=" js";var s=null;try{s=localStorage.getItem("lang")}catch(e){}if(s==="nl")set("nl");
+document.querySelectorAll(".lang button").forEach(function(b){b.onclick=function(){set(b.getAttribute("data-l"))}});})();
+</script>
 </body>
 </html>
