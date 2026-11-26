@@ -38,6 +38,7 @@ func TestRealDocker(t *testing.T) {
 		t.Skip("geen Docker:", err)
 	}
 	instance := fmt.Sprintf("daemon-test-%d-%d", os.Getpid(), time.Now().UnixNano()%1e6)
+	u1 := randUUID() // eigen uuid: andere worktrees draaien dezelfde test tegelijk
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		t.Fatal(err)

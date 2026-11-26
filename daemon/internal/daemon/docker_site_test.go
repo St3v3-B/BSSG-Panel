@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -63,7 +64,7 @@ func TestRealDockerSiteAndDisk(t *testing.T) {
 	}
 
 	h := newHarnessWith(t, eng, nil, nil, "", map[string]string{"panel.test": "true"}, instance, func(d *Deps) { d.Server.MariaDB = dbName })
-	const site = "0b7c2d1e-5151-4222-8333-444455556666"
+	site := randUUID()
 	sp := map[string]any{
 		"uuid": site, "type": "web", "image": "alpine:3.20", "http_port": 8080,
 		"startup":       `echo ready; while true; do printf 'HTTP/1.0 200 OK\r\n\r\nhoi' | nc -l -p 8080 >/dev/null; done`,
@@ -124,7 +125,7 @@ func TestRealDockerSiteAndDisk(t *testing.T) {
 	}
 
 	// Disk-limiet: 2 MB, dd schrijft 3 MB.
-	const game = "0b7c2d1e-6161-4222-8333-444455556666"
+	game := randUUID()
 	gs := map[string]any{
 		"uuid": game, "type": "game", "image": "alpine:3.20",
 		"startup":       `echo ready; while read -r c; do [ "$c" = stop ] && exit 0; sh -c "$c"; done`,
@@ -155,4 +156,12 @@ func TestRealDockerSiteAndDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.expect("DELETE", "/api/servers/"+game, nil, 204)
+}
+
+func randUUID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = b[6]&0x0f | 0x40
+	b[8] = b[8]&0x3f | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
