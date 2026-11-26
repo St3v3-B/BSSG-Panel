@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"reflect"
 	"syscall"
 	"time"
 
@@ -50,8 +49,7 @@ func run(log *slog.Logger) error {
 		log.Warn("CADDY_ADMIN_URL leeg: routes gaan naar een fake router")
 		router = proxy.NewFake()
 	} else {
-		pc := proxy.Config{AdminURL: cfg.CaddyAdminURL, CaddyContainer: cfg.CaddyContainer, Instance: cfg.Instance}
-		setTLSAddr(&pc, cfg.CaddyTLSAddr)
+		pc := proxy.Config{AdminURL: cfg.CaddyAdminURL, CaddyContainer: cfg.CaddyContainer, Instance: cfg.Instance, TLSAddr: cfg.CaddyTLSAddr}
 		router, err = proxy.NewCaddy(pc)
 		if err != nil {
 			return fmt.Errorf("caddy: %w", err)
@@ -75,13 +73,4 @@ func run(log *slog.Logger) error {
 	defer cancel()
 	d.Shutdown(shutCtx)
 	return nil
-}
-
-// setTLSAddr vult proxy.Config.TLSAddr (CADDY_TLS_ADDR). Via reflect zodat dit bouwt met
-// en zonder het veld (het staat in main, nog niet in deze branch); na de merge kan dit
-// gewoon `pc.TLSAddr = addr` worden.
-func setTLSAddr(pc *proxy.Config, addr string) {
-	if f := reflect.ValueOf(pc).Elem().FieldByName("TLSAddr"); f.IsValid() && f.Kind() == reflect.String {
-		f.SetString(addr)
-	}
 }
