@@ -122,6 +122,16 @@ Toolchain: Go 1.27 (module vereist 1.23+), Node 22, pnpm 12, TypeScript 5.9
     met `level: warning`; servers.status wordt `disk_exceeded`.
   - Daemon onbereikbaar: `servers.get`/`list` geven status `unknown` (niet de DB-status).
   - Remote nodes: het panel bewaart het token versleuteld in `nodes.token_enc` (migratie 0001).
+- **Webhosting-afspraken** (voorrang van de gebruiker):
+  - MariaDB 11 draait in compose als `panel-mariadb` op het interne netwerk `panel-db`;
+    root-wachtwoord in `MARIADB_ROOT_PASSWORD` (panel.env, gegenereerd door install.sh).
+  - Het panel registreert bij de start de lokale MariaDB als `database_hosts`-rij
+    (naam `local`, host `panel-mariadb`, poort 3306, admin `root`) als die er nog niet is.
+  - Websites (`type: web`) hebben geen allocations; netwerk `panel-site-<uuid>` (role=site),
+    route-upstream `panel-<uuid>:<http_port>`. Sites met een database hangen **niet** aan een gedeeld
+    netwerk: de daemon koppelt `panel-mariadb` aan `panel-site-<uuid>` (de enige toegestane handeling
+    op een infra-object: network connect/disconnect van `panel-mariadb`). Zo zien sites elkaar nooit.
+    Vanuit de site heet de database `panel-mariadb:3306`.
 - **Tijdzone** voor schema's en containers: `Europe/Amsterdam`.
 
 ## Testen op deze machine
