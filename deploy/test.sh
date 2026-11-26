@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # pass() geeft altijd 0, dus "A && pass || fail" is hier wel als if-then-else bedoeld.
-# shellcheck disable=SC2015
+# S_<naam>_* worden dynamisch gezet (srv_prepare, printf -v).
+# shellcheck disable=SC2015,SC2154
 # Tests voor deploy/ en templates/game/. Raakt de echte installatie niet:
 # alles in een tijdelijke map, Docker-objecten met panel.test=true + eigen panel.instance.
 #
-#   deploy/test.sh              # alles, Paper-rooktest als laatste
-#   SKIP_PAPER=1 deploy/test.sh # zonder Paper (snel)
-#   PAPER_MEMORY=1280           # RAM-limiet van de rooktest in MB (heap = 80%, max 1 GB)
+#   deploy/test.sh              # alles; Minecraft één tegelijk, Velocity + 2x Paper als laatste
+#   SKIP_MC=1 deploy/test.sh    # zonder Minecraft-servers (snel; SKIP_PAPER=1 werkt ook)
+#   TESTS="node java velocity paper folia fabric proxy"  # selectie van de game-tests
+#   PAPER_MEMORY=1280           # RAM-limiet per Minecraft-rooktest in MB (heap = 80%, max 1 GB)
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,7 +16,6 @@ DEPLOY="$REPO/deploy"
 INSTANCE="templates-ops-$$"
 WORK="$(mktemp -d -t panel-deploy-test-XXXXXX)"
 LABELS=(--label panel.test=true --label "panel.instance=$INSTANCE")
-PAPER_MEMORY="${PAPER_MEMORY:-1280}"
 
 pass() { printf '  ok   %s\n' "$*"; }
 fail() { printf '  FOUT %s\n' "$*" >&2; exit 1; }
@@ -37,7 +38,6 @@ free_port() { python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0)
 
 # ------------------------------------------------------------------ shellcheck
 step "shellcheck"
-PAPER="$REPO/templates/game/paper.yaml"
 mkdir -p "$WORK/sc"
 for f in "$REPO"/templates/game/*.yaml; do
   node "$DEPLOY/test/template.mjs" "$f" get install.script > "$WORK/sc/$(basename "$f" .yaml).install.sh"
@@ -216,75 +216,235 @@ client -uu1_test -psitepw-12345 -e "CREATE DATABASE andere" >/dev/null 2>&1 && f
 [ "$(client -uroot -p"$M_PW" -N -e "SELECT @@character_set_server")" = utf8mb4 ] && pass "utf8mb4" || fail "character set"
 docker rm -f "$M_NAME" >/dev/null
 
-if [ "${SKIP_PAPER:-0}" = 1 ]; then
-  echo; echo "SKIP_PAPER=1: Paper-rooktest overgeslagen"; echo; echo "deploy/test.sh: groen"; exit 0
+# ------------------------------------------------------------------ game-templates
+# Per template zoals de daemon: install-script als root (met netwerk) in de install-image,
+# eigenaar naar 1000, config_files bijwerken, startup met {{VAR}} vervangen, starten als uid
+# 1000 met read-only rootfs + tmpfs /tmp, caps eruit, RAM-limiet; wachten op ready_pattern;
+# stoppen zoals stop aangeeft. Minecraft-servers één tegelijk, de Velocity-test als laatste.
+want() { [[ " $TESTS " == *" $1 "* ]]; }
+if [ "${SKIP_PAPER:-0}" = 1 ] || [ "${SKIP_MC:-0}" = 1 ]; then
+  TESTS="${TESTS:-node java velocity}"
+else
+  TESTS="${TESTS:-node java velocity paper folia fabric proxy}"
 fi
 
-# ------------------------------------------------------------------ Paper-rooktest
-step "Paper-rooktest (install + start tot ready_pattern, ${PAPER_MEMORY} MB)"
-DATA="$WORK/paper"; mkdir -p "$DATA"
-PORT="$(free_port)"
-UUID="00000000-0000-4000-8000-$(printf '%012d' $$)"
-tpl() { node "$DEPLOY/test/template.mjs" "$PAPER" "$@"; }
-export TPL_SERVER_MEMORY="$PAPER_MEMORY" TPL_SERVER_PORT="$PORT" TPL_SERVER_IP=127.0.0.1 TPL_SERVER_UUID="$UUID" TPL_TZ=Europe/Amsterdam
-envargs=()
-while IFS= read -r kv; do envargs+=(-e "$kv"); done < <(tpl env)
-envargs+=(-e "SERVER_UUID=$UUID" -e "SERVER_MEMORY=$PAPER_MEMORY" -e SERVER_IP=127.0.0.1 -e "SERVER_PORT=$PORT" -e TZ=Europe/Amsterdam)
+GW="$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')"
+free_port_on() { python3 -c 'import socket,sys;s=socket.socket();s.bind((sys.argv[1],0));print(s.getsockname()[1])' "$1"; }
+n_srv=0
 
-# Install zoals de daemon: root, met netwerk, script via /bin/sh, zelfde mount.
-tpl get install.script > "$WORK/install-script.sh"
-t0=$(date +%s)
-docker run --rm "${LABELS[@]}" --label panel.role=install --name "panel-test-$INSTANCE-install" \
-  "${envargs[@]}" -v "$DATA:/home/container" -v "$WORK/install-script.sh:/install.sh:ro" -w /home/container \
-  "$(tpl get install.image)" /bin/sh /install.sh > "$WORK/install-output.log" 2>&1 \
-  || { cat "$WORK/install-output.log"; fail "install-script"; }
-tail -1 "$WORK/install-output.log"
-pass "install-script ($(( $(date +%s) - t0 )) s)"
-[ -s "$DATA/server.jar" ] && grep -qx 'eula=true' "$DATA/eula.txt" && pass "server.jar + eula.txt" || fail "server.jar/eula.txt"
-chown -R 1000:1000 "$DATA"
+# srv_prepare <naam> <template> <ram-MB> [publiceer-IP] [VAR=waarde ...]
+# Zet S_<naam>_* (map, poort, ...) en draait het install-script.
+srv_prepare() {
+  local name="$1" yaml="$REPO/templates/game/$2.yaml" mem="$3" ip="$4"; shift 4
+  local dir="$WORK/srv-$name" port uuid kv
+  n_srv=$((n_srv + 1))
+  mkdir -p "$dir"
+  port="$(free_port_on "$ip")"
+  uuid="00000000-0000-4000-8$(printf '%03d' "$n_srv")-$(printf '%012d' $$)"
+  printf -v "S_${name}_yaml" %s "$yaml"; printf -v "S_${name}_dir" %s "$dir"
+  printf -v "S_${name}_port" %s "$port"; printf -v "S_${name}_mem" %s "$mem"; printf -v "S_${name}_ip" %s "$ip"
+  local -a tplenv=(TPL_SERVER_MEMORY="$mem" TPL_SERVER_PORT="$port" TPL_SERVER_IP="$ip" TPL_SERVER_UUID="$uuid" TPL_TZ=Europe/Amsterdam)
+  for kv in "$@"; do tplenv+=("TPL_$kv"); done
+  printf '%s\n' "${tplenv[@]}" > "$dir.tplenv"
+  { env "${tplenv[@]}" node "$DEPLOY/test/template.mjs" "$yaml" env
+    printf '%s\n' "SERVER_UUID=$uuid" "SERVER_MEMORY=$mem" "SERVER_IP=$ip" "SERVER_PORT=$port" TZ=Europe/Amsterdam; } > "$dir.env"
+  [ "${SKIP_INSTALL:-0}" = 1 ] && return 0
+  srv_tpl "$name" get install.script > "$dir.install.sh"
+  local t0; t0=$(date +%s)
+  docker run --rm "${LABELS[@]}" --label panel.role=install --name "panel-test-$INSTANCE-$name-install" \
+    --env-file "$dir.env" -v "$dir:/home/container" -v "$dir.install.sh:/install.sh:ro" -w /home/container \
+    "$(srv_tpl "$name" get install.image)" /bin/sh /install.sh > "$dir.install.log" 2>&1 \
+    || { tail -30 "$dir.install.log"; fail "$name: install-script"; }
+  chown -R 1000:1000 "$dir"
+  pass "$name: install ($(( $(date +%s) - t0 )) s): $(tail -1 "$dir.install.log")"
+}
+sv() { local v="S_$1_$2"; printf '%s' "${!v}"; }
+srv_tpl() { local name="$1"; shift; mapfile -t _e < "$(sv "$name" dir).tplenv"; env "${_e[@]}" node "$DEPLOY/test/template.mjs" "$(sv "$name" yaml)" "$@"; }
 
-# config_files zoals de daemon vóór elke start, en startup met {{VAR}} vervangen.
-tpl config "$DATA"
-grep -qx "server-port=$PORT" "$DATA/server.properties" && grep -qx 'server-ip=0.0.0.0' "$DATA/server.properties" \
-  && pass "server.properties: server-port/server-ip" || fail "server.properties"
-STARTUP="$(tpl startup)"
-READY="$(tpl get ready_pattern)"
+# srv_start <naam>: config_files, start op de achtergrond, wacht op ready_pattern.
+srv_start() {
+  local name="$1" dir mem port ip startup ready t0
+  dir="$(sv "$name" dir)"; mem="$(sv "$name" mem)"; port="$(sv "$name" port)"; ip="$(sv "$name" ip)"
+  srv_tpl "$name" config "$dir"
+  chown -R 1000:1000 "$dir"
+  startup="$(srv_tpl "$name" startup)"; ready="$(srv_tpl "$name" get ready_pattern)"
+  rm -f "$dir.stdin"; mkfifo "$dir.stdin"
+  docker run --rm -i "${LABELS[@]}" --label panel.role=server --name "panel-test-$INSTANCE-$name" \
+    --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+    --pids-limit 512 --memory "${mem}m" --memory-swap "${mem}m" --cpus 2 \
+    -p "$ip:$port:$port/tcp" -p "$ip:$port:$port/udp" \
+    --env-file "$dir.env" -v "$dir:/home/container" -w /home/container \
+    "$(srv_tpl "$name" get image)" /bin/sh -c "$startup" < "$dir.stdin" > "$dir.log" 2>&1 &
+  printf -v "S_${name}_pid" %s "$!"
+  exec {fd}> "$dir.stdin"; printf -v "S_${name}_fd" %s "$fd"
+  t0=$(date +%s)
+  while :; do
+    if node -e "process.exit(new RegExp(process.argv[1],'m').test(require('fs').readFileSync(process.argv[2],'utf8'))?0:1)" "$ready" "$dir.log"; then
+      pass "$name: ready_pattern na $(( $(date +%s) - t0 )) s: $(grep -m1 -E "$ready" "$dir.log" | cut -c1-90)"
+      ! grep -qiE 'read-only file system|AccessDeniedException' "$dir.log" \
+        || { grep -iE 'read-only file system|AccessDeniedException' "$dir.log" | head -5; fail "$name: schrijffouten (read-only rootfs)"; }
+      return 0
+    fi
+    kill -0 "$(sv "$name" pid)" 2>/dev/null && [ $(( $(date +%s) - t0 )) -lt 600 ] || break
+    sleep 2
+  done
+  tail -40 "$dir.log"; fail "$name: ready_pattern niet gezien"
+}
 
-# Start zoals de daemon: uid 1000, read-only rootfs + tmpfs /tmp, caps eruit, limieten, stdin open.
-mkfifo "$WORK/stdin"
-docker run --rm -i "${LABELS[@]}" --name "panel-test-$INSTANCE-paper" \
-  --user 1000:1000 --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
-  --pids-limit 512 --memory "${PAPER_MEMORY}m" --memory-swap "${PAPER_MEMORY}m" --cpus 2 \
-  -p "127.0.0.1:$PORT:$PORT/tcp" -p "127.0.0.1:$PORT:$PORT/udp" \
-  "${envargs[@]}" -v "$DATA:/home/container" -w /home/container \
-  "$(tpl get image)" /bin/sh -c "$STARTUP" < "$WORK/stdin" > "$WORK/paper.log" 2>&1 &
-RUN_PID=$!
-exec 3> "$WORK/stdin"   # stdin openhouden
-t0=$(date +%s)
-ready=0
-while kill -0 "$RUN_PID" 2>/dev/null && [ $(( $(date +%s) - t0 )) -lt 600 ]; do
-  if node -e "process.exit(new RegExp(process.argv[1]).test(require('fs').readFileSync(process.argv[2],'utf8'))?0:1)" "$READY" "$WORK/paper.log"; then
-    ready=1; break
-  fi
-  sleep 2
-done
-if [ "$ready" != 1 ]; then tail -40 "$WORK/paper.log"; fail "ready_pattern niet gezien"; fi
-grep -E "$READY" "$WORK/paper.log" | head -1
-pass "ready_pattern na $(( $(date +%s) - t0 )) s"
-if (exec 4<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then pass "poort $PORT bereikbaar"; else fail "poort $PORT niet bereikbaar"; fi
-! grep -qiE 'read-only file system|AccessDeniedException' "$WORK/paper.log" && pass "geen schrijffouten (read-only rootfs)" \
-  || { grep -iE 'read-only file system|AccessDeniedException' "$WORK/paper.log" | head -5; fail "schrijffouten"; }
+srv_cmd() { local fd; fd="$(sv "$1" fd)"; printf '%s\n' "$2" >&"$fd"; }
 
-# Ter info: waarschuwingen van de JVM/Paper (geen test).
-grep -E 'WARN|ERROR|Exception' "$WORK/paper.log" | grep -v 'Done (' | head -10 | sed 's/^/  info /' || true
+# srv_stop <naam>: stop zoals de template zegt (commando op stdin of signaal), binnen 30 s.
+srv_stop() {
+  local name="$1" pid t0 fd
+  pid="$(sv "$name" pid)"; fd="$(sv "$name" fd)"
+  if [ "$(srv_tpl "$name" get stop.type)" = command ]; then srv_cmd "$name" "$(srv_tpl "$name" get stop.value)"
+  else docker kill -s "$(srv_tpl "$name" get stop.value)" "panel-test-$INSTANCE-$name" >/dev/null 2>&1 || true; fi
+  t0=$(date +%s)
+  while kill -0 "$pid" 2>/dev/null && [ $(( $(date +%s) - t0 )) -lt 30 ]; do sleep 1; done
+  kill -0 "$pid" 2>/dev/null && { tail -20 "$(sv "$name" dir).log"; fail "$name: niet gestopt binnen 30 s"; }
+  exec {fd}>&-
+  wait "$pid" || true
+  pass "$name: gestopt na $(( $(date +%s) - t0 )) s ($(srv_tpl "$name" get stop.type) $(srv_tpl "$name" get stop.value))"
+}
 
-# Stop zoals de daemon: stop-commando op stdin, binnen 30 s weg.
-tpl get stop.value >&3; echo >&3
-t0=$(date +%s)
-while kill -0 "$RUN_PID" 2>/dev/null && [ $(( $(date +%s) - t0 )) -lt 30 ]; do sleep 1; done
-if kill -0 "$RUN_PID" 2>/dev/null; then fail "server stopt niet binnen 30 s na '$(tpl get stop.value)'"; fi
-exec 3>&-
-wait "$RUN_PID" || true
-pass "stop-commando: gestopt na $(( $(date +%s) - t0 )) s"
+tcp_open() { (exec 4<>"/dev/tcp/$1/$2") 2>/dev/null; }
+mc_checks() { # naam: poort open + server.properties door config_files
+  local name="$1" dir port; dir="$(sv "$name" dir)"; port="$(sv "$name" port)"
+  tcp_open "$(sv "$name" ip)" "$port" && pass "$name: poort $port bereikbaar" || fail "$name: poort $port dicht"
+  grep -qx "server-port=$port" "$dir/server.properties" && grep -qx 'server-ip=0.0.0.0' "$dir/server.properties" \
+    && pass "$name: server.properties (server-port/server-ip)" || fail "$name: server.properties"
+}
 
-echo; echo "deploy/test.sh: groen"
+if want node; then
+  step "node-generic"
+  srv_prepare node node-generic 256 127.0.0.1 MAIN_FILE=start.js
+  [ -f "$S_node_dir/index.js" ] && pass "node: voorbeeld-index.js" || fail "node: index.js"
+  # package.json met een dependency: npm install bij de start (read-only rootfs, cache in de map).
+  printf '{"name":"t","version":"1.0.0","dependencies":{"ms":"2.1.3"}}\n' > "$S_node_dir/package.json"
+  printf 'const ms=require("ms");require("./app.js");console.log("ms ok", ms(60000));\n' > "$S_node_dir/start.js"
+  mv "$S_node_dir/index.js" "$S_node_dir/app.js"; chown -R 1000:1000 "$S_node_dir"
+  srv_start node
+  for _ in $(seq 1 15); do grep -q 'luistert op poort' "$S_node_dir.log" && break; sleep 1; done
+  grep -q 'ms ok 1m' "$S_node_dir.log" && pass "node: npm install + require van een dependency" || { cat "$S_node_dir.log"; fail "node: npm install"; }
+  [ "$(curl -fsS "http://127.0.0.1:$S_node_port/")" = "Hallo van Node.js" ] && pass "node: app op SERVER_PORT bereikbaar" || fail "node: http"
+  srv_stop node
+fi
+
+if want java; then
+  step "java-generic (Java 17 via Adoptium, eigen jar)"
+  srv_prepare java java-generic 256 127.0.0.1 JAVA_VERSION=17 JAR_FILE=fabric-installer.jar JAR_ARGS=help
+  [ -x "$S_java_dir/.java/bin/java" ] && pass "java: JRE in .java/" || fail "java: geen .java/bin/java"
+  # Een JAR "van de gebruiker": de Fabric-installer (Java 8-bytecode, print help en stopt).
+  curl -fsSL -o "$S_java_dir/fabric-installer.jar" "$(curl -fsSL https://meta.fabricmc.net/v2/versions/installer | node -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8"))[0].url)')"
+  srv_start java
+  grep -qE '^\[panel\] start .*"17\.' "$S_java_dir.log" && pass "java: draait op Java 17" || { cat "$S_java_dir.log"; fail "java: verkeerde Java-versie"; }
+  wait "$S_java_pid" || true
+  grep -qi 'fabric' "$S_java_dir.log" && pass "java: jar gestart (help van de installer)" || { cat "$S_java_dir.log"; fail "java: jar"; }
+  exec {S_java_fd}>&-
+fi
+
+if want velocity; then
+  step "Velocity"
+  srv_prepare velo velocity 512 127.0.0.1
+  grep -q '^\[servers\]' "$S_velo_dir/velocity.toml" && [ -s "$S_velo_dir/forwarding.secret" ] \
+    && pass "velo: velocity.toml + forwarding.secret" || fail "velo: velocity.toml/forwarding.secret"
+  srv_start velo
+  grep -qx "bind = \"0.0.0.0:$S_velo_port\"" "$S_velo_dir/velocity.toml" && grep -qx 'player-info-forwarding-mode = "modern"' "$S_velo_dir/velocity.toml" \
+    && pass "velo: velocity.toml (bind, modern forwarding)" || fail "velo: velocity.toml"
+  tcp_open 127.0.0.1 "$S_velo_port" && pass "velo: poort bereikbaar" || fail "velo: poort"
+  srv_stop velo
+fi
+
+MC_MEMORY="${PAPER_MEMORY:-1280}"
+if want paper; then
+  step "Paper (${MC_MEMORY} MB)"
+  srv_prepare paper paper "$MC_MEMORY" 127.0.0.1
+  [ -s "$S_paper_dir/server.jar" ] && grep -qx 'eula=true' "$S_paper_dir/eula.txt" && pass "paper: server.jar + eula.txt" || fail "paper: server.jar/eula"
+  srv_start paper
+  mc_checks paper
+  srv_stop paper
+  # Paper heeft paper-global.yml aangevuld; de waarden van config_files staan er nog.
+  node -e 'const y=require(process.argv[2]).parse(require("fs").readFileSync(process.argv[1],"utf8")); process.exit(y.proxies.velocity.enabled===false&&y._version?0:1)' \
+    "$S_paper_dir/config/paper-global.yml" "$(cd "$REPO/packages/api" && node -p 'require.resolve("yaml")')" \
+    && pass "paper: config/paper-global.yml aangevuld, velocity uit" || fail "paper: paper-global.yml"
+fi
+
+if want folia; then
+  step "Folia (${MC_MEMORY} MB)"
+  srv_prepare folia folia "$MC_MEMORY" 127.0.0.1
+  srv_start folia
+  mc_checks folia
+  srv_stop folia
+fi
+
+if want fabric; then
+  step "Fabric (${MC_MEMORY} MB)"
+  srv_prepare fabric fabric "$MC_MEMORY" 127.0.0.1
+  srv_start fabric
+  mc_checks fabric
+  grep -q 'Loading Minecraft .* with Fabric Loader' "$S_fabric_dir.log" && pass "fabric: Fabric Loader actief" || fail "fabric: geen Fabric Loader in de log"
+  srv_stop fabric
+fi
+
+# ------------------------------------------------------------------ Velocity + 2x Paper (mijlpaal 2)
+# Zoals in het panel: drie servers, elk met een eigen allocation op het host-IP (hier het
+# gateway-IP van de Docker-bridge, zodat containers elkaar via de gepubliceerde poorten
+# bereiken, zoals op een echte node via het publieke IP). Velocity met een secret als
+# variabele; beide Paper-servers VELOCITY_FORWARDING=true + dezelfde VELOCITY_SECRET; de
+# serverlijst in velocity.toml zoals een gebruiker hem via de filemanager zet. Een bot
+# (mineflayer, offline-mode) logt in via de proxy en wisselt met /server naar de tweede server.
+if want proxy; then
+  PROXY_MC="${PROXY_MC_VERSION:-1.21.11}"   # versie die mineflayer ondersteunt
+  PMEM="${PROXY_PAPER_MEMORY:-1024}"
+  step "Velocity met twee Paper-servers (Paper $PROXY_MC, 2x ${PMEM} MB, Velocity 512 MB)"
+  SECRET="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  srv_prepare pa paper "$PMEM" "$GW" MINECRAFT_VERSION="$PROXY_MC" VELOCITY_FORWARDING=true VELOCITY_SECRET="$SECRET"
+  # Tweede Paper-server: zelfde installatie (jar niet nog eens downloaden), eigen allocation.
+  SKIP_INSTALL=1 srv_prepare pb paper "$PMEM" "$GW" MINECRAFT_VERSION="$PROXY_MC" VELOCITY_FORWARDING=true VELOCITY_SECRET="$SECRET"
+  cp -a "$S_pa_dir/." "$S_pb_dir/"
+  srv_prepare pv velocity 512 "$GW" VELOCITY_FORWARDING_SECRET="$SECRET" ONLINE_MODE=false
+  # [servers] zoals de gebruiker hem zet (allocation-IP:poort van de Paper-servers).
+  awk -v a="$GW:$S_pa_port" -v b="$GW:$S_pb_port" '
+    /^\[servers\]/ { print; print "a = \"" a "\""; print "b = \"" b "\""; print "try = [\"a\"]"; skip=1; next }
+    /^\[/ { skip=0 } !skip { print }' "$S_pv_dir/velocity.toml" > "$S_pv_dir/velocity.toml.new"
+  mv "$S_pv_dir/velocity.toml.new" "$S_pv_dir/velocity.toml"
+  srv_start pa
+  srv_start pb
+  srv_start pv
+  grep -q 'secret' "$S_pv_dir.log" && grep -i 'secret' "$S_pv_dir.log" | head -3 | sed 's/^/  info /'
+  mkdir -p "$WORK/bot"
+  cat > "$WORK/bot/bot.js" <<'JS'
+const mineflayer = require("mineflayer");
+const [host, port, version] = process.argv.slice(2);
+const bot = mineflayer.createBot({ host, port: Number(port), username: "PanelTest", auth: "offline", version });
+let spawns = 0;
+bot.on("spawn", () => {
+  spawns++;
+  console.log(`BOT spawn ${spawns}`);
+  if (spawns === 1) setTimeout(() => bot.chat("/server b"), 3000);
+});
+bot.on("message", (m) => console.log(`BOT msg ${m.toString()}`));
+bot.on("kicked", (r) => { console.log(`BOT kicked ${JSON.stringify(r)}`); process.exit(2); });
+bot.on("error", (e) => { console.log(`BOT error ${e.message}`); process.exit(3); });
+setTimeout(() => { console.log("BOT klaar"); bot.quit(); setTimeout(() => process.exit(0), 1000); }, 25000);
+JS
+  docker run --rm "${LABELS[@]}" --name "panel-test-$INSTANCE-bot" --memory 512m --read-only --tmpfs /tmp \
+    --cap-drop ALL --security-opt no-new-privileges --user 1000:1000 -e HOME=/tmp -e npm_config_cache=/tmp/.npm \
+    -v "$WORK/bot/bot.js:/bot/bot.js:ro" node:24-alpine sh -c \
+    "cd /tmp && npm i --silent --no-audit --no-fund mineflayer >/dev/null 2>&1 && cp /bot/bot.js . && node bot.js $GW $S_pv_port $PROXY_MC" \
+    > "$WORK/bot.log" 2>&1 || true
+  sed 's/^/  bot  /' "$WORK/bot.log" | head -12
+  grep -q 'PanelTest joined the game' "$S_pa_dir.log" && pass "speler via Velocity op Paper-server a" \
+    || { tail -15 "$S_pa_dir.log"; tail -15 "$S_pv_dir.log"; fail "speler niet op server a"; }
+  grep -q 'PanelTest joined the game' "$S_pb_dir.log" && pass "met /server naar Paper-server b" \
+    || { tail -15 "$S_pb_dir.log"; tail -15 "$S_pv_dir.log"; fail "speler niet op server b"; }
+  # Modern forwarding: Paper ziet het echte adres van de speler (via Velocity doorgegeven).
+  grep -E 'PanelTest\[/[0-9.]+:[0-9]+\] logged in' "$S_pb_dir.log" | head -1 | sed 's/^/  info /'
+  ! grep -qi 'Unable to verify player details' "$S_pa_dir.log" "$S_pb_dir.log" && pass "geen forwarding-fouten op Paper" \
+    || fail "forwarding-fout (Unable to verify player details)"
+  srv_stop pv
+  srv_stop pb
+  srv_stop pa
+fi
+
+echo; echo "deploy/test.sh: groen (game-tests: $TESTS)"
