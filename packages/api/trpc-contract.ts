@@ -85,11 +85,11 @@ export const contract = {
     sendCommand: mutation("user", server.extend({ command: z.string().min(1).max(2000) }), s.Ok),
     /** JWT (10 min) voor wss://$NODE_DOMAIN/api/servers/{uuid}/ws. Vereist console.read. */
     consoleToken: mutation("user", server, s.ConsoleToken),
-    /** Alleen eigenaar. */
+    /** Eigenaar of admin. */
     rename: mutation("user", server.extend({ name: z.string().min(1).max(100) }), s.Ok),
-    /** Alleen eigenaar; alleen userEditable-variabelen. Effect bij de volgende start. */
+    /** Eigenaar of admin; alleen userEditable-variabelen. Effect bij de volgende start. */
     updateVariables: mutation("user", server.extend({ variables: z.record(z.string(), z.string()) }), s.Ok),
-    /** Alleen eigenaar. Wist de data niet, draait het install-script opnieuw. */
+    /** Eigenaar of admin. Wist de data niet, draait het install-script opnieuw. */
     reinstall: mutation("user", server, s.Ok),
     activity: query("user", server.extend(s.PageInput.shape), s.page(s.ActivityEntry)),
   },
