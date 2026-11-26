@@ -4,6 +4,7 @@ import type { Implementation, Permission } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { logActivity } from "../activity";
+import { forbidApiKey } from "../apikey";
 import { getDb, schema } from "../db";
 import { randomToken, sha256 } from "../lib/crypto";
 import { requireServer } from "../servers-data";
@@ -31,7 +32,7 @@ export const credentials: Pick<Implementation["account"], "setSftpPassword" | "a
       .insert(schema.sftpCredentials)
       .values({ userId: uid, serverId: a.bundle.server.id, passwordHash })
       .onConflictDoUpdate({ target: [schema.sftpCredentials.userId, schema.sftpCredentials.serverId], set: { passwordHash, createdAt: sql`now()` } });
-    await logActivity({ action: "server.sftp.password", userId: uid, serverId: a.bundle.server.id, ip: ctx.ip });
+    await logActivity({ action: "server.sftp.password", userId: uid, serverId: a.bundle.server.id, ip: ctx.ip, ctx });
     return { ok: true as const };
   },
 
@@ -41,6 +42,7 @@ export const credentials: Pick<Implementation["account"], "setSftpPassword" | "a
   },
 
   createApiKey: async ({ input, ctx }) => {
+    forbidApiKey(ctx);
     if (input.expiresAt && input.expiresAt.getTime() <= Date.now()) throw new TRPCError({ code: "BAD_REQUEST", message: "EXPIRES_IN_PAST" });
     const uid = ctx.session!.userId;
     for (let i = 0; i < 5; i++) {
@@ -51,7 +53,7 @@ export const credentials: Pick<Implementation["account"], "setSftpPassword" | "a
         .onConflictDoNothing()
         .returning();
       if (rows[0]) {
-        await logActivity({ action: "account.api_key.create", userId: uid, metadata: { id: rows[0].id, name: input.name }, ip: ctx.ip });
+        await logActivity({ action: "account.api_key.create", userId: uid, metadata: { id: rows[0].id, name: input.name }, ip: ctx.ip, ctx });
         return { key, apiKey: toApiKey(rows[0]) };
       }
     }
@@ -59,10 +61,11 @@ export const credentials: Pick<Implementation["account"], "setSftpPassword" | "a
   },
 
   revokeApiKey: async ({ input, ctx }) => {
+    forbidApiKey(ctx);
     const uid = ctx.session!.userId;
     const r = await getDb().delete(schema.apiKeys).where(and(eq(schema.apiKeys.id, input.id), eq(schema.apiKeys.userId, uid))).returning();
     if (!r.length) throw new TRPCError({ code: "NOT_FOUND", message: "API_KEY_NOT_FOUND" });
-    await logActivity({ action: "account.api_key.revoke", userId: uid, metadata: { id: input.id }, ip: ctx.ip });
+    await logActivity({ action: "account.api_key.revoke", userId: uid, metadata: { id: input.id }, ip: ctx.ip, ctx });
     return { ok: true as const };
   },
 };

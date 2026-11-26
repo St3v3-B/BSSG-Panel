@@ -63,6 +63,9 @@ beforeAll(async () => {
   setDnsLookup(fakeDns);
   await startCloudflare();
   maria = await startMariadb(ROOT_PW);
+  // Het panel beheert de lokale MariaDB via MARIADB_ADMIN_ADDR; sites zien hem als panel-mariadb.
+  process.env.MARIADB_ADMIN_ADDR = `127.0.0.1:${maria.port}`;
+  (await import("./env")).resetEnv();
   admin = await h.user({ discordId: OWNER, name: "eigenaar", admin: true, totp: true });
   player = await h.user({ discordId: "270000000000000001", name: "webber" });
   sub = await h.user({ discordId: "270000000000000002", name: "kijker" });
@@ -228,20 +231,18 @@ describe("Cloudflare: admin.dnsProviders.* en domains.applyDns", () => {
 describe("databases.* en admin.databaseHosts.*", () => {
   let hostId = 0;
 
-  it("boot registreerde de lokale MariaDB als host `local`; test werkt na het richten op de testcontainer", async () => {
+  it("boot registreerde de lokale MariaDB als host `local`; beheer via MARIADB_ADMIN_ADDR", async () => {
     const [local] = await getDb().select().from(schema.databaseHosts).where(eq(schema.databaseHosts.name, "local"));
     expect(local).toMatchObject({ host: "panel-mariadb", port: 3306, adminUser: "root", nodeId: h.localNodeId });
     expect(local!.adminPasswordEnc).toMatch(/^v1:/);
     hostId = local!.id;
-    const u = await admin.api.admin.databaseHosts.update({ id: hostId, host: "127.0.0.1", port: maria.port });
-    expect(u).toMatchObject({ name: "local", host: "127.0.0.1", databaseCount: 0 });
     expect(await admin.api.admin.databaseHosts.test({ id: hostId })).toEqual({ ok: true, error: null });
     await expect(player.api.admin.databaseHosts.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("create zonder hostId: eigen gebruiker met alleen rechten op die database", async () => {
     const d = await player.api.databases.create({ uuid, name: "wordpress", hostId: null });
-    expect(d).toMatchObject({ hostId, hostName: "local", name: `s${uuid.slice(0, 8)}_wordpress`, port: maria.port });
+    expect(d).toMatchObject({ hostId, hostName: "local", name: `s${uuid.slice(0, 8)}_wordpress`, host: "panel-mariadb", port: 3306 });
     expect(d.username).toMatch(/^u[0-9a-f]{8}_[A-Za-z0-9]{7}$/);
     const [row] = await getDb().select().from(schema.databases).where(eq(schema.databases.id, d.id));
     expect(row!.passwordEnc).toMatch(/^v1:/);
@@ -279,6 +280,10 @@ describe("databases.* en admin.databaseHosts.*", () => {
     const bad = await admin.api.admin.databaseHosts.create({ name: "kapot", host: "127.0.0.1", port: maria.port, adminUser: "root", adminPassword: "fout", nodeId: null });
     expect(bad.databaseCount).toBe(0);
     expect((await admin.api.admin.databaseHosts.test({ id: bad.id })).ok).toBe(false);
+    // Een host met een ander adres verbindt direct (niet via MARIADB_ADMIN_ADDR).
+    // let op: port moet mee, anders zet de zod-default 3306 hem terug (contractvraag)
+    await admin.api.admin.databaseHosts.update({ id: bad.id, port: maria.port, adminPassword: ROOT_PW });
+    expect(await admin.api.admin.databaseHosts.test({ id: bad.id })).toEqual({ ok: true, error: null });
     await admin.api.admin.databaseHosts.delete({ id: bad.id });
     expect((await admin.api.admin.databaseHosts.list()).map((x) => x.name)).toEqual(["local"]);
 

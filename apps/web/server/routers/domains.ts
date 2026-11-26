@@ -128,7 +128,7 @@ export const domains: Implementation["domains"] = {
       .insert(schema.domains)
       .values({ serverId: a.bundle.server.id, ...fields, sslStatus: (res?.ssl_status as SslStatus) ?? "pending" })
       .returning();
-    await logActivity({ action: "server.domain.add", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname, redirectTo: input.redirectTo }, ip: ctx.ip });
+    await logActivity({ action: "server.domain.add", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname, redirectTo: input.redirectTo }, ip: ctx.ip, ctx });
     return toDomain(row!, input.uuid);
   },
 
@@ -142,7 +142,7 @@ export const domains: Implementation["domains"] = {
       .set({ targetPort: input.targetPort, redirectTo: input.redirectTo, ...(res?.ssl_status ? { sslStatus: res.ssl_status as SslStatus } : {}) })
       .where(eq(schema.domains.id, d.id))
       .returning();
-    await logActivity({ action: "server.domain.update", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname: d.hostname, targetPort: input.targetPort, redirectTo: input.redirectTo }, ip: ctx.ip });
+    await logActivity({ action: "server.domain.update", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname: d.hostname, targetPort: input.targetPort, redirectTo: input.redirectTo }, ip: ctx.ip, ctx });
     return toDomain(row!, a.bundle.server.uuid);
   },
 
@@ -154,7 +154,7 @@ export const domains: Implementation["domains"] = {
       if (!(e instanceof DaemonHttpError && e.status === 404)) throw toTrpcError(e);
     }
     await getDb().delete(schema.domains).where(eq(schema.domains.id, d.id));
-    await logActivity({ action: "server.domain.remove", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname: d.hostname }, ip: ctx.ip });
+    await logActivity({ action: "server.domain.remove", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname: d.hostname }, ip: ctx.ip, ctx });
     return ok;
   },
 
@@ -193,7 +193,7 @@ export const domains: Implementation["domains"] = {
       if (e instanceof CloudflareError) throw new TRPCError({ code: "BAD_GATEWAY", message: `CLOUDFLARE_ERROR: ${e.message}` });
       throw e;
     }
-    await logActivity({ action: "server.domain.apply_dns", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname: d.hostname, zone: zone.name, ip, changes }, ip: ctx.ip });
+    await logActivity({ action: "server.domain.apply_dns", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname: d.hostname, zone: zone.name, ip, changes }, ip: ctx.ip, ctx });
     return runCheck(d, a);
   },
 

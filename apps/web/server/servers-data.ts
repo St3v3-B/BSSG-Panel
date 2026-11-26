@@ -3,6 +3,7 @@ import { ALL_PERMISSIONS, type Ctx, type Permission, type ServerDetail, type Ser
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { apiKeyOf } from "./apikey";
 import { getDb, schema } from "./db";
 
 type UserRow = typeof schema.users.$inferSelect;
@@ -124,6 +125,14 @@ export interface ServerAccess {
 }
 
 export async function accessFor(ctx: Ctx, bundle: ServerBundle): Promise<ServerAccess> {
+  const a = await baseAccess(ctx, bundle);
+  const key = apiKeyOf(ctx);
+  if (!key || (!a.canManage && !a.isSubuser)) return a;
+  // API-sleutel: geen eigenaarsacties, rechten = doorsnede van sleutel en gebruiker.
+  return { ...a, canManage: false, isSubuser: true, permissions: a.permissions.filter((p) => key.permissions.includes(p)) };
+}
+
+async function baseAccess(ctx: Ctx, bundle: ServerBundle): Promise<ServerAccess> {
   const uid = ctx.session!.userId;
   const isOwner = bundle.server.ownerId === uid;
   if (isOwner || isFullAdmin(ctx)) return { bundle, isOwner, canManage: true, isSubuser: false, permissions: [...ALL_PERMISSIONS] };

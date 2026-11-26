@@ -60,7 +60,7 @@ export const subusers: Implementation["subusers"] = {
       .onConflictDoNothing()
       .returning();
     if (!inserted.length) throw new TRPCError({ code: "CONFLICT", message: "ALREADY_SUBUSER" });
-    await logActivity({ action: "server.subuser.invite", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { subuserId: u.id, permissions: input.permissions }, ip: ctx.ip });
+    await logActivity({ action: "server.subuser.invite", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { subuserId: u.id, permissions: input.permissions }, ip: ctx.ip, ctx });
     return toSubuser((await subuserRow(a.bundle.server.id, u.id))!);
   },
 
@@ -72,7 +72,7 @@ export const subusers: Implementation["subusers"] = {
       .where(and(eq(schema.subusers.serverId, a.bundle.server.id), eq(schema.subusers.userId, input.userId)))
       .returning();
     if (!r.length) throw new TRPCError({ code: "NOT_FOUND", message: "SUBUSER_NOT_FOUND" });
-    await logActivity({ action: "server.subuser.update", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { subuserId: input.userId, permissions: input.permissions }, ip: ctx.ip });
+    await logActivity({ action: "server.subuser.update", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { subuserId: input.userId, permissions: input.permissions }, ip: ctx.ip, ctx });
     return toSubuser((await subuserRow(a.bundle.server.id, input.userId))!);
   },
 
@@ -83,7 +83,7 @@ export const subusers: Implementation["subusers"] = {
     if (!r.length) throw new TRPCError({ code: "NOT_FOUND", message: "SUBUSER_NOT_FOUND" });
     // SFTP-wachtwoord voor deze server vervalt mee.
     await db.delete(schema.sftpCredentials).where(and(eq(schema.sftpCredentials.serverId, a.bundle.server.id), eq(schema.sftpCredentials.userId, input.userId)));
-    await logActivity({ action: "server.subuser.remove", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { subuserId: input.userId }, ip: ctx.ip });
+    await logActivity({ action: "server.subuser.remove", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { subuserId: input.userId }, ip: ctx.ip, ctx });
     return { ok: true as const };
   },
 };

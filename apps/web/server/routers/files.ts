@@ -59,54 +59,54 @@ export const files: Implementation["files"] = {
   write: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "files.write");
     await call(() => daemonFor(a.bundle.node).writeFile(input.uuid, input.path, input.content));
-    await logActivity({ action: "server.file.write", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { path: input.path }, ip: ctx.ip });
+    await logActivity({ action: "server.file.write", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { path: input.path }, ip: ctx.ip, ctx });
     return ok;
   },
 
   mkdir: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "files.write");
     await call(() => daemonFor(a.bundle.node).mkdir(input.uuid, input.path));
-    await logActivity({ action: "server.file.mkdir", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { path: input.path }, ip: ctx.ip });
+    await logActivity({ action: "server.file.mkdir", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { path: input.path }, ip: ctx.ip, ctx });
     return ok;
   },
 
   rename: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "files.write");
     await call(() => daemonFor(a.bundle.node).rename(input.uuid, input.from, input.to));
-    await logActivity({ action: "server.file.rename", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { from: input.from, to: input.to }, ip: ctx.ip });
+    await logActivity({ action: "server.file.rename", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { from: input.from, to: input.to }, ip: ctx.ip, ctx });
     return ok;
   },
 
   delete: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "files.write");
     await call(() => daemonFor(a.bundle.node).deleteFiles(input.uuid, input.paths));
-    await logActivity({ action: "server.file.delete", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { paths: input.paths }, ip: ctx.ip });
+    await logActivity({ action: "server.file.delete", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { paths: input.paths }, ip: ctx.ip, ctx });
     return ok;
   },
 
   compress: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "files.write");
     const archive = await call(() => daemonFor(a.bundle.node).compress(input.uuid, input.root, input.paths));
-    await logActivity({ action: "server.file.compress", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { root: input.root, paths: input.paths, archive: archive.path }, ip: ctx.ip });
+    await logActivity({ action: "server.file.compress", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { root: input.root, paths: input.paths, archive: archive.path }, ip: ctx.ip, ctx });
     return { archive: toFileEntry(archive) };
   },
 
   decompress: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "files.write");
     await call(() => daemonFor(a.bundle.node).decompress(input.uuid, input.path));
-    await logActivity({ action: "server.file.decompress", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { path: input.path }, ip: ctx.ip });
+    await logActivity({ action: "server.file.decompress", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { path: input.path }, ip: ctx.ip, ctx });
     return ok;
   },
 
   uploadUrl: async ({ input, ctx }) => {
     const { a, url, expiresAt } = await signedUrl(ctx, input.uuid, "upload", { directory: input.directory });
-    await logActivity({ action: "server.file.upload_url", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { directory: input.directory }, ip: ctx.ip });
+    await logActivity({ action: "server.file.upload_url", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { directory: input.directory }, ip: ctx.ip, ctx });
     return { url, expiresAt };
   },
 
   downloadUrl: async ({ input, ctx }) => {
     const { a, url, expiresAt } = await signedUrl(ctx, input.uuid, "download", { path: input.path });
-    await logActivity({ action: "server.file.download", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { path: input.path }, ip: ctx.ip });
+    await logActivity({ action: "server.file.download", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { path: input.path }, ip: ctx.ip, ctx });
     return { url, expiresAt };
   },
 

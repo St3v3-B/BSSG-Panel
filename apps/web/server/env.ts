@@ -32,6 +32,8 @@ const EnvSchema = z
     NODE_TOKEN: required.min(16, "te kort"),
     NODE_PUBLIC_IP: optional,
     MARIADB_ROOT_PASSWORD: optional,
+    MARIADB_CONTAINER: optional.transform((v) => v ?? "panel-mariadb"),
+    MARIADB_ADMIN_ADDR: optional,
     DATABASE_URL: optional.transform((v) => v ?? "postgres://panel:panel@postgres:5432/panel"),
     REDIS_URL: optional.transform((v) => v ?? "redis://redis:6379"),
     SFTP_PORT: port(2022),
@@ -45,6 +47,7 @@ const EnvSchema = z
     ...e,
     PANEL_URL: (e.PANEL_URL ?? `https://${e.PANEL_DOMAIN}`).replace(/\/+$/, ""),
     DAEMON_URL: (e.DAEMON_URL ?? `https://${e.NODE_DOMAIN}`).replace(/\/+$/, ""),
+    MARIADB_ADMIN_ADDR: e.MARIADB_ADMIN_ADDR ?? `${e.MARIADB_CONTAINER}:3306`,
     encryptionKey: Buffer.from(e.PANEL_ENCRYPTION_KEY, "base64"),
     isTestDomain: e.PANEL_DOMAIN.endsWith(".test"),
   }));

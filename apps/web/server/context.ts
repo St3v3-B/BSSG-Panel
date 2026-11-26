@@ -1,5 +1,6 @@
 /** tRPC-context: sessie uit het cookie, admin-schap vers uit admin_discord_ids. */
 import type { Ctx } from "@panel/api";
+import { bearerFrom, loadApiKeySession } from "./apikey";
 import { ensureBooted } from "./boot";
 import { clientIp } from "./login";
 import { cookieSecure, loadSession, sessionTokenFrom } from "./session";
@@ -15,8 +16,11 @@ export async function createContext(req: Request, resHeaders: Headers): Promise<
   await ensureBooted();
   reqInfo.set(resHeaders, { secure: cookieSecure(req) });
   const token = sessionTokenFrom(req);
+  let session = token ? await loadSession(token) : null;
+  const bearer = session ? null : bearerFrom(req);
+  if (bearer) session = await loadApiKeySession(bearer, resHeaders);
   return {
-    session: token ? await loadSession(token) : null,
+    session,
     ip: clientIp(req),
     userAgent: req.headers.get("user-agent"),
     resHeaders,

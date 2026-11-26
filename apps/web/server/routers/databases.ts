@@ -91,7 +91,7 @@ export const databases: Implementation["databases"] = {
       .insert(schema.databases)
       .values({ serverId: a.bundle.server.id, hostId: host.id, name, username, passwordEnc: encrypt(password) })
       .returning();
-    await logActivity({ action: "server.database.create", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { name, hostId: host.id }, ip: ctx.ip });
+    await logActivity({ action: "server.database.create", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { name, hostId: host.id }, ip: ctx.ip, ctx });
     return toDatabase(row!, host, input.uuid);
   },
 
@@ -104,7 +104,7 @@ export const databases: Implementation["databases"] = {
       throw mariaError(e);
     }
     const [row] = await getDb().update(schema.databases).set({ passwordEnc: encrypt(password) }).where(eq(schema.databases.id, r.d.id)).returning();
-    await logActivity({ action: "server.database.reset_password", userId: ctx.session!.userId, serverId: r.a.bundle.server.id, metadata: { name: r.d.name }, ip: ctx.ip });
+    await logActivity({ action: "server.database.reset_password", userId: ctx.session!.userId, serverId: r.a.bundle.server.id, metadata: { name: r.d.name }, ip: ctx.ip, ctx });
     return toDatabase(row!, r.h, r.uuid);
   },
 
@@ -116,7 +116,7 @@ export const databases: Implementation["databases"] = {
       throw mariaError(e);
     }
     await getDb().delete(schema.databases).where(eq(schema.databases.id, r.d.id));
-    await logActivity({ action: "server.database.delete", userId: ctx.session!.userId, serverId: r.a.bundle.server.id, metadata: { name: r.d.name }, ip: ctx.ip });
+    await logActivity({ action: "server.database.delete", userId: ctx.session!.userId, serverId: r.a.bundle.server.id, metadata: { name: r.d.name }, ip: ctx.ip, ctx });
     return ok;
   },
 };
@@ -157,7 +157,7 @@ export const databaseHosts: Implementation["admin"]["databaseHosts"] = {
       .insert(schema.databaseHosts)
       .values({ name: input.name, host: input.host, port: input.port, adminUser: input.adminUser, adminPasswordEnc: encrypt(input.adminPassword), nodeId: input.nodeId })
       .returning();
-    await logActivity({ action: "admin.database_host.create", userId: uid(ctx), metadata: { id: h!.id, name: input.name }, ip: ctx.ip });
+    await logActivity({ action: "admin.database_host.create", userId: uid(ctx), metadata: { id: h!.id, name: input.name }, ip: ctx.ip, ctx });
     return toHost(h!, 0);
   },
 
@@ -169,7 +169,7 @@ export const databaseHosts: Implementation["admin"]["databaseHosts"] = {
       const r = await getDb().update(schema.databaseHosts).set(set).where(eq(schema.databaseHosts.id, id)).returning();
       if (!r.length) throw new TRPCError({ code: "NOT_FOUND", message: "DATABASE_HOST_NOT_FOUND" });
     }
-    await logActivity({ action: "admin.database_host.update", userId: uid(ctx), metadata: { id, fields: Object.keys(input).filter((k) => k !== "id") }, ip: ctx.ip });
+    await logActivity({ action: "admin.database_host.update", userId: uid(ctx), metadata: { id, fields: Object.keys(input).filter((k) => k !== "id") }, ip: ctx.ip, ctx });
     return hostWithCount(id);
   },
 
@@ -177,7 +177,7 @@ export const databaseHosts: Implementation["admin"]["databaseHosts"] = {
     const h = await hostWithCount(input.id);
     if (h.databaseCount > 0) throw new TRPCError({ code: "CONFLICT", message: "DATABASE_HOST_IN_USE" });
     await getDb().delete(schema.databaseHosts).where(eq(schema.databaseHosts.id, input.id));
-    await logActivity({ action: "admin.database_host.delete", userId: uid(ctx), metadata: { id: input.id, name: h.name }, ip: ctx.ip });
+    await logActivity({ action: "admin.database_host.delete", userId: uid(ctx), metadata: { id: input.id, name: h.name }, ip: ctx.ip, ctx });
     return ok;
   },
 
