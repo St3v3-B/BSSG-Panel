@@ -102,4 +102,5 @@ type Engine interface {
 	// Stats roept fn aan voor elke meting tot ctx klaar is of de container stopt.
 	Stats(ctx context.Context, id string, fn func(StatsSample)) error
 	Update(ctx context.Context, id string, r Resources) error
+	Networks
 }

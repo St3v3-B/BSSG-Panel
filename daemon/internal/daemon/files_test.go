@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 
 	"panel/daemon/internal/engine"
 	"panel/daemon/internal/testpanel"
+	"panel/daemon/proxy"
 )
 
 func (h *harness) raw(method, path string, body []byte) (int, []byte, http.Header) {
@@ -321,5 +323,65 @@ func TestSFTP(t *testing.T) {
 	}
 	if err := ro.Remove("/readme.txt"); err == nil {
 		t.Fatal("verwijderen zonder files.write")
+	}
+}
+
+func TestWebSiteNetwork(t *testing.T) {
+	eng := engine.NewFake()
+	if _, err := eng.Create(context.Background(), engine.ContainerConfig{Name: "panel-mariadb", Labels: map[string]string{"panel.role": "infra"}}); err != nil {
+		t.Fatal(err)
+	}
+	router := proxy.NewFake()
+	h := newHarness(t, eng, router, nil, "", nil, "")
+	sp := testSpec(u1)
+	sp["type"] = "web"
+	sp["http_port"] = 8080
+	h.expect("POST", "/api/servers", sp, 400) // web met allocations
+	sp["allocations"] = []any{}
+	sp["config_files"] = []any{}
+	h.expect("POST", "/api/servers", sp, 202)
+	h.waitState(u1, "offline", 5*time.Second)
+	net := "panel-site-" + u1
+	n := eng.Network(net)
+	if n == nil || !n.Internal || n.Labels["panel.role"] != "site" || n.Labels["panel.managed"] != "true" || n.Labels["panel.instance"] != "unit" || !n.Connected["panel-mariadb"] {
+		t.Fatalf("netwerk: %+v", n)
+	}
+	h.expect("POST", "/api/servers/"+u1+"/power", map[string]string{"action": "start"}, 202)
+	h.waitState(u1, "online", 5*time.Second)
+	cfg := eng.Container("panel-" + u1).Config
+	if cfg.NetworkMode != net || len(cfg.Ports) != 0 {
+		t.Fatalf("%+v", cfg)
+	}
+	h.expect("PUT", "/api/routes/site.test", map[string]any{"server_uuid": u1}, 200)
+	rs := router.Routes()
+	if len(rs) != 1 || rs[0].Upstream != (proxy.Upstream{Container: "panel-" + u1, Network: net, Port: 8080}) {
+		t.Fatalf("%+v", rs)
+	}
+	// MariaDB herstart (koppeling weg): periodiek herstel.
+	_ = eng.DisconnectNetwork(context.Background(), net, "panel-mariadb")
+	h.d.Manager().ReconcileNetworks(context.Background())
+	if !eng.Network(net).Connected["panel-mariadb"] {
+		t.Fatal("MariaDB niet opnieuw gekoppeld")
+	}
+	h.expect("DELETE", "/api/servers/"+u1, nil, 204)
+	if eng.Network(net) != nil || len(router.Routes()) != 0 {
+		t.Fatal("netwerk of route niet opgeruimd")
+	}
+	if eng.Container("panel-mariadb") == nil {
+		t.Fatal("MariaDB aangeraakt")
+	}
+
+	// Een netwerk met die naam dat niet van ons is: niet gebruiken.
+	eng.AddNetwork(net, map[string]string{"panel.role": "infra"})
+	h.expect("POST", "/api/servers", sp, 202)
+	h.waitState(u1, "offline", 5*time.Second)
+	h.expect("POST", "/api/servers/"+u1+"/power", map[string]string{"action": "start"}, 202)
+	time.Sleep(200 * time.Millisecond)
+	if h.state(u1).State != "offline" {
+		t.Fatal("gestart op een vreemd netwerk")
+	}
+	h.expect("DELETE", "/api/servers/"+u1, nil, 204)
+	if eng.Network(net) == nil {
+		t.Fatal("vreemd netwerk verwijderd")
 	}
 }

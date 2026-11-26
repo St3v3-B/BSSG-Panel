@@ -47,6 +47,10 @@ func (s *Server) containerConfig(sp spec.ServerSpec) engine.ContainerConfig {
 			ports = append(ports, engine.PortBinding{HostIP: a.IP, HostPort: a.Port, ContainerPort: a.Port, Proto: proto})
 		}
 	}
+	netMode := s.m.cfg.NetworkMode
+	if sp.Type == "web" {
+		netMode, ports = SiteNetwork(sp.UUID), nil
+	}
 	return engine.ContainerConfig{
 		Name:           ContainerName(sp.UUID),
 		Image:          sp.Image,
@@ -64,7 +68,7 @@ func (s *Server) containerConfig(sp spec.ServerSpec) engine.ContainerConfig {
 		SecurityOpt:    []string{"no-new-privileges"},
 		Resources:      resources(sp.Limits),
 		Ports:          ports,
-		NetworkMode:    s.m.cfg.NetworkMode,
+		NetworkMode:    netMode,
 	}
 }
 
@@ -213,6 +217,11 @@ func (s *Server) launch(sp spec.ServerSpec) error {
 	}
 	if err := eng.Remove(ctx, ContainerName(sp.UUID)); err != nil && !errors.Is(err, engine.ErrNotFound) {
 		return fmt.Errorf("oude container verwijderen: %w", err)
+	}
+	if sp.Type == "web" {
+		if err := s.m.ensureSiteNetwork(ctx, sp.UUID); err != nil {
+			return err
+		}
 	}
 	id, err := eng.Create(ctx, s.containerConfig(sp))
 	if err != nil {
@@ -549,6 +558,11 @@ func (s *Server) destroy() error {
 	for _, n := range []string{ContainerName(s.uuid), installName(s.uuid)} {
 		if err := s.m.eng.Remove(ctx, n); err != nil && !errors.Is(err, engine.ErrNotFound) {
 			return fmt.Errorf("container %s verwijderen: %w", n, err)
+		}
+	}
+	if s.IsWeb() {
+		if err := s.m.removeSiteNetwork(ctx, s.uuid); err != nil {
+			s.m.log.Warn("site-netwerk opruimen", "uuid", s.uuid, "err", err)
 		}
 	}
 	if err := os.RemoveAll(s.m.volume(s.uuid)); err != nil {

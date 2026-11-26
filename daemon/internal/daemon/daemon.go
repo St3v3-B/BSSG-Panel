@@ -140,6 +140,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 	if err := d.mgr.Recover(ctx); err != nil {
 		return fmt.Errorf("staat herstellen: %w", err)
 	}
+	d.mgr.ReconcileNetworks(ctx)
 	if err := d.routes.Sync(ctx); err != nil {
 		d.log.Warn("routes synchroniseren mislukt", "err", err)
 		d.needSync.Store(true)
@@ -235,6 +236,9 @@ func (d *Daemon) routerLoop() {
 		case <-d.stop:
 			return
 		case <-syncT.C:
+			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+			d.mgr.ReconcileNetworks(ctx)
+			cancel()
 			doSync("periodiek")
 		case <-healthT.C:
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

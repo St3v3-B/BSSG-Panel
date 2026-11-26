@@ -24,6 +24,109 @@ type Fake struct {
 	Pulls int
 	// FailCreate, als gezet, laat Create falen.
 	FailCreate error
+
+	networks map[string]*FakeNetwork
+}
+
+// FakeNetwork is een netwerk in de fake.
+type FakeNetwork struct {
+	Labels    map[string]string
+	Internal  bool
+	Connected map[string]bool // containernamen
+}
+
+// AddNetwork maakt een netwerk aan (zoals compose dat zou doen).
+func (f *Fake) AddNetwork(name string, labels map[string]string) {
+	_ = f.CreateNetwork(context.Background(), name, labels, false)
+}
+
+// Network geeft een kopie van een netwerk, of nil.
+func (f *Fake) Network(name string) *FakeNetwork {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n, ok := f.networks[name]
+	if !ok {
+		return nil
+	}
+	c := &FakeNetwork{Labels: n.Labels, Internal: n.Internal, Connected: map[string]bool{}}
+	for k, v := range n.Connected {
+		c.Connected[k] = v
+	}
+	return c
+}
+
+func (f *Fake) NetworkLabels(_ context.Context, name string) (map[string]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n, ok := f.networks[name]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return n.Labels, nil
+}
+
+func (f *Fake) CreateNetwork(_ context.Context, name string, labels map[string]string, internal bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.networks == nil {
+		f.networks = map[string]*FakeNetwork{}
+	}
+	if _, ok := f.networks[name]; ok {
+		return fmt.Errorf("netwerk %s bestaat al", name)
+	}
+	f.networks[name] = &FakeNetwork{Labels: labels, Internal: internal, Connected: map[string]bool{}}
+	return nil
+}
+
+func (f *Fake) RemoveNetwork(_ context.Context, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n, ok := f.networks[name]
+	if !ok {
+		return ErrNotFound
+	}
+	if len(n.Connected) > 0 {
+		return fmt.Errorf("netwerk %s heeft nog actieve endpoints", name)
+	}
+	delete(f.networks, name)
+	return nil
+}
+
+func (f *Fake) containerName(idOrName string) (string, bool) {
+	if _, ok := f.byName[idOrName]; ok {
+		return idOrName, true
+	}
+	if c, ok := f.containers[idOrName]; ok {
+		return c.Config.Name, true
+	}
+	return "", false
+}
+
+func (f *Fake) ConnectNetwork(_ context.Context, net, container string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n, ok := f.networks[net]
+	name, cok := f.containerName(container)
+	if !ok || !cok {
+		return ErrNotFound
+	}
+	n.Connected[name] = true
+	return nil
+}
+
+func (f *Fake) DisconnectNetwork(_ context.Context, net, container string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n, ok := f.networks[net]
+	if !ok {
+		return ErrNotFound
+	}
+	name, _ := f.containerName(container)
+	if name == "" {
+		name = container
+	}
+	delete(n.Connected, name)
+	return nil
 }
 
 var _ Engine = (*Fake)(nil)
@@ -183,6 +286,9 @@ func (f *Fake) Create(_ context.Context, cfg ContainerConfig) (string, error) {
 	c.cond = sync.NewCond(&c.mu)
 	f.containers[c.ID] = c
 	f.byName[cfg.Name] = c.ID
+	if n, ok := f.networks[cfg.NetworkMode]; ok {
+		n.Connected[cfg.Name] = true
+	}
 	return c.ID, nil
 }
 
@@ -226,6 +332,9 @@ func (f *Fake) Remove(_ context.Context, id string) error {
 	f.mu.Lock()
 	delete(f.containers, c.ID)
 	delete(f.byName, c.Config.Name)
+	for _, n := range f.networks {
+		delete(n.Connected, c.Config.Name)
+	}
 	f.mu.Unlock()
 	return nil
 }

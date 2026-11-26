@@ -48,6 +48,9 @@ type Config struct {
 	DiskInterval   time.Duration
 	StatsInterval  time.Duration
 	BacklogLines   int
+	// MariaDB is de containernaam van de gedeelde MariaDB (standaard panel-mariadb;
+	// tests gebruiken een eigen naam).
+	MariaDB string
 }
 
 func (c *Config) defaults() {
@@ -71,6 +74,9 @@ func (c *Config) defaults() {
 	}
 	if c.BacklogLines == 0 {
 		c.BacklogLines = 500
+	}
+	if c.MariaDB == "" {
+		c.MariaDB = MariaDBContainer
 	}
 	if c.Instance == "" {
 		c.Instance = "main"
@@ -222,6 +228,13 @@ func (m *Manager) Create(sp spec.ServerSpec) (*Server, bool, error) {
 	m.register(s)
 	m.mu.Unlock()
 
+	if sp.Type == "web" {
+		ctx, cancel := context.WithTimeout(m.ctx, 30*time.Second)
+		if err := m.ensureSiteNetwork(ctx, s.uuid); err != nil {
+			m.log.Warn("site-netwerk", "uuid", s.uuid, "err", err)
+		}
+		cancel()
+	}
 	if sp.SkipInstall {
 		m.rep.ReportInstall(s.uuid, true, "")
 		if sp.StartOnInstall {

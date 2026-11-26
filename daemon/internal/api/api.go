@@ -267,12 +267,13 @@ func (a *API) updateServer(w http.ResponseWriter, r *http.Request, s *server.Ser
 }
 
 func (a *API) deleteServer(w http.ResponseWriter, r *http.Request, s *server.Server) {
+	// Eerst de routes, zodat Caddy van het site-netwerk loskomt en dat weg kan.
+	if err := a.routes.RemoveServer(r.Context(), s.UUID()); err != nil {
+		a.log.Warn("routes van verwijderde server", "uuid", s.UUID(), "err", err)
+	}
 	if err := a.mgr.Delete(s.UUID()); err != nil {
 		stateErr(w, err)
 		return
-	}
-	if err := a.routes.RemoveServer(r.Context(), s.UUID()); err != nil {
-		a.log.Warn("routes van verwijderde server", "uuid", s.UUID(), "err", err)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
