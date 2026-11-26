@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -137,8 +139,42 @@ func TestNewCaddyImplementsHealthChecker(t *testing.T) {
 	if _, ok := r.(HealthChecker); !ok {
 		t.Fatal("NewCaddy moet HealthChecker implementeren")
 	}
-	if _, err := NewCaddy(Config{AdminURL: "127.0.0.1:2019"}); err == nil {
-		t.Fatal("admin-URL zonder schema moet fout geven")
+	for _, bad := range []string{"127.0.0.1:2019", "unix://", "ftp://x"} {
+		if _, err := NewCaddy(Config{AdminURL: bad}); err == nil {
+			t.Fatalf("admin-URL %q moet fout geven", bad)
+		}
+	}
+}
+
+func TestAdminOverUnixSocket(t *testing.T) {
+	f := newFakeAdmin(t)
+	sock := filepath.Join(t.TempDir(), "caddy-admin.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: http.HandlerFunc(f.serve)}
+	go func() { _ = srv.Serve(ln) }()
+	defer srv.Close()
+	c, err := NewCaddyWithOptions(Config{AdminURL: "unix://" + sock}, CaddyOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.tlsAddr != DefaultTLSAddr {
+		t.Fatalf("tlsAddr = %q", c.tlsAddr)
+	}
+	if err := c.SetRoute(context.Background(), Route{Host: "a.test", Upstream: Upstream{Container: "c", Port: 80}}); err != nil {
+		t.Fatal(err)
+	}
+	if f.find("panel-dyn-a.test") == nil {
+		t.Fatal("route niet gezet via de socket")
+	}
+	if err := c.Healthy(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	c2, _ := NewCaddyWithOptions(Config{AdminURL: "unix://" + sock, TLSAddr: "10.0.0.1:8443"}, CaddyOptions{})
+	if c2.tlsAddr != "10.0.0.1:8443" {
+		t.Fatalf("Config.TLSAddr niet gebruikt: %q", c2.tlsAddr)
 	}
 }
 
@@ -429,13 +465,13 @@ func (d *fakeDocker) Disconnect(_ context.Context, id, _ string) error {
 
 func TestNetworkCoupling(t *testing.T) {
 	ctx := context.Background()
-	own := map[string]string{"panel.managed": "true", "panel.instance": "t1"}
+	own := map[string]string{"panel.managed": "true", "panel.instance": "t1", "panel.role": "site"}
 	d := &fakeDocker{
 		networks: map[string]NetworkInfo{
 			"site1":   {ID: "id-site1", Name: "site1", Labels: own},
 			"site2":   {ID: "id-site2", Name: "site2", Labels: own},
-			"compose": {ID: "id-compose", Name: "compose", Labels: map[string]string{"panel.managed": "true", "panel.instance": "t1", "com.docker.compose.project": "panel"}},
-			"other":   {ID: "id-other", Name: "other", Labels: map[string]string{"panel.managed": "true", "panel.instance": "main"}},
+			"compose": {ID: "id-compose", Name: "compose", Labels: map[string]string{"panel.managed": "true", "panel.instance": "t1", "panel.role": "infra"}},
+			"other":   {ID: "id-other", Name: "other", Labels: map[string]string{"panel.managed": "true", "panel.instance": "main", "panel.role": "site"}},
 			"plain":   {ID: "id-plain", Name: "plain"},
 		},
 		attached: map[string]bool{"id-compose": true, "id-other": true, "id-plain": true},

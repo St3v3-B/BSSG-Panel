@@ -14,8 +14,9 @@
 {
 	email {$ACME_EMAIL}
 
-	# Binnen de container op alle interfaces; docker-compose publiceert hem
-	# alleen op 127.0.0.1:2019. Niet aan internet blootstellen.
+	# Alleen op een unix-socket in de gedeelde map met de daemon, nooit op TCP:
+	# Caddy hangt aan site-netwerken, en sites mogen de admin-API niet bereiken.
+	# De daemon gebruikt CADDY_ADMIN_URL=unix:///run/panel/caddy-admin.sock.
 	admin unix//run/panel/caddy-admin.sock
 
 	# Vaste naam voor de HTTPS-server: hier landen de dynamische routes.

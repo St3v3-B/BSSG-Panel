@@ -36,7 +36,6 @@ services:
       - "80:80"
       - "443:443"
       - "443:443/udp"                   # HTTP/3, optioneel
-      - "127.0.0.1:2019:2019"           # admin-API, alleen localhost (CADDY_ADMIN_URL)
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy/global.d:/etc/caddy/global.d:ro
@@ -64,12 +63,15 @@ Punten die ertoe doen:
   de map bij een herstart van de daemon en ziet de Caddy-container de nieuwe map (en socket) niet
   meer tot Caddy zelf herstart.
 - **Socket-rechten**: Caddy draait in de container als root, dus `0660 root:root` is genoeg.
-- **Admin-API** staat binnen de container op `0.0.0.0:2019`; publiceer hem alleen op
-  `127.0.0.1`. De daemon gebruikt `CADDY_ADMIN_URL=http://127.0.0.1:2019`.
+- **Admin-API** luistert alleen op de unix-socket `/run/panel/caddy-admin.sock` (in de gedeelde
+  map), **niet op TCP en niet publiceren**: Caddy hangt aan site-netwerken en sites mogen er niet
+  bij. De daemon gebruikt `CADDY_ADMIN_URL=unix:///run/panel/caddy-admin.sock` (op de socket doet
+  Caddy geen Host-check). De SSL-controle verbindt met `CADDY_TLS_ADDR` (standaard
+  `127.0.0.1:443`).
 - **Netwerken van sites**: de daemon koppelt `panel-caddy` aan site-netwerken met
-  `panel.managed=true` + `panel.instance=$PANEL_INSTANCE` en koppelt hem los na de laatste route.
-  Netwerken die docker-compose maakt (label `com.docker.compose.project`) worden nooit
-  losgekoppeld, dus het compose-netwerk naar het panel blijft altijd staan.
+  `panel.managed=true` + `panel.instance=$PANEL_INSTANCE` + `panel.role=site` en koppelt hem los
+  na de laatste route. Andere netwerken (zoals het compose-netwerk met `panel.role=infra`) raakt
+  hij nooit aan.
 - **Panel → daemon**: het panel bereikt `https://$NODE_DOMAIN` via Caddy; geef de panel-container
   `extra_hosts: ["${NODE_DOMAIN}:host-gateway"]` zodat dat ook zonder externe DNS (hairpin) werkt.
 - `/data` niet weggooien: daar staan de certificaten. Zonder volume vraagt Caddy bij elke
@@ -77,20 +79,21 @@ Punten die ertoe doen:
 
 ## Lokaal testen met `tls internal`
 
-Op eigen vrije poorten, niet 80/443/2019 (op deze machine draait ander spul):
+Op eigen vrije poorten, niet 80/443/2019 (op deze machine draait ander spul); de admin-API
+zit op de socket in `$work/run`:
 
 ```sh
 work=$(mktemp -d); mkdir -p "$work/global.d" "$work/run"
 cp deploy/caddy/examples/local-certs.caddy "$work/global.d/"
 docker run -d --name caddy-test-$$ \
   --label panel.test=true --label panel.instance=caddy-test-$$ \
-  -p 127.0.0.1:12019:2019 -p 127.0.0.1:10080:80 -p 127.0.0.1:10443:443 \
+  -p 127.0.0.1:10080:80 -p 127.0.0.1:10443:443 \
   -e PANEL_DOMAIN=panel.test -e NODE_DOMAIN=node1.test -e ACME_EMAIL=admin@panel.test \
   -v "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
   -v "$work/global.d:/etc/caddy/global.d:ro" -v "$work/run:/run/panel" caddy:2
 
 # root van Caddy's interne CA ophalen en het certificaat controleren
-curl -s http://127.0.0.1:12019/pki/ca/local | python3 -c 'import json,sys;print(json.load(sys.stdin)["root_certificate"])' > "$work/root.pem"
+curl -s --unix-socket "$work/run/caddy-admin.sock" http://caddy/pki/ca/local | python3 -c 'import json,sys;print(json.load(sys.stdin)["root_certificate"])' > "$work/root.pem"
 curl -v --cacert "$work/root.pem" --resolve panel.test:10443:127.0.0.1 https://panel.test:10443/
 curl -I --resolve panel.test:10080:127.0.0.1 http://panel.test:10080/   # 308 naar https
 
