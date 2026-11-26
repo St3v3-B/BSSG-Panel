@@ -79,6 +79,7 @@ export function useConsole(server: ServerDetail | undefined, handlers: ConsoleHa
         permissions: srv.permissions,
         memoryLimitBytes: srv.limits.ramMb * MiB,
         diskLimitBytes: srv.limits.diskMb * MiB,
+        flavor: srv.type,
       }),
       onState: (s, info) => {
         setState(s);
