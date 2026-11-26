@@ -25,7 +25,7 @@ func TestPages(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if style.FindString(b) != css || !strings.Contains(b, `<div class="host">{http.request.host}</div>`) || !strings.Contains(b, `lang="nl"`) {
+		if style.FindString(b) != css || !strings.Contains(b, `<div class="host">{http.request.host}</div>`) || !strings.Contains(b, `<html lang="en"`) || !strings.Contains(b, `<span lang="nl">`) {
 			t.Errorf("%s: ander ontwerp of geen hostnaam", p)
 		}
 		if strings.Contains(b, "http://") || strings.Contains(b, "https://") {
