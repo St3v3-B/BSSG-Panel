@@ -6,8 +6,10 @@ description: >-
   (nieuwste stabiele versie); de installatie haalt de jar via de PaperMC-API en controleert
   de SHA-256. Draait op Java 25 (Minecraft 1.20.5 en nieuwer; zie de generieke Java-template
   voor oudere versies). Heap = 80% van het RAM-limiet van de server.
+  Achter een Velocity-proxy: zet `VELOCITY_FORWARDING` op `true` en `VELOCITY_SECRET` op
+  dezelfde secret als de proxy (zie deploy/README.md, "Velocity met twee Paper-servers").
 type: game
-version: 1
+version: 2
 image: eclipse-temurin:25-jre
 # Heap: 80% van SERVER_MEMORY (rest voor metaspace, threads, netty-buffers).
 # Flags: Aikar/PaperMC-aanbevolen G1-instellingen (zonder AlwaysPreTouch, zodat een
@@ -44,6 +46,23 @@ variables:
     default: latest
     user_editable: true
     pattern: "^(latest|[0-9]+)$"
+  - key: VELOCITY_FORWARDING
+    name: Achter Velocity (modern forwarding)
+    description: >-
+      `true` = alleen spelers via een Velocity-proxy met dezelfde secret (Paper controleert de
+      login via de proxy). Standaard `false`. Herstart nodig.
+    default: "false"
+    user_editable: true
+    pattern: "^(true|false)$"
+  - key: VELOCITY_SECRET
+    name: Velocity-secret
+    description: >-
+      Moet gelijk zijn aan de forwarding-secret van de Velocity-server (variabele
+      VELOCITY_FORWARDING_SECRET of het bestand forwarding.secret daar). Alleen nodig als
+      VELOCITY_FORWARDING `true` is.
+    default: ""
+    user_editable: true
+    pattern: "^([A-Za-z0-9_-]{12,128})?$"
   - key: SERVER_JARFILE
     name: Jar-bestand
     description: Naam van de server-jar in de hoofdmap.
@@ -103,3 +122,10 @@ config_files:
       server-port: "{{SERVER_PORT}}"
       server-ip: "0.0.0.0"
       query.port: "{{SERVER_PORT}}"
+  # Velocity modern forwarding. Standaard uit; Paper vult de rest van het bestand zelf aan.
+  - path: config/paper-global.yml
+    format: yaml
+    set:
+      proxies.velocity.enabled: "{{VELOCITY_FORWARDING}}"
+      proxies.velocity.online-mode: "true"
+      proxies.velocity.secret: "{{VELOCITY_SECRET}}"
