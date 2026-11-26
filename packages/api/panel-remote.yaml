@@ -1,0 +1,221 @@
+openapi: 3.1.0
+info:
+  title: Panel remote API (daemon → panel)
+  version: 1.0.0
+  description: |
+    Endpoints op het panel die alleen daemons aanroepen. Eigenaar: orchestrator;
+    panel-api implementeert ze als route handlers onder `apps/web/app/api/remote/`,
+    de daemon roept ze aan op `PANEL_URL` (standaard `https://$PANEL_DOMAIN`).
+
+    Authenticatie: `Authorization: Bearer <NODE_TOKEN>`; het panel zoekt de node op via
+    de hash van het token. Alle antwoorden JSON. Bij 5xx of netwerkfout probeert de daemon
+    het opnieuw met backoff (max 10 min), behalve bij sftp/auth.
+servers:
+  - url: https://{panelDomain}
+    variables:
+      panelDomain:
+        default: panel.test
+security:
+  - nodeToken: []
+paths:
+  /api/remote/jwt-key:
+    get:
+      operationId: getJwtKey
+      summary: Publieke sleutel(s) om browser-JWT's te controleren
+      responses:
+        "200":
+          description: JWKS (Ed25519, alg EdDSA)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys]
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      type: object
+                      required: [kty, crv, x, kid, alg]
+                      properties:
+                        kty: { const: OKP }
+                        crv: { const: Ed25519 }
+                        x: { type: string }
+                        kid: { type: string }
+                        alg: { const: EdDSA }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/remote/node/hello:
+    post:
+      operationId: nodeHello
+      summary: Bij opstarten; panel werkt disk_quota_mode en versie bij
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, disk_quota_mode]
+              properties:
+                version: { type: string }
+                disk_quota_mode: { type: string, enum: [soft, xfs] }
+      responses:
+        "204": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/remote/servers/{uuid}/install:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      operationId: reportInstall
+      summary: Installatie klaar of mislukt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [successful]
+              properties:
+                successful: { type: boolean }
+                error: { type: [string, "null"] }
+      responses:
+        "204": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/remote/servers/{uuid}/status:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      operationId: reportStatus
+      summary: Statuswijziging (best effort; het panel kan ook GET /api/servers/{uuid} doen)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state: { type: string, enum: [installing, install_failed, offline, starting, online, stopping, disk_exceeded] }
+      responses:
+        "204": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/remote/backups/{backup_id}:
+    parameters:
+      - name: backup_id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      operationId: reportBackup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [successful]
+              properties:
+                successful: { type: boolean }
+                sha256: { type: [string, "null"] }
+                size_bytes: { type: [integer, "null"], format: int64 }
+                error: { type: [string, "null"] }
+      responses:
+        "204": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/remote/backups/{backup_id}/restore:
+    parameters:
+      - name: backup_id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      operationId: reportRestore
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [successful]
+              properties:
+                successful: { type: boolean }
+                error: { type: [string, "null"] }
+      responses:
+        "204": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/remote/sftp/auth:
+    post:
+      operationId: sftpAuth
+      summary: SFTP-login controleren (rate limited per IP en gebruikersnaam)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, ip]
+              properties:
+                username: { type: string, description: "<discord-naam>.<server-shortid>" }
+                password: { type: string, description: "SFTP-wachtwoord of API-sleutel" }
+                ip: { type: string }
+      responses:
+        "200":
+          description: Toegestaan
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [server_uuid, user_id, permissions]
+                properties:
+                  server_uuid: { type: string, format: uuid }
+                  user_id: { type: string }
+                  permissions:
+                    type: array
+                    items: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403":
+          description: Onjuiste gegevens of geen files.read
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Te veel pogingen
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+components:
+  securitySchemes:
+    nodeToken:
+      type: http
+      scheme: bearer
+  parameters:
+    Uuid:
+      name: uuid
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Unauthorized:
+      description: Onbekend node-token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Niet gevonden
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        message: { type: string }

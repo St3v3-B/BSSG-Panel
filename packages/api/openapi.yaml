@@ -1,0 +1,895 @@
+openapi: 3.1.0
+info:
+  title: Panel node-daemon API
+  version: 1.0.0
+  description: |
+    API van de Go-daemon op elke node. Eigenaar: orchestrator; de daemon-agent implementeert,
+    panel-api roept aan (apps/web/server/daemon/). Wijzigingen alleen via de orchestrator.
+
+    ## Bereikbaarheid
+    De daemon luistert op een unix-socket (`DAEMON_SOCKET`, standaard `/run/panel/daemon.sock`)
+    en optioneel op `127.0.0.1:$DAEMON_PORT` (standaard 8080). Caddy zet hem op
+    `https://$NODE_DOMAIN`. De daemon zelf doet geen TLS.
+
+    ## Authenticatie
+    - **nodeToken**: `Authorization: Bearer <NODE_TOKEN>`. Alleen het panel heeft dit token.
+      Vergelijking in constante tijd.
+    - **browserJwt**: JWT (EdDSA/Ed25519) uitgegeven door het panel. De daemon haalt de publieke
+      sleutel op via `GET {PANEL_URL}/api/remote/jwt-key` (zie panel-remote.yaml) en ververst die
+      bij een onbekende `kid`. Claims:
+      `iss` = PANEL_URL, `aud` = NODE_DOMAIN, `sub` = user-id (string), `server_uuid`,
+      `permissions` (array, zie Permission), `jti`, `iat`, `exp` (max 10 min).
+      Bij de websocket gaat de JWT in het eerste bericht; bij upload/download in `?token=`.
+      Download/upload-JWT's zijn eenmalig (`jti` wordt onthouden tot `exp`).
+
+    ## Fouten
+    Altijd `application/json` met het `Error`-schema en een passende statuscode.
+
+    ## Websocket `GET /api/servers/{uuid}/ws`
+    Upgrade zonder auth-header. Eerste bericht van de client binnen 10 s:
+    `{"event":"auth","token":"<jwt>"}`. Daarna, alle berichten JSON met een `event`-veld:
+
+    | Richting | event | velden | betekenis |
+    |---|---|---|---|
+    | → daemon | `auth` | `token` | (opnieuw) authenticeren; ook voor token-refresh |
+    | → daemon | `send_command` | `command` | regel naar stdin (vereist `console.write`) |
+    | → daemon | `set_state` | `state`: start/stop/restart/kill | power (vereist `power`) |
+    | → daemon | `request_stats` | | direct een `stats` sturen |
+    | ← daemon | `auth_success` | `permissions` | na geldige `auth`; daarna backlog (max 500 regels) als `console_output` en een `status` |
+    | ← daemon | `token_expiring` | `expires_at` | 60 s voor `exp` |
+    | ← daemon | `token_expired` | | daarna sluit de daemon met code 4001 |
+    | ← daemon | `console_output` | `line` | één regel stdout/stderr van de server |
+    | ← daemon | `install_output` | `line` | één regel van het install-script |
+    | ← daemon | `daemon_message` | `level` (info/warning/error), `line` | meldingen van de daemon zelf (bv. disk 90%) |
+    | ← daemon | `status` | `state` (ServerState) | bij elke statuswijziging |
+    | ← daemon | `stats` | Stats-velden | elke 2 s zolang de server draait |
+    | ← daemon | `backup_progress` | `backup_id`, `bytes`, `percent` | tijdens backup/herstel |
+    | ← daemon | `error` | `message` | bv. recht ontbreekt; verbinding blijft open |
+
+    Sluitcodes: 4001 token verlopen/ongeldig, 4003 geen `console.read`, 4004 server onbekend,
+    4008 geen auth binnen 10 s. De schema's staan onder `components.schemas.Ws*`.
+servers:
+  - url: https://{nodeDomain}
+    variables:
+      nodeDomain:
+        default: node1.test
+security:
+  - nodeToken: []
+tags:
+  - name: system
+  - name: servers
+  - name: power
+  - name: files
+  - name: transfer
+    description: Directe up/downloads vanuit de browser (JWT in ?token=)
+  - name: backups
+  - name: routes
+    description: Caddy-routes; de daemon is de bron van waarheid en synchroniseert Caddy
+
+paths:
+  /api/system:
+    get:
+      tags: [system]
+      operationId: getSystem
+      summary: Node-informatie en gezondheid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemInfo" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/servers:
+    get:
+      tags: [servers]
+      operationId: listServers
+      responses:
+        "200":
+          description: Alle servers die deze daemon kent
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ServerState" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [servers]
+      operationId: createServer
+      summary: Server aanmaken (container + data-map) en installatie starten
+      description: |
+        Idempotent op `uuid`: bestaat de server al met dezelfde spec, dan 202 zonder nieuwe install.
+        Na de installatie stuurt de daemon `POST /api/remote/servers/{uuid}/install` naar het panel.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ServerSpec" }
+      responses:
+        "202":
+          description: Aangemaakt, installatie loopt
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServerState" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/servers/{uuid}:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    get:
+      tags: [servers]
+      operationId: getServer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServerState" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [servers]
+      operationId: updateServer
+      summary: Spec bijwerken (limieten, env, image, allocations)
+      description: Limieten gaan direct in via docker update; de rest bij de volgende start.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ServerSpec" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServerState" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [servers]
+      operationId: deleteServer
+      summary: Container, netwerk, routes en data verwijderen
+      responses:
+        "204": { description: Verwijderd }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/servers/{uuid}/install:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [servers]
+      operationId: reinstallServer
+      summary: Install-script opnieuw draaien (server wordt eerst gestopt; data blijft staan)
+      responses:
+        "202": { description: Installatie gestart }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/servers/{uuid}/power:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [power]
+      operationId: setPower
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { $ref: "#/components/schemas/PowerAction" }
+      responses:
+        "202": { description: Opdracht aangenomen; status volgt via websocket of GET }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Kan niet in deze staat (bv. installing, of disk_exceeded bij start)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/servers/{uuid}/commands:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [power]
+      operationId: sendCommands
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [commands]
+              properties:
+                commands:
+                  type: array
+                  minItems: 1
+                  items: { type: string, maxLength: 2000 }
+      responses:
+        "204": { description: Naar stdin geschreven }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Server draait niet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/servers/{uuid}/logs:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    get:
+      tags: [servers]
+      operationId: getLogs
+      parameters:
+        - name: lines
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        "200":
+          description: Laatste regels uit de backlog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [lines]
+                properties:
+                  lines: { type: array, items: { type: string } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/servers/{uuid}/stats:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    get:
+      tags: [servers]
+      operationId: getStats
+      responses:
+        "200":
+          description: Laatste meting (null-velden als de server niet draait)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Stats" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/servers/{uuid}/ws:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    get:
+      tags: [servers]
+      operationId: websocket
+      summary: Console- en stats-websocket (zie protocol bovenaan)
+      security: []
+      responses:
+        "101": { description: Switching Protocols }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/servers/{uuid}/files/list:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    get:
+      tags: [files]
+      operationId: listFiles
+      parameters: [{ $ref: "#/components/parameters/Path" }]
+      responses:
+        "200":
+          description: Inhoud van de map
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FileEntry" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/servers/{uuid}/files/contents:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    get:
+      tags: [files]
+      operationId: readFile
+      parameters: [{ $ref: "#/components/parameters/Path" }]
+      responses:
+        "200":
+          description: Ruwe inhoud (max 5 MB; groter → 413)
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+    put:
+      tags: [files]
+      operationId: writeFile
+      parameters: [{ $ref: "#/components/parameters/Path" }]
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "204": { description: Geschreven }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+
+  /api/servers/{uuid}/files/mkdir:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [files]
+      operationId: createDirectory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties: { path: { type: string } }
+      responses:
+        "204": { description: Aangemaakt }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+
+  /api/servers/{uuid}/files/rename:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [files]
+      operationId: renameFile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, to]
+              properties:
+                from: { type: string }
+                to: { type: string }
+      responses:
+        "204": { description: Hernoemd }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/servers/{uuid}/files/delete:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [files]
+      operationId: deleteFiles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paths]
+              properties:
+                paths: { type: array, minItems: 1, items: { type: string } }
+      responses:
+        "204": { description: Verwijderd }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/servers/{uuid}/files/compress:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [files]
+      operationId: compressFiles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [root, paths]
+              properties:
+                root: { type: string }
+                paths: { type: array, minItems: 1, items: { type: string } }
+      responses:
+        "200":
+          description: Archief (tar.gz) aangemaakt in root
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FileEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+
+  /api/servers/{uuid}/files/decompress:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [files]
+      operationId: decompressFile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path]
+              properties: { path: { type: string, description: ".zip, .tar, .tar.gz, .tgz of .tar.zst; pakt uit in dezelfde map" } }
+      responses:
+        "204": { description: Uitgepakt }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+
+  /api/servers/{uuid}/files/upload:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [transfer]
+      operationId: uploadFiles
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/Token" }
+        - name: directory
+          in: query
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: array
+                  items: { type: string, format: binary }
+      responses:
+        "204": { description: Geüpload }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+
+  /api/servers/{uuid}/files/download:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    get:
+      tags: [transfer]
+      operationId: downloadFile
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/Token" }
+        - { $ref: "#/components/parameters/Path" }
+      responses:
+        "200":
+          description: Bestand (Content-Disposition attachment)
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/servers/{uuid}/backups:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [backups]
+      operationId: createBackup
+      summary: tar.zst van de data (+ database-dumps) streamen naar S3
+      description: Resultaat via `POST /api/remote/backups/{backup_id}` naar het panel.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BackupRequest" }
+      responses:
+        "202": { description: Gestart }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/servers/{uuid}/backups/{backup_id}/restore:
+    parameters:
+      - { $ref: "#/components/parameters/Uuid" }
+      - name: backup_id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      tags: [backups]
+      operationId: restoreBackup
+      summary: Veilig herstel in stappen (zie ontwerp, Backups)
+      description: Resultaat via `POST /api/remote/backups/{backup_id}/restore` naar het panel.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RestoreRequest" }
+      responses:
+        "202": { description: Gestart }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/routes:
+    get:
+      tags: [routes]
+      operationId: listRoutes
+      responses:
+        "200":
+          description: Alle routes met SSL-status
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RouteWithStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/routes/{host}:
+    parameters:
+      - name: host
+        in: path
+        required: true
+        description: Hostnaam, bv. `blokgenoten.test` of `*.blokgenoten.test` (URL-encoded)
+        schema: { type: string }
+    put:
+      tags: [routes]
+      operationId: setRoute
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Route" }
+      responses:
+        "200":
+          description: Opgeslagen en naar Caddy gestuurd
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RouteWithStatus" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: server_uuid onbekend op deze node
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      tags: [routes]
+      operationId: getRoute
+      responses:
+        "200":
+          description: Route met actuele SSL-status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RouteWithStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [routes]
+      operationId: removeRoute
+      responses:
+        "204": { description: Verwijderd }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  securitySchemes:
+    nodeToken:
+      type: http
+      scheme: bearer
+      description: NODE_TOKEN van deze node
+  parameters:
+    Uuid:
+      name: uuid
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Path:
+      name: path
+      in: query
+      required: true
+      description: Pad binnen de serverdata, begint met `/`. `..` buiten de root → 400.
+      schema: { type: string }
+    Token:
+      name: token
+      in: query
+      required: true
+      description: Browser-JWT met files.read (download) of files.write (upload)
+      schema: { type: string }
+  responses:
+    BadRequest:
+      description: Ongeldige invoer
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Token ontbreekt of is ongeldig
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: Recht ontbreekt in de JWT
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Niet gevonden
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: Conflict met huidige staat
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TooLarge:
+      description: Te groot
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    DiskFull:
+      description: Disk-limiet van de server bereikt; schrijven geweigerd
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Machineleesbare code, bv. `not_found`, `disk_exceeded`, `invalid_state`
+        message: { type: string }
+
+    Permission:
+      type: string
+      enum: [console.read, console.write, files.read, files.write, backup.create, backup.restore, database.manage, domain.manage, schedule.manage, power]
+
+    PowerAction:
+      type: string
+      enum: [start, stop, restart, kill]
+
+    ServerState:
+      type: object
+      required: [uuid, state, disk_bytes, disk_exceeded]
+      properties:
+        uuid: { type: string, format: uuid }
+        state:
+          type: string
+          enum: [installing, install_failed, offline, starting, online, stopping, disk_exceeded]
+        disk_bytes: { type: integer, format: int64 }
+        disk_exceeded: { type: boolean }
+        started_at: { type: [string, "null"], format: date-time }
+        installed_at: { type: [string, "null"], format: date-time }
+
+    SystemInfo:
+      type: object
+      required: [version, disk_quota_mode, cpu_count, memory_total_bytes, memory_used_bytes, disk_total_bytes, disk_free_bytes, docker_version, server_count]
+      properties:
+        version: { type: string }
+        disk_quota_mode: { type: string, enum: [soft, xfs] }
+        cpu_count: { type: integer }
+        memory_total_bytes: { type: integer, format: int64 }
+        memory_used_bytes: { type: integer, format: int64 }
+        disk_total_bytes: { type: integer, format: int64 }
+        disk_free_bytes: { type: integer, format: int64 }
+        docker_version: { type: string }
+        server_count: { type: integer }
+        caddy_healthy: { type: boolean }
+
+    Stats:
+      type: object
+      required: [cpu_pct, memory_bytes, memory_limit_bytes, network_rx_bytes, network_tx_bytes, disk_bytes, disk_limit_bytes, uptime_ms]
+      properties:
+        cpu_pct: { type: number, description: "100 = één core vol" }
+        memory_bytes: { type: integer, format: int64 }
+        memory_limit_bytes: { type: integer, format: int64 }
+        network_rx_bytes: { type: integer, format: int64 }
+        network_tx_bytes: { type: integer, format: int64 }
+        disk_bytes: { type: integer, format: int64 }
+        disk_limit_bytes: { type: integer, format: int64 }
+        uptime_ms: { type: integer, format: int64, description: "0 als de server niet draait" }
+
+    Limits:
+      type: object
+      required: [cpu_pct, memory_mb, swap_mb, disk_mb]
+      properties:
+        cpu_pct: { type: integer, minimum: 0, description: "100 = één core, 0 = onbeperkt" }
+        memory_mb: { type: integer, minimum: 64 }
+        swap_mb: { type: integer, minimum: -1, description: "-1 = onbeperkt, 0 = geen" }
+        disk_mb: { type: integer, minimum: 0, description: "0 = onbeperkt" }
+        pids: { type: integer, minimum: 32, default: 512 }
+
+    AllocationSpec:
+      type: object
+      required: [ip, port]
+      properties:
+        ip: { type: string, description: "IPv4 om op te binden; 0.0.0.0 = alle" }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        primary: { type: boolean, default: false, description: "Bepaalt SERVER_IP/SERVER_PORT" }
+
+    ServerSpec:
+      type: object
+      description: |
+        Volledige, al opgeloste spec: het panel zet template + servervariabelen om naar deze vorm.
+        `{{VAR}}` in startup en config_files vervangt de daemon met waarden uit `environment`
+        plus de ingebouwde variabelen SERVER_UUID, SERVER_MEMORY (= memory_mb), SERVER_IP,
+        SERVER_PORT (primaire allocation) en TZ (Europe/Amsterdam).
+        De data staat in `/var/lib/panel/volumes/{uuid}` en is in de container `/home/container`.
+      required: [uuid, type, image, startup, stop, ready_pattern, environment, limits, allocations, install]
+      properties:
+        uuid: { type: string, format: uuid }
+        type: { type: string, enum: [game, web] }
+        image: { type: string }
+        startup: { type: string }
+        stop:
+          type: object
+          required: [type, value]
+          properties:
+            type: { type: string, enum: [command, signal] }
+            value: { type: string, description: "commando voor stdin, of SIGTERM/SIGINT/SIGKILL/SIGQUIT" }
+        ready_pattern: { type: string, description: "Go-regex (RE2) op stdout" }
+        environment:
+          type: object
+          additionalProperties: { type: string }
+        limits: { $ref: "#/components/schemas/Limits" }
+        allocations:
+          type: array
+          description: Leeg voor web
+          items: { $ref: "#/components/schemas/AllocationSpec" }
+        http_port: { type: [integer, "null"], description: "Alleen web: poort in de container voor Caddy" }
+        install:
+          type: object
+          required: [image, script]
+          properties:
+            image: { type: string }
+            script: { type: string }
+        config_files:
+          type: array
+          items:
+            type: object
+            required: [path, format, set]
+            properties:
+              path: { type: string }
+              format: { type: string, enum: [properties, yaml, json] }
+              set: { type: object, additionalProperties: { type: string } }
+        start_on_install: { type: boolean, default: false }
+        skip_install: { type: boolean, default: false, description: "Bij PUT/herstel: niet opnieuw installeren" }
+
+    FileEntry:
+      type: object
+      required: [name, path, is_directory, is_symlink, size, mode, mime_type, modified_at]
+      properties:
+        name: { type: string }
+        path: { type: string }
+        is_directory: { type: boolean }
+        is_symlink: { type: boolean }
+        size: { type: integer, format: int64 }
+        mode: { type: string, example: "-rw-r--r--" }
+        mime_type: { type: string }
+        modified_at: { type: string, format: date-time }
+
+    S3Credentials:
+      type: object
+      description: Alleen voor de duur van het verzoek; de daemon bewaart ze niet
+      required: [endpoint, bucket, region, access_key, secret_key, path_style]
+      properties:
+        endpoint: { type: string }
+        bucket: { type: string }
+        region: { type: string }
+        access_key: { type: string }
+        secret_key: { type: string }
+        path_style: { type: boolean }
+
+    DatabaseCredentials:
+      type: object
+      required: [name, host, port, username, password]
+      properties:
+        name: { type: string }
+        host: { type: string }
+        port: { type: integer }
+        username: { type: string }
+        password: { type: string }
+
+    BackupRequest:
+      type: object
+      required: [backup_id, s3, key, databases]
+      properties:
+        backup_id: { type: integer }
+        s3: { $ref: "#/components/schemas/S3Credentials" }
+        key: { type: string, description: "S3-objectnaam, bv. servers/{uuid}/{backup_id}.tar.zst" }
+        ignore:
+          type: array
+          items: { type: string }
+          description: glob-patronen relatief aan de root
+        databases:
+          type: array
+          description: Dumps komen in het archief onder `_databases/{name}.sql`
+          items: { $ref: "#/components/schemas/DatabaseCredentials" }
+
+    RestoreRequest:
+      type: object
+      required: [s3, key, sha256, databases]
+      properties:
+        s3: { $ref: "#/components/schemas/S3Credentials" }
+        key: { type: string }
+        sha256: { type: string, pattern: "^[a-f0-9]{64}$" }
+        databases:
+          type: array
+          items: { $ref: "#/components/schemas/DatabaseCredentials" }
+
+    Route:
+      type: object
+      required: [host, server_uuid]
+      properties:
+        host: { type: string }
+        server_uuid: { type: string, format: uuid }
+        port: { type: [integer, "null"], description: "poort in de container; null = http_port uit de spec" }
+        redirect_to: { type: [string, "null"], description: "Als gezet: 308 naar https://{redirect_to}{path}" }
+        wildcard: { type: boolean, default: false }
+        dns_challenge:
+          type: [object, "null"]
+          description: Nodig voor wildcard-certificaten
+          required: [provider, api_token]
+          properties:
+            provider: { type: string, enum: [cloudflare] }
+            api_token: { type: string }
+
+    RouteWithStatus:
+      allOf:
+        - $ref: "#/components/schemas/Route"
+        - type: object
+          required: [ssl_status]
+          properties:
+            ssl_status: { type: string, enum: [pending, dns_wrong, issuing, active, failed] }
+            ssl_error: { type: [string, "null"] }
+            checked_at: { type: [string, "null"], format: date-time }
+
+    # ---------- websocket-berichten ----------
+    WsAuth:
+      type: object
+      required: [event, token]
+      properties:
+        event: { const: auth }
+        token: { type: string }
+    WsSendCommand:
+      type: object
+      required: [event, command]
+      properties:
+        event: { const: send_command }
+        command: { type: string }
+    WsSetState:
+      type: object
+      required: [event, state]
+      properties:
+        event: { const: set_state }
+        state: { $ref: "#/components/schemas/PowerAction" }
+    WsRequestStats:
+      type: object
+      required: [event]
+      properties:
+        event: { const: request_stats }
+    WsClientMessage:
+      oneOf:
+        - $ref: "#/components/schemas/WsAuth"
+        - $ref: "#/components/schemas/WsSendCommand"
+        - $ref: "#/components/schemas/WsSetState"
+        - $ref: "#/components/schemas/WsRequestStats"
+    WsServerMessage:
+      type: object
+      required: [event]
+      description: Velden afhankelijk van event, zie de tabel bovenaan
+      properties:
+        event:
+          type: string
+          enum: [auth_success, token_expiring, token_expired, console_output, install_output, daemon_message, status, stats, backup_progress, error]
+        permissions: { type: array, items: { $ref: "#/components/schemas/Permission" } }
+        expires_at: { type: string, format: date-time }
+        line: { type: string }
+        level: { type: string, enum: [info, warning, error] }
+        state: { type: string }
+        message: { type: string }
+        backup_id: { type: integer }
+        bytes: { type: integer, format: int64 }
+        percent: { type: number }
+        cpu_pct: { type: number }
+        memory_bytes: { type: integer, format: int64 }
+        memory_limit_bytes: { type: integer, format: int64 }
+        network_rx_bytes: { type: integer, format: int64 }
+        network_tx_bytes: { type: integer, format: int64 }
+        disk_bytes: { type: integer, format: int64 }
+        disk_limit_bytes: { type: integer, format: int64 }
+        uptime_ms: { type: integer, format: int64 }

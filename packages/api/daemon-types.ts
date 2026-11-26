@@ -1,0 +1,33 @@
+/**
+ * Types voor de daemon-API, gegenereerd uit openapi.yaml en panel-remote.yaml
+ * (`pnpm --filter @panel/api gen`). De test controleert dat de .gen-bestanden actueel zijn.
+ */
+import type { components as D, paths as DP } from "./daemon-types.gen";
+import type { components as R, paths as RP } from "./panel-remote-types.gen";
+
+export type DaemonPaths = DP;
+export type DaemonSchemas = D["schemas"];
+export type RemotePaths = RP;
+export type RemoteSchemas = R["schemas"];
+
+export type DaemonServerSpec = D["schemas"]["ServerSpec"];
+export type DaemonServerState = D["schemas"]["ServerState"];
+export type DaemonStats = D["schemas"]["Stats"];
+export type DaemonSystemInfo = D["schemas"]["SystemInfo"];
+export type DaemonRoute = D["schemas"]["Route"];
+export type DaemonRouteWithStatus = D["schemas"]["RouteWithStatus"];
+export type DaemonFileEntry = D["schemas"]["FileEntry"];
+export type WsClientMessage = D["schemas"]["WsClientMessage"];
+export type WsServerMessage = D["schemas"]["WsServerMessage"];
+
+/** Claims in de browser-JWT (zie openapi.yaml, Authenticatie). */
+export interface BrowserJwtClaims {
+  iss: string;
+  aud: string;
+  sub: string;
+  server_uuid: string;
+  permissions: string[];
+  jti: string;
+  iat: number;
+  exp: number;
+}
