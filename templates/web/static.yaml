@@ -6,7 +6,7 @@ description: >-
   filemanager); `index.html` is de startpagina. Eigen nginx-regels (binnen het
   server-blok) kun je kwijt in `nginx/*.conf`. Caddy regelt HTTPS en het domein.
 type: web
-version: 1
+version: 2
 image: nginx:1.28-alpine
 # De daemon draait dit als uid 1000 met een read-only rootfs; alleen /home/container en
 # /tmp (tmpfs) zijn schrijfbaar. De hoofdconfig wordt bij elke start opnieuw in /tmp
@@ -65,11 +65,17 @@ install:
     set -eu
     cd /home/container
     mkdir -p public nginx
-    if [ ! -e public/index.html ]; then
-      cat > public/index.html <<'EOF'
+    if [ -z "$(ls -A /home/container/public 2>/dev/null)" ]; then
+      mkdir -p /home/container/public
+      cat > /home/container/public/index.html <<'EOF'
     <!doctype html>
-    <html lang="nl"><head><meta charset="utf-8"><title>Het werkt</title></head>
-    <body><h1>Het werkt</h1><p>Zet je eigen bestanden in de map <code>public</code>.</p></body></html>
+    <html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Deze website is klaar voor gebruik</title></head>
+    <body style="margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f7f9;color:#1f2933">
+    <main style="max-width:36rem;margin:15vh auto;padding:2rem;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+    <h1 style="margin:0 0 .75rem;font-size:1.5rem">Deze website is klaar voor gebruik</h1>
+    <p style="margin:0;line-height:1.5">Upload je bestanden naar <code>public/</code> via de filemanager of SFTP.</p>
+    </main></body></html>
     EOF
     fi
     [ -e nginx/README.txt ] || echo "Bestanden *.conf in deze map komen binnen het server-blok van nginx (na een herstart)." > nginx/README.txt

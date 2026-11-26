@@ -194,7 +194,7 @@ func webTemplateCases() []webTemplateCase {
 			file:  "static",
 			files: map[string]string{"public/sub/index.html": "submap ok", "public/.env": "GEHEIM=1", "nginx/extra.conf": "location = /eigen { return 200 'eigen regel'; }"},
 			check: func(t *testing.T, e *caddyEnv, host string) {
-				e.get(t, "https://"+host+"/", bodyContains("Het werkt"))
+				e.get(t, "https://"+host+"/", bodyContains("Deze website is klaar voor gebruik", "public/"))
 				e.get(t, "https://"+host+"/sub/", bodyContains("submap ok"))
 				e.get(t, "https://"+host+"/eigen", bodyContains("eigen regel"))
 				e.get(t, "https://"+host+"/.env", func(code int, _, _ string) bool { return code == 403 })
@@ -211,7 +211,7 @@ func webTemplateCases() []webTemplateCase {
 		{
 			file: "node",
 			check: func(t *testing.T, e *caddyEnv, host string) {
-				e.get(t, "https://"+host+"/iets", bodyContains("Het werkt", "Node.js v24."))
+				e.get(t, "https://"+host+"/iets", bodyContains("Deze website is klaar voor gebruik"))
 			},
 		},
 		{
@@ -337,6 +337,7 @@ func phpCase(file, version string) webTemplateCase {
 		file: file,
 		db:   true,
 		files: map[string]string{
+			"public/index.php":     "<?php echo 'index.php PHP ', PHP_VERSION;",
 			"public/info.php":      phpTestPage,
 			"public/upload.php":    phpUploadPage,
 			"public/uploads/x.php": "<?php echo 'mag niet';",
@@ -346,7 +347,10 @@ func phpCase(file, version string) webTemplateCase {
 				"zip=ja", "exif=ja", "curl=ja", "mbstring=ja", "Zend OPcache=ja", "upload=64M post=64M", "https=on",
 				"db=mysqli-ok", "pdo=42", "gd=ok", "intl=1.234,5", "session=ok"))
 			// Permalinks gaan naar index.php.
-			e.get(t, "https://"+host+"/2026/11/hallo-wereld/", bodyContains("Het werkt", "PHP "+version))
+			e.get(t, "https://"+host+"/2026/11/hallo-wereld/", bodyContains("index.php PHP "+version))
+			// De standaardpagina van de installatie staat er, maar index.php gaat voor.
+			e.get(t, "https://"+host+"/", bodyContains("index.php PHP "+version))
+			e.get(t, "https://"+host+"/index.html", bodyContains("Deze website is klaar voor gebruik"))
 			e.get(t, "https://"+host+"/uploads/x.php", func(code int, _, _ string) bool { return code == 403 })
 			// Upload van 5 MB via Caddy (tijdelijke bestanden in de tmpfs).
 			var buf bytes.Buffer

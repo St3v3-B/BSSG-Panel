@@ -7,7 +7,7 @@ description: >-
   (`npm ci` of `npm install`, zonder devDependencies); na een wijziging opnieuw installeren.
   Tijdens het draaien heeft de site geen internet, alleen de database (`panel-mariadb:3306`).
 type: web
-version: 1
+version: 2
 image: node:24-alpine
 # De daemon draait dit als uid 1000 met een read-only rootfs; alleen /home/container en
 # /tmp (tmpfs) zijn schrijfbaar. Online zodra de app op PORT luistert.
@@ -46,15 +46,33 @@ install:
     set -eu
     cd /home/container
     export npm_config_cache=/tmp/npm npm_config_update_notifier=false npm_config_fund=false
+    if [ -z "$(ls -A /home/container/public 2>/dev/null)" ]; then
+      mkdir -p /home/container/public
+      cat > /home/container/public/index.html <<'EOF'
+    <!doctype html>
+    <html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Deze website is klaar voor gebruik</title></head>
+    <body style="margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f7f9;color:#1f2933">
+    <main style="max-width:36rem;margin:15vh auto;padding:2rem;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+    <h1 style="margin:0 0 .75rem;font-size:1.5rem">Deze website is klaar voor gebruik</h1>
+    <p style="margin:0;line-height:1.5">Upload je bestanden naar <code>public/</code> via de filemanager of SFTP.</p>
+    </main></body></html>
+    EOF
+    fi
     if [ -f package.json ]; then
       if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
     elif [ ! -e "$MAIN_FILE" ]; then
       cat > "$MAIN_FILE" <<'EOF'
+    // Voorbeeld-app: serveert public/index.html. Vervang dit door je eigen app.
     const http = require("http");
+    const fs = require("fs");
+    const path = require("path");
     const port = process.env.PORT || 3000;
     http.createServer((req, res) => {
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end("<!doctype html><title>Het werkt</title><h1>Het werkt</h1><p>Node.js " + process.version + "</p>");
+      fs.readFile(path.join(__dirname, "public", "index.html"), (err, data) => {
+        res.writeHead(err ? 404 : 200, { "Content-Type": "text/html; charset=utf-8" });
+        res.end(err ? "Niet gevonden" : data);
+      });
     }).listen(port, () => console.log("luistert op " + port));
     process.on("SIGTERM", () => process.exit(0));
     EOF

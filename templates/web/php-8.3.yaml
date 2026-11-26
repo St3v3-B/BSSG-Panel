@@ -8,7 +8,7 @@ description: >-
   De database heet vanuit de site `panel-mariadb:3306`. Eigen PHP-instellingen in
   `php/*.ini`, eigen nginx-regels (binnen het server-blok) in `nginx/*.conf`; daarna herstarten.
 type: web
-version: 1
+version: 2
 # serversideup/php: officiële PHP-build met nginx erbij. We gebruiken alleen de binaries;
 # hun s6-entrypoint niet (dat wil als root schrijven op de rootfs).
 image: serversideup/php:8.3-fpm-nginx-alpine
@@ -148,7 +148,7 @@ install:
     # Draait als root in een tijdelijke container; bestaande sitebestanden blijven staan.
     set -eu
     H=/home/container
-    mkdir -p $H/public $H/php $H/nginx $H/.php/sessions
+    mkdir -p $H/php $H/nginx $H/.php/sessions
     rm -rf $H/.php/ext $H/.php/lib $H/.php/icu
     mkdir -p $H/.php/ext $H/.php/lib
     ls /lib /usr/lib /usr/local/lib > /tmp/libs-before
@@ -177,11 +177,17 @@ install:
     # ICU-data (alle talen) voor intl; de runtime vindt hem via ICU_DATA.
     mkdir -p $H/.php/icu
     cp /usr/share/icu/*/*.dat $H/.php/icu/
-    if [ ! -e $H/public/index.php ] && [ ! -e $H/public/index.html ]; then
-      cat > $H/public/index.php <<'EOF'
-    <?php
-    echo "<!doctype html><meta charset=utf-8><title>Het werkt</title>";
-    echo "<h1>Het werkt</h1><p>PHP " . PHP_VERSION . ". Zet je eigen bestanden in de map <code>public</code>.</p>";
+    if [ -z "$(ls -A /home/container/public 2>/dev/null)" ]; then
+      mkdir -p /home/container/public
+      cat > /home/container/public/index.html <<'EOF'
+    <!doctype html>
+    <html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Deze website is klaar voor gebruik</title></head>
+    <body style="margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f6f7f9;color:#1f2933">
+    <main style="max-width:36rem;margin:15vh auto;padding:2rem;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+    <h1 style="margin:0 0 .75rem;font-size:1.5rem">Deze website is klaar voor gebruik</h1>
+    <p style="margin:0;line-height:1.5">Upload je bestanden naar <code>public/</code> via de filemanager of SFTP.</p>
+    </main></body></html>
     EOF
     fi
     [ -e $H/php/README.txt ] || echo "Bestanden *.ini in deze map komen na de standaardinstellingen (na een herstart)." > $H/php/README.txt
