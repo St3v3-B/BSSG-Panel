@@ -42,8 +42,7 @@ RFC 6238), `@node-rs/argon2`, `bullmq`, `ioredis`, `openapi-fetch`. Tests met vi
    updateOwner, updateAllocations, delete), `admin.nodes.list/get`, `admin.allocations.*`,
    `admin.users.list/get/create/setBlocked/resetTotp`, `admin.admins.*`,
    `admin.templates.list/get/validate`, `admin.activity.search`, `admin.dashboard` (eenvoudig),
-   `admin.settings.get`. `servers.get` vraagt de status live aan de daemon (korte timeout) en valt
-   terug op de DB.
+   `admin.settings.get`. `servers.get` vraagt de status live aan de daemon (korte timeout); onbereikbaar → `unknown`.
 6. **JWT-uitgifte** (`servers.consoleToken`): EdDSA, 10 min, claims zoals in `openapi.yaml`, met
    de rechten van die gebruiker op die server. `socketUrl = wss://<node fqdn>/api/servers/<uuid>/ws`.
 7. **Remote-endpoints** (`app/api/remote/...`): `jwt-key`, `node/hello`,
@@ -60,6 +59,9 @@ ook via een directe aanroep. Lees `tests/integration/phase1.test.ts`: daar moet 
 **Klaar als**: `make check` groen, elke fase-1-route getest, rechten afgedwongen.
 
 ## Fase 2
+Ook: `admin.nodes.create/update/delete/regenerateToken` (token versleuteld in `nodes.token_enc`,
+installcommando), `Me` niet uitbreiden maar de Discord-callback bij een fout laten doorsturen naar
+`/login?error=<blocked|discord|denied|state>&redirectTo=…`. Zie de fase-2-afspraken in de root-CLAUDE.md.
 `files.*` (via daemon; upload/download-URL met eenmalige JWT), subusers + rechtencontrole overal,
 allocations volledig, API-sleutels (ook als login voor SFTP), `/api/remote/sftp/auth` met rate
 limiting, `account.setSftpPassword`.

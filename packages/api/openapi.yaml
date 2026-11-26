@@ -35,7 +35,7 @@ info:
     | → daemon | `send_command` | `command` | regel naar stdin (vereist `console.write`) |
     | → daemon | `set_state` | `state`: start/stop/restart/kill | power (vereist `power`) |
     | → daemon | `request_stats` | | direct een `stats` sturen |
-    | ← daemon | `auth_success` | `permissions` | na geldige `auth`; daarna backlog (max 500 regels) als `console_output` en een `status` |
+    | ← daemon | `auth_success` | `permissions` | na de eerste geldige `auth` op een verbinding volgen backlog (max 500 regels) als `console_output` en een `status`; een herhaalde `auth` (token-refresh) geeft alleen `auth_success` |
     | ← daemon | `token_expiring` | `expires_at` | 60 s voor `exp` |
     | ← daemon | `token_expired` | | daarna sluit de daemon met code 4001 |
     | ← daemon | `console_output` | `line` | één regel stdout/stderr van de server |
@@ -98,7 +98,8 @@ paths:
       operationId: createServer
       summary: Server aanmaken (container + data-map) en installatie starten
       description: |
-        Idempotent op `uuid`: bestaat de server al met dezelfde spec, dan 202 zonder nieuwe install.
+        Idempotent op `uuid`: bestaat de server al met dezelfde spec, dan 202 zonder nieuwe install;
+        met een andere spec 409 `conflict` (gebruik PUT).
         Na de installatie stuurt de daemon `POST /api/remote/servers/{uuid}/install` naar het panel.
       requestBody:
         required: true
@@ -747,7 +748,7 @@ components:
               format: { type: string, enum: [properties, yaml, json] }
               set: { type: object, additionalProperties: { type: string } }
         start_on_install: { type: boolean, default: false }
-        skip_install: { type: boolean, default: false, description: "Bij PUT/herstel: niet opnieuw installeren" }
+        skip_install: { type: boolean, default: false, description: "Alleen bij POST: niet installeren. PUT installeert nooit; herinstallatie gaat via POST /install." }
 
     FileEntry:
       type: object

@@ -1,0 +1,20 @@
+schema: 1
+slug: it-sleeper
+name: IT sleeper (alleen integratietest)
+description: Lichte testserver; voert elke stdin-regel uit als shell-commando.
+type: game
+version: 1
+image: alpine:3.20
+startup: 'echo ready; while read -r c; do [ "$c" = stop ] && exit 0; sh -c "$c"; done'
+stop:
+  type: command
+  value: stop
+ready_pattern: "^ready$"
+variables: []
+install:
+  image: alpine:3.20
+  script: |
+    #!/bin/sh
+    mkdir -p /home/container/plugins
+    echo hallo > /home/container/readme.txt
+config_files: []

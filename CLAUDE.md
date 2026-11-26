@@ -110,6 +110,18 @@ Toolchain: Go 1.27 (module vereist 1.23+), Node 22, pnpm 12, TypeScript 5.9
 - **Sessiecookie** heet `panel_session` (HttpOnly, SameSite=Lax, Secure behalve bij `.test`
   over http). In de DB staat alleen de SHA-256.
 - **Kolomnamen** in de database zijn Engels; versleutelde kolommen eindigen op `_enc`.
+- **Fase 2-afspraken**:
+  - SFTP-gebruikersnaam `<discord-naam van de inloggende gebruiker>.<shortId>`; wachtwoord = het
+    SFTP-wachtwoord (`account.setSftpPassword`) of een API-sleutel. De daemon vraagt
+    `/api/remote/sftp/auth` en dwingt `files.read`/`files.write` uit het antwoord zelf af.
+  - Upload/download-URL's: `https://<node fqdn>/api/servers/<uuid>/files/{upload,download}?token=…`
+    met een eenmalige JWT (`files.write` of `files.read` in `permissions`, max 10 min). De daemon
+    zet CORS voor `https://$PANEL_DOMAIN`.
+  - Disk vol: de daemon antwoordt 507 `disk_exceeded`; panel-api vertaalt dat naar
+    `PRECONDITION_FAILED` met message `DISK_EXCEEDED`. Waarschuwing bij 90% als `daemon_message`
+    met `level: warning`; servers.status wordt `disk_exceeded`.
+  - Daemon onbereikbaar: `servers.get`/`list` geven status `unknown` (niet de DB-status).
+  - Remote nodes: het panel bewaart het token versleuteld in `nodes.token_enc` (migratie 0001).
 - **Tijdzone** voor schema's en containers: `Europe/Amsterdam`.
 
 ## Testen op deze machine

@@ -161,7 +161,12 @@ export function createMock(): Implementation {
         const u = uid(ctx);
         return db.servers.filter((x) => x.ownerId === u || u === 1 || db.subusers.some((su) => su.serverUuid === x.uuid && su.userId === u)).map((x) => summary(x, u));
       },
-      get: ({ input, ctx }) => detail(srv(input.uuid), uid(ctx)),
+      get: ({ input, ctx }) => {
+        const x = srv(input.uuid);
+        const u = uid(ctx);
+        if (x.ownerId !== u && u !== 1 && !db.subusers.some((su) => su.serverUuid === x.uuid && su.userId === u)) throw new TRPCError({ code: "NOT_FOUND", message: "server" });
+        return detail(x, u);
+      },
       stats: ({ input }) => {
         const x = srv(input.uuid);
         return x.status === "online" || x.status === "starting" ? fakeStats(x) : null;
@@ -327,7 +332,7 @@ export function createMock(): Implementation {
           const t = db.templates.find((x) => x.id === input.templateId) ?? notFound("template");
           const owner = user(input.ownerId);
           const uuid = crypto.randomUUID();
-          const allocs = db.allocations.filter((a) => input.allocationIds.includes(a.id));
+          const allocs = input.allocationIds.map((aid) => db.allocations.find((a) => a.id === aid)).filter((a): a is s.Allocation => !!a);
           allocs.forEach((a, i) => Object.assign(a, { serverUuid: uuid, primary: i === 0 }));
           const x = {
             uuid, shortId: uuid.slice(0, 8), name: input.name, type: t.type, status: "installing" as const, templateName: t.name, nodeName: "node1",

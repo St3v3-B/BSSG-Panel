@@ -119,6 +119,8 @@ export const nodes = pgTable("nodes", {
   sftpPort: integer("sftp_port").notNull().default(2022),
   /** SHA-256 van het node-token */
   tokenHash: text("token_hash").notNull().unique(),
+  /** Het token zelf, versleuteld; nodig om remote daemons aan te roepen. Null voor de lokale node (NODE_TOKEN uit env). */
+  tokenEnc: text("token_enc"),
   maxRamMb: integer("max_ram_mb").notNull().default(0),
   maxDiskMb: integer("max_disk_mb").notNull().default(0),
   s3TargetId: integer("s3_target_id").references(() => s3Targets.id, { onDelete: "set null" }),

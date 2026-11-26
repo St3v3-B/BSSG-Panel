@@ -5,6 +5,7 @@
  * Draait tegen een echt panel (next), echte Postgres/Redis (testcontainers), de echte
  * daemon-binary en echte Docker. Alles krijgt panel.test=true en wordt opgeruimd.
  */
+import { writeFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Console, DAEMON, client, env, login, startDaemon, stopDaemon, totp, waitDaemonUp, waitFor } from "./helpers";
 
@@ -58,6 +59,7 @@ describe("fase 1: één Minecraft-server van begin tot eind", () => {
   it("eigenaar zet 2FA aan en opent admin", async () => {
     const setup = await owner.api.account.totpSetup.mutate();
     await owner.api.account.totpEnable.mutate({ code: totp(setup.secret) });
+    writeFileSync(`${env("IT_WORK")}/owner-totp`, setup.secret);
     const nodes = await owner.api.admin.nodes.list.query();
     const local = nodes.find((n) => n.isLocal);
     expect(local?.fqdn).toBe(env("NODE_DOMAIN"));

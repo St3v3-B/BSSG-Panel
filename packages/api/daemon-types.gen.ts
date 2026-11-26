@@ -32,7 +32,8 @@ export interface paths {
         put?: never;
         /**
          * Server aanmaken (container + data-map) en installatie starten
-         * @description Idempotent op `uuid`: bestaat de server al met dezelfde spec, dan 202 zonder nieuwe install.
+         * @description Idempotent op `uuid`: bestaat de server al met dezelfde spec, dan 202 zonder nieuwe install;
+         *     met een andere spec 409 `conflict` (gebruik PUT).
          *     Na de installatie stuurt de daemon `POST /api/remote/servers/{uuid}/install` naar het panel.
          */
         post: operations["createServer"];
@@ -547,7 +548,7 @@ export interface components {
             /** @default false */
             start_on_install: boolean;
             /**
-             * @description Bij PUT/herstel: niet opnieuw installeren
+             * @description Alleen bij POST: niet installeren. PUT installeert nooit; herinstallatie gaat via POST /install.
              * @default false
              */
             skip_install: boolean;

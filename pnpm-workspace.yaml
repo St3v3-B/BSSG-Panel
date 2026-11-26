@@ -3,7 +3,9 @@ packages:
   - packages/*
   - tests/integration
 allowBuilds:
+  cpu-features: false
   esbuild: true
+  ssh2: false
 minimumReleaseAgeExclude:
   - '@types/node@26.6.11'
   - '@types/react@19.3.3'

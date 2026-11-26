@@ -1,7 +1,7 @@
 /** Hulpmiddelen voor de integratietest. Eigenaar: orchestrator. */
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHmac } from "node:crypto";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, readFileSync, writeFileSync } from "node:fs";
 import type { AppRouter } from "@panel/api";
 import { createTRPCClient, httpLink } from "@trpc/client";
 import superjson from "superjson";
@@ -27,6 +27,26 @@ export async function login(discordId: string, name: string) {
   const cookie = res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
   if (!cookie.includes("panel_session=")) throw new Error(`geen panel_session-cookie: ${cookie}`);
   return { cookie, api: client(cookie) };
+}
+
+/**
+ * Ingelogde eigenaar met geverifieerde 2FA, over testbestanden heen: het TOTP-secret staat
+ * in $IT_WORK/owner-totp (geschreven door de eerste die 2FA aanzet).
+ */
+export async function adminLogin() {
+  const file = `${env("IT_WORK")}/owner-totp`;
+  const s = await login(env("OWNER_DISCORD_ID"), "eigenaar");
+  const me = await s.api.auth.me.query();
+  if (!me?.totpEnabled) {
+    const setup = await s.api.account.totpSetup.mutate();
+    await s.api.account.totpEnable.mutate({ code: totp(setup.secret) });
+    writeFileSync(file, setup.secret);
+    return s;
+  }
+  const secret = readFileSync(file, "utf8").trim();
+  // Een code mag maar één keer gebruikt worden: probeer zo nodig de volgende tijdstap.
+  await waitFor("TOTP-verificatie", async () => (await s.api.auth.verifyTotp.mutate({ code: totp(secret) })).ok, 70_000, 5000);
+  return s;
 }
 
 export function client(cookie: string | null) {
