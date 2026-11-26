@@ -1,19 +1,27 @@
 "use client";
-import { SftpCard } from "@/app/_components/server/sftp-card";
+import { trpc } from "@/lib/trpc";
 import { NoPermission } from "@/app/_components/server/no-permission";
+import { RenameCard, ReinstallCard, VariablesCard } from "@/app/_components/server/server-settings";
+import { SftpCard } from "@/app/_components/server/sftp-card";
 import { useServer } from "@/app/_hooks/use-server";
 
 export default function ServerSettingsPage() {
   const server = useServer();
+  const me = trpc.auth.me.useQuery(undefined, { staleTime: 30_000 });
   if (!server.data) return null;
-  const perms = server.data.permissions;
+  const s = server.data;
+  const perms = s.permissions;
+  const manage = s.isOwner || !!me.data?.isAdmin;
   return (
     <div className="max-w-3xl space-y-6">
+      {manage && <RenameCard key={s.name} server={s} />}
+      {manage && s.type === "game" && <VariablesCard server={s} />}
       {perms.includes("files.read") || perms.includes("files.write") ? (
-        <SftpCard uuid={server.data.uuid} />
+        <SftpCard uuid={s.uuid} />
       ) : (
         <NoPermission>SFTP is alleen beschikbaar met het recht om bestanden te lezen.</NoPermission>
       )}
+      {manage && <ReinstallCard server={s} />}
     </div>
   );
 }
