@@ -295,7 +295,7 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
 const IPV4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
 /** "25565" | "25565-25600" | "25565,25570-25575"; poorten 1–65535, bereik oplopend. */
 export function portsValid(ports: string): boolean {
-  const parts = ports.split(",").map((p) => p.trim());
+  const parts = ports.replace(/\s+/g, "").split(",");
   if (!parts.length || parts.some((p) => !p)) return false;
   return parts.every((p) => {
     const m = /^(\d{1,5})(?:-(\d{1,5}))?$/.exec(p);
