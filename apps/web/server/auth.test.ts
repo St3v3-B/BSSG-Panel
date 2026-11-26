@@ -123,7 +123,7 @@ describe("Discord-login", () => {
   it("weigert een verkeerde state en een open redirect", async () => {
     const { stateCookie } = await startFlow("//evil.example");
     const res = await callback("verkeerd", stateCookie);
-    expect(res.headers.get("location")).toBe("/login?error=state");
+    expect(res.headers.get("location")).toMatch(/^\/login\?error=state&redirectTo=/);
     expect(cookieOf(res)).toBeUndefined();
 
     const flow = await startFlow("//evil.example");
@@ -132,12 +132,18 @@ describe("Discord-login", () => {
     expect(ok.headers.get("location")).toBe("/");
   });
 
+  it("geweigerd bij Discord → error=denied met redirectTo", async () => {
+    const { state, stateCookie } = await startFlow("/servers/x");
+    const res = await discordCallback(new Request(`http://panel.test/api/auth/discord/callback?error=access_denied&state=${state}`, { headers: { cookie: stateCookie } }));
+    expect(res.headers.get("location")).toBe(`/login?error=denied&redirectTo=${encodeURIComponent("/servers/x")}`);
+  });
+
   it("geblokkeerd → geen sessie", async () => {
     await getDb().insert(schema.users).values({ discordId: "400000000000000003", blocked: true });
     const { state, stateCookie } = await startFlow();
     stubDiscord({ id: "400000000000000003", username: "geblokkeerd" });
     const res = await callback(state, stateCookie);
-    expect(res.headers.get("location")).toBe("/login?error=blocked");
+    expect(res.headers.get("location")).toMatch(/^\/login\?error=blocked&redirectTo=/);
     expect(cookieOf(res)).toBeUndefined();
   });
 
@@ -146,7 +152,7 @@ describe("Discord-login", () => {
     stubDiscord({ id: "1" }, { tokenStatus: 400 });
     vi.spyOn(console, "error").mockImplementation(() => {});
     const res = await callback(state, stateCookie);
-    expect(res.headers.get("location")).toBe("/login?error=discord");
+    expect(res.headers.get("location")).toMatch(/^\/login\?error=discord&redirectTo=/);
   });
 
   it("met 2FA: redirect naar de TOTP-stap", async () => {
