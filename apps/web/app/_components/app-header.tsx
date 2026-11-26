@@ -32,11 +32,18 @@ export function AppHeader({ me }: { me: Me }) {
           <BrandMark />
           {inAdmin && <Badge variant="warning">Admin</Badge>}
         </Link>
-        <nav className="ml-2 hidden items-center gap-1 text-sm sm:flex">
+        <nav className="ml-2 hidden items-center gap-1 overflow-x-auto text-sm sm:flex">
           {inAdmin ? (
-            <NavLink href="/admin" active={pathname === "/admin" || pathname.startsWith("/admin/servers")}>
-              {t.nav.servers}
-            </NavLink>
+            <>
+              <NavLink href="/admin" active={pathname === "/admin" || pathname.startsWith("/admin/servers")}>
+                {t.admin.nav.servers}
+              </NavLink>
+              {(["nodes", "users", "templates", "activity"] as const).map((k) => (
+                <NavLink key={k} href={`/admin/${k}`} active={pathname.startsWith(`/admin/${k}`)}>
+                  {t.admin.nav[k]}
+                </NavLink>
+              ))}
+            </>
           ) : (
             <NavLink href="/" active={pathname === "/" || pathname.startsWith("/servers")}>
               {t.nav.myServers}
