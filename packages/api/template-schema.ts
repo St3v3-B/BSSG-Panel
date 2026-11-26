@@ -55,7 +55,7 @@ export const TemplateSpec = z
       .array(
         z.object({
           path: z.string().min(1),
-          format: z.enum(["properties", "yaml", "json"]),
+          format: z.enum(["properties", "yaml", "json", "toml"]),
           /** sleutel (bij yaml/json met punten genest) → waarde, {{VAR}} wordt vervangen */
           set: z.record(z.string(), z.string()),
         }),

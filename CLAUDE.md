@@ -132,6 +132,9 @@ Toolchain: Go 1.27 (module vereist 1.23+), Node 22, pnpm 12, TypeScript 5.9
     netwerk: de daemon koppelt `panel-mariadb` aan `panel-site-<uuid>` (de enige toegestane handeling
     op een infra-object: network connect/disconnect van `panel-mariadb`). Zo zien sites elkaar nooit.
     Vanuit de site heet de database `panel-mariadb:3306`.
+  - Instelbaar: `MARIADB_CONTAINER` (standaard `panel-mariadb`; daemon koppelt hem, sites gebruiken
+    hem als host, database_hosts.host) en `MARIADB_ADMIN_ADDR` (hoe het panel zelf verbindt,
+    standaard `$MARIADB_CONTAINER:3306`). Tests gebruiken een eigen container en nooit de echte.
 - **Tijdzone** voor schema's en containers: `Europe/Amsterdam`.
 
 ## Testen op deze machine

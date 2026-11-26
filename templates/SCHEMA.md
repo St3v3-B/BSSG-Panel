@@ -24,7 +24,7 @@ opgeslagen versie. Admins kunnen daarnaast templates importeren of bewerken in /
 | `http_port` | alleen web | poort in de container waarop Caddy het verkeer aflevert |
 | `variables` | nee | lijst van `{key, name, description?, default, user_editable, pattern?}` |
 | `install` | ja | `{image, script}`; het script draait met `/bin/sh` en dezelfde `/home/container` |
-| `config_files` | nee | bestanden die de daemon vóór elke start bijwerkt |
+| `config_files` | nee | bestanden die de daemon vóór elke start bijwerkt; `format`: properties, yaml, json of toml (sleutels met punten genest) |
 
 ## Variabelen
 

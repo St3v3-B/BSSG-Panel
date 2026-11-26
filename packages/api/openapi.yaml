@@ -746,7 +746,7 @@ components:
             required: [path, format, set]
             properties:
               path: { type: string }
-              format: { type: string, enum: [properties, yaml, json] }
+              format: { type: string, enum: [properties, yaml, json, toml] }
               set: { type: object, additionalProperties: { type: string } }
         start_on_install: { type: boolean, default: false }
         skip_install: { type: boolean, default: false, description: "Alleen bij POST: niet installeren. PUT installeert nooit; herinstallatie gaat via POST /install." }

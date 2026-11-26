@@ -540,7 +540,7 @@ export interface components {
             config_files?: {
                 path: string;
                 /** @enum {string} */
-                format: "properties" | "yaml" | "json";
+                format: "properties" | "yaml" | "json" | "toml";
                 set: {
                     [key: string]: string;
                 };

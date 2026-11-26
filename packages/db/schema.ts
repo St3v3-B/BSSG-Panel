@@ -147,7 +147,7 @@ export const templates = pgTable("templates", {
   variables: jsonb("variables").$type<Array<{ key: string; name: string; description?: string; default: string; user_editable: boolean; pattern?: string }>>().notNull().default([]),
   installImage: text("install_image").notNull(),
   installScript: text("install_script").notNull(),
-  configFiles: jsonb("config_files").$type<Array<{ path: string; format: "properties" | "yaml" | "json"; set: Record<string, string> }>>().notNull().default([]),
+  configFiles: jsonb("config_files").$type<Array<{ path: string; format: "properties" | "yaml" | "json" | "toml"; set: Record<string, string> }>>().notNull().default([]),
   version: integer("version").notNull(),
   /** Originele YAML zoals geïmporteerd */
   sourceYaml: text("source_yaml").notNull(),
