@@ -1,0 +1,146 @@
+schema: 1
+slug: folia
+name: Folia
+description: >-
+  Minecraft Java Edition met Folia (papermc.io): Paper met multithreaded regio's, voor
+  servers met veel spelers verspreid over de wereld. Veel Paper-plugins werken niet op Folia
+  (alleen plugins met `folia-supported: true`). Kies een versie of `latest`; de installatie
+  haalt de jar via de PaperMC-API en controleert de SHA-256. Java 25, heap = RAM-limiet min
+  15% (minstens 384 MB). Achter Velocity: zoals bij Paper (`VELOCITY_FORWARDING` + `VELOCITY_SECRET`).
+type: game
+version: 1
+image: eclipse-temurin:25-jre
+# Heap: SERVER_MEMORY min 15% (minstens 384 MB) voor metaspace, threads, netty-buffers en
+# /tmp (tmpfs, telt mee); met 80% werd Paper 1.21.x bij 1280 MB door de cgroup OOM-killed.
+# Flags: Aikar/PaperMC-aanbevolen G1-instellingen (zonder AlwaysPreTouch, zodat een
+# server niet bij de start meteen zijn hele heap vastlegt).
+# -Duser.home en de netty-map: de rootfs is read-only en /tmp is een tmpfs (noexec).
+# Achter Velocity moet online-mode in server.properties uit (Velocity doet de login en Paper
+# controleert de secret); config_files zet hem eerst op ONLINE_MODE, dus bij
+# VELOCITY_FORWARDING=false komt de eigen waarde vanzelf terug.
+startup: >-
+  if [ "{{VELOCITY_FORWARDING}}" = true ]; then sed -i 's/^online-mode=.*/online-mode=false/' server.properties; fi &&
+  HEADROOM=$(( {{SERVER_MEMORY}} * 15 / 100 > 384 ? {{SERVER_MEMORY}} * 15 / 100 : 384 )) &&
+  mkdir -p .cache/netty &&
+  exec java
+  -Xms$(( {{SERVER_MEMORY}} - HEADROOM ))M -Xmx$(( {{SERVER_MEMORY}} - HEADROOM ))M
+  -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200
+  -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+PerfDisableSharedMem
+  -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M
+  -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4
+  -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90
+  -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:MaxTenuringThreshold=1
+  -Duser.home=/home/container -Dio.netty.native.workdir=/home/container/.cache/netty
+  -Dterminal.jline=false -Dterminal.ansi=true
+  -jar {{SERVER_JARFILE}} --nogui
+stop:
+  type: command
+  value: stop
+# Folia logt (zoals Paper): [12:00:00 INFO]: Done (12.345s)! For help, type "help"
+ready_pattern: "Done \\([0-9.,]+s\\)!"
+variables:
+  - key: MINECRAFT_VERSION
+    name: Minecraft-versie
+    description: Bijvoorbeeld 1.21.11 of 26.3; `latest` = nieuwste stabiele versie. Na wijzigen opnieuw installeren.
+    default: latest
+    user_editable: true
+    pattern: "^(latest|[0-9]+(\\.[0-9]+){1,2}(-[A-Za-z0-9.-]+)?)$"
+  - key: BUILD
+    name: Folia-build
+    description: Buildnummer van Folia; `latest` = nieuwste build van die versie. Na wijzigen opnieuw installeren.
+    default: latest
+    user_editable: true
+    pattern: "^(latest|[0-9]+)$"
+  - key: VELOCITY_FORWARDING
+    name: Achter Velocity (modern forwarding)
+    description: >-
+      `true` = alleen spelers via een Velocity-proxy met dezelfde secret (Paper controleert de
+      login via de proxy). Standaard `false`. Herstart nodig.
+    default: "false"
+    user_editable: true
+    pattern: "^(true|false)$"
+  - key: VELOCITY_SECRET
+    name: Velocity-secret
+    description: >-
+      Moet gelijk zijn aan de forwarding-secret van de Velocity-server (variabele
+      VELOCITY_FORWARDING_SECRET of het bestand forwarding.secret daar). Alleen nodig als
+      VELOCITY_FORWARDING `true` is.
+    default: ""
+    user_editable: true
+    pattern: "^([A-Za-z0-9_-]{12,128})?$"
+  - key: ONLINE_MODE
+    name: Online-mode
+    description: >-
+      `true` = spelers moeten een echt Minecraft-account hebben (aanbevolen). Met
+      VELOCITY_FORWARDING=true staat hij in server.properties automatisch uit (de proxy
+      controleert de accounts).
+    default: "true"
+    user_editable: true
+    pattern: "^(true|false)$"
+  - key: SERVER_JARFILE
+    name: Jar-bestand
+    description: Naam van de server-jar in de hoofdmap.
+    default: server.jar
+    user_editable: false
+    pattern: "^[A-Za-z0-9._-]+\\.jar$"
+install:
+  image: alpine:3.22
+  script: |
+    #!/bin/sh
+    # Haalt Folia via de PaperMC Fill-API (v3), controleert de SHA-256 en accepteert de EULA.
+    # Draait als root in een tijdelijke container; de daemon zet daarna de eigenaar op 1000.
+    set -eu
+    API="https://fill.papermc.io/v3/projects/folia"
+    UA="panel-installer/1 (self-hosted panel)"
+    cd /home/container
+    apk add --no-cache curl jq >/dev/null
+
+    fetch() { curl -fsSL --retry 3 --retry-delay 2 -A "$UA" "$1"; }
+
+    VERSION="${MINECRAFT_VERSION:-latest}"
+    if [ "$VERSION" = "latest" ]; then
+      # Eerste versie zonder -rc/-pre in de (nieuwste-eerst) lijst.
+      VERSION=$(fetch "$API/versions" | jq -r '[.versions[].version.id | select(test("^[0-9]+(\\.[0-9]+)*$"))][0]')
+    fi
+    [ -n "$VERSION" ] && [ "$VERSION" != "null" ] || { echo "Geen Minecraft-versie gevonden" >&2; exit 1; }
+
+    INFO=$(fetch "$API/versions/$VERSION") || { echo "Onbekende Minecraft-versie: $VERSION" >&2; exit 1; }
+    JAVA_MIN=$(echo "$INFO" | jq -r '.version.java.version.minimum // empty')
+    if [ -n "$JAVA_MIN" ] && [ "$JAVA_MIN" -gt 25 ]; then
+      echo "Folia $VERSION vraagt Java $JAVA_MIN; deze template draait Java 25." >&2
+      exit 1
+    fi
+
+    B="${BUILD:-latest}"
+    BUILD_JSON=$(fetch "$API/versions/$VERSION/builds/$B") || { echo "Build $B van $VERSION niet gevonden" >&2; exit 1; }
+    URL=$(echo "$BUILD_JSON" | jq -r '.downloads["server:default"].url')
+    SHA=$(echo "$BUILD_JSON" | jq -r '.downloads["server:default"].checksums.sha256')
+    ID=$(echo "$BUILD_JSON" | jq -r '.id')
+    [ "$URL" != "null" ] && [ "$SHA" != "null" ] || { echo "Geen download in het API-antwoord" >&2; exit 1; }
+
+    echo "Folia $VERSION build $ID downloaden"
+    curl -fsSL --retry 3 --retry-delay 2 -A "$UA" -o "$SERVER_JARFILE.part" "$URL"
+    echo "$SHA  $SERVER_JARFILE.part" | sha256sum -c - >/dev/null || { echo "SHA-256 klopt niet" >&2; rm -f "$SERVER_JARFILE.part"; exit 1; }
+    mv -f "$SERVER_JARFILE.part" "$SERVER_JARFILE"
+
+    echo "eula=true" > eula.txt
+    [ -f server.properties ] || printf 'motd=Een Folia-server\nenable-rcon=false\n' > server.properties
+    printf 'version=%s\nbuild=%s\n' "$VERSION" "$ID" > .folia-install
+    echo "Installatie klaar: Folia $VERSION build $ID"
+config_files:
+  # server-ip 0.0.0.0: in de container op alle interfaces luisteren; Docker publiceert de
+  # poort op het IP van de allocation (SERVER_IP binden zou in de container niet werken).
+  - path: server.properties
+    format: properties
+    set:
+      server-port: "{{SERVER_PORT}}"
+      server-ip: "0.0.0.0"
+      query.port: "{{SERVER_PORT}}"
+      online-mode: "{{ONLINE_MODE}}"
+  # Velocity modern forwarding. Standaard uit; Paper vult de rest van het bestand zelf aan.
+  - path: config/paper-global.yml
+    format: yaml
+    set:
+      proxies.velocity.enabled: "{{VELOCITY_FORWARDING}}"
+      proxies.velocity.online-mode: "true"
+      proxies.velocity.secret: "{{VELOCITY_SECRET}}"

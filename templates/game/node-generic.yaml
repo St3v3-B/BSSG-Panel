@@ -1,0 +1,66 @@
+schema: 1
+slug: node-generic
+name: Generiek Node.js
+description: >-
+  Start een eigen Node.js-app (bijvoorbeeld een Discord-bot) met Node.js 24 (LTS). Zet je
+  code via SFTP of de filemanager in de hoofdmap. Met een package.json draait bij elke start
+  `npm ci` (met package-lock.json) of `npm install`, zonder devDependencies; uit te zetten
+  met `AUTO_INSTALL=false`. De server staat online zodra Node start. Stoppen gaat met
+  SIGTERM: heeft je app geen eigen SIGTERM-handler, dan sluit Node direct af. De app krijgt
+  de poort in `SERVER_PORT` (luister op 0.0.0.0).
+type: game
+version: 1
+image: node:24-alpine
+# HOME en de npm-cache in /home/container: de rootfs is read-only. De --import zorgt dat
+# SIGTERM werkt, ook als Node PID 1 is (dan negeert de kernel het zonder handler).
+startup: >-
+  export HOME=/home/container npm_config_cache=/home/container/.npm npm_config_update_notifier=false NODE_ENV=production;
+  if [ "{{AUTO_INSTALL}}" = true ] && [ -f package.json ]; then
+  if [ -f package-lock.json ]; then npm ci --omit=dev --no-audit --no-fund; else npm install --omit=dev --no-audit --no-fund; fi || exit 1; fi;
+  [ -f {{MAIN_FILE}} ] || { echo "[panel] {{MAIN_FILE}} ontbreekt: zet je code in de hoofdmap"; exit 1; };
+  echo "[panel] start {{MAIN_FILE}} met Node $(node --version)";
+  exec node --import 'data:text/javascript,process.once("SIGTERM",()=>{if(!process.listenerCount("SIGTERM"))process.exit(143)})'
+  {{NODE_ARGS}} {{MAIN_FILE}}
+stop:
+  type: signal
+  value: SIGTERM
+ready_pattern: "^\\[panel\\] start "
+variables:
+  - key: MAIN_FILE
+    name: Startbestand
+    description: Het bestand dat Node start, bijvoorbeeld index.js of dist/bot.mjs.
+    default: index.js
+    user_editable: true
+    pattern: "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*\\.(js|mjs|cjs)$"
+  - key: AUTO_INSTALL
+    name: Dependencies installeren
+    description: "`true` = bij elke start npm ci/install als er een package.json is."
+    default: "true"
+    user_editable: true
+    pattern: "^(true|false)$"
+  - key: NODE_ARGS
+    name: Extra Node-opties
+    description: Bijvoorbeeld --enable-source-maps.
+    default: ""
+    user_editable: true
+    pattern: "^[A-Za-z0-9_=:.,+/ -]*$"
+install:
+  image: alpine:3.22
+  script: |
+    #!/bin/sh
+    # Niets te downloaden: Node zit in de runtime-image. Alleen een voorbeeld als de map leeg is.
+    set -eu
+    cd /home/container
+    if [ ! -f package.json ] && [ ! -f index.js ]; then
+      cat > index.js <<'EOF'
+    // Voorbeeld: vervang dit door je eigen app (via SFTP of de filemanager).
+    const http = require("node:http");
+    const port = Number(process.env.SERVER_PORT || 3000);
+    http.createServer((req, res) => res.end("Hallo van Node.js\n")).listen(port, "0.0.0.0", () => {
+      console.log(`luistert op poort ${port}`);
+    });
+    EOF
+      echo "Voorbeeld index.js gemaakt"
+    fi
+    echo "Installatie klaar"
+config_files: []

@@ -124,3 +124,43 @@ De Paper-rooktest draait het install-script van `templates/game/paper.yaml` in e
 en start de server zoals de daemon dat doet (uid 1000, read-only rootfs, tmpfs `/tmp`, caps
 eruit, 1280 MB → 1 GB heap) tot `ready_pattern`, controleert de poort, stuurt `stop` en ruimt
 op. Alles met `panel.test=true` + `panel.instance=templates-ops-<pid>`.
+
+## Velocity met twee Paper-servers
+
+Een Velocity-proxy waarop spelers binnenkomen, met twee Paper-servers erachter (bv. `lobby`
+en `survival`). Modern forwarding: Velocity geeft naam, UUID en IP van de speler door,
+ondertekend met een gedeelde secret; zonder die secret kan niemand rechtstreeks inloggen op de
+Paper-servers.
+
+1. **Secret kiezen**: 12-128 tekens `A-Z a-z 0-9 _ -`, bv. `openssl rand -hex 24`.
+2. **Velocity-server** maken (template *Velocity*, 512 MB is genoeg). Variabele
+   `VELOCITY_FORWARDING_SECRET` = de secret. (Laat je hem leeg, dan maakt de installatie
+   `forwarding.secret` aan; neem die waarde over.) Deze allocation is het adres dat
+   spelers gebruiken.
+3. **Twee Paper-servers** maken (template *Paper* of *Folia*), elk met een eigen allocation.
+   Per server: `VELOCITY_FORWARDING` = `true` en `VELOCITY_SECRET` = dezelfde secret.
+   Het panel zet dan `config/paper-global.yml` (`proxies.velocity.enabled/secret/online-mode`)
+   en `online-mode=false` in `server.properties` (de proxy controleert de accounts). Gebruik
+   op beide een Minecraft-versie die Velocity ondersteunt (de nieuwste is altijd goed).
+4. **Serverlijst**: open in de filemanager van de Velocity-server `velocity.toml` en zet
+   onder `[servers]` de allocations van de Paper-servers (IP:poort zoals het panel ze toont):
+
+   ```toml
+   [servers]
+   lobby = "203.0.113.10:25566"
+   survival = "203.0.113.10:25567"
+   try = ["lobby"]
+   ```
+
+   `bind`, `player-info-forwarding-mode = "modern"`, `forwarding-secret-file` en
+   `online-mode` zet het panel bij elke start; de rest van het bestand is van jou.
+5. Start de twee Paper-servers en daarna Velocity. Spelers verbinden met het adres van de
+   Velocity-server, komen op `lobby` en wisselen met `/server survival`.
+
+Rechtstreeks verbinden met een Paper-server lukt niet: Paper weigert iedereen die niet via
+de proxy met de juiste secret komt. Houd de secret dus geheim. Problemen staan in de console: *"Backend server is online-mode"* in Velocity = `VELOCITY_FORWARDING` staat
+niet aan op die Paper-server; *"Unable to verify player details"* in Paper = de secret
+verschilt.
+
+`deploy/test.sh` doet precies dit (stap *Velocity met twee Paper-servers*), met een
+mineflayer-bot die via de proxy op server a inlogt en met `/server b` wisselt.

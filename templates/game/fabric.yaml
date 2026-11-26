@@ -1,0 +1,98 @@
+schema: 1
+slug: fabric
+name: Fabric
+description: >-
+  Minecraft Java Edition met de Fabric-modloader (fabricmc.net). Kies een Minecraft-versie of
+  `latest` (nieuwste stabiele versie) en eventueel een loaderversie; mods (.jar) zet je in
+  `mods/` (bijvoorbeeld Fabric API). De installatie haalt de server-launcher via de
+  Fabric-meta-API; bij de eerste start downloadt die de Minecraft-server en de libraries in
+  de servermap (eenmalig, daarom duurt de eerste start langer). Java 25 (Minecraft 1.20.5 en
+  nieuwer), heap = RAM-limiet min 15% (minstens 384 MB).
+type: game
+version: 1
+image: eclipse-temurin:25-jre
+startup: >-
+  HEADROOM=$(( {{SERVER_MEMORY}} * 15 / 100 > 384 ? {{SERVER_MEMORY}} * 15 / 100 : 384 )) &&
+  mkdir -p .cache/netty mods &&
+  exec java
+  -Xms$(( {{SERVER_MEMORY}} - HEADROOM ))M -Xmx$(( {{SERVER_MEMORY}} - HEADROOM ))M
+  -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200
+  -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+PerfDisableSharedMem
+  -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M
+  -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4
+  -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90
+  -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:MaxTenuringThreshold=1
+  -Duser.home=/home/container -Dio.netty.native.workdir=/home/container/.cache/netty
+  -jar {{SERVER_JARFILE}} nogui
+stop:
+  type: command
+  value: stop
+# Vanilla/Fabric logt: [12:00:00] [Server thread/INFO]: Done (12.345s)! For help, type "help"
+ready_pattern: "Done \\([0-9.,]+s\\)!"
+variables:
+  - key: MINECRAFT_VERSION
+    name: Minecraft-versie
+    description: Bijvoorbeeld 1.21.11 of 26.3; `latest` = nieuwste stabiele versie. Na wijzigen opnieuw installeren.
+    default: latest
+    user_editable: true
+    pattern: "^(latest|[0-9]+(\\.[0-9]+){1,2})$"
+  - key: LOADER_VERSION
+    name: Fabric-loader
+    description: Bijvoorbeeld 0.20.1; `latest` = nieuwste stabiele loader. Na wijzigen opnieuw installeren.
+    default: latest
+    user_editable: true
+    pattern: "^(latest|[0-9]+(\\.[0-9]+){1,3})$"
+  - key: SERVER_JARFILE
+    name: Jar-bestand
+    description: Naam van de server-launcher in de hoofdmap.
+    default: fabric-server-launch.jar
+    user_editable: false
+    pattern: "^[A-Za-z0-9._-]+\\.jar$"
+install:
+  image: alpine:3.22
+  script: |
+    #!/bin/sh
+    # Haalt de Fabric-server-launcher via meta.fabricmc.net en accepteert de EULA.
+    set -eu
+    META="https://meta.fabricmc.net/v2"
+    UA="panel-installer/1 (self-hosted panel)"
+    cd /home/container
+    apk add --no-cache curl jq >/dev/null
+
+    fetch() { curl -fsSL --retry 3 --retry-delay 2 -A "$UA" "$1"; }
+
+    MC="${MINECRAFT_VERSION:-latest}"
+    if [ "$MC" = "latest" ]; then
+      MC=$(fetch "$META/versions/game" | jq -r '[.[] | select(.stable) | .version][0]')
+    fi
+    LOADER="${LOADER_VERSION:-latest}"
+    if [ "$LOADER" = "latest" ]; then
+      LOADER=$(fetch "$META/versions/loader" | jq -r '[.[] | select(.stable) | .version][0]')
+    fi
+    INSTALLER=$(fetch "$META/versions/installer" | jq -r '[.[] | select(.stable) | .version][0]')
+    for v in "$MC" "$LOADER" "$INSTALLER"; do
+      [ -n "$v" ] && [ "$v" != "null" ] || { echo "Versie niet gevonden in de Fabric-meta-API" >&2; exit 1; }
+    done
+    fetch "$META/versions/loader/$MC/$LOADER" >/dev/null \
+      || { echo "Fabric-loader $LOADER bestaat niet voor Minecraft $MC" >&2; exit 1; }
+
+    echo "Fabric-launcher downloaden: Minecraft $MC, loader $LOADER, installer $INSTALLER"
+    curl -fsSL --retry 3 --retry-delay 2 -A "$UA" -o "$SERVER_JARFILE.part" \
+      "$META/versions/loader/$MC/$LOADER/$INSTALLER/server/jar"
+    unzip -l "$SERVER_JARFILE.part" >/dev/null 2>&1 || { echo "Download is geen jar" >&2; rm -f "$SERVER_JARFILE.part"; exit 1; }
+    mv -f "$SERVER_JARFILE.part" "$SERVER_JARFILE"
+    # Bij een andere Minecraft-versie de vorige server-jar weggooien (de launcher haalt hem opnieuw).
+    if [ -f .fabric-install ] && ! grep -qx "minecraft=$MC" .fabric-install; then rm -f server.jar; fi
+
+    mkdir -p mods
+    echo "eula=true" > eula.txt
+    [ -f server.properties ] || printf 'motd=Een Fabric-server\nenable-rcon=false\n' > server.properties
+    printf 'minecraft=%s\nloader=%s\ninstaller=%s\n' "$MC" "$LOADER" "$INSTALLER" > .fabric-install
+    echo "Installatie klaar: Fabric $LOADER voor Minecraft $MC"
+config_files:
+  - path: server.properties
+    format: properties
+    set:
+      server-port: "{{SERVER_PORT}}"
+      server-ip: "0.0.0.0"
+      query.port: "{{SERVER_PORT}}"
