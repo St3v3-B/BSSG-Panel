@@ -133,6 +133,7 @@ func (d *Docker) Create(ctx context.Context, c ContainerConfig) (string, error) 
 		SecurityOpt:    c.SecurityOpt,
 		PortBindings:   bindings,
 		NetworkMode:    container.NetworkMode(c.NetworkMode),
+		Init:           &c.Init,
 		LogConfig:      container.LogConfig{Type: "json-file", Config: map[string]string{"max-size": "20m", "max-file": "2"}},
 		Resources: container.Resources{
 			NanoCPUs:   c.Resources.NanoCPUs,

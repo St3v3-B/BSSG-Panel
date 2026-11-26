@@ -53,6 +53,8 @@ type ContainerConfig struct {
 	Resources      Resources
 	Ports          []PortBinding
 	NetworkMode    string
+	// Init: tini als PID 1, zodat signalen ook processen zonder eigen handler bereiken.
+	Init bool
 }
 
 // Container is de staat van een bestaande container.

@@ -96,6 +96,9 @@ func TestRealDocker(t *testing.T) {
 		t.Fatal(err)
 	}
 	hc := insp.HostConfig
+	if hc.Init == nil || !*hc.Init {
+		t.Fatal("Init staat niet aan")
+	}
 	if insp.Config.User != "1000:1000" || !hc.ReadonlyRootfs || len(hc.CapDrop) != 1 || hc.CapDrop[0] != "ALL" ||
 		hc.Memory != 64<<20 || hc.MemorySwap != 64<<20 || hc.NanoCPUs != 5e8 || hc.PidsLimit == nil || *hc.PidsLimit != 64 ||
 		insp.Config.Labels["panel.role"] != "server" || insp.Config.Labels["panel.instance"] != instance {

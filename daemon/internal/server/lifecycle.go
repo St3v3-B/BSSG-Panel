@@ -69,6 +69,7 @@ func (s *Server) containerConfig(sp spec.ServerSpec) engine.ContainerConfig {
 		Resources:      resources(sp.Limits),
 		Ports:          ports,
 		NetworkMode:    netMode,
+		Init:           true,
 	}
 }
 
