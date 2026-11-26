@@ -21,6 +21,7 @@ type Config struct {
 	DataDir        string
 	CaddyAdminURL  string
 	CaddyContainer string
+	CaddyTLSAddr   string
 	Instance       string
 	ExtraLabels    map[string]string
 }
@@ -42,6 +43,7 @@ func Load(getenv func(string) string) (Config, error) {
 		DataDir:        get("DATA_DIR", "/var/lib/panel"),
 		CaddyAdminURL:  get("CADDY_ADMIN_URL", ""),
 		CaddyContainer: get("CADDY_CONTAINER", "panel-caddy"),
+		CaddyTLSAddr:   get("CADDY_TLS_ADDR", "127.0.0.1:443"),
 		Instance:       get("PANEL_INSTANCE", "main"),
 	}
 	var errs []error
