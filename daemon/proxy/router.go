@@ -52,7 +52,23 @@ type Route struct {
 	RedirectTo   string
 	Wildcard     bool
 	DNSChallenge *DNSChallenge
+	// Placeholder: als gezet, serveert Caddy direct een standaardpagina voor deze staat
+	// in plaats van naar de upstream te proxyen. De daemon zet hem bij elke statuswijziging
+	// van de site (SetRoute opnieuw). Leeg = normaal proxyen; is de upstream dan toch
+	// onbereikbaar, dan toont Caddy de pagina van PlaceholderUnavailable.
+	Placeholder Placeholder
 }
+
+// Placeholder bepaalt welke standaardpagina Caddy toont (status 503, Retry-After).
+type Placeholder string
+
+const (
+	PlaceholderNone        Placeholder = ""
+	PlaceholderInstalling  Placeholder = "installing"  // "deze website wordt ingericht"
+	PlaceholderOffline     Placeholder = "offline"     // "staat uit, start hem via het panel"
+	PlaceholderDisk        Placeholder = "disk"        // "tijdelijk uit: opslag vol, beheer via het panel"
+	PlaceholderUnavailable Placeholder = "unavailable" // upstream onbereikbaar terwijl hij online hoort te zijn
+)
 
 // RouteStatus is de actuele toestand van een route in Caddy.
 type RouteStatus struct {
