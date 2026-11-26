@@ -13,7 +13,7 @@ opgeslagen versie. Admins kunnen daarnaast templates importeren of bewerken in /
 | Veld | Verplicht | Betekenis |
 |---|---|---|
 | `schema` | ja | altijd `1` |
-| `slug` | ja | unieke sleutel, `a-z0-9-` |
+| `slug` | ja | unieke sleutel, `a-z0-9-` (geen punt; de bestandsnaam mag afwijken, bv. `php-8.3.yaml` met slug `php-8-3`) |
 | `name`, `description` | name ja | weergavenaam en uitleg |
 | `type` | ja | `game` of `web` |
 | `version` | ja | geheel getal; verhogen bij elke wijziging |
