@@ -1,0 +1,77 @@
+schema: 1
+slug: static
+name: Statische website
+description: >-
+  Statische site met nginx. Zet je bestanden in de map `public` (via SFTP of de
+  filemanager); `index.html` is de startpagina. Eigen nginx-regels (binnen het
+  server-blok) kun je kwijt in `nginx/*.conf`. Caddy regelt HTTPS en het domein.
+type: web
+version: 1
+image: nginx:1.28-alpine
+# De daemon draait dit als uid 1000 met een read-only rootfs; alleen /home/container en
+# /tmp (tmpfs) zijn schrijfbaar. De hoofdconfig wordt bij elke start opnieuw in /tmp
+# gezet, zodat een nieuwe templateversie hem meteen bijwerkt; pid, tijdelijke bestanden
+# en logs (stdout/stderr) staan nergens op de rootfs.
+startup: |
+  mkdir -p /tmp/nginx /home/container/public /home/container/nginx &&
+  cat > /tmp/nginx/nginx.conf <<'EOF'
+  worker_processes 2;
+  pid /tmp/nginx/nginx.pid;
+  error_log stderr warn;
+  events { worker_connections 1024; }
+  http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    client_body_temp_path /tmp/nginx/client_body;
+    proxy_temp_path /tmp/nginx/proxy;
+    fastcgi_temp_path /tmp/nginx/fastcgi;
+    uwsgi_temp_path /tmp/nginx/uwsgi;
+    scgi_temp_path /tmp/nginx/scgi;
+    access_log /dev/stdout combined;
+    sendfile on;
+    server_tokens off;
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml text/plain text/xml;
+    # Caddy (op het site-netwerk) zet X-Forwarded-For.
+    set_real_ip_from 10.0.0.0/8;
+    set_real_ip_from 172.16.0.0/12;
+    set_real_ip_from 192.168.0.0/16;
+    real_ip_header X-Forwarded-For;
+    server {
+      listen 8080;
+      root /home/container/public;
+      index index.html index.htm;
+      absolute_redirect off;
+      location ~ /\.(?!well-known/) { deny all; }
+      location / { try_files $uri $uri/ =404; }
+      include /home/container/nginx/*.conf;
+    }
+  }
+  EOF
+  nginx -t -q -e stderr -c /tmp/nginx/nginx.conf &&
+  echo "nginx klaar op poort 8080" &&
+  exec nginx -e stderr -c /tmp/nginx/nginx.conf -g 'daemon off;'
+stop:
+  type: signal
+  value: SIGQUIT
+ready_pattern: "^nginx klaar op poort"
+http_port: 8080
+variables: []
+install:
+  image: alpine:3.22
+  script: |
+    #!/bin/sh
+    # Maakt de mappen en een voorbeeldpagina; bestaande bestanden blijven staan.
+    set -eu
+    cd /home/container
+    mkdir -p public nginx
+    if [ ! -e public/index.html ]; then
+      cat > public/index.html <<'EOF'
+    <!doctype html>
+    <html lang="nl"><head><meta charset="utf-8"><title>Het werkt</title></head>
+    <body><h1>Het werkt</h1><p>Zet je eigen bestanden in de map <code>public</code>.</p></body></html>
+    EOF
+    fi
+    [ -e nginx/README.txt ] || echo "Bestanden *.conf in deze map komen binnen het server-blok van nginx (na een herstart)." > nginx/README.txt
+    echo "Installatie klaar"
+config_files: []

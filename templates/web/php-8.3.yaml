@@ -1,0 +1,192 @@
+schema: 1
+slug: php-8-3
+name: PHP 8.3 (nginx + PHP-FPM)
+description: >-
+  Website met nginx en PHP-FPM 8.3, geschikt voor WordPress. Zet je bestanden in de map
+  `public`; verzoeken die niet op een bestand uitkomen gaan naar `index.php` (permalinks).
+  Extensies o.a. mysqli, pdo_mysql, gd, intl, zip, exif, curl, mbstring, opcache.
+  De database heet vanuit de site `panel-mariadb:3306`. Eigen PHP-instellingen in
+  `php/*.ini`, eigen nginx-regels (binnen het server-blok) in `nginx/*.conf`; daarna herstarten.
+type: web
+version: 1
+# serversideup/php: officiële PHP-build met nginx erbij. We gebruiken alleen de binaries;
+# hun s6-entrypoint niet (dat wil als root schrijven op de rootfs).
+image: serversideup/php:8.3-fpm-nginx-alpine
+# De daemon draait dit als uid 1000 met een read-only rootfs; alleen /home/container en
+# /tmp (tmpfs) zijn schrijfbaar. Alle config wordt bij elke start in /tmp gezet. De extra
+# extensies (mysqli, gd, intl, exif) bouwt de installatie in /home/container/.php.
+startup: |
+  set -u
+  R=/tmp/php; H=/home/container
+  mkdir -p $R/conf.d $R/uploads /tmp/nginx $H/public $H/php $H/nginx $H/.php/sessions
+  CH=$(( {{SERVER_MEMORY}} / 64 )); [ "$CH" -ge 2 ] || CH=2
+  for f in $H/.php/ext/*.so; do [ -e "$f" ] && echo "extension=$f"; done > $R/conf.d/10-panel-ext.ini
+  cat > $R/conf.d/20-panel.ini <<'EOF'
+  memory_limit = {{PHP_MEMORY_LIMIT}}
+  upload_max_filesize = {{UPLOAD_MAX_SIZE}}
+  post_max_size = {{UPLOAD_MAX_SIZE}}
+  max_execution_time = 120
+  max_input_vars = 3000
+  expose_php = Off
+  display_errors = Off
+  log_errors = On
+  date.timezone = Europe/Amsterdam
+  sys_temp_dir = /tmp/php
+  upload_tmp_dir = /tmp/php/uploads
+  session.save_path = /home/container/.php/sessions
+  session.cookie_httponly = On
+  opcache.enable = 1
+  opcache.validate_timestamps = 1
+  opcache.revalidate_freq = 2
+  opcache.memory_consumption = 64
+  EOF
+  cat > $R/php-fpm.conf <<EOF
+  [global]
+  pid = $R/php-fpm.pid
+  error_log = /proc/self/fd/2
+  log_limit = 8192
+  daemonize = no
+  [www]
+  listen = $R/fpm.sock
+  pm = ondemand
+  pm.max_children = $CH
+  pm.process_idle_timeout = 30s
+  pm.max_requests = 500
+  clear_env = no
+  catch_workers_output = yes
+  decorate_workers_output = no
+  security.limit_extensions = .php
+  EOF
+  cat > /tmp/nginx/nginx.conf <<'EOF'
+  worker_processes 2;
+  pid /tmp/nginx/nginx.pid;
+  error_log stderr warn;
+  events { worker_connections 1024; }
+  http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    client_body_temp_path /tmp/nginx/client_body;
+    proxy_temp_path /tmp/nginx/proxy;
+    fastcgi_temp_path /tmp/nginx/fastcgi;
+    uwsgi_temp_path /tmp/nginx/uwsgi;
+    scgi_temp_path /tmp/nginx/scgi;
+    access_log /dev/stdout combined;
+    sendfile on;
+    server_tokens off;
+    client_max_body_size {{UPLOAD_MAX_SIZE}};
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml text/plain text/xml;
+    # Caddy (op het site-netwerk) zet X-Forwarded-For en -Proto.
+    set_real_ip_from 10.0.0.0/8;
+    set_real_ip_from 172.16.0.0/12;
+    set_real_ip_from 192.168.0.0/16;
+    real_ip_header X-Forwarded-For;
+    map $http_x_forwarded_proto $panel_https { https on; default ""; }
+    server {
+      listen 8080;
+      root /home/container/public;
+      index index.php index.html index.htm;
+      absolute_redirect off;
+      location ~ /\.(?!well-known/) { deny all; }
+      location ~* /(?:uploads|files)/.*\.php$ { deny all; }
+      location / { try_files $uri $uri/ /index.php?$args; }
+      location ~ [^/]\.php(/|$) {
+        fastcgi_split_path_info ^(.+?\.php)(/.*)$;
+        try_files $fastcgi_script_name =404;
+        include /etc/nginx/fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS $panel_https;
+        fastcgi_param HTTP_PROXY "";
+        fastcgi_read_timeout 300s;
+        fastcgi_pass unix:/tmp/php/fpm.sock;
+      }
+      include /home/container/nginx/*.conf;
+    }
+  }
+  EOF
+  export PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:$R/conf.d:$H/php ICU_DATA=$H/.php/icu
+  LD_LIBRARY_PATH=$H/.php/lib php-fpm -t -y $R/php-fpm.conf 2>&1 | grep -v 'test is successful' >&2
+  nginx -t -q -e stderr -c /tmp/nginx/nginx.conf || exit 1
+  LD_LIBRARY_PATH=$H/.php/lib php-fpm -y $R/php-fpm.conf & FPM=$!
+  nginx -e stderr -c /tmp/nginx/nginx.conf -g 'daemon off;' & NGX=$!
+  STOP=0
+  trap 'STOP=1; kill -QUIT $NGX $FPM 2>/dev/null' TERM INT QUIT
+  until [ -S $R/fpm.sock ] && [ -s /tmp/nginx/nginx.pid ]; do
+    kill -0 $FPM 2>/dev/null && kill -0 $NGX 2>/dev/null || break
+    sleep 0.2
+  done
+  kill -0 $FPM 2>/dev/null && kill -0 $NGX 2>/dev/null && echo "PHP-FPM en nginx klaar op poort 8080"
+  while kill -0 $FPM 2>/dev/null && kill -0 $NGX 2>/dev/null; do sleep 1 & wait $!; done
+  kill -QUIT $NGX $FPM 2>/dev/null; wait $NGX; wait $FPM
+  [ "$STOP" = 1 ] && exit 0
+  echo "PHP-FPM of nginx is gestopt" >&2; exit 1
+stop:
+  type: signal
+  value: SIGTERM
+ready_pattern: "^PHP-FPM en nginx klaar op poort"
+http_port: 8080
+variables:
+  - key: PHP_MEMORY_LIMIT
+    name: PHP-geheugenlimiet
+    description: memory_limit per PHP-verzoek, bijvoorbeeld 256M.
+    default: 256M
+    user_editable: true
+    pattern: "^[0-9]{2,5}M$"
+  - key: UPLOAD_MAX_SIZE
+    name: Maximale uploadgrootte
+    description: upload_max_filesize, post_max_size en de nginx-limiet, bijvoorbeeld 64M.
+    default: 64M
+    user_editable: true
+    pattern: "^[0-9]{1,4}M$"
+install:
+  image: serversideup/php:8.3-fpm-nginx-alpine
+  script: |
+    #!/bin/sh
+    # Bouwt mysqli, gd, intl en exif tegen exact deze PHP-build (zelfde image als de
+    # runtime) en zet ze met de benodigde bibliotheken in /home/container/.php.
+    # Draait als root in een tijdelijke container; bestaande sitebestanden blijven staan.
+    set -eu
+    H=/home/container
+    mkdir -p $H/public $H/php $H/nginx $H/.php/sessions
+    rm -rf $H/.php/ext $H/.php/lib $H/.php/icu
+    mkdir -p $H/.php/ext $H/.php/lib
+    ls /lib /usr/lib /usr/local/lib > /tmp/libs-before
+    echo "Bouwtools installeren"
+    apk add --no-cache --virtual .panel-build $PHPIZE_DEPS \
+      libpng-dev libjpeg-turbo-dev freetype-dev libwebp-dev icu-dev icu-data-full >/dev/null
+    docker-php-source extract
+    for e in mysqli gd intl exif; do
+      echo "Extensie $e bouwen"
+      cd /usr/src/php/ext/$e
+      phpize >/dev/null
+      case $e in
+        gd) ./configure --with-freetype --with-jpeg --with-webp >/dev/null ;;
+        *) ./configure >/dev/null ;;
+      esac
+      make -j"$(nproc)" >/dev/null 2>&1 || make >/dev/null
+      cp modules/$e.so $H/.php/ext/
+    done
+    # Bibliotheken die de runtime-image niet heeft (libpng, icu, ...) erbij zetten.
+    for so in $H/.php/ext/*.so; do
+      ldd "$so" 2>/dev/null | awk '$2 == "=>" && $3 ~ /^\// {print $3}'
+    done | sort -u | while read -r lib; do
+      base=$(basename "$lib")
+      grep -qx "$base" /tmp/libs-before || cp -L "$lib" $H/.php/lib/
+    done
+    # ICU-data (alle talen) voor intl; de runtime vindt hem via ICU_DATA.
+    mkdir -p $H/.php/icu
+    cp /usr/share/icu/*/*.dat $H/.php/icu/
+    if [ ! -e $H/public/index.php ] && [ ! -e $H/public/index.html ]; then
+      cat > $H/public/index.php <<'EOF'
+    <?php
+    echo "<!doctype html><meta charset=utf-8><title>Het werkt</title>";
+    echo "<h1>Het werkt</h1><p>PHP " . PHP_VERSION . ". Zet je eigen bestanden in de map <code>public</code>.</p>";
+    EOF
+    fi
+    [ -e $H/php/README.txt ] || echo "Bestanden *.ini in deze map komen na de standaardinstellingen (na een herstart)." > $H/php/README.txt
+    [ -e $H/nginx/README.txt ] || echo "Bestanden *.conf in deze map komen binnen het server-blok van nginx (na een herstart)." > $H/nginx/README.txt
+    PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d LD_LIBRARY_PATH=$H/.php/lib ICU_DATA=$H/.php/icu \
+      php $(for f in $H/.php/ext/*.so; do printf -- '-d extension=%s ' "$f"; done) -r 'echo (new NumberFormatter("nl_NL", NumberFormatter::DECIMAL))->format(1.5), " ", function_exists("mysqli_connect") ? "mysqli" : "";' | grep -qx '1,5 mysqli'
+    echo "Installatie klaar: PHP $(php -r 'echo PHP_VERSION;')"
+config_files: []
