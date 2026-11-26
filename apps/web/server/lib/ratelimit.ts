@@ -37,8 +37,14 @@ class MemoryLimiter implements Limiter {
 class RedisLimiter implements Limiter {
   constructor(private r: Redis, private fallback: Limiter) {}
   private async safe<T>(fn: () => Promise<T>, fb: () => Promise<T>): Promise<T> {
+    if (this.r.status === "connecting" || this.r.status === "connect") {
+      await new Promise<void>((res) => {
+        const t = setTimeout(res, 500);
+        this.r.once("ready", () => (clearTimeout(t), res()));
+      });
+    }
     if (this.r.status !== "ready") {
-      this.r.connect().catch(() => {});
+      if (this.r.status === "end" || this.r.status === "wait") this.r.connect().catch(() => {});
       return fb();
     }
     try {
