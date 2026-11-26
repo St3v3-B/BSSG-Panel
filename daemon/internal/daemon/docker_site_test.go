@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,48 +76,79 @@ func TestRealDockerSiteAndDisk(t *testing.T) {
 		"allocations": []any{}, "skip_install": true,
 		"install": map[string]string{"image": "alpine:3.20", "script": "true"},
 	}
-	h.expect("POST", "/api/servers", sp, 202)
-	h.expect("POST", "/api/servers/"+site+"/power", map[string]string{"action": "start"}, 202)
-	h.waitState(site, "online", 60*time.Second)
+	site2 := randUUID()
+	for _, u := range []string{site, site2} {
+		sp["uuid"] = u
+		h.expect("POST", "/api/servers", sp, 202)
+		h.expect("POST", "/api/servers/"+u+"/power", map[string]string{"action": "start"}, 202)
+		h.waitState(u, "online", 60*time.Second)
+	}
 	netName := "panel-site-" + site
 	ni, err := cli.NetworkInspect(ctx, netName, network.InspectOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !ni.Internal || ni.Labels["panel.role"] != "site" || ni.Labels["panel.instance"] != instance || ni.Labels["panel.managed"] != "true" {
+	if ni.Internal || ni.Labels["panel.role"] != "site" || ni.Labels["panel.instance"] != instance || ni.Labels["panel.managed"] != "true" {
 		t.Fatalf("netwerk: internal=%v labels=%v", ni.Internal, ni.Labels)
 	}
 	members := map[string]bool{}
 	for _, c := range ni.Containers {
 		members[c.Name] = true
 	}
-	if !members[server.ContainerName(site)] || !members[dbName] {
+	if !members[server.ContainerName(site)] || !members[dbName] || members[server.ContainerName(site2)] {
 		t.Fatalf("leden: %v", members)
 	}
-	// Vanaf de "MariaDB" is de site bereikbaar op zijn naam (zoals Caddy hem ziet).
-	ex, err := cli.ContainerExecCreate(ctx, dbName, container.ExecOptions{Cmd: []string{"wget", "-qO-", "-T", "5", "http://" + server.ContainerName(site) + ":8080/"}, AttachStdout: true, AttachStderr: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	att, err := cli.ContainerExecAttach(ctx, ex.ID, container.ExecAttachOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	buf := make([]byte, 4096)
-	var out strings.Builder
-	deadline := time.Now().Add(10 * time.Second)
-	_ = att.Conn.SetReadDeadline(deadline)
-	for {
-		n, err := att.Reader.Read(buf)
-		out.Write(buf[:n])
+	exec := func(ctr string, cmd ...string) (string, int) {
+		t.Helper()
+		ex, err := cli.ContainerExecCreate(ctx, ctr, container.ExecOptions{Cmd: cmd, AttachStdout: true, AttachStderr: true})
 		if err != nil {
-			break
+			t.Fatal(err)
+		}
+		att, err := cli.ContainerExecAttach(ctx, ex.ID, container.ExecAttachOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = att.Conn.SetReadDeadline(time.Now().Add(20 * time.Second))
+		b, _ := io.ReadAll(att.Reader)
+		att.Close()
+		for i := 0; i < 50; i++ {
+			if r, err := cli.ContainerExecInspect(ctx, ex.ID); err == nil && !r.Running {
+				return string(b), r.ExitCode
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		return string(b), -1
+	}
+	// Vanaf de "MariaDB" is de site bereikbaar op zijn naam (zoals Caddy hem ziet).
+	if out, _ := exec(dbName, "wget", "-qO-", "-T", "5", "http://"+server.ContainerName(site)+":8080/"); !strings.Contains(out, "hoi") {
+		t.Fatalf("site niet bereikbaar via het site-netwerk: %q", out)
+	}
+	// Site 1 bereikt site 2 niet: niet op naam en niet op IP.
+	ni2, err := cli.NetworkInspect(ctx, "panel-site-"+site2, network.InspectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ip2 := ""
+	for _, c := range ni2.Containers {
+		if c.Name == server.ContainerName(site2) {
+			ip2, _, _ = strings.Cut(c.IPv4Address, "/")
 		}
 	}
-	att.Close()
-	if !strings.Contains(out.String(), "hoi") {
-		t.Fatalf("site niet bereikbaar via het site-netwerk: %q", out.String())
+	if ip2 == "" {
+		t.Fatal("geen IP voor site 2")
 	}
+	for _, target := range []string{server.ContainerName(site2), ip2} {
+		if out, code := exec(server.ContainerName(site), "wget", "-qO-", "-T", "3", "http://"+target+":8080/"); code == 0 || strings.Contains(out, "hoi") {
+			t.Fatalf("site 1 bereikt site 2 via %s: %q", target, out)
+		}
+	}
+	// Uitgaand internet (overslaan als de host zelf geen internet heeft).
+	if _, err := net.LookupHost("example.com"); err != nil {
+		t.Log("geen internet op de host; uitgaande controle overgeslagen")
+	} else if out, code := exec(server.ContainerName(site), "wget", "-q", "-T", "10", "-O", "/dev/null", "http://example.com/"); code != 0 {
+		t.Fatalf("site heeft geen uitgaand internet: %d %q", code, out)
+	}
+	h.expect("DELETE", "/api/servers/"+site2, nil, 204)
 	h.expect("DELETE", "/api/servers/"+site, nil, 204)
 	if _, err := cli.NetworkInspect(ctx, netName, network.InspectOptions{}); err == nil {
 		t.Fatal("site-netwerk niet opgeruimd")

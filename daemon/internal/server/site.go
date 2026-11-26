@@ -25,14 +25,15 @@ func (m *Manager) ours(labels map[string]string) bool {
 	return labels[LabelManaged] == "true" && labels[LabelInstance] == m.cfg.Instance && labels[LabelRole] == RoleSite
 }
 
-// ensureSiteNetwork maakt panel-site-<uuid> (internal) als het ontbreekt en koppelt
+// ensureSiteNetwork maakt panel-site-<uuid> (gewone bridge: uitgaand internet, maar
+// geïsoleerd van andere bridge-netwerken) als het ontbreekt en koppelt
 // panel-mariadb eraan als die container bestaat.
 func (m *Manager) ensureSiteNetwork(ctx context.Context, uuid string) error {
 	name := SiteNetwork(uuid)
 	labels, err := m.eng.NetworkLabels(ctx, name)
 	switch {
 	case errors.Is(err, engine.ErrNotFound):
-		if err := m.eng.CreateNetwork(ctx, name, m.labels(uuid, RoleSite), true); err != nil {
+		if err := m.eng.CreateNetwork(ctx, name, m.labels(uuid, RoleSite), false); err != nil {
 			return fmt.Errorf("netwerk %s aanmaken: %w", name, err)
 		}
 	case err != nil:
