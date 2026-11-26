@@ -420,3 +420,65 @@ func TestFreeSpaceWatch(t *testing.T) {
 		t.Fatal("verkeerde server gestopt")
 	}
 }
+
+func TestSitePlaceholder(t *testing.T) {
+	eng := engine.NewFake()
+	release := make(chan struct{}, 10)
+	eng.Behavior = func(c *engine.FakeContainer) {
+		if c.Config.Labels["panel.role"] == "install" {
+			<-release
+			c.Exit(0)
+			return
+		}
+		engine.DefaultBehavior(c)
+	}
+	router := proxy.NewFake()
+	dir := t.TempDir()
+	h := newHarness(t, eng, router, nil, dir, nil, "")
+	sp := testSpec(u1)
+	sp["type"], sp["http_port"], sp["allocations"], sp["config_files"] = "web", 8080, []any{}, []any{}
+	sp["limits"] = map[string]any{"cpu_pct": 100, "memory_mb": 512, "swap_mb": 0, "disk_mb": 1}
+	h.expect("POST", "/api/servers", sp, 202)
+	h.expect("PUT", "/api/routes/site.test", map[string]any{"server_uuid": u1}, 200)
+	h.expect("PUT", "/api/routes/www.site.test", map[string]any{"server_uuid": u1, "redirect_to": "site.test"}, 200)
+	ph := func(want proxy.Placeholder) {
+		t.Helper()
+		waitFor(t, "placeholder "+string(want), 3*time.Second, func() bool {
+			for _, r := range router.Routes() {
+				if r.Host == "www.site.test" && (r.Placeholder != "" || r.RedirectTo != "site.test") {
+					t.Fatalf("redirect aangeraakt: %+v", r)
+				}
+				if r.Host == "site.test" {
+					return r.Placeholder == want
+				}
+			}
+			return false
+		})
+	}
+	ph(proxy.PlaceholderInstalling)
+	release <- struct{}{}
+	h.waitState(u1, "offline", 5*time.Second)
+	ph(proxy.PlaceholderOffline)
+	h.expect("POST", "/api/servers/"+u1+"/power", map[string]string{"action": "start"}, 202)
+	h.waitState(u1, "online", 5*time.Second)
+	ph(proxy.PlaceholderNone)
+	if err := os.WriteFile(filepath.Join(dir, "volumes", u1, "vol.bin"), make([]byte, 2<<20), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.waitState(u1, "disk_exceeded", 5*time.Second)
+	ph(proxy.PlaceholderDisk)
+
+	// Daemon-herstart: Sync zet de juiste placeholder, ook als Caddy alles kwijt is.
+	h.stop()
+	_ = router.Sync(context.Background(), nil)
+	h.start()
+	ph(proxy.PlaceholderDisk)
+	_ = os.Remove(filepath.Join(dir, "volumes", u1, "vol.bin"))
+	h.waitState(u1, "offline", 5*time.Second)
+	ph(proxy.PlaceholderOffline)
+	h.expect("POST", "/api/servers/"+u1+"/install", nil, 202)
+	ph(proxy.PlaceholderInstalling)
+	release <- struct{}{}
+	h.waitState(u1, "offline", 5*time.Second)
+	ph(proxy.PlaceholderOffline)
+}
