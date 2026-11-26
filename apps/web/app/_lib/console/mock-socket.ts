@@ -17,7 +17,25 @@ export interface MockSocketOptions {
   statsIntervalMs?: number;
   /** Tijdsfactor voor opstarten/stoppen (tests zetten dit laag). */
   speed?: number;
+  /** Soort logregels: Minecraft (game) of nginx/PHP (web). */
+  flavor?: "game" | "web";
 }
+
+const WEB_STARTUP = [
+  "nginx: [notice] using the \"epoll\" event method",
+  "nginx: [notice] nginx/1.27.3",
+  "php-fpm: [NOTICE] fpm is running, pid 1",
+  "php-fpm: [NOTICE] ready to handle connections",
+];
+const WEB_CHATTER = [
+  '198.51.100.23 - - "GET / HTTP/1.1" 200 5123 "-" "Mozilla/5.0"',
+  '198.51.100.23 - - "GET /style.css HTTP/1.1" 200 1840 "-" "Mozilla/5.0"',
+  '203.0.113.99 - - "GET /wp-login.php HTTP/1.1" 404 153 "-" "curl/8.5"',
+  '198.51.100.23 - - "POST /contact.php HTTP/1.1" 500 0 "-" "Mozilla/5.0"',
+  "php-fpm: [WARNING] [pool www] server reached pm.max_children setting (5), consider raising it",
+  '198.51.100.40 - - "GET /favicon.ico HTTP/1.1" 200 4286 "-" "Mozilla/5.0"',
+  "PHP Fatal error:  Uncaught Error: Call to undefined function mysql_connect() in /home/container/public/contact.php:12",
+];
 
 const ALL: Permission[] = ["console.read", "console.write", "files.read", "files.write", "backup.create", "backup.restore", "database.manage", "domain.manage", "schedule.manage", "power"];
 
@@ -79,7 +97,7 @@ export class MockSocket implements SocketLike {
     readonly url: string,
     opts: MockSocketOptions,
   ) {
-    this.o = { tokenLifetimeMs: 120_000, statsIntervalMs: 2000, speed: 1, ...opts };
+    this.o = { tokenLifetimeMs: 120_000, statsIntervalMs: 2000, speed: 1, flavor: "game", ...opts };
     this.status = opts.status;
     this.later(30, () => {
       this.readyState = SOCKET_OPEN;
@@ -140,14 +158,21 @@ export class MockSocket implements SocketLike {
     this.setStatus("starting");
     this.startedAt = Date.now();
     this.daemon("info", "Container wordt gestart…");
-    STARTUP.forEach((l, i) => this.later(step(150 + i * 120), () => this.out(info(l))));
-    this.later(step(150 + STARTUP.length * 120 + 200), () => {
-      this.out(info(`Done (${(2 + Math.random() * 2).toFixed(3)}s)! For help, type "help"`));
+    this.startup.forEach((l, i) => this.later(step(150 + i * 120), () => this.out(this.web ? l : info(l))));
+    this.later(step(150 + this.startup.length * 120 + 200), () => {
+      if (!this.web) this.out(info(`Done (${(2 + Math.random() * 2).toFixed(3)}s)! For help, type "help"`));
       this.setStatus("online");
     });
   }
 
   // ---------- intern ----------
+
+  private get web() {
+    return this.o.flavor === "web";
+  }
+  private get startup() {
+    return this.web ? WEB_STARTUP : STARTUP;
+  }
 
   private auth(token: string) {
     if (!token) {
@@ -161,14 +186,14 @@ export class MockSocket implements SocketLike {
     if (!fresh) return;
     // backlog
     if (this.status === "installing" || this.status === "install_failed") {
-      ["Installatie gestart", "Paper 1.21.4 downloaden…", "server.jar opgeslagen (48 MB)", "eula.txt aangemaakt"].forEach((l) =>
+      (this.web ? ["Installatie gestart", "public/ aangemaakt", "index.html geplaatst"] : ["Installatie gestart", "Paper 1.21.4 downloaden…", "server.jar opgeslagen (48 MB)", "eula.txt aangemaakt"]).forEach((l) =>
         this.emit({ event: "install_output", line: l }),
       );
       if (this.status === "install_failed") this.emit({ event: "install_output", line: "FOUT: install-script stopte met code 1" });
     } else if (this.status === "online" || this.status === "starting") {
-      for (const l of STARTUP) this.out(info(l));
-      this.out(info('Done (3.214s)! For help, type "help"'));
-      this.out(info("[mock] Dit is een nep-console: er draait geen daemon in mock-modus."));
+      for (const l of this.startup) this.out(this.web ? l : info(l));
+      if (!this.web) this.out(info('Done (3.214s)! For help, type "help"'));
+      this.out(this.web ? "[mock] Dit zijn nep-logs: er draait geen daemon in mock-modus." : info("[mock] Dit is een nep-console: er draait geen daemon in mock-modus."));
     } else {
       this.out(info("[mock] Server staat uit. Start hem met de knop hierboven."));
     }
@@ -232,6 +257,7 @@ export class MockSocket implements SocketLike {
     const online = this.status === "online";
     if (online && !this.chatterTimer)
       this.chatterTimer = setInterval(() => {
+        if (this.web) return this.out(WEB_CHATTER[this.chatterIndex++ % WEB_CHATTER.length]!);
         const line = CHATTER[this.chatterIndex++ % CHATTER.length]!;
         this.out(this.chatterIndex % 7 === 0 ? warn("Can't keep up! Is the server overloaded? Running 2034ms or 40 ticks behind") : info(line));
       }, 6000);
