@@ -1,6 +1,6 @@
 import type { ServerStatus } from "@panel/api";
 import { Badge } from "@/app/_components/ui/badge";
-import { STATUS_LABEL, STATUS_VARIANT } from "@/app/_lib/format";
+import { statusLabel, STATUS_VARIANT } from "@/app/_lib/format";
 import { cn } from "@/lib/utils";
 
 const DOT: Record<ServerStatus, string> = {
@@ -18,7 +18,7 @@ export function StatusBadge({ status, className }: { status: ServerStatus; class
   return (
     <Badge variant={STATUS_VARIANT[status]} className={className} data-status={status}>
       <span className={cn("size-1.5 rounded-full", DOT[status])} aria-hidden />
-      {STATUS_LABEL[status]}
+      {statusLabel(status)}
     </Badge>
   );
 }

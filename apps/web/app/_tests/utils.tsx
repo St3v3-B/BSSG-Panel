@@ -8,6 +8,7 @@ import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import type { ReactElement } from "react";
 import superjson from "superjson";
 import { trpc } from "@/lib/trpc";
+import { LocaleProvider, type Locale } from "@/app/_lib/i18n";
 
 export function sessionFor(role: MockRole, patch: Partial<SessionCtx> = {}): SessionCtx | null {
   const s = mockSession(role);
@@ -15,7 +16,7 @@ export function sessionFor(role: MockRole, patch: Partial<SessionCtx> = {}): Ses
 }
 
 /** `patch` kan procedures van de mock vervangen, bv. om een fout als DISK_EXCEEDED na te bootsen. */
-export function renderWithTrpc(ui: ReactElement, opts: { session: SessionCtx | null; patch?: (mock: Implementation) => void }) {
+export function renderWithTrpc(ui: ReactElement, opts: { session: SessionCtx | null; patch?: (mock: Implementation) => void; locale?: Locale }) {
   const mock = createMock();
   opts.patch?.(mock);
   const router = buildRouter(mock);
@@ -47,7 +48,10 @@ export function renderWithTrpc(ui: ReactElement, opts: { session: SessionCtx | n
   });
   const result = render(
     <trpc.Provider client={client} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        {/* bestaande tests controleren de Nederlandse teksten; standaard dus nl */}
+        <LocaleProvider initial={opts.locale ?? "nl"}>{ui}</LocaleProvider>
+      </QueryClientProvider>
     </trpc.Provider>,
   );
   return { ...result, calls, bodies, queryClient };

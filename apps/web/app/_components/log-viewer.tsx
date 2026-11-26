@@ -8,6 +8,7 @@ import { Card } from "@/app/_components/ui/card";
 import { Input } from "@/app/_components/ui/input";
 import type { ConnState } from "@/app/_lib/console";
 import { cn } from "@/lib/utils";
+import { useT } from "@/app/_lib/i18n";
 
 export interface LogLine {
   id: number;
@@ -78,6 +79,7 @@ export function LogViewer({
   tokenRefreshedAt: Date | null;
   onRetry: () => void;
 }) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [follow, setFollow] = useState(true);
   const [frozen, setFrozen] = useState<LogLine[] | null>(null); // gepauzeerd: weergave staat stil
@@ -119,21 +121,21 @@ export function LogViewer({
         <ConnectionIndicator state={state} retryInMs={retryInMs} onRetry={onRetry} tokenRefreshedAt={tokenRefreshedAt} />
         <div className="relative ml-auto w-full max-w-56 sm:w-auto">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filteren…" aria-label="Logs filteren" className="h-8 pl-8 text-xs" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.logs.filter} aria-label={t.logs.filterLabel} className="h-8 pl-8 text-xs" />
         </div>
         {frozen ? (
-          <Button size="sm" variant="outline" onClick={resume} aria-label="Volgen">
-            <Play /> Volgen{newSincePause > 0 && ` (${newSincePause} nieuw)`}
+          <Button size="sm" variant="outline" onClick={resume} aria-label={t.logs.follow}>
+            <Play /> {newSincePause > 0 ? t.logs.followNew(newSincePause) : t.logs.follow}
           </Button>
         ) : (
-          <Button size="sm" variant="outline" onClick={pause} aria-label="Pauzeren">
-            <Pause /> Pauzeren
+          <Button size="sm" variant="outline" onClick={pause} aria-label={t.logs.pause}>
+            <Pause /> {t.logs.pause}
           </Button>
         )}
-        <Button size="icon-sm" variant="ghost" onClick={() => (onClear(), setFrozen(frozen ? [] : null))} aria-label="Weergave wissen" title="Weergave wissen">
+        <Button size="icon-sm" variant="ghost" onClick={() => (onClear(), setFrozen(frozen ? [] : null))} aria-label={t.logs.clear} title={t.logs.clear}>
           <Eraser />
         </Button>
-        <Button size="icon-sm" variant="ghost" onClick={download} aria-label="Downloaden als .txt" title="Downloaden als .txt" disabled={lines.length === 0}>
+        <Button size="icon-sm" variant="ghost" onClick={download} aria-label={t.logs.download} title={t.logs.download} disabled={lines.length === 0}>
           <Download />
         </Button>
       </div>
@@ -150,13 +152,13 @@ export function LogViewer({
         data-testid="log-lines"
       >
         {shown.length === 0 ? (
-          <p className="px-3 text-zinc-500">{q ? `Geen regels met “${query.trim()}”.` : "Nog geen logregels."}</p>
+          <p className="px-3 text-zinc-500">{q ? t.logs.noMatch(query.trim()) : t.logs.empty}</p>
         ) : (
           shown.map((l) => {
             const level = classifyLogLine(l);
             return (
               <div key={l.id} className={cn("whitespace-pre-wrap break-all px-3", LEVEL_CLASS[level], l.kind === "install" && "text-sky-300/80", l.kind === "info" && "text-zinc-500")} data-level={level}>
-                {l.kind === "install" && <span className="select-none text-sky-500/70">[install] </span>}
+                {l.kind === "install" && <span className="select-none text-sky-500/70">{t.logs.install} </span>}
                 {l.text}
               </div>
             );
@@ -166,7 +168,7 @@ export function LogViewer({
       {!follow && !frozen && (
         <div className="border-t border-border px-3 py-1.5 text-right">
           <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setFollow(true)}>
-            <ArrowDownToLine /> Naar het einde
+            <ArrowDownToLine /> {t.logs.toEnd}
           </Button>
         </div>
       )}

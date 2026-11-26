@@ -5,19 +5,17 @@ import type { Terminal } from "@xterm/xterm";
 import { useEffect, useRef, type RefObject } from "react";
 import type { LineKind } from "@/app/_hooks/use-console";
 import { cn } from "@/lib/utils";
+import { getT } from "@/app/_lib/i18n";
 
 export interface TerminalHandle {
   write(kind: LineKind, text: string): void;
   clear(): void;
 }
 
-const PREFIX: Record<LineKind, string> = {
-  out: "",
-  install: "\x1b[36m[installatie]\x1b[0m ",
-  info: "\x1b[34m[daemon]\x1b[0m ",
-  warning: "\x1b[33m[daemon]\x1b[0m \x1b[33m",
-  error: "\x1b[31m[fout]\x1b[0m \x1b[31m",
-};
+function prefix(kind: LineKind): string {
+  const c = getT().console;
+  return { out: "", install: `\x1b[36m${c.prefixInstall}\x1b[0m `, info: `\x1b[34m${c.prefixDaemon}\x1b[0m `, warning: `\x1b[33m${c.prefixDaemon}\x1b[0m \x1b[33m`, error: `\x1b[31m${c.prefixError}\x1b[0m \x1b[31m` }[kind];
+}
 
 /** Alleen-lezen xterm.js-terminal. Regels die binnenkomen voordat xterm geladen is, worden gebufferd. */
 export function ConsoleTerminal({ handleRef, className }: { handleRef: RefObject<TerminalHandle | null>; className?: string }) {
@@ -29,7 +27,7 @@ export function ConsoleTerminal({ handleRef, className }: { handleRef: RefObject
     let disposed = false;
     let buffer: Array<[LineKind, string]> = [];
     const write = (kind: LineKind, text: string) => {
-      const line = PREFIX[kind] + text.replace(/\r?\n/g, "\r\n") + (kind === "warning" || kind === "error" ? "\x1b[0m" : "");
+      const line = prefix(kind) + text.replace(/\r?\n/g, "\r\n") + (kind === "warning" || kind === "error" ? "\x1b[0m" : "");
       term?.writeln(line);
     };
     handleRef.current = {

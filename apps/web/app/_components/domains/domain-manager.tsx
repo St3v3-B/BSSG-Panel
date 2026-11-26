@@ -18,7 +18,8 @@ import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { errorText } from "@/app/_lib/errors";
 import { formatDate } from "@/app/_lib/format";
-import { DNS_STATUS, providerHelp, RECORD_STATUS, SSL_STATUS, WARNINGS, wwwCounterpart } from "@/app/_lib/dns";
+import { dnsStatus, providerHelp, recordStatus, sslStatus, warningText, wwwCounterpart } from "@/app/_lib/dns";
+import { useT } from "@/app/_lib/i18n";
 
 /** Interval van de live DNS-controle zolang het scherm open is (ontwerp: 30 s). */
 export const LIVE_CHECK_MS = 30_000;
@@ -27,13 +28,14 @@ export function DomainManager({ uuid }: { uuid: string }) {
   const domains = trpc.domains.list.useQuery({ uuid }, { refetchInterval: LIVE_CHECK_MS });
   const target = trpc.domains.target.useQuery({ uuid });
   const list = domains.data ?? [];
+  const t = useT();
   return (
     <div className="max-w-5xl space-y-6" data-testid="domain-manager">
       <AddDomainCard uuid={uuid} existing={list} />
       {target.data && (
         <p className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
-          Je records wijzen naar <code className="font-mono text-foreground">{target.data.ip}</code>
-          <CopyButton value={target.data.ip} label="IP kopiëren" /> (node <code className="font-mono">{target.data.nodeFqdn}</code>).
+          {t.domains.pointTo} <code className="font-mono text-foreground">{target.data.ip}</code>
+          <CopyButton value={target.data.ip} label={t.domains.copyIp} /> {t.domains.node(target.data.nodeFqdn)}
         </p>
       )}
       {domains.error ? (
@@ -44,7 +46,7 @@ export function DomainManager({ uuid }: { uuid: string }) {
         <Card className="grid min-h-40 place-items-center p-6 text-center text-sm text-muted-foreground">
           <div className="space-y-2">
             <Globe className="mx-auto size-6" />
-            <p>Nog geen domeinen. Voeg hierboven je domein toe; het panel laat daarna precies zien welke DNS-records nodig zijn.</p>
+            <p>{t.domains.empty}</p>
           </div>
         </Card>
       ) : (
@@ -56,6 +58,7 @@ export function DomainManager({ uuid }: { uuid: string }) {
 
 function AddDomainCard({ uuid, existing }: { uuid: string; existing: Domain[] }) {
   const utils = trpc.useUtils();
+  const t = useT();
   const [hostname, setHostname] = useState("");
   const [wildcard, setWildcard] = useState(false);
   const [withWww, setWithWww] = useState(true);
@@ -63,7 +66,7 @@ function AddDomainCard({ uuid, existing }: { uuid: string; existing: Domain[] })
   const add = trpc.domains.add.useMutation();
   const host = hostname.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
   const parsed = Hostname.safeParse(host);
-  const err = !host ? "Vul een domein in" : !parsed.success ? "Ongeldige domeinnaam (bv. mijnsite.nl)" : existing.some((d) => d.hostname === host) ? "Dit domein is al gekoppeld" : null;
+  const err = !host ? t.domains.required : !parsed.success ? t.domains.invalid : existing.some((d) => d.hostname === host) ? t.domains.taken : null;
   const counterpart = wwwCounterpart(host);
   const offerWww = !wildcard && !host.startsWith("*.") && !existing.some((d) => d.hostname === counterpart);
   const [error, setError] = useState<unknown>(null);
@@ -88,8 +91,8 @@ function AddDomainCard({ uuid, existing }: { uuid: string; existing: Domain[] })
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Domein koppelen</CardTitle>
-        <CardDescription>Na het toevoegen zie je welke records je bij je domeinprovider moet zetten. SSL regelt het panel zelf.</CardDescription>
+        <CardTitle className="text-base">{t.domains.addTitle}</CardTitle>
+        <CardDescription>{t.domains.addText}</CardDescription>
       </CardHeader>
       <CardContent>
         <form
@@ -102,23 +105,23 @@ function AddDomainCard({ uuid, existing }: { uuid: string; existing: Domain[] })
           <div className="flex flex-wrap items-start gap-2">
             <div className="min-w-64 flex-1 space-y-1">
               <Label htmlFor="domain-host" className="sr-only">
-                Domein
+                {t.domains.domain}
               </Label>
-              <Input id="domain-host" placeholder="mijnsite.nl" value={hostname} onChange={(e) => setHostname(e.target.value)} aria-invalid={(touched && !!err) || undefined} />
+              <Input id="domain-host" placeholder={t.domains.placeholder} value={hostname} onChange={(e) => setHostname(e.target.value)} aria-invalid={(touched && !!err) || undefined} />
               {touched && err && <p className="text-xs text-destructive">{err}</p>}
             </div>
             <Button type="submit" disabled={add.isPending}>
-              {add.isPending ? <Spinner /> : <Plus />} Toevoegen
+              {add.isPending ? <Spinner /> : <Plus />} {t.common.add}
             </Button>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
             {offerWww && host && (
               <label className="flex items-center gap-2">
-                <Checkbox checked={withWww} onChange={(e) => setWithWww(e.target.checked)} /> Ook <code className="font-mono">{counterpart}</code> laten doorsturen
+                <Checkbox checked={withWww} onChange={(e) => setWithWww(e.target.checked)} /> {t.domains.alsoRedirect} <code className="font-mono">{counterpart}</code> {t.domains.alsoRedirectSuffix}
               </label>
             )}
-            <label className="flex items-center gap-2" title="Vereist een gekoppelde DNS-provider (Cloudflare) voor het certificaat">
-              <Checkbox checked={wildcard} onChange={(e) => setWildcard(e.target.checked)} /> Wildcard (*.{host || "domein"})
+            <label className="flex items-center gap-2" title={t.domains.wildcardHint}>
+              <Checkbox checked={wildcard} onChange={(e) => setWildcard(e.target.checked)} /> {t.domains.wildcard(host || t.domains.domainFallback)}
             </label>
           </div>
           {error != null && <p className="text-sm text-destructive">{errorText(error)}</p>}
@@ -147,6 +150,7 @@ export function useLiveDnsCheck(domainId: number, intervalMs = LIVE_CHECK_MS) {
 
 function DomainCard({ uuid, domain, all }: { uuid: string; domain: Domain; all: Domain[] }) {
   const utils = trpc.useUtils();
+  const t = useT();
   const live = useLiveDnsCheck(domain.id);
   const [applied, setApplied] = useState<DnsCheck | null>(null);
   const apply = trpc.domains.applyDns.useMutation({ onSuccess: (r) => setApplied(r) });
@@ -154,8 +158,8 @@ function DomainCard({ uuid, domain, all }: { uuid: string; domain: Domain; all: 
   const remove = trpc.domains.remove.useMutation({ onSuccess: () => void utils.domains.list.invalidate({ uuid }) });
   const [confirm, setConfirm] = useState(false);
   const check = applied && (!live.data || applied.checkedAt >= live.data.checkedAt) ? applied : live.data;
-  const ssl = SSL_STATUS[domain.sslStatus];
-  const dns = DNS_STATUS[domain.dnsStatus];
+  const ssl = sslStatus(domain.sslStatus);
+  const dns = dnsStatus(domain.dnsStatus);
   const help = providerHelp(check?.provider ?? "other");
   const others = all.filter((d) => d.id !== domain.id && !d.redirectTo);
 
@@ -188,8 +192,8 @@ function DomainCard({ uuid, domain, all }: { uuid: string; domain: Domain; all: 
           <Alert key={w} variant="warning" data-testid={`warning-${w}`}>
             <TriangleAlert />
             <div>
-              <AlertTitle>{WARNINGS[w].title}</AlertTitle>
-              <AlertDescription>{WARNINGS[w].text}</AlertDescription>
+              <AlertTitle>{warningText(w).title}</AlertTitle>
+              <AlertDescription>{warningText(w).text}</AlertDescription>
             </div>
           </Alert>
         ))}
@@ -201,11 +205,11 @@ function DomainCard({ uuid, domain, all }: { uuid: string; domain: Domain; all: 
             <table className="w-full text-sm" data-testid="dns-records">
               <thead className="border-b border-border bg-muted/30 text-left text-xs text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2 font-medium">Type</th>
-                  <th className="px-3 py-2 font-medium">Naam</th>
-                  <th className="px-3 py-2 font-medium">Waarde</th>
-                  <th className="px-3 py-2 font-medium">Nu gevonden</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">{t.domains.colType}</th>
+                  <th className="px-3 py-2 font-medium">{t.domains.colName}</th>
+                  <th className="px-3 py-2 font-medium">{t.domains.colValue}</th>
+                  <th className="px-3 py-2 font-medium">{t.domains.colFound}</th>
+                  <th className="px-3 py-2 font-medium">{t.domains.colStatus}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -215,22 +219,22 @@ function DomainCard({ uuid, domain, all }: { uuid: string; domain: Domain; all: 
                     <td className="px-3 py-2">
                       <span className="inline-flex items-center gap-0.5">
                         <code className="font-mono">{r.name}</code>
-                        <CopyButton value={r.name} label={`Naam ${r.name} kopiëren`} />
+                        <CopyButton value={r.name} label={t.domains.copyName(r.name)} />
                       </span>
                     </td>
                     <td className="px-3 py-2">
                       {r.expected ? (
                         <span className="inline-flex items-center gap-0.5">
                           <code className="font-mono">{r.expected}</code>
-                          <CopyButton value={r.expected} label={`Waarde ${r.expected} kopiëren`} />
+                          <CopyButton value={r.expected} label={t.domains.copyValue(r.expected)} />
                         </span>
                       ) : (
-                        <span className="text-muted-foreground">verwijderen</span>
+                        <span className="text-muted-foreground">{t.domains.remove}</span>
                       )}
                     </td>
                     <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{r.actual.length ? r.actual.join(", ") : "–"}</td>
                     <td className="px-3 py-2">
-                      <Badge variant={RECORD_STATUS[r.status].variant}>{RECORD_STATUS[r.status].label}</Badge>
+                      <Badge variant={recordStatus(r.status).variant}>{recordStatus(r.status).label}</Badge>
                     </td>
                   </tr>
                 ))}
@@ -241,7 +245,7 @@ function DomainCard({ uuid, domain, all }: { uuid: string; domain: Domain; all: 
 
         {check && check.records.some((r) => r.status !== "ok") && (
           <details className="rounded-lg border border-border p-3 text-sm" open={domain.dnsStatus !== "ok"} data-testid="provider-help">
-            <summary className="cursor-pointer font-medium">Zo zet je de records bij {help.name}</summary>
+            <summary className="cursor-pointer font-medium">{t.domains.howTo(help.name)}</summary>
             <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted-foreground">
               {help.steps.map((s) => (
                 <li key={s}>{s}</li>
@@ -249,7 +253,7 @@ function DomainCard({ uuid, domain, all }: { uuid: string; domain: Domain; all: 
             </ol>
             {check.nameservers.length > 0 && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Nameservers: <code className="font-mono">{check.nameservers.join(", ")}</code>
+                {t.domains.nameservers} <code className="font-mono">{check.nameservers.join(", ")}</code>
               </p>
             )}
           </details>
@@ -257,19 +261,19 @@ function DomainCard({ uuid, domain, all }: { uuid: string; domain: Domain; all: 
 
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Button size="sm" variant="outline" onClick={live.recheck} disabled={live.checking}>
-            <RefreshCw className={live.checking ? "animate-spin" : undefined} /> Opnieuw controleren
+            <RefreshCw className={live.checking ? "animate-spin" : undefined} /> {t.domains.recheck}
           </Button>
           {domain.dnsProviderId != null && (
             <Button size="sm" variant="outline" onClick={() => apply.mutate({ id: domain.id })} disabled={apply.isPending}>
-              {apply.isPending ? <Spinner /> : <Wand2 />} Records automatisch zetten
+              {apply.isPending ? <Spinner /> : <Wand2 />} {t.domains.apply}
             </Button>
           )}
           <span className="text-xs text-muted-foreground">
-            {check ? `Gecontroleerd ${formatDate(check.checkedAt)} · elke 30 s` : "Controleren…"}
+            {check ? t.domains.checkedAt(formatDate(check.checkedAt)) : t.domains.checking}
           </span>
           <div className="ml-auto flex items-center gap-2">
             <Label htmlFor={`redirect-${domain.id}`} className="text-xs text-muted-foreground">
-              Doorsturen naar
+              {t.domains.redirectTo}
             </Label>
             <Select
               id={`redirect-${domain.id}`}
@@ -278,7 +282,7 @@ function DomainCard({ uuid, domain, all }: { uuid: string; domain: Domain; all: 
               disabled={update.isPending}
               onChange={(e) => update.mutate({ id: domain.id, targetPort: domain.targetPort, redirectTo: e.target.value || null })}
             >
-              <option value="">niet (site tonen)</option>
+              <option value="">{t.domains.noRedirect}</option>
               {others.map((o) => (
                 <option key={o.id} value={o.hostname}>
                   {o.hostname}
@@ -288,14 +292,14 @@ function DomainCard({ uuid, domain, all }: { uuid: string; domain: Domain; all: 
             {confirm ? (
               <>
                 <Button size="sm" variant="destructive" onClick={() => remove.mutate({ id: domain.id })} disabled={remove.isPending}>
-                  {remove.isPending && <Spinner />} Ontkoppelen
+                  {remove.isPending && <Spinner />} {t.domains.disconnect}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setConfirm(false)}>
-                  Annuleren
+                  {t.common.cancel}
                 </Button>
               </>
             ) : (
-              <Button size="icon-sm" variant="ghost" aria-label={`${domain.hostname} ontkoppelen`} onClick={() => setConfirm(true)}>
+              <Button size="icon-sm" variant="ghost" aria-label={t.domains.disconnectX(domain.hostname)} onClick={() => setConfirm(true)}>
                 <Trash2 />
               </Button>
             )}

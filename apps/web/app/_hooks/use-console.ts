@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { ConsoleConnection, MockSocket, socketFactory, type ConnState, type WsServerMessage } from "@/app/_lib/console";
 import { errorInfo } from "@/app/_lib/errors";
+import { getT } from "@/app/_lib/i18n";
 import { toServerStatus } from "@/app/_lib/format";
 
 export type LineKind = "out" | "install" | "info" | "warning" | "error";
@@ -107,7 +108,7 @@ export function useConsole(server: ServerDetail | undefined, handlers: ConsoleHa
             if (msg.line != null) h.onLine(msg.level === "error" ? "error" : msg.level === "warning" ? "warning" : "info", msg.line);
             break;
           case "error":
-            h.onLine("error", msg.message ?? "onbekende fout");
+            h.onLine("error", msg.message ?? getT().console.unknownError);
             break;
           case "status": {
             const st = toServerStatus(msg.state);

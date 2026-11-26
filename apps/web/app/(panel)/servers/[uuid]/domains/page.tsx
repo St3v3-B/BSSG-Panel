@@ -2,11 +2,13 @@
 import { DomainManager } from "@/app/_components/domains/domain-manager";
 import { NoPermission } from "@/app/_components/server/no-permission";
 import { useServer } from "@/app/_hooks/use-server";
+import { useT } from "@/app/_lib/i18n";
 
 export default function DomainsPage() {
   const server = useServer();
+  const t = useT();
   if (!server.data) return null;
-  if (server.data.type !== "web") return <NoPermission>Domeinen koppel je aan websites; deze server is een game-server.</NoPermission>;
-  if (!server.data.permissions.includes("domain.manage")) return <NoPermission>Je hebt geen recht om de domeinen van deze site te beheren.</NoPermission>;
+  if (server.data.type !== "web") return <NoPermission>{t.domains.notWeb}</NoPermission>;
+  if (!server.data.permissions.includes("domain.manage")) return <NoPermission>{t.domains.noAccess}</NoPermission>;
   return <DomainManager uuid={server.data.uuid} />;
 }

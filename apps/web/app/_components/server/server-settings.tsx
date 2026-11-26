@@ -12,19 +12,21 @@ import { Input } from "@/app/_components/ui/input";
 import { Label } from "@/app/_components/ui/label";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { errorText } from "@/app/_lib/errors";
+import { useT } from "@/app/_lib/i18n";
 
 /** Naam wijzigen (servers.rename). Alleen eigenaar/admin. */
 export function RenameCard({ server }: { server: ServerDetail }) {
   const utils = trpc.useUtils();
+  const t = useT();
   const [name, setName] = useState(server.name);
   const rename = trpc.servers.rename.useMutation({
     onSuccess: () => Promise.all([utils.servers.get.invalidate({ uuid: server.uuid }), utils.servers.list.invalidate()]),
   });
-  const err = !name.trim() ? "Vul een naam in" : name.trim().length > 100 ? "Maximaal 100 tekens" : null;
+  const err = !name.trim() ? t.settings.nameRequired : name.trim().length > 100 ? t.settings.nameMax : null;
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Naam</CardTitle>
+        <CardTitle className="text-base">{t.settings.nameTitle}</CardTitle>
       </CardHeader>
       <CardContent>
         <form
@@ -36,19 +38,19 @@ export function RenameCard({ server }: { server: ServerDetail }) {
         >
           <div className="min-w-56 flex-1 space-y-1">
             <Label htmlFor="server-name" className="sr-only">
-              Servernaam
+              {t.settings.nameLabel}
             </Label>
             <Input id="server-name" value={name} onChange={(e) => (setName(e.target.value), rename.reset())} aria-invalid={!!err || undefined} />
             {err && <p className="text-xs text-destructive">{err}</p>}
             {rename.error && <p className="text-sm text-destructive">{errorText(rename.error)}</p>}
             {rename.isSuccess && (
               <p className="text-sm text-success" role="status">
-                Naam opgeslagen.
+                {t.settings.nameSaved}
               </p>
             )}
           </div>
           <Button type="submit" disabled={!!err || name.trim() === server.name || rename.isPending}>
-            {rename.isPending && <Spinner />} Opslaan
+            {rename.isPending && <Spinner />} {t.common.save}
           </Button>
         </form>
       </CardContent>
@@ -59,6 +61,7 @@ export function RenameCard({ server }: { server: ServerDetail }) {
 /** Variabelen die de gebruiker mag aanpassen (servers.updateVariables); effect bij de volgende start. */
 export function VariablesCard({ server }: { server: ServerDetail }) {
   const utils = trpc.useUtils();
+  const t = useT();
   const editable = server.variables.filter((v) => v.userEditable);
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(editable.map((v) => [v.key, v.value])));
   const update = trpc.servers.updateVariables.useMutation({ onSuccess: () => utils.servers.get.invalidate({ uuid: server.uuid }) });
@@ -69,8 +72,8 @@ export function VariablesCard({ server }: { server: ServerDetail }) {
   return (
     <Card data-testid="variables-card">
       <CardHeader>
-        <CardTitle className="text-base">Variabelen</CardTitle>
-        <CardDescription>Wijzigingen gelden bij de volgende start van de server.</CardDescription>
+        <CardTitle className="text-base">{t.settings.varsTitle}</CardTitle>
+        <CardDescription>{t.settings.varsText}</CardDescription>
       </CardHeader>
       <CardContent>
         <form
@@ -96,7 +99,7 @@ export function VariablesCard({ server }: { server: ServerDetail }) {
                 ) : (
                   <p className="text-xs text-muted-foreground">
                     <code className="font-mono">{v.key}</code>
-                    {v.description && <> · {v.description}</>} · standaard <code className="font-mono">{v.default}</code>
+                    {v.description && <> · {v.description}</>} · {t.settings.varDefault} <code className="font-mono">{v.default}</code>
                   </p>
                 )}
               </div>
@@ -105,11 +108,11 @@ export function VariablesCard({ server }: { server: ServerDetail }) {
           {update.error && <p className="text-sm text-destructive">{errorText(update.error)}</p>}
           {update.isSuccess && (
             <p className="text-sm text-success" role="status">
-              Opgeslagen. Herstart de server om de nieuwe waarden te gebruiken.
+              {t.settings.varsSaved}
             </p>
           )}
           <Button type="submit" disabled={invalid || changed.length === 0 || update.isPending}>
-            {update.isPending && <Spinner />} Variabelen opslaan
+            {update.isPending && <Spinner />} {t.settings.varsSave}
           </Button>
         </form>
       </CardContent>
@@ -121,6 +124,7 @@ export function VariablesCard({ server }: { server: ServerDetail }) {
 export function ReinstallCard({ server, onDone }: { server: ServerDetail; onDone?: () => void }) {
   const router = useRouter();
   const utils = trpc.useUtils();
+  const t = useT();
   const [confirm, setConfirm] = useState(false);
   const reinstall = trpc.servers.reinstall.useMutation({
     onSuccess: async () => {
@@ -134,37 +138,33 @@ export function ReinstallCard({ server, onDone }: { server: ServerDetail; onDone
   return (
     <Card data-testid="reinstall-card">
       <CardHeader>
-        <CardTitle className="text-base">Herinstalleren</CardTitle>
-        <CardDescription>Draait het install-script van de template opnieuw, bijvoorbeeld na een mislukte installatie.</CardDescription>
+        <CardTitle className="text-base">{t.settings.reinstallTitle}</CardTitle>
+        <CardDescription>{t.settings.reinstallText}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {confirm ? (
           <div role="alertdialog" aria-labelledby="reinstall-title" aria-describedby="reinstall-desc" className="space-y-3">
             <Alert variant="warning">
               <div>
-                <AlertTitle id="reinstall-title">{server.name} herinstalleren?</AlertTitle>
+                <AlertTitle id="reinstall-title">{t.settings.reinstallConfirmTitle(server.name)}</AlertTitle>
                 <AlertDescription id="reinstall-desc">
-                  <p>
-                    De {web ? "site" : "server"} wordt gestopt en het install-script draait opnieuw. Je bestanden blijven staan
-                    {web ? "; de standaardpagina komt alleen terug als public/ leeg is." : "."} Je kunt de installatie daarna volgen in{" "}
-                    {web ? "Logs" : "de console"}.
-                  </p>
+                  <p>{t.settings.reinstallConfirmText(web)}</p>
                 </AlertDescription>
               </div>
             </Alert>
             {reinstall.error && <p className="text-sm text-destructive">{errorText(reinstall.error)}</p>}
             <div className="flex gap-2">
               <Button variant="destructive" onClick={() => reinstall.mutate({ uuid: server.uuid })} disabled={reinstall.isPending}>
-                {reinstall.isPending ? <Spinner /> : <RotateCcw />} Ja, herinstalleren
+                {reinstall.isPending ? <Spinner /> : <RotateCcw />} {t.settings.reinstallYes}
               </Button>
               <Button variant="ghost" onClick={() => (setConfirm(false), reinstall.reset())}>
-                Annuleren
+                {t.common.cancel}
               </Button>
             </div>
           </div>
         ) : (
           <Button variant="outline" onClick={() => setConfirm(true)}>
-            <RotateCcw /> Herinstalleren
+            <RotateCcw /> {t.settings.reinstall}
           </Button>
         )}
       </CardContent>

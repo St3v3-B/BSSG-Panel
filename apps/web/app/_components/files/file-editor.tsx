@@ -12,10 +12,12 @@ import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { formatBytes } from "@/app/_lib/format";
 import { baseName, languageFor, startDownload } from "@/app/_lib/files";
+import { useT } from "@/app/_lib/i18n";
 
 /** Monaco-editor voor één bestand (files.read / files.write). Ctrl/Cmd+S slaat op. */
 export function FileEditor({ uuid, path, readOnly, onClose }: { uuid: string; path: string; readOnly: boolean; onClose: () => void }) {
   const utils = trpc.useUtils();
+  const t = useT();
   const file = trpc.files.read.useQuery({ uuid, path }, { retry: false, refetchOnWindowFocus: false, staleTime: Infinity });
   const [content, setContent] = useState<string | null>(null);
   const [savedContent, setSavedContent] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export function FileEditor({ uuid, path, readOnly, onClose }: { uuid: string; pa
   }, [dirty]);
 
   const close = () => {
-    if (dirty && !window.confirm("Je hebt onopgeslagen wijzigingen. Toch sluiten?")) return;
+    if (dirty && !window.confirm(t.files.editor.confirmClose)) return;
     onClose();
   };
 
@@ -61,20 +63,20 @@ export function FileEditor({ uuid, path, readOnly, onClose }: { uuid: string; pa
     <div className="space-y-3" data-testid="file-editor">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Button variant="ghost" size="icon-sm" onClick={close} aria-label="Terug naar de map">
+          <Button variant="ghost" size="icon-sm" onClick={close} aria-label={t.files.editor.back}>
             <ArrowLeft />
           </Button>
           <code className="truncate font-mono text-sm">{path}</code>
           {file.data && <span className="text-xs text-muted-foreground">{formatBytes(file.data.size)}</span>}
-          {readOnly ? <Badge variant="secondary">alleen lezen</Badge> : dirty ? <Badge variant="warning">niet opgeslagen</Badge> : write.isSuccess ? <Badge variant="success">opgeslagen</Badge> : null}
+          {readOnly ? <Badge variant="secondary">{t.files.editor.readOnly}</Badge> : dirty ? <Badge variant="warning">{t.files.editor.unsaved}</Badge> : write.isSuccess ? <Badge variant="success">{t.files.editor.saved}</Badge> : null}
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => downloadUrl.mutate({ uuid, path })} disabled={downloadUrl.isPending}>
-            <Download /> Downloaden
+            <Download /> {t.files.download}
           </Button>
           {!readOnly && (
             <Button size="sm" onClick={() => saveRef.current()} disabled={!dirty || write.isPending} data-testid="file-save">
-              {write.isPending ? <Spinner /> : <Save />} Opslaan
+              {write.isPending ? <Spinner /> : <Save />} {t.common.save}
             </Button>
           )}
         </div>
@@ -82,7 +84,7 @@ export function FileEditor({ uuid, path, readOnly, onClose }: { uuid: string; pa
       {write.error && <FileActionError error={write.error} onDismiss={() => write.reset()} />}
       {downloadUrl.error && <FileActionError error={downloadUrl.error} onDismiss={() => downloadUrl.reset()} />}
       {file.error ? (
-        <QueryError error={file.error} title={`${baseName(path)} openen mislukt`} />
+        <QueryError error={file.error} title={t.files.editor.openFailed(baseName(path))} />
       ) : content === null ? (
         <Skeleton className="h-[60vh] rounded-xl" />
       ) : (

@@ -12,11 +12,13 @@ import { Label } from "@/app/_components/ui/label";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { errorText } from "@/app/_lib/errors";
+import { useT } from "@/app/_lib/i18n";
 
 export const DB_NAME_RE = /^[a-zA-Z0-9_]{1,48}$/;
 
 export function DatabaseManager({ uuid }: { uuid: string }) {
   const list = trpc.databases.list.useQuery({ uuid });
+  const t = useT();
   return (
     <div className="max-w-4xl space-y-6" data-testid="database-manager">
       <CreateDatabase uuid={uuid} />
@@ -25,7 +27,7 @@ export function DatabaseManager({ uuid }: { uuid: string }) {
       ) : !list.data ? (
         <Skeleton className="h-40 rounded-xl" />
       ) : list.data.length === 0 ? (
-        <Card className="grid min-h-32 place-items-center p-6 text-sm text-muted-foreground">Nog geen databases.</Card>
+        <Card className="grid min-h-32 place-items-center p-6 text-sm text-muted-foreground">{t.databases.empty}</Card>
       ) : (
         list.data.map((d) => <DatabaseCard key={d.id} uuid={uuid} db={d} />)
       )}
@@ -35,6 +37,7 @@ export function DatabaseManager({ uuid }: { uuid: string }) {
 
 function CreateDatabase({ uuid }: { uuid: string }) {
   const utils = trpc.useUtils();
+  const t = useT();
   const [name, setName] = useState("");
   const [touched, setTouched] = useState(false);
   const create = trpc.databases.create.useMutation({
@@ -44,12 +47,12 @@ function CreateDatabase({ uuid }: { uuid: string }) {
       void utils.databases.list.invalidate({ uuid });
     },
   });
-  const err = DB_NAME_RE.test(name) ? null : "Alleen letters, cijfers en _ (max. 48 tekens)";
+  const err = DB_NAME_RE.test(name) ? null : t.databases.nameError;
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Database aanmaken</CardTitle>
-        <CardDescription>Een MariaDB-database met een eigen gebruiker. Het panel zet er automatisch een voorvoegsel voor.</CardDescription>
+        <CardTitle className="text-base">{t.databases.createTitle}</CardTitle>
+        <CardDescription>{t.databases.createText}</CardDescription>
       </CardHeader>
       <CardContent>
         <form
@@ -62,14 +65,14 @@ function CreateDatabase({ uuid }: { uuid: string }) {
         >
           <div className="min-w-56 flex-1 space-y-1">
             <Label htmlFor="db-name" className="sr-only">
-              Naam
+              {t.databases.name}
             </Label>
-            <Input id="db-name" placeholder="bv. wordpress" value={name} onChange={(e) => setName(e.target.value)} aria-invalid={(touched && !!err) || undefined} />
+            <Input id="db-name" placeholder={t.databases.placeholder} value={name} onChange={(e) => setName(e.target.value)} aria-invalid={(touched && !!err) || undefined} />
             {touched && err && <p className="text-xs text-destructive">{err}</p>}
             {create.error && <p className="text-sm text-destructive">{errorText(create.error)}</p>}
           </div>
           <Button type="submit" disabled={create.isPending}>
-            {create.isPending ? <Spinner /> : <Plus />} Aanmaken
+            {create.isPending ? <Spinner /> : <Plus />} {t.common.create}
           </Button>
         </form>
       </CardContent>
@@ -79,6 +82,7 @@ function CreateDatabase({ uuid }: { uuid: string }) {
 
 function Field({ label, value, secret }: { label: string; value: string; secret?: boolean }) {
   const [show, setShow] = useState(false);
+  const t = useT();
   return (
     <div className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
       <div className="min-w-0">
@@ -87,11 +91,11 @@ function Field({ label, value, secret }: { label: string; value: string; secret?
       </div>
       <div className="flex shrink-0">
         {secret && (
-          <Button variant="ghost" size="icon-sm" className="size-7 text-muted-foreground" aria-label={show ? "Verbergen" : "Tonen"} onClick={() => setShow((s) => !s)}>
+          <Button variant="ghost" size="icon-sm" className="size-7 text-muted-foreground" aria-label={show ? t.common.hide : t.common.show} onClick={() => setShow((s) => !s)}>
             {show ? <EyeOff /> : <Eye />}
           </Button>
         )}
-        <CopyButton value={value} label={`${label} kopiëren`} />
+        <CopyButton value={value} label={t.common.copyX(label)} />
       </div>
     </div>
   );
@@ -99,6 +103,7 @@ function Field({ label, value, secret }: { label: string; value: string; secret?
 
 function DatabaseCard({ uuid, db }: { uuid: string; db: Database }) {
   const utils = trpc.useUtils();
+  const t = useT();
   const [confirm, setConfirm] = useState<null | "reset" | "delete">(null);
   const reset = trpc.databases.resetPassword.useMutation({
     onSuccess: (next) => {
@@ -122,45 +127,45 @@ function DatabaseCard({ uuid, db }: { uuid: string; db: Database }) {
             </Button>
           )}
         </div>
-        <CardDescription>Op {db.hostName}. Vanuit je site verbind je met host en poort hieronder.</CardDescription>
+        <CardDescription>{t.databases.on(db.hostName)}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         <div className="grid gap-2 sm:grid-cols-2">
-          <Field label="Host" value={db.host} />
-          <Field label="Poort" value={String(db.port)} />
-          <Field label="Database" value={db.name} />
-          <Field label="Gebruiker" value={db.username} />
-          <Field label="Wachtwoord" value={db.password} secret />
-          <Field label="Verbinding (URL)" value={`mysql://${db.username}:${encodeURIComponent(db.password)}@${db.host}:${db.port}/${db.name}`} secret />
+          <Field label={t.databases.host} value={db.host} />
+          <Field label={t.databases.port} value={String(db.port)} />
+          <Field label={t.databases.database} value={db.name} />
+          <Field label={t.databases.user} value={db.username} />
+          <Field label={t.databases.password} value={db.password} secret />
+          <Field label={t.databases.url} value={`mysql://${db.username}:${encodeURIComponent(db.password)}@${db.host}:${db.port}/${db.name}`} secret />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {confirm === "reset" ? (
             <>
-              <span className="text-sm text-warning">Het oude wachtwoord werkt daarna niet meer; pas je site-config aan.</span>
+              <span className="text-sm text-warning">{t.databases.resetWarn}</span>
               <Button size="sm" onClick={() => reset.mutate({ id: db.id })} disabled={reset.isPending}>
-                {reset.isPending && <Spinner />} Nieuw wachtwoord
+                {reset.isPending && <Spinner />} {t.databases.newPassword}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setConfirm(null)}>
-                Annuleren
+                {t.common.cancel}
               </Button>
             </>
           ) : confirm === "delete" ? (
             <>
-              <span className="text-sm text-destructive">Database en alle data definitief verwijderen?</span>
+              <span className="text-sm text-destructive">{t.databases.deleteWarn}</span>
               <Button size="sm" variant="destructive" onClick={() => del.mutate({ id: db.id })} disabled={del.isPending}>
-                {del.isPending && <Spinner />} Verwijderen
+                {del.isPending && <Spinner />} {t.common.delete}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setConfirm(null)}>
-                Annuleren
+                {t.common.cancel}
               </Button>
             </>
           ) : (
             <>
               <Button size="sm" variant="outline" onClick={() => setConfirm("reset")}>
-                <KeyRound /> Wachtwoord resetten
+                <KeyRound /> {t.databases.resetPassword}
               </Button>
               <Button size="sm" variant="outline" className="text-destructive" onClick={() => setConfirm("delete")}>
-                <Trash2 /> Verwijderen
+                <Trash2 /> {t.common.delete}
               </Button>
             </>
           )}

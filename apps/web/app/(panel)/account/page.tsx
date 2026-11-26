@@ -17,9 +17,11 @@ import { Spinner } from "@/app/_components/ui/spinner";
 import { displayName, UserAvatar } from "@/app/_components/user-avatar";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
 import { errorText } from "@/app/_lib/errors";
+import { useT } from "@/app/_lib/i18n";
 
 export default function AccountPage() {
-  useDocumentTitle("Account");
+  const t = useT();
+  useDocumentTitle(t.account.title);
   const account = trpc.account.get.useQuery();
   if (account.error) return <QueryError error={account.error} />;
   if (!account.data) return <Skeleton className="h-64 rounded-xl" />;
@@ -27,7 +29,7 @@ export default function AccountPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader title="Account" description="Je gegevens en beveiliging" />
+      <PageHeader title={t.account.title} description={t.account.description} />
       <div className="space-y-6">
         <Card>
           <CardContent className="flex items-center gap-4 p-5">
@@ -35,12 +37,12 @@ export default function AccountPage() {
             <div className="min-w-0 flex-1">
               <div className="truncate text-lg font-semibold">{displayName(me.user)}</div>
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                Discord-ID <code className="font-mono">{me.user.discordId}</code>
-                <CopyButton value={me.user.discordId} label="Discord-ID kopiëren" />
+                {t.account.discordId} <code className="font-mono">{me.user.discordId}</code>
+                <CopyButton value={me.user.discordId} label={t.account.copyDiscordId} />
               </div>
             </div>
             <div className="flex flex-col items-end gap-1.5">
-              {me.isOwner ? <Badge variant="warning">Eigenaar</Badge> : me.isAdmin ? <Badge variant="warning">Beheerder</Badge> : <Badge variant="secondary">Gebruiker</Badge>}
+              {me.isOwner ? <Badge variant="warning">{t.nav.roleOwner}</Badge> : me.isAdmin ? <Badge variant="warning">{t.nav.roleAdmin}</Badge> : <Badge variant="secondary">{t.nav.roleUser}</Badge>}
             </div>
           </CardContent>
         </Card>
@@ -51,6 +53,7 @@ export default function AccountPage() {
 }
 
 function TotpCard({ enabled: serverEnabled, isAdmin }: { enabled: boolean; isAdmin: boolean }) {
+  const t = useT();
   const [done, setDone] = useState<null | "enabled" | "disabled">(null);
   // Na een geslaagde mutatie geldt de bevestiging van de server, ook voordat account.get opnieuw geladen is.
   const enabled = done ? done === "enabled" : serverEnabled;
@@ -60,13 +63,13 @@ function TotpCard({ enabled: serverEnabled, isAdmin }: { enabled: boolean; isAdm
         <div className="flex items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2 text-base">
             {enabled ? <ShieldCheck className="size-5 text-success" /> : <ShieldOff className="size-5 text-muted-foreground" />}
-            Tweestapsverificatie (2FA)
+            {t.account.totpTitle}
           </CardTitle>
-          <Badge variant={enabled ? "success" : "secondary"}>{enabled ? "Aan" : "Uit"}</Badge>
+          <Badge variant={enabled ? "success" : "secondary"}>{enabled ? t.account.on : t.account.off}</Badge>
         </div>
         <CardDescription>
-          Met 2FA vraagt het panel na het inloggen met Discord ook om een code uit een authenticator-app (bijvoorbeeld Google Authenticator,
-          1Password of Aegis).{isAdmin && " Voor beheerders is 2FA verplicht om de admin-kant te openen."}
+          {t.account.totpText}
+          {isAdmin && t.account.totpAdmin}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -74,8 +77,8 @@ function TotpCard({ enabled: serverEnabled, isAdmin }: { enabled: boolean; isAdm
           <Alert className="mb-4 border-success/40 bg-success/10 text-success">
             <ShieldCheck />
             <div>
-              <AlertTitle>2FA staat aan</AlertTitle>
-              <AlertDescription>Vanaf nu vraagt het panel bij elke login om een code.</AlertDescription>
+              <AlertTitle>{t.account.enabledTitle}</AlertTitle>
+              <AlertDescription>{t.account.enabledText}</AlertDescription>
             </div>
           </Alert>
         )}
@@ -83,7 +86,7 @@ function TotpCard({ enabled: serverEnabled, isAdmin }: { enabled: boolean; isAdm
           <Alert className="mb-4">
             <ShieldOff />
             <div>
-              <AlertTitle>2FA staat uit</AlertTitle>
+              <AlertTitle>{t.account.disabledTitle}</AlertTitle>
             </div>
           </Alert>
         )}
@@ -95,6 +98,7 @@ function TotpCard({ enabled: serverEnabled, isAdmin }: { enabled: boolean; isAdm
 
 function EnableTotp({ onDone }: { onDone: () => void }) {
   const utils = trpc.useUtils();
+  const t = useT();
   const setup = trpc.account.totpSetup.useMutation();
   const enable = trpc.account.totpEnable.useMutation({
     onSuccess: async () => {
@@ -124,7 +128,7 @@ function EnableTotp({ onDone }: { onDone: () => void }) {
       <div className="space-y-3">
         {setup.error && <p className="text-sm text-destructive">{errorText(setup.error)}</p>}
         <Button onClick={() => setup.mutate()} disabled={setup.isPending} data-testid="totp-setup">
-          {setup.isPending && <Spinner />} 2FA aanzetten
+          {setup.isPending && <Spinner />} {t.account.enable}
         </Button>
       </div>
     );
@@ -140,31 +144,31 @@ function EnableTotp({ onDone }: { onDone: () => void }) {
     >
       <div className="mx-auto size-[200px] overflow-hidden rounded-lg bg-white p-0" data-testid="totp-qr">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {qr ? <img src={qr} alt="QR-code voor je authenticator-app" width={200} height={200} /> : <Skeleton className="size-full bg-zinc-200" />}
+        {qr ? <img src={qr} alt={t.account.qrAlt} width={200} height={200} /> : <Skeleton className="size-full bg-zinc-200" />}
       </div>
       <div className="space-y-4">
         <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-          <li>Scan de QR-code met je authenticator-app.</li>
-          <li>Lukt scannen niet? Voer de sleutel hieronder handmatig in.</li>
-          <li>Vul de 6-cijferige code in die de app laat zien.</li>
+          <li>{t.account.step1}</li>
+          <li>{t.account.step2}</li>
+          <li>{t.account.step3}</li>
         </ol>
         <div className="flex items-center gap-1 rounded-md border border-border bg-muted/40 px-3 py-2">
           <code className="flex-1 break-all font-mono text-sm" data-testid="totp-secret">
             {setup.data.secret.replace(/(.{4})/g, "$1 ").trim()}
           </code>
-          <CopyButton value={setup.data.secret} label="Sleutel kopiëren" />
+          <CopyButton value={setup.data.secret} label={t.account.copyKey} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="totp-enable-code">Code uit de app</Label>
+          <Label htmlFor="totp-enable-code">{t.account.appCode}</Label>
           <TotpCodeInput id="totp-enable-code" value={code} onChange={setCode} disabled={enable.isPending} invalid={!!enable.error} className="max-w-48" />
           {enable.error && <p className="text-sm text-destructive">{errorText(enable.error)}</p>}
         </div>
         <div className="flex gap-2">
           <Button type="submit" disabled={!isTotpCode(code) || enable.isPending}>
-            {enable.isPending && <Spinner />} Bevestigen en aanzetten
+            {enable.isPending && <Spinner />} {t.account.confirmEnable}
           </Button>
           <Button variant="ghost" onClick={() => setup.reset()}>
-            Annuleren
+            {t.common.cancel}
           </Button>
         </div>
       </div>
@@ -174,6 +178,7 @@ function EnableTotp({ onDone }: { onDone: () => void }) {
 
 function DisableTotp({ onDone }: { onDone: () => void }) {
   const utils = trpc.useUtils();
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState("");
   const disable = trpc.account.totpDisable.useMutation({
@@ -187,7 +192,7 @@ function DisableTotp({ onDone }: { onDone: () => void }) {
   if (!open) {
     return (
       <Button variant="outline" onClick={() => setOpen(true)} data-testid="totp-disable-open">
-        2FA uitzetten
+        {t.account.disable}
       </Button>
     );
   }
@@ -201,19 +206,19 @@ function DisableTotp({ onDone }: { onDone: () => void }) {
     >
       <Alert variant="warning">
         <div>
-          <AlertTitle>Weet je het zeker?</AlertTitle>
-          <AlertDescription>Zonder 2FA is je account alleen beschermd door je Discord-login. Beheerders verliezen de toegang tot /admin.</AlertDescription>
+          <AlertTitle>{t.account.sure}</AlertTitle>
+          <AlertDescription>{t.account.sureText}</AlertDescription>
         </div>
       </Alert>
-      <Label htmlFor="totp-disable-code">Huidige code uit de app</Label>
+      <Label htmlFor="totp-disable-code">{t.account.currentCode}</Label>
       <TotpCodeInput id="totp-disable-code" value={code} onChange={setCode} autoFocus disabled={disable.isPending} invalid={!!disable.error} className="max-w-48" />
       {disable.error && <p className="text-sm text-destructive">{errorText(disable.error)}</p>}
       <div className="flex gap-2">
         <Button type="submit" variant="destructive" disabled={!isTotpCode(code) || disable.isPending}>
-          {disable.isPending && <Spinner />} 2FA uitzetten
+          {disable.isPending && <Spinner />} {t.account.disable}
         </Button>
         <Button variant="ghost" onClick={() => setOpen(false)}>
-          Annuleren
+          {t.common.cancel}
         </Button>
       </div>
     </form>

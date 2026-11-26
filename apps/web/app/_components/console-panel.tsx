@@ -6,19 +6,13 @@ import { Card } from "@/app/_components/ui/card";
 import { ConsoleTerminal, type TerminalHandle } from "@/app/_components/console-terminal";
 import { CommandHistory, type ConnState } from "@/app/_lib/console";
 import { errorText } from "@/app/_lib/errors";
+import { formatTime } from "@/app/_lib/format";
 import { cn } from "@/lib/utils";
+import { useT } from "@/app/_lib/i18n";
 
-const STATE_TEXT: Record<ConnState, string> = {
-  idle: "Niet verbonden",
-  connecting: "Verbinden…",
-  authenticating: "Aanmelden…",
-  connected: "Verbonden",
-  reconnecting: "Verbinding verbroken",
-  denied: "Geen toegang tot de console",
-  closed: "Gesloten",
-};
 
 export function ConnectionIndicator({ state, retryInMs, onRetry, tokenRefreshedAt }: { state: ConnState; retryInMs?: number; onRetry: () => void; tokenRefreshedAt: Date | null }) {
+  const t = useT();
   const [now, setNow] = useState(() => Date.now());
   const [since, setSince] = useState(() => Date.now());
   useEffect(() => setSince(Date.now()), [state, retryInMs]);
@@ -34,15 +28,15 @@ export function ConnectionIndicator({ state, retryInMs, onRetry, tokenRefreshedA
     <div className="flex items-center gap-2 text-xs text-muted-foreground" data-testid="console-state" data-state={state}>
       <span className={cn("size-2 rounded-full", dot)} aria-hidden />
       <span>
-        {STATE_TEXT[state]}
-        {state === "reconnecting" && left != null && <> · opnieuw over {left} s</>}
+        {t.console.state[state]}
+        {state === "reconnecting" && left != null && <> · {t.console.retryIn(left)}</>}
         {state === "connected" && tokenRefreshedAt && (
-          <span className="hidden md:inline"> · token vernieuwd om {tokenRefreshedAt.toLocaleTimeString("nl-NL", { timeZone: "Europe/Amsterdam" })}</span>
+          <span className="hidden md:inline"> · {t.console.tokenRefreshed(formatTime(tokenRefreshedAt))}</span>
         )}
       </span>
       {(state === "reconnecting" || state === "denied") && (
         <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onRetry}>
-          <RefreshCw /> Nu opnieuw
+          <RefreshCw /> {t.console.retryNow}
         </Button>
       )}
     </div>
@@ -68,6 +62,7 @@ export function ConsolePanel({
   onSend: (cmd: string) => Promise<void>;
   serverUuid: string;
 }) {
+  const t = useT();
   const history = useMemo(() => {
     let initial: string[] = [];
     try {
@@ -120,7 +115,7 @@ export function ConsolePanel({
   return (
     <Card className="flex h-[32rem] flex-col overflow-hidden bg-black/40 lg:h-[36rem]">
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
-        <span className="text-sm font-medium">Console</span>
+        <span className="text-sm font-medium">{t.console.title}</span>
         <ConnectionIndicator state={state} retryInMs={retryInMs} onRetry={onRetry} tokenRefreshedAt={tokenRefreshedAt} />
       </div>
       <div className="relative min-h-0 flex-1 px-3 py-2">
@@ -128,7 +123,7 @@ export function ConsolePanel({
         {state === "denied" && (
           <div className="absolute inset-0 grid place-items-center bg-background/70 text-sm text-muted-foreground">
             <span className="flex items-center gap-2">
-              <WifiOff className="size-4" /> De daemon weigert de verbinding (geen rechten of server onbekend).
+              <WifiOff className="size-4" /> {t.console.denied}
             </span>
           </div>
         )}
@@ -150,14 +145,14 @@ export function ConsolePanel({
           maxLength={2000}
           autoComplete="off"
           spellCheck={false}
-          aria-label="Commando"
-          placeholder={canWrite ? "Typ een commando… (↑/↓ voor geschiedenis)" : "Je hebt geen recht om commando's te sturen"}
+          aria-label={t.console.input}
+          placeholder={canWrite ? t.console.placeholder : t.console.noWrite}
           className="h-8 min-w-0 flex-1 bg-transparent font-mono text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
           data-testid="console-input"
         />
         {error && <span className="max-w-60 truncate text-xs text-destructive" title={error}>{error}</span>}
         <Button type="submit" size="sm" variant="secondary" disabled={!canWrite || !value.trim() || sending}>
-          Versturen
+          {t.console.send}
         </Button>
       </form>
     </Card>

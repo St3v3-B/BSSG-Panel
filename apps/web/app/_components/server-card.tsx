@@ -9,8 +9,10 @@ import { Card } from "@/app/_components/ui/card";
 import { UsageMeter } from "@/app/_components/usage-meter";
 import { displayName } from "@/app/_components/user-avatar";
 import { formatBytes, formatCpuLimit, formatMb, formatPct, isRunning, usagePct } from "@/app/_lib/format";
+import { useT } from "@/app/_lib/i18n";
 
 export function ServerCard({ server }: { server: ServerSummary }) {
+  const t = useT();
   const running = isRunning(server.status);
   const stats = trpc.servers.stats.useQuery({ uuid: server.uuid }, { enabled: running, refetchInterval: running ? 10_000 : false, retry: false });
   const s = running ? stats.data : null;
@@ -31,7 +33,7 @@ export function ServerCard({ server }: { server: ServerSummary }) {
             </Link>
             <p className="truncate text-xs text-muted-foreground">
               {server.templateName} · {server.nodeName}
-              {!server.isOwner && <> · van {displayName(server.owner)}</>}
+              {!server.isOwner && <> · {t.server.of(displayName(server.owner))}</>}
             </p>
           </div>
         </div>
@@ -42,34 +44,34 @@ export function ServerCard({ server }: { server: ServerSummary }) {
         {server.primaryAddress ? (
           <>
             <code className="truncate font-mono text-muted-foreground">{server.primaryAddress}</code>
-            <CopyButton value={server.primaryAddress} label="Adres kopiëren" className="relative z-10" />
+            <CopyButton value={server.primaryAddress} label={t.server.copyAddress} className="relative z-10" />
           </>
         ) : (
-          <span className="text-muted-foreground">Geen adres</span>
+          <span className="text-muted-foreground">{t.server.noAddress}</span>
         )}
       </div>
 
       <div className="grid gap-3">
         <UsageMeter
-          label="CPU"
+          label={t.server.cpu}
           value={s ? formatPct(s.cpuPct) : "–"}
-          detail={server.limits.cpuPct ? formatPct(server.limits.cpuPct) : "onbeperkt"}
+          detail={server.limits.cpuPct ? formatPct(server.limits.cpuPct) : t.common.unlimited}
           pct={s && server.limits.cpuPct ? usagePct(s.cpuPct, server.limits.cpuPct) : null}
         />
         <UsageMeter
-          label="Geheugen"
+          label={t.server.memory}
           value={s ? formatBytes(s.memoryBytes) : "–"}
           detail={formatMb(server.limits.ramMb)}
           pct={s ? usagePct(s.memoryBytes, s.memoryLimitBytes || ramLimit) : null}
         />
         <UsageMeter
-          label="Schijf"
+          label={t.server.disk}
           value={s ? formatBytes(s.diskBytes) : "–"}
-          detail={server.limits.diskMb ? formatMb(server.limits.diskMb) : "onbeperkt"}
+          detail={server.limits.diskMb ? formatMb(server.limits.diskMb) : t.common.unlimited}
           pct={s ? usagePct(s.diskBytes, s.diskLimitBytes || diskLimit) : null}
         />
       </div>
-      {!running && <p className="sr-only">Limiet CPU {formatCpuLimit(server.limits.cpuPct)}</p>}
+      {!running && <p className="sr-only">{t.server.cpuLimitSr(formatCpuLimit(server.limits.cpuPct))}</p>}
     </Card>
   );
 }
