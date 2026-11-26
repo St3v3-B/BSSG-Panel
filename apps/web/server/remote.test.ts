@@ -80,8 +80,9 @@ describe("remote-API", () => {
   it("servers/{uuid}/status werkt de status bij; onbekende server 404; foute body 400", async () => {
     expect((await status(req(`/api/remote/servers/${uuid}/status`, { state: "online" }), params({ uuid }))).status).toBe(204);
     expect((await serverRow()).status).toBe("online");
-    // Status in de lijst komt uit de database
-    expect((await player.api.servers.list())[0]!.status).toBe("online");
+    // De lijst vraagt de status live aan de daemon (fase 2), niet uit de database.
+    h.daemon.servers.get(uuid)!.state = "offline";
+    expect((await player.api.servers.list())[0]!.status).toBe("offline");
     const other = "00000000-0000-4000-8000-000000000000";
     expect((await status(req(`/api/remote/servers/${other}/status`, { state: "online" }), params({ uuid: other }))).status).toBe(404);
     expect((await status(req(`/api/remote/servers/${uuid}/status`, { state: "kapot" }), params({ uuid }))).status).toBe(400);
