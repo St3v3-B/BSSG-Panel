@@ -23,6 +23,11 @@ const (
 	LabelInstance = "panel.instance"
 	LabelUUID     = "panel.server_uuid"
 	LabelRole     = "panel.role"
+
+	// Waarden van panel.role. RoleInfra (de compose-stack) raakt de daemon nooit aan.
+	RoleServer  = "server"
+	RoleInstall = "install"
+	RoleInfra   = "infra"
 )
 
 // Reporter meldt dingen aan het panel (best effort, asynchroon).
@@ -122,9 +127,7 @@ func (m *Manager) BaseLabels() map[string]string {
 func (m *Manager) labels(uuid, role string) map[string]string {
 	l := m.BaseLabels()
 	l[LabelUUID] = uuid
-	if role != "" {
-		l[LabelRole] = role
-	}
+	l[LabelRole] = role
 	return l
 }
 
@@ -292,13 +295,20 @@ func (m *Manager) Recover(ctx context.Context) error {
 		return err
 	}
 	for _, c := range list {
+		role := c.Labels[LabelRole]
+		if role != RoleServer && role != RoleInstall {
+			continue // o.a. panel.role=infra: nooit aanraken
+		}
 		uuid := c.Labels[LabelUUID]
 		s, ok := m.Get(uuid)
-		if !ok {
+		if !ok || uuid == "" {
 			m.log.Warn("container zonder bekende server, niet aangeraakt", "container", c.Name)
 			continue
 		}
-		if c.Labels[LabelRole] == "install" {
+		if role == RoleInstall {
+			if c.Name != installName(uuid) {
+				continue
+			}
 			if err := m.eng.Remove(ctx, c.ID); err != nil && !errors.Is(err, engine.ErrNotFound) {
 				m.log.Warn("install-container opruimen mislukt", "container", c.Name, "err", err)
 			}
