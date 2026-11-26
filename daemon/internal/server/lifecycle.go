@@ -137,6 +137,12 @@ func (s *Server) Power(action string) error {
 		if st == StateInstallFailed {
 			return &StateError{st, "installatie is mislukt; installeer opnieuw"}
 		}
+		if s.DiskExceeded() {
+			s.measureDisk() // misschien is er intussen opgeruimd
+			if s.DiskExceeded() {
+				return ErrDiskExceeded
+			}
+		}
 	case "stop", "kill":
 		if installing || st == StateInstalling {
 			return &StateError{st, "installatie loopt"}
@@ -180,6 +186,10 @@ func (s *Server) doStart() error {
 	}
 	if st == StateInstalling || st == StateInstallFailed {
 		return &StateError{st, "kan niet starten in staat " + st}
+	}
+	s.measureDisk()
+	if s.DiskExceeded() {
+		return ErrDiskExceeded
 	}
 	s.setState(StateStarting)
 	if err := s.launch(sp); err != nil {
@@ -274,7 +284,11 @@ func (s *Server) attachRun(id string, att engine.Attachment, startedAt time.Time
 			s.startedAt = nil
 			s.sample = engine.StatsSample{}
 			wasStopping := s.state == StateStopping
-			s.setStateLocked(StateOffline)
+			if s.diskExceeded {
+				s.setStateLocked(StateDiskExceeded)
+			} else {
+				s.setStateLocked(StateOffline)
+			}
 			if !wasStopping && (code != 0 || err != nil) {
 				s.publishLocked(Msg{"event": "daemon_message", "level": "warning", "line": fmt.Sprintf("server gestopt met exitcode %d", code)})
 			}
@@ -490,9 +504,13 @@ func (s *Server) Update(sp spec.ServerSpec) error {
 	s.ready = compileReady(sp.ReadyPattern)
 	r := s.run
 	err := s.persistLocked()
+	stop := s.evaluateDiskLocked()
 	s.mu.Unlock()
 	if err != nil {
 		return err
+	}
+	if stop {
+		go s.stopForDisk()
 	}
 	if r != nil {
 		if err := s.m.eng.Update(s.ctx, r.id, resources(sp.Limits)); err != nil {
@@ -540,56 +558,4 @@ func (s *Server) destroy() error {
 		return err
 	}
 	return nil
-}
-
-// ---------- disk ----------
-
-// DirSize telt de grootte van alle bestanden onder root (zonder symlinks te volgen).
-func DirSize(root string) (int64, error) {
-	var total int64
-	err := filepath.WalkDir(root, func(_ string, d fs.DirEntry, err error) error {
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				return nil
-			}
-			return err
-		}
-		if d.Type().IsRegular() {
-			if fi, err := d.Info(); err == nil {
-				total += fi.Size()
-			}
-		}
-		return nil
-	})
-	return total, err
-}
-
-func (s *Server) measureDisk() {
-	n, err := DirSize(s.m.volume(s.uuid))
-	if err != nil {
-		s.m.log.Debug("disk meten", "uuid", s.uuid, "err", err)
-	}
-	s.mu.Lock()
-	s.diskBytes = n
-	s.mu.Unlock()
-}
-
-// diskLoop meet elke DiskInterval, met een vaste verschuiving per server zodat niet alle
-// metingen tegelijk vallen.
-func (s *Server) diskLoop(offset time.Duration) {
-	select {
-	case <-s.ctx.Done():
-		return
-	case <-time.After(offset):
-	}
-	t := time.NewTicker(s.m.cfg.DiskInterval)
-	defer t.Stop()
-	for {
-		s.measureDisk()
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-t.C:
-		}
-	}
 }
