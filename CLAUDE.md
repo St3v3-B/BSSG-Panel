@@ -91,7 +91,14 @@ Toolchain: Go 1.27 (module vereist 1.23+), Node 22, pnpm 12, TypeScript 5.9
   in `openapi.yaml`.
 - **Docker-labels**: alles wat de daemon maakt krijgt `panel.managed=true`,
   `panel.instance=$PANEL_INSTANCE` (standaard `main`) en de labels uit `DOCKER_EXTRA_LABELS`.
-  De daemon raakt alleen objecten met **beide** eerste labels aan.
+  De daemon raakt alleen objecten met **beide** eerste labels aan. Daarnaast `panel.role`:
+  `infra` (de compose-stack: panel, postgres, redis, caddy, hun netwerken en volumes — **nooit
+  aanraken**), `server` (servercontainer, met `panel.server_uuid`), `install` (tijdelijke
+  install-container) en `site` (site-netwerk `panel-site-<uuid>`). Servers herkent de daemon
+  uitsluitend aan `panel.role=server` + `panel.server_uuid`.
+- **Caddy-admin** luistert op de unix-socket `/run/panel/caddy-admin.sock` (gedeelde map met de
+  daemon), niet op TCP. `CADDY_ADMIN_URL` mag `unix://…` of (tests) `http://127.0.0.1:<poort>` zijn;
+  de SSL-controle gebruikt `CADDY_TLS_ADDR` (standaard `127.0.0.1:443`).
 - **Templates** worden door het panel bij elke start ingelezen uit `TEMPLATES_DIR`; het panel
   zet template + variabelen om naar een volledige `ServerSpec` voor de daemon. `{{VAR}}`
   vervangt de daemon (in `startup` en `config_files`); in install-scripts staan variabelen
