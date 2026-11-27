@@ -1,5 +1,5 @@
 "use client";
-import { ArrowLeft, Ban, KeyRound, ShieldCheck, ShieldPlus, ShieldMinus } from "lucide-react";
+import { ArrowLeft, Ban, KeyRound, LogOut, ShieldCheck, ShieldPlus, ShieldMinus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
@@ -18,7 +18,7 @@ import { displayName, UserAvatar } from "@/app/_components/user-avatar";
 import { formatDate } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
 
-type Op = "block" | "totp" | "admin";
+type Op = "block" | "totp" | "admin" | "sessions";
 
 export function UserDetail({ id }: { id: number }) {
   const t = useT();
@@ -38,20 +38,22 @@ export function UserDetail({ id }: { id: number }) {
   };
   const block = trpc.admin.users.setBlocked.useMutation({ onSuccess: refresh });
   const reset = trpc.admin.users.resetTotp.useMutation({ onSuccess: refresh });
+  const revokeSessions = trpc.admin.users.revokeSessions.useMutation({ onSuccess: refresh });
   const addAdmin = trpc.admin.admins.add.useMutation({ onSuccess: refresh });
   const removeAdmin = trpc.admin.admins.remove.useMutation({ onSuccess: refresh });
   const u = user.data;
   const isOwner = !!u && !!admins.data?.some((a) => a.discordId === u.discordId && a.isOwner);
-  const busy = block.isPending || reset.isPending || addAdmin.isPending || removeAdmin.isPending;
-  const error = block.error ?? reset.error ?? addAdmin.error ?? removeAdmin.error;
+  const busy = block.isPending || reset.isPending || revokeSessions.isPending || addAdmin.isPending || removeAdmin.isPending;
+  const error = block.error ?? reset.error ?? revokeSessions.error ?? addAdmin.error ?? removeAdmin.error;
 
   const run = () => {
     if (!u) return;
     if (confirm === "block") block.mutate({ id, blocked: !u.blocked });
     else if (confirm === "totp") reset.mutate({ id });
+    else if (confirm === "sessions") revokeSessions.mutate({ id });
     else if (confirm === "admin") (u.isAdmin ? removeAdmin : addAdmin).mutate({ discordId: u.discordId });
   };
-  const confirmLabel = confirm === "block" ? (u?.blocked ? u2.unblock : u2.block) : confirm === "totp" ? u2.resetTotp : u?.isAdmin ? u2.removeAdmin : u2.makeAdmin;
+  const confirmLabel = confirm === "block" ? (u?.blocked ? u2.unblock : u2.block) : confirm === "totp" ? u2.resetTotp : confirm === "sessions" ? u2.revokeSessions : u?.isAdmin ? u2.removeAdmin : u2.makeAdmin;
 
   return (
     <div className="space-y-6" data-testid="user-detail">
@@ -126,6 +128,9 @@ export function UserDetail({ id }: { id: number }) {
                       <KeyRound /> {u2.resetTotp}
                     </Button>
                   )}
+                  <Button variant="outline" onClick={() => setConfirm("sessions")} data-testid="user-revoke-sessions">
+                    <LogOut /> {u2.revokeSessions}
+                  </Button>
                   <Button variant="outline" disabled={isOwner} onClick={() => setConfirm("admin")}>
                     {u.isAdmin ? <ShieldMinus /> : <ShieldPlus />} {u.isAdmin ? u2.removeAdmin : u2.makeAdmin}
                   </Button>

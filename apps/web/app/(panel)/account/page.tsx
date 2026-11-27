@@ -3,6 +3,8 @@ import { ShieldCheck, ShieldOff } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { RecoveryCodesCard, RecoveryCodesList } from "@/app/_components/account/recovery-codes";
+import { SessionsCard } from "@/app/_components/account/sessions-card";
 import { AccountWebhookCard } from "@/app/_components/notifications/webhook-card";
 import { CopyButton } from "@/app/_components/copy-button";
 import { PageHeader } from "@/app/_components/page-header";
@@ -48,6 +50,7 @@ export default function AccountPage() {
           </CardContent>
         </Card>
         <TotpCard enabled={me.totpEnabled} isAdmin={me.isAdmin} />
+        <SessionsCard />
         <AccountWebhookCard />
       </div>
     </div>
@@ -57,6 +60,7 @@ export default function AccountPage() {
 function TotpCard({ enabled: serverEnabled, isAdmin }: { enabled: boolean; isAdmin: boolean }) {
   const t = useT();
   const [done, setDone] = useState<null | "enabled" | "disabled">(null);
+  const [codes, setCodes] = useState<string[] | null>(null);
   // Na een geslaagde mutatie geldt de bevestiging van de server, ook voordat account.get opnieuw geladen is.
   const enabled = done ? done === "enabled" : serverEnabled;
   return (
@@ -92,19 +96,32 @@ function TotpCard({ enabled: serverEnabled, isAdmin }: { enabled: boolean; isAdm
             </div>
           </Alert>
         )}
-        {enabled ? <DisableTotp onDone={() => setDone("disabled")} /> : <EnableTotp onDone={() => setDone("enabled")} />}
+        {codes && <RecoveryCodesList codes={codes} onDone={() => setCodes(null)} />}
+        {enabled ? (
+          <>
+            {!codes && <DisableTotp onDone={() => setDone("disabled")} />}
+            {!codes && <RecoveryCodesCard />}
+          </>
+        ) : (
+          <EnableTotp
+            onDone={(c) => {
+              setDone("enabled");
+              setCodes(c);
+            }}
+          />
+        )}
       </CardContent>
     </Card>
   );
 }
 
-function EnableTotp({ onDone }: { onDone: () => void }) {
+function EnableTotp({ onDone }: { onDone: (codes: string[]) => void }) {
   const utils = trpc.useUtils();
   const t = useT();
   const setup = trpc.account.totpSetup.useMutation();
   const enable = trpc.account.totpEnable.useMutation({
-    onSuccess: async () => {
-      onDone();
+    onSuccess: async (r) => {
+      onDone(r.recoveryCodes);
       setup.reset();
       setCode("");
       await Promise.all([utils.account.get.invalidate(), utils.auth.me.invalidate()]);
