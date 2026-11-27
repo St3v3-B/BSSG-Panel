@@ -90,7 +90,7 @@ export function toDetail(
   return {
     ...toSummary(b, viewer.id, live?.status),
     permissions,
-    allocations: b.allocations.map((a, i) => ({ id: a.id, nodeId: a.nodeId, ip: a.ip, port: a.port, serverUuid: b.server.uuid, primary: i === 0 })),
+    allocations: b.allocations.map((a, i) => ({ id: a.id, nodeId: a.nodeId, ip: a.ip, port: a.port, serverUuid: b.server.uuid, primary: i === 0, role: a.id === b.server.bedrockAllocationId ? "bedrock" as const : "game" as const })),
     variables: b.template.variables.map((v) => ({
       key: v.key,
       name: v.name,

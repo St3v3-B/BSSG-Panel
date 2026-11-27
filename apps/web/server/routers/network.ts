@@ -14,6 +14,7 @@ import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema } from "../db";
 import { applyNetworkToml } from "../lib/velocity-toml";
 import { FORWARDING_VAR, PROXY_SECRET_VAR, SECRET_VAR, allocationAddress, isBackend, isProxy, proxyMembers, suggestNames } from "../network";
+import { syncBedrockBackends } from "../bedrock";
 import { buildServerSpec } from "../spec";
 import { fetchServerByUuid, fetchServers, isFullAdmin, limitsOf, requireServer, serverVariables, sleepOf, type ServerBundle } from "../servers-data";
 
@@ -142,6 +143,9 @@ export const network: Pick<Implementation["servers"], "networkCandidates" | "upd
       await logActivity({ action: "server.network.backend", userId: uid, serverId: b.server.id, metadata: { proxy: proxy.server.uuid, inNetwork: members.some((m) => m.b.server.id === b.server.id) }, ip: ctx.ip, ctx });
     }
 
+    // Bedrock (Geyser) aan op de proxy: Floodgate + key.pem naar nieuwe leden, weg bij verwijderde leden.
+    const bedrockErrors = await syncBedrockBackends(proxy, removed);
+
     // ---- herstarten: backends eerst, dan de proxy; alleen servers die draaien (de rest leest het bij de volgende start) ----
     const plan: Array<{ b: ServerBundle; role: NetworkUpdateResult["servers"][number]["role"] }> = [
       ...members.map((m) => ({ b: m.b, role: "backend" as const })),
@@ -160,7 +164,7 @@ export const network: Pick<Implementation["servers"], "networkCandidates" | "upd
           error = e instanceof Error ? e.message : String(e);
         }
       }
-      servers.push({ uuid: b.server.uuid, name: b.server.name, role, restarted, error });
+      servers.push({ uuid: b.server.uuid, name: b.server.name, role, restarted, error: error ?? (bedrockErrors.has(b.server.uuid) ? `BEDROCK: ${bedrockErrors.get(b.server.uuid)}` : null) });
     }
     return { servers };
   },

@@ -115,7 +115,7 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
       // Oude allocations (andere node) vrijgeven, nieuwe toewijzen.
       await tx.update(schema.allocations).set({ serverId: null, isPrimary: false }).where(eq(schema.allocations.serverId, b.server.id));
       if (allocIds.length) await assignAllocations(tx, b.server.id, allocIds);
-      await tx.update(schema.servers).set({ nodeId: target.id, status: "offline" }).where(eq(schema.servers.id, b.server.id));
+      await tx.update(schema.servers).set({ nodeId: target.id, status: "offline", bedrockAllocationId: null }).where(eq(schema.servers.id, b.server.id));
     });
   } catch (e) {
     // Terugdraaien: niets op de bron is veranderd behalve dat hij gestopt is.
