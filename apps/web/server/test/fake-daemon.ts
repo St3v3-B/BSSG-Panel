@@ -43,6 +43,10 @@ export class FakeDaemon {
   dbAvailable = true;
   dbDumpFails = false;
   dbImportFails = false;
+  /** GET /api/stats bestaat (false = oudere daemon: 404). */
+  statsBatch = true;
+  /** Meting per server voor /stats en /api/stats (standaard vaste waarden). */
+  statsFor: ((uuid: string) => Partial<Record<"cpu_pct" | "memory_bytes" | "network_rx_bytes" | "network_tx_bytes" | "disk_bytes" | "uptime_ms", number>>) | null = null;
   private server: Server | null = null;
   url = "";
 
@@ -60,6 +64,20 @@ export class FakeDaemon {
     await new Promise<void>((r) => (this.server ? this.server.close(() => r()) : r()));
   }
 
+  private statsOf(uuid: string, spec: DaemonServerSpec, state: string) {
+    return {
+      cpu_pct: 12.5,
+      memory_bytes: 500 * 1024 * 1024,
+      memory_limit_bytes: spec.limits.memory_mb * 1024 * 1024,
+      network_rx_bytes: 1,
+      network_tx_bytes: 2,
+      disk_bytes: 3,
+      disk_limit_bytes: spec.limits.disk_mb * 1024 * 1024,
+      uptime_ms: state === "online" ? 1000 : 0,
+      ...this.statsFor?.(uuid),
+    };
+  }
+
   reset(): void {
     this.requests.length = 0;
     this.servers.clear();
@@ -73,6 +91,8 @@ export class FakeDaemon {
     this.dbAvailable = true;
     this.dbDumpFails = false;
     this.dbImportFails = false;
+    this.statsBatch = true;
+    this.statsFor = null;
     this.execResult = { exit_code: 0, output: "", truncated: false, timed_out: false, duration_ms: 5 };
     this.mode = "ok";
     this.delayMs = 0;
@@ -217,6 +237,11 @@ export class FakeDaemon {
       this.servers.set(spec.uuid, { spec, state: skip ? "offline" : "installing", installedAt: skip ? new Date().toISOString() : null });
       return send(202, this.state(spec.uuid));
     }
+    if (path === "/api/stats" && r.method === "GET") {
+      if (!this.statsBatch) return send(404, { error: "not_found" });
+      const running = [...this.servers.entries()].filter(([, v]) => v.state === "online" || v.state === "starting");
+      return send(200, { servers: running.map(([u, v]) => ({ uuid: u, ...this.statsOf(u, v.spec, v.state) })) });
+    }
     if (!m) return send(404, { error: "not_found" });
     const uuid = m[1]!;
     const sub = m[2] ?? "";
@@ -249,16 +274,7 @@ export class FakeDaemon {
         if (s.state !== "online" && s.state !== "starting") return send(409, { error: "not_running" });
         return send(200, this.execResult);
       case "GET /stats":
-        return send(200, {
-          cpu_pct: 12.5,
-          memory_bytes: 500 * 1024 * 1024,
-          memory_limit_bytes: s.spec.limits.memory_mb * 1024 * 1024,
-          network_rx_bytes: 1,
-          network_tx_bytes: 2,
-          disk_bytes: 3,
-          disk_limit_bytes: s.spec.limits.disk_mb * 1024 * 1024,
-          uptime_ms: s.state === "online" ? 1000 : 0,
-        });
+        return send(200, this.statsOf(uuid, s.spec, s.state));
       default:
         return send(404, { error: "not_found" });
     }

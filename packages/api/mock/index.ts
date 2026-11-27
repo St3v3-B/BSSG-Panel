@@ -12,6 +12,7 @@ import type * as s from "../schemas";
 import type { Implementation, SessionCtx } from "../trpc-builder";
 import { contentProfile } from "../content";
 import * as data from "./data";
+import { mockHistory, mockSparkline } from "./stats";
 
 const MOCK_HITS: s.ContentHit[] = [
   { source: "modrinth", projectId: "fabric-api", name: "Fabric API", description: "Core API for Fabric mods", author: "modmuss50", downloads: 100000000, iconUrl: null, url: "https://modrinth.com/mod/fabric-api" },
@@ -289,6 +290,22 @@ export function createMock(): Implementation {
       stats: ({ input }) => {
         const x = srv(input.uuid);
         return x.status === "online" || x.status === "starting" ? fakeStats(x) : null;
+      },
+      statsHistory: ({ input, ctx }) => {
+        const x = srv(input.uuid);
+        const u = uid(ctx);
+        if (x.ownerId !== u && u !== 1 && !db.subusers.some((su) => su.serverUuid === x.uuid && su.userId === u)) throw new TRPCError({ code: "NOT_FOUND", message: "server" });
+        return mockHistory(x, input.range);
+      },
+      statsSparklines: ({ input, ctx }) => {
+        const u = uid(ctx);
+        const out: Record<string, s.StatsSparkline> = {};
+        for (const x of db.servers) {
+          if (!input.uuids.includes(x.uuid)) continue;
+          if (x.ownerId !== u && u !== 1 && !db.subusers.some((su) => su.serverUuid === x.uuid && su.userId === u)) continue;
+          out[x.uuid] = mockSparkline(x);
+        }
+        return out;
       },
       power: ({ input }) => {
         const x = srv(input.uuid);
