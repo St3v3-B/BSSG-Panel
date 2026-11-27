@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
+import type { Implementation } from "@panel/api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UserDetail } from "@/app/_components/admin/user-detail";
 import { describeAgent } from "@/app/_components/account/sessions-card";
@@ -28,6 +29,8 @@ afterEach(() => {
   cleanup();
   nav.replace.mockReset();
 });
+type W = { auth: Record<string, unknown>; account: Record<string, unknown> };
+const w = (m: Implementation) => m as unknown as W;
 const input = (bodies: Array<{ path: string; input: unknown }>, p: string) => bodies.filter((b) => b.path === p).map((b) => b.input);
 const user = { session: sessionFor("user") };
 
@@ -48,8 +51,8 @@ describe("account: herstelcodes", () => {
     const { bodies } = renderWithTrpc(<AccountPage />, {
       session: sessionFor("user", { totpEnabled: true, totpVerified: true }),
       patch: (m) => {
-        m.account.get = ({ ctx }) => ({ user: { id: 2, discordId: "100000000000000002", name: "blokgenoot", avatarUrl: null }, isAdmin: false, isOwner: false, isEmergency: false, totpEnabled: true, totpVerified: !!ctx });
-        m.account.recoveryCodesStatus = () => ({ remaining: 2, total: 10 });
+        w(m).account.get = () => ({ user: { id: 2, discordId: "100000000000000002", name: "blokgenoot", avatarUrl: null }, isAdmin: false, isOwner: false, isEmergency: false, totpEnabled: true, totpVerified: true });
+        w(m).account.recoveryCodesStatus = () => ({ remaining: 2, total: 10 });
       },
     });
     expect((await screen.findByTestId("recovery-left")).textContent).toContain("Nog 2 van de 10");
@@ -95,7 +98,7 @@ describe("login: herstelcode", () => {
     const { bodies } = renderWithTrpc(<LoginPage />, {
       session: pending,
       patch: (m) => {
-        m.auth.verifyTotp = () => ({ ok: true as const, recoveryCodesLeft: 7 });
+        w(m).auth.verifyTotp = () => ({ ok: true as const, recoveryCodesLeft: 7 });
       },
     });
     fireEvent.click(await screen.findByTestId("toggle-recovery"));
@@ -109,7 +112,7 @@ describe("login: herstelcode", () => {
     renderWithTrpc(<LoginPage />, {
       session: pending,
       patch: (m) => {
-        m.auth.verifyTotp = () => ({ ok: true as const, recoveryCodesLeft: 1 });
+        w(m).auth.verifyTotp = () => ({ ok: true as const, recoveryCodesLeft: 1 });
       },
     });
     fireEvent.click(await screen.findByTestId("toggle-recovery"));

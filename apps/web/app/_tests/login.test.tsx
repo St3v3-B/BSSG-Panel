@@ -42,7 +42,7 @@ describe("login: noodlogin", () => {
     renderWithTrpc(<LoginPage />, {
       session: null,
       patch: (m) => {
-        m.auth.emergencyLogin = () => {
+        (m as unknown as { auth: Record<string, unknown> }).auth.emergencyLogin = () => {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "INVALID_CREDENTIALS" });
         };
       },
