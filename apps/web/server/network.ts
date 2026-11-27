@@ -3,6 +3,8 @@ import { isBackendTemplate, isProxyTemplate, suggestBackendName, type NetworkMem
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import { nodeIp } from "./routers/domains";
+import { DaemonHttpError, call, daemonFor } from "./daemon";
+import { applyNetworkToml } from "./lib/velocity-toml";
 import { fetchServers, type ServerBundle } from "./servers-data";
 
 export const FORWARDING_VAR = "VELOCITY_FORWARDING";
@@ -76,4 +78,32 @@ export async function serverNetwork(b: ServerBundle): Promise<ServerNetwork> {
     .innerJoin(schema.servers, eq(schema.servers.id, schema.networkMembers.proxyServerId))
     .where(eq(schema.networkMembers.backendServerId, b.server.id));
   return p ? { role: "backend", members: [], proxy: p, connectAddress: null } : NONE;
+}
+
+/**
+ * Schrijft de adressen van alle leden van een proxy opnieuw in velocity.toml (bijvoorbeeld nadat een
+ * backend naar een andere node is verplaatst). Herstart van de proxy is aan de beheerder.
+ * Geeft de uuid van de proxy terug als er iets is bijgewerkt, anders null.
+ */
+export async function syncProxyAddresses(backend: ServerBundle): Promise<string | null> {
+  const [link] = await getDb().select({ proxyId: schema.networkMembers.proxyServerId }).from(schema.networkMembers).where(eq(schema.networkMembers.backendServerId, backend.server.id));
+  if (!link) return null;
+  const [proxy] = await fetchServers(eq(schema.servers.id, link.proxyId));
+  if (!proxy) return null;
+  const list: Array<{ name: string; address: string }> = [];
+  for (const { m, b } of await proxyMembers(proxy.server.id)) {
+    const address = await allocationAddress(b);
+    if (!address) throw new Error(`no address for ${b.server.name}`);
+    list.push({ name: m.name, address });
+  }
+  const d = daemonFor(proxy.node);
+  let toml: string;
+  try {
+    toml = await d.readFile(proxy.server.uuid, "/velocity.toml");
+  } catch (e) {
+    if (e instanceof DaemonHttpError && e.status === 404) return null;
+    throw e;
+  }
+  await call(() => d.writeFile(proxy.server.uuid, "/velocity.toml", applyNetworkToml(toml, list)));
+  return proxy.server.uuid;
 }

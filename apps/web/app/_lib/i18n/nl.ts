@@ -1213,6 +1213,7 @@ export const nl: Dict = {
     moveButton: "Server verplaatsen",
     moveConfirm: (node) => `Server verplaatsen naar ${node}?`,
     moveDone: "Server verplaatst.",
+    moveDnsHint: "Heeft deze server domeinen, laat de DNS-records dan naar de nieuwe node wijzen. Een Velocity-proxy is automatisch bijgewerkt en moet herstart worden voor het nieuwe adres.",
     moving: "Bezig met verplaatsen… bij grote servers kan dit even duren.",
     moveNoOther: "Er zijn geen andere nodes.",
     docTitle: "Admin · server beheren",

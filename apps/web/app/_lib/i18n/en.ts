@@ -1213,6 +1213,7 @@ export const en = {
     moveButton: "Move server",
     moveConfirm: (node: string) => `Move server to ${node}?`,
     moveDone: "Server moved.",
+    moveDnsHint: "If this server has domains, point their DNS records to the new node. A Velocity proxy was updated automatically and needs a restart to use the new address.",
     moving: "Moving… this can take a while for large servers.",
     moveNoOther: "There are no other nodes.",
     docTitle: "Admin · manage server",

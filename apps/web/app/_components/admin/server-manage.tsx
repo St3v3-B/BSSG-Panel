@@ -288,6 +288,7 @@ export function MoveNodeCard({ server, onMoved }: { server: ServerDetail; onMove
             {t.adminServer.moveDone}
           </p>
         )}
+        {move.isSuccess && <p className="text-sm text-muted-foreground">{t.adminServer.moveDnsHint}</p>}
         {move.isPending && <p className="text-sm text-muted-foreground">{t.adminServer.moving}</p>}
         {target !== null &&
           (confirm ? (

@@ -19,6 +19,7 @@ import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema } from "../db";
 import { buildServerSpec } from "../spec";
 import { fetchServerByUuid, limitsOf, serverVariables, sleepOf } from "../servers-data";
+import { isBackend, syncProxyAddresses } from "../network";
 import { assignAllocations, checkAllocations, nodeById } from "./admin";
 import { isMc, routeFor } from "./domains";
 
@@ -133,6 +134,15 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
     }
   } catch (e) {
     warnings.push(`start on target failed: ${(e as Error).message}`);
+  }
+  // Backend van een Velocity-proxy: het adres in velocity.toml van de proxy bijwerken.
+  if (isBackend(b)) {
+    try {
+      const proxyUuid = await syncProxyAddresses((await fetchServerByUuid(uuid))!);
+      if (proxyUuid) warnings.push(`velocity.toml of proxy ${proxyUuid} updated; restart the proxy to apply`);
+    } catch (e) {
+      warnings.push(`updating velocity.toml failed: ${(e as Error).message}`);
+    }
   }
   // Bron opruimen (verwijdert ook de routes daar). Mislukt dit, dan blijft er een stale kopie: waarschuwing.
   try {
