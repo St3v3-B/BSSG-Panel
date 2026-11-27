@@ -193,6 +193,37 @@ export const contract = {
     /** Directe upload-URL naar de daemon (JWT met files.write erin). */
     uploadUrl: mutation("user", server.extend({ directory: s.FilePath }), s.SignedUrl),
     downloadUrl: mutation("user", serverPath, s.SignedUrl),
+    /** Recursief zoeken onder path: op naam (deel of glob) of met content op inhoud (tekst tot 1 MB). files.read. */
+    search: query(
+      "user",
+      server.extend({
+        path: s.FilePath.default("/"),
+        query: z.string().trim().min(1).max(200),
+        content: z.boolean().default(false),
+        limit: z.number().int().min(1).max(1000).default(200),
+      }),
+      s.FileSearchResult,
+    ),
+    /** Rechten zetten (files.write). mode voor bestanden, dirMode (standaard mode) voor mappen; symlinks worden overgeslagen. */
+    chmod: mutation(
+      "user",
+      server.extend({
+        paths: z.array(s.FilePath).min(1).max(1000),
+        mode: s.FileMode,
+        dirMode: s.FileMode.optional(),
+        recursive: z.boolean().default(false),
+        allowSpecial: z.boolean().default(false),
+      }),
+      z.object({ changed: z.number().int() }),
+    ),
+    /** Items naar een andere map verplaatsen (files.write); bestaat de naam daar al, dan CONFLICT (de eerdere zijn dan al verplaatst). */
+    move: mutation("user", server.extend({ paths: z.array(s.FilePath).min(1).max(1000), destination: s.FilePath }), s.Ok),
+    /** Eenmalige URL die root + paths als zip of tar.gz streamt (files.read). paths ["/"] = alles. */
+    archiveUrl: mutation(
+      "user",
+      server.extend({ root: s.FilePath, paths: z.array(s.FilePath).min(1).max(100), format: s.ArchiveFormat.default("zip") }),
+      s.SignedUrl,
+    ),
     sftpDetails: query("user", server, z.object({ host: z.string(), port: z.number().int(), username: z.string() })),
   },
 

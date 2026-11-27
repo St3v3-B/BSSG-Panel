@@ -306,7 +306,7 @@ export class FakeDaemon {
   private handleFiles(uuid: string, op: string, r: RecordedRequest, q: URLSearchParams, raw: string, send: (s: number, b?: unknown) => void) {
     if (!this.servers.has(uuid)) return send(404, { error: "not_found" });
     const { files, dirs } = this.fs(uuid);
-    const b = (r.body ?? {}) as { path?: string; from?: string; to?: string; paths?: string[]; root?: string };
+    const b = (r.body ?? {}) as { path?: string; from?: string; to?: string; paths?: string[]; root?: string; query?: string; content?: boolean; limit?: number; mode?: string; dir_mode?: string; allow_special?: boolean };
     const writes = ["contents:PUT", "mkdir:POST", "compress:POST", "decompress:POST"];
     if (this.diskFull && writes.includes(`${op}:${r.method}`)) return send(507, { error: "disk_exceeded", message: "disk vol" });
     const parent = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/";
@@ -354,6 +354,30 @@ export class FakeDaemon {
       case "decompress:POST":
         if (!files.has(b.path!)) return send(404, { error: "not_found" });
         return send(204);
+      case "search:POST": {
+        const q = (b.query ?? "").toLowerCase();
+        const root = b.path ?? "/";
+        if (!dirs.has(root)) return send(404, { error: "not_found" });
+        const under = (p: string) => root === "/" || p.startsWith(`${root}/`);
+        const name = (p: string) => p.split("/").pop()!.toLowerCase();
+        const hits = b.content
+          ? [...files].filter(([f]) => under(f)).flatMap(([f, c]) => {
+              const matches = c.split("\n").flatMap((line, i) => (line.toLowerCase().includes(q) ? [{ line: i + 1, text: line }] : [])).slice(0, 5);
+              return matches.length ? [{ entry: this.entry(f, false, c.length), matches }] : [];
+            })
+          : [
+              ...[...dirs].filter((d) => d !== "/" && under(d) && name(d).includes(q)).map((d) => ({ entry: this.entry(d, true, 0), matches: [] })),
+              ...[...files].filter(([f]) => under(f) && name(f).includes(q)).map(([f, c]) => ({ entry: this.entry(f, false, c.length), matches: [] })),
+            ];
+        const limit = b.limit || 200;
+        return send(200, { results: hits.slice(0, limit), truncated: hits.length > limit, timed_out: false });
+      }
+      case "chmod:POST": {
+        const valid = (m?: string) => !!m && /^[0-7]{3,4}$/.test(m) && (b.allow_special || m.length === 3 || m[0] === "0");
+        if (!valid(b.mode) || (b.dir_mode !== undefined && !valid(b.dir_mode))) return send(400, { error: "bad_mode", message: "invalid mode" });
+        for (const p of b.paths ?? []) if (!files.has(p) && !dirs.has(p)) return send(404, { error: "not_found" });
+        return send(200, { changed: (b.paths ?? []).length });
+      }
       default:
         return send(404, { error: "not_found" });
     }

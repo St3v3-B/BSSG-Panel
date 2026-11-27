@@ -137,7 +137,15 @@ export function uploadFiles(
 
 /** Start een download via een tijdelijke link (de daemon stuurt Content-Disposition: attachment). */
 export function startDownload(url: string, path: string) {
-  const href = withParam(url, "path", path);
+  openDownload(withParam(url, "path", path), baseName(path));
+}
+
+/** Start een archief-download (zip/tar.gz); de selectie zit in het token, de naam geeft de daemon. */
+export function startArchiveDownload(url: string) {
+  openDownload(url, "");
+}
+
+function openDownload(href: string, name: string) {
   if (isMockMode()) {
     window.alert(getT().files.mockDownload(href));
     return;
@@ -145,8 +153,59 @@ export function startDownload(url: string, path: string) {
   const a = document.createElement("a");
   a.href = href;
   a.rel = "noopener";
-  a.download = baseName(path);
+  a.download = name;
   document.body.appendChild(a);
   a.click();
   a.remove();
+}
+
+// ---------- rechten (chmod) ----------
+
+/** Geldige octale modus voor files.chmod: 3 of 4 cijfers 0-7. */
+export const isValidMode = (m: string) => /^[0-7]{3,4}$/.test(m);
+/** Bevat setuid (4), setgid (2) of sticky (1) in het vierde cijfer. */
+export const hasSpecialBits = (m: string) => isValidMode(m) && m.length === 4 && m[0] !== "0";
+
+/**
+ * Octale modus uit de mode-string van FileEntry. Zowel Go-stijl ("-rwxr-xr-x", "dgrwxr-xr-x":
+ * u/g/t vooraan = setuid/setgid/sticky) als ls-stijl ("rwsr-sr-t") werkt. Onbekend → "644".
+ */
+export function modeToOctal(mode: string): string {
+  const perms = mode.slice(-9);
+  if (!/^[-r][-w][-xsS][-r][-w][-xsS][-r][-w][-xtT]$/.test(perms)) return "644";
+  const prefix = mode.slice(0, -9);
+  let special = (prefix.includes("u") ? 4 : 0) | (prefix.includes("g") ? 2 : 0) | (prefix.includes("t") ? 1 : 0);
+  const digit = (i: number) => {
+    const [r, w, x] = perms.slice(i, i + 3);
+    return (r === "r" ? 4 : 0) | (w === "w" ? 2 : 0) | (x === "x" || x === "s" || x === "t" ? 1 : 0);
+  };
+  if ("sS".includes(perms[2]!)) special |= 4;
+  if ("sS".includes(perms[5]!)) special |= 2;
+  if ("tT".includes(perms[8]!)) special |= 1;
+  const base = `${digit(0)}${digit(3)}${digit(6)}`;
+  return special ? `${special}${base}` : base;
+}
+
+/** Zet of wist één bit (bv. 0o400 = eigenaar lezen, 0o4000 = setuid) in een geldige octale modus. */
+export function toggleModeBit(mode: string, bit: number, on: boolean): string {
+  const v = isValidMode(mode) ? parseInt(mode, 8) : 0o644;
+  const next = on ? v | bit : v & ~bit;
+  const s = (next & 0o7777).toString(8);
+  return next & 0o7000 ? s.padStart(4, "0") : (next & 0o777).toString(8).padStart(3, "0");
+}
+
+/** Of een bit aan staat in een (geldige) octale modus. */
+export const modeHasBit = (mode: string, bit: number) => isValidMode(mode) && (parseInt(mode, 8) & bit) !== 0;
+
+/** Leesbare vorm, bv. "755" → "rwxr-xr-x". */
+export function modeToString(mode: string): string {
+  if (!isValidMode(mode)) return "";
+  const v = parseInt(mode, 8);
+  const ch = (bit: number, c: string) => (v & bit ? c : "-");
+  const x = (bit: number, special: number, on: string, off: string) => (v & special ? (v & bit ? on : off) : ch(bit, "x"));
+  return (
+    ch(0o400, "r") + ch(0o200, "w") + x(0o100, 0o4000, "s", "S") +
+    ch(0o040, "r") + ch(0o020, "w") + x(0o010, 0o2000, "s", "S") +
+    ch(0o004, "r") + ch(0o002, "w") + x(0o001, 0o1000, "t", "T")
+  );
 }

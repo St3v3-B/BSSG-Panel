@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"io"
@@ -528,5 +529,109 @@ func TestMariaDBContainerFromEnv(t *testing.T) {
 	n := eng.Network("panel-site-" + u1)
 	if n == nil || !n.Connected["it-mariadb"] || n.Connected["panel-mariadb"] {
 		t.Fatalf("%+v", n)
+	}
+}
+
+func TestFilesSearchChmodArchive(t *testing.T) {
+	h, vol := newFilesServer(t, 0)
+	outside := t.TempDir()
+	_ = os.WriteFile(filepath.Join(outside, "geheim.txt"), []byte("naald buiten"), 0o644)
+	_ = os.Symlink(outside, filepath.Join(vol, "uit"))
+	_ = os.MkdirAll(filepath.Join(vol, "plugins", "cfg"), 0o755)
+	_ = os.WriteFile(filepath.Join(vol, "plugins", "cfg", "a.yml"), []byte("x: naald\n"), 0o644)
+	base := "/api/servers/" + u1 + "/files"
+
+	// Zoeken.
+	var res struct {
+		Results []struct {
+			Entry   map[string]any   `json:"entry"`
+			Matches []map[string]any `json:"matches"`
+		} `json:"results"`
+		Truncated bool `json:"truncated"`
+		TimedOut  bool `json:"timed_out"`
+	}
+	h.expect("POST", base+"/search", map[string]any{"path": "/", "query": "naald", "content": true}, 200).json(t, &res)
+	if len(res.Results) != 1 || res.Results[0].Entry["path"] != "/plugins/cfg/a.yml" || res.Results[0].Matches[0]["line"] != float64(1) {
+		t.Fatalf("%+v", res)
+	}
+	h.expect("POST", base+"/search", map[string]any{"query": ".YML"}, 200).json(t, &res)
+	if len(res.Results) != 1 || res.Results[0].Matches == nil {
+		t.Fatalf("naam: %+v", res)
+	}
+	h.expect("POST", base+"/search", map[string]any{"path": "/uit", "query": "geheim"}, 400)
+	h.expect("POST", base+"/search", map[string]any{"path": "/../", "query": "x"}, 400)
+	h.expect("POST", base+"/search", map[string]any{"query": ""}, 400)
+	h.expect("POST", base+"/search", map[string]any{"query": "x", "limit": 5000}, 400)
+
+	// Chmod.
+	var ch map[string]int
+	h.expect("POST", base+"/chmod", map[string]any{"paths": []string{"/plugins"}, "mode": "640", "dir_mode": "750", "recursive": true}, 200).json(t, &ch)
+	if ch["changed"] != 3 {
+		t.Fatal(ch)
+	}
+	if fi, _ := os.Stat(filepath.Join(vol, "plugins", "cfg", "a.yml")); fi.Mode().Perm() != 0o640 {
+		t.Fatal(fi.Mode())
+	}
+	h.expect("POST", base+"/chmod", map[string]any{"paths": []string{"/readme.txt"}, "mode": "4755"}, 400)
+	h.expect("POST", base+"/chmod", map[string]any{"paths": []string{"/readme.txt"}, "mode": "999"}, 400)
+	h.expect("POST", base+"/chmod", map[string]any{"paths": []string{"/"}, "mode": "755"}, 400)
+	h.expect("POST", base+"/chmod", map[string]any{"paths": []string{"/uit/geheim.txt"}, "mode": "777"}, 400)
+	h.expect("POST", base+"/chmod", map[string]any{"paths": []string{"/uit"}, "mode": "777", "recursive": true}, 200)
+	if fi, _ := os.Stat(filepath.Join(outside, "geheim.txt")); fi.Mode().Perm() != 0o644 {
+		t.Fatal("buiten de root gewijzigd", fi.Mode())
+	}
+	h.expect("POST", base+"/chmod", map[string]any{"paths": []string{"/readme.txt"}, "mode": "2755", "allow_special": true}, 200)
+
+	// Archief-download.
+	get := func(path, tok string) *http.Response {
+		res, err := http.Get(h.base + "/api/servers/" + u1 + "/files/" + path + "token=" + tok)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	arch := func(root string, paths []string, format string) string {
+		return h.panel.Sign(testpanel.TokenOpts{Server: u1, Permissions: []string{"files.read"},
+			Archive: map[string]any{"root": root, "paths": paths, "format": format}})
+	}
+	r := get("archive?", arch("/", []string{"/plugins", "/readme.txt", "/uit"}, "zip"))
+	body, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	if r.StatusCode != 200 || r.Header.Get("Content-Type") != "application/zip" || !strings.Contains(r.Header.Get("Content-Disposition"), "files.zip") {
+		t.Fatal(r.StatusCode, string(body), r.Header)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, f := range zr.File {
+		names = append(names, f.Name)
+	}
+	if strings.Join(names, ",") != "plugins/,plugins/cfg/,plugins/cfg/a.yml,readme.txt" {
+		t.Fatal(names)
+	}
+	tok := arch("/plugins", []string{"cfg"}, "tar.gz")
+	if r := get("archive?", tok); r.StatusCode != 200 || !strings.Contains(r.Header.Get("Content-Disposition"), "cfg.tar.gz") {
+		t.Fatal(r.StatusCode, r.Header)
+	}
+	if r := get("archive?", tok); r.StatusCode != 401 {
+		t.Fatal("eenmalig", r.StatusCode)
+	}
+	if r := get("archive?", arch("/", []string{"/uit/geheim.txt"}, "zip")); r.StatusCode != 400 {
+		t.Fatal("via symlink", r.StatusCode)
+	}
+	if r := get("archive?", arch("/", []string{"/plugins"}, "rar")); r.StatusCode != 400 {
+		t.Fatal("format", r.StatusCode)
+	}
+	if r := get("archive?", h.panel.Sign(testpanel.TokenOpts{Server: u1, Permissions: []string{"files.write"}, Archive: map[string]any{"root": "/", "paths": []string{"/plugins"}, "format": "zip"}})); r.StatusCode != 403 {
+		t.Fatal("zonder files.read", r.StatusCode)
+	}
+	// Gewoon downloadtoken geldt niet voor archieven, en een archieftoken niet voor gewone downloads.
+	if r := get("archive?", h.panel.Sign(testpanel.TokenOpts{Server: u1, Permissions: []string{"files.read"}})); r.StatusCode != 403 {
+		t.Fatal("downloadtoken op archive", r.StatusCode)
+	}
+	if r := get("download?path=/readme.txt&", arch("/", []string{"/plugins"}, "zip")); r.StatusCode != 403 {
+		t.Fatal("archieftoken op download", r.StatusCode)
 	}
 }

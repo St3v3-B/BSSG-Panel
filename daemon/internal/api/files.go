@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"io"
 	"mime"
@@ -24,6 +25,8 @@ const (
 
 func fileErr(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, files.ErrBadMode):
+		writeErr(w, http.StatusBadRequest, "bad_mode", err.Error())
 	case errors.Is(err, files.ErrBadPath), errors.Is(err, files.ErrEscape):
 		writeErr(w, http.StatusBadRequest, "bad_path", err.Error())
 	case errors.Is(err, files.ErrNotFound):
@@ -272,7 +275,7 @@ func (a *API) cors(h http.HandlerFunc) http.HandlerFunc {
 func preflight(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }
 
 // transferAuth controleert de eenmalige JWT in ?token=.
-func (a *API) transferAuth(w http.ResponseWriter, r *http.Request, perm string) (*server.Server, *auth.Claims, bool) {
+func (a *API) transferAuth(w http.ResponseWriter, r *http.Request, kind, perm string) (*server.Server, *auth.Claims, bool) {
 	tok := r.URL.Query().Get("token")
 	if tok == "" {
 		writeErr(w, http.StatusUnauthorized, "unauthorized", "token missing")
@@ -285,6 +288,11 @@ func (a *API) transferAuth(w http.ResponseWriter, r *http.Request, perm string) 
 	}
 	if !claims.Has(perm) {
 		writeErr(w, http.StatusForbidden, "forbidden", perm+" missing")
+		return nil, nil, false
+	}
+	// Een archieftoken geldt alleen voor /files/archive, andere transfertokens nooit daar.
+	if (claims.Archive != nil) != (kind == "archive") {
+		writeErr(w, http.StatusForbidden, "forbidden", "token is not valid for this endpoint")
 		return nil, nil, false
 	}
 	if !a.jti.use(claims.ID, claims.ExpiresAt.Time) {
@@ -300,7 +308,7 @@ func (a *API) transferAuth(w http.ResponseWriter, r *http.Request, perm string) 
 }
 
 func (a *API) download(w http.ResponseWriter, r *http.Request) {
-	s, claims, ok := a.transferAuth(w, r, "files.read")
+	s, claims, ok := a.transferAuth(w, r, "download", "files.read")
 	if !ok {
 		return
 	}
@@ -321,7 +329,7 @@ func (a *API) download(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) upload(w http.ResponseWriter, r *http.Request) {
-	s, claims, ok := a.transferAuth(w, r, "files.write")
+	s, claims, ok := a.transferAuth(w, r, "upload", "files.write")
 	if !ok {
 		return
 	}
@@ -422,4 +430,139 @@ func claimMatches(claim *string, query string) bool {
 		return *claim == query
 	}
 	return c == q
+}
+
+// ---------- zoeken, rechten, archief-download ----------
+
+// searchTimeout is de maximale zoektijd; daarna komt wat er is met timed_out.
+var searchTimeout = 10 * time.Second
+
+func (a *API) searchFiles(w http.ResponseWriter, r *http.Request, s *server.Server) {
+	var body struct {
+		Path    string `json:"path"`
+		Query   string `json:"query"`
+		Content bool   `json:"content"`
+		Limit   int    `json:"limit"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if body.Path == "" {
+		body.Path = "/"
+	}
+	if q := strings.TrimSpace(body.Query); q == "" || len(q) > 200 {
+		writeErr(w, http.StatusBadRequest, "bad_request", "query must be 1-200 characters")
+		return
+	}
+	if body.Limit < 0 || body.Limit > files.SearchMaxLimit {
+		writeErr(w, http.StatusBadRequest, "bad_request", "limit out of range")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), searchTimeout)
+	defer cancel()
+	res, err := s.Root().Search(ctx, files.SearchOptions{Dir: body.Path, Query: body.Query, Content: body.Content, Limit: body.Limit})
+	if err != nil {
+		fileErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+func (a *API) chmodFiles(w http.ResponseWriter, r *http.Request, s *server.Server) {
+	var body struct {
+		Paths        []string `json:"paths"`
+		Mode         string   `json:"mode"`
+		DirMode      string   `json:"dir_mode"`
+		Recursive    bool     `json:"recursive"`
+		AllowSpecial bool     `json:"allow_special"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if len(body.Paths) == 0 || len(body.Paths) > 1000 {
+		writeErr(w, http.StatusBadRequest, "bad_request", "paths must have 1-1000 items")
+		return
+	}
+	mode, err := files.ParseMode(body.Mode, body.AllowSpecial)
+	if err != nil {
+		fileErr(w, err)
+		return
+	}
+	dirMode := mode
+	if body.DirMode != "" {
+		if dirMode, err = files.ParseMode(body.DirMode, body.AllowSpecial); err != nil {
+			fileErr(w, err)
+			return
+		}
+	}
+	for _, p := range body.Paths {
+		rel, err := files.Clean(p)
+		if err == nil && rel == "." {
+			err = files.ErrBadPath
+		}
+		if err != nil {
+			fileErr(w, err)
+			return
+		}
+	}
+	root := s.Root()
+	changed := 0
+	for _, p := range body.Paths {
+		n, err := root.SetMode(p, mode, dirMode, body.Recursive)
+		changed += n
+		if err != nil {
+			fileErr(w, err)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"changed": changed})
+}
+
+// archiveSlots begrenst het aantal gelijktijdige archief-downloads per daemon (CPU voor gzip/deflate).
+var archiveSlots = make(chan struct{}, 4)
+
+func (a *API) downloadArchive(w http.ResponseWriter, r *http.Request) {
+	s, claims, ok := a.transferAuth(w, r, "archive", "files.read")
+	if !ok {
+		return
+	}
+	c := claims.Archive
+	var ext, ctype string
+	switch c.Format {
+	case files.FormatZip:
+		ext, ctype = ".zip", "application/zip"
+	case files.FormatTarGz:
+		ext, ctype = ".tar.gz", "application/gzip"
+	default:
+		writeErr(w, http.StatusBadRequest, "bad_request", "format must be zip or tar.gz")
+		return
+	}
+	if len(c.Paths) == 0 || len(c.Paths) > 1000 {
+		writeErr(w, http.StatusBadRequest, "bad_request", "paths must have 1-1000 items")
+		return
+	}
+	root := s.Root()
+	sel, err := root.PrepareArchive(c.Root, c.Paths)
+	if err != nil {
+		fileErr(w, err)
+		return
+	}
+	select {
+	case archiveSlots <- struct{}{}:
+		defer func() { <-archiveSlots }()
+	default:
+		writeErr(w, http.StatusTooManyRequests, "busy", "too many archive downloads at once, try again shortly")
+		return
+	}
+	w.Header().Set("Content-Type", ctype)
+	w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": sel.Name + ext}))
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	if err := root.StreamArchive(w, sel, c.Format); err != nil {
+		// Headers zijn al weg: de verbinding afbreken, zodat de browser geen half archief als geslaagd ziet.
+		if a.log != nil {
+			a.log.Warn("archive download aborted", "server", s.UUID(), "err", err)
+		}
+		panic(http.ErrAbortHandler)
+	}
 }

@@ -330,6 +330,25 @@ export type FileEntry = z.infer<typeof FileEntry>;
 
 export const SignedUrl = z.object({ url: z.string(), expiresAt: z.date() });
 
+/** Octale modus voor files.chmod: "644", "0755"; een vierde cijfer (setuid/setgid/sticky) alleen met allowSpecial. */
+export const FileMode = z.string().regex(/^[0-7]{3,4}$/);
+export const ArchiveFormat = z.enum(["zip", "tar.gz"]);
+export type ArchiveFormat = z.infer<typeof ArchiveFormat>;
+export const FileSearchHit = z.object({
+  entry: FileEntry,
+  /** Alleen bij zoeken op inhoud: gevonden regels (max 5 per bestand). */
+  matches: z.array(z.object({ line: z.number().int(), text: z.string() })),
+});
+export type FileSearchHit = z.infer<typeof FileSearchHit>;
+export const FileSearchResult = z.object({
+  results: z.array(FileSearchHit),
+  /** Meer resultaten dan de limiet. */
+  truncated: z.boolean(),
+  /** De daemon stopte na zijn tijdslimiet (10 s); onvolledig. */
+  timedOut: z.boolean(),
+});
+export type FileSearchResult = z.infer<typeof FileSearchResult>;
+
 // ---------- domeinen ----------
 
 export const SslStatus = z.enum(["pending", "dns_wrong", "issuing", "active", "failed"]);

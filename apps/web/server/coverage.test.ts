@@ -24,7 +24,7 @@ export const PHASE1 = [
 export const PHASE2 = [
   "account.apiKeys", "account.createApiKey", "account.revokeApiKey", "account.setSftpPassword",
   "files.list", "files.read", "files.write", "files.mkdir", "files.rename", "files.delete", "files.compress", "files.decompress",
-  "files.uploadUrl", "files.downloadUrl", "files.sftpDetails",
+  "files.uploadUrl", "files.downloadUrl", "files.sftpDetails", "files.search", "files.chmod", "files.move", "files.archiveUrl",
   "admin.nodes.create", "admin.nodes.update", "admin.nodes.delete", "admin.nodes.regenerateToken",
   "subusers.list", "subusers.invite", "subusers.update", "subusers.remove",
 ];

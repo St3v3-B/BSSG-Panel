@@ -3,7 +3,7 @@
  * Netwerkfout of timeout → DaemonUnreachableError; HTTP-fout → DaemonHttpError.
  */
 import { openAsBlob } from "node:fs";
-import type { DaemonFileEntry, DaemonSchemas, DaemonRoute, DaemonRouteWithStatus, DaemonServerSpec, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
+import type { DaemonChmodRequest, DaemonFileEntry, DaemonSchemas, DaemonSearchResult, DaemonRoute, DaemonRouteWithStatus, DaemonServerSpec, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
 
 type DaemonBackupRequest = DaemonSchemas["BackupRequest"];
 type DaemonRestoreRequest = DaemonSchemas["RestoreRequest"];
@@ -190,6 +190,13 @@ export class DaemonClient {
   }
   decompress(uuid: string, path: string) {
     return this.request<void>("POST", `/api/servers/${uuid}/files/decompress`, { path }, 300_000);
+  }
+  /** Zoeken; de daemon stopt zelf na 10 s (timed_out). */
+  searchFiles(uuid: string, body: { path: string; query: string; content: boolean; limit: number }) {
+    return this.request<DaemonSearchResult>("POST", `/api/servers/${uuid}/files/search`, body, 30_000);
+  }
+  chmod(uuid: string, body: DaemonChmodRequest) {
+    return this.request<{ changed: number }>("POST", `/api/servers/${uuid}/files/chmod`, body, 120_000);
   }
 
   /** Multipart upload of one local file to a directory of the server, with a (one-time) transfer JWT. */
