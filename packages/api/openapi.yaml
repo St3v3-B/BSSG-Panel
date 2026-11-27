@@ -651,7 +651,7 @@ components:
         uuid: { type: string, format: uuid }
         state:
           type: string
-          enum: [installing, install_failed, offline, starting, online, stopping, disk_exceeded]
+          enum: [installing, install_failed, offline, starting, online, stopping, disk_exceeded, sleeping]
         disk_bytes: { type: integer, format: int64 }
         disk_exceeded: { type: boolean }
         started_at: { type: [string, "null"], format: date-time }
@@ -749,6 +749,20 @@ components:
               format: { type: string, enum: [properties, yaml, json, toml] }
               set: { type: object, additionalProperties: { type: string } }
         start_on_install: { type: boolean, default: false }
+        sleep:
+          type: [object, "null"]
+          description: |
+            Slaapstand (alleen game, Minecraft Java). De daemon telt elke minuut de spelers via een
+            status-ping op de primaire allocation. Na idle_minutes zonder spelers stopt hij de server
+            (status `sleeping`) en luistert hij zelf op die ip:poort: een status-ping krijgt `motd`,
+            een login-poging start de server en krijgt een disconnect met `kick_message`. Een
+            handmatige stop zet de server op `offline` (niet slapen); een handmatige start of een
+            verbindingspoging maakt hem wakker.
+          required: [idle_minutes]
+          properties:
+            idle_minutes: { type: integer, minimum: 1, maximum: 1440 }
+            motd: { type: string, default: "Server slaapt - verbind om hem te starten" }
+            kick_message: { type: string, default: "De server wordt gestart, verbind over een minuut opnieuw." }
         skip_install: { type: boolean, default: false, description: "Alleen bij POST: niet installeren. PUT installeert nooit; herinstallatie gaat via POST /install." }
 
     FileEntry:

@@ -15,6 +15,13 @@
       "when": 1795688276201,
       "tag": "0001_rainy_ultimatum",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795731671532,
+      "tag": "0002_dear_sleeper",
+      "breakpoints": true
     }
   ]
 }

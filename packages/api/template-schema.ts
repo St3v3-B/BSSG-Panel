@@ -31,6 +31,8 @@ export const TemplateSpec = z
     ready_pattern: z.string().min(1),
     /** Alleen web: poort waarop de container HTTP serveert (Caddy-upstream). */
     http_port: z.number().int().min(1).max(65535).optional(),
+    /** Minecraft Java-server die de daemon kan laten slapen (status-ping + login op de primaire poort). */
+    sleep_capable: z.boolean().default(false),
     variables: z
       .array(
         z.object({

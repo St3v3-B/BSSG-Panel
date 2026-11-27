@@ -185,6 +185,7 @@ export function createMock(): Implementation {
         return ok;
       },
       reinstall: ({ input }) => ((srv(input.uuid).status = "installing"), ok),
+      updateSleep: ({ input }) => ((srv(input.uuid).sleep = { ...srv(input.uuid).sleep, enabled: input.enabled, idleMinutes: input.idleMinutes }), ok),
       activity: ({ input }) => pageOf(db.activity.filter((a) => a.serverUuid === input.uuid), input.limit),
     },
     files: {
@@ -340,6 +341,7 @@ export function createMock(): Implementation {
             permissions: [], allocations: allocs,
             variables: t.variables.map((v) => ({ ...v, value: input.variables[v.key] ?? v.default })),
             node: { id: 1, name: "node1", fqdn: "node1.test" }, sftp: { host: "node1.test", port: 2022, username: `${owner.name ?? owner.discordId}.${uuid.slice(0, 8)}` },
+            sleep: { supported: t.type === "game", enabled: false, idleMinutes: 10 },
             installedAt: null, createdAt: new Date(),
           };
           db.servers.push(x);

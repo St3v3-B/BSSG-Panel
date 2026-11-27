@@ -9,7 +9,7 @@ description: >-
   Achter een Velocity-proxy: zet `VELOCITY_FORWARDING` op `true` en `VELOCITY_SECRET` op
   dezelfde secret als de proxy (zie deploy/README.md, "Velocity met twee Paper-servers").
 type: game
-version: 2
+version: 3
 image: eclipse-temurin:25-jre
 # Heap: SERVER_MEMORY min 15% (minstens 384 MB) voor metaspace, threads, netty-buffers en
 # /tmp (tmpfs, telt mee); met 80% werd Paper 1.21.x bij 1280 MB door de cgroup OOM-killed.
@@ -38,6 +38,7 @@ stop:
   type: command
   value: stop
 # Paper logt: [12:00:00 INFO]: Done (12.345s)! For help, type "help"
+sleep_capable: true
 ready_pattern: "Done \\([0-9.,]+s\\)!"
 variables:
   - key: MINECRAFT_VERSION
