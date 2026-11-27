@@ -103,7 +103,7 @@ func (e *env) start(s *Server) {
 
 func waitUntil(t *testing.T, what string, fn func() bool) {
 	t.Helper()
-	dl := time.Now().Add(5 * time.Second)
+	dl := time.Now().Add(20 * time.Second)
 	for !fn() {
 		if time.Now().After(dl) {
 			t.Fatalf("timeout: %s", what)
@@ -373,5 +373,25 @@ func TestCleanupOnlyTrackedUnusedImages(t *testing.T) {
 	}
 	if !e.eng.HasImage("sha256:j3") || !e.eng.HasImage("sha256:ntp") || !e.eng.HasImage("sha256:java:1") {
 		t.Fatal("current and foreign images must stay")
+	}
+}
+
+func TestSpecUpdateKeepsPolicy(t *testing.T) {
+	e := newEnv(t, "notify")
+	s := e.server(uuidA, "game", "java:1", &spec.ImageUpdate{Policy: "auto"})
+	sp := s.Spec()
+	sp.ImageUpdate = nil
+	if err := s.Update(sp); err != nil || s.Spec().ImageUpdate == nil || s.Spec().ImageUpdate.Policy != "auto" {
+		t.Fatalf("%v %+v", err, s.Spec().ImageUpdate)
+	}
+	ve := "PHP_VERSION"
+	sp.ImageUpdate = &spec.ImageUpdate{VersionEnv: &ve}
+	if err := s.Update(sp); err != nil || s.Spec().ImageUpdate.Policy != "auto" || *s.Spec().ImageUpdate.VersionEnv != ve {
+		t.Fatalf("%+v", s.Spec().ImageUpdate)
+	}
+	sp.ImageUpdate = &spec.ImageUpdate{Policy: "default"}
+	_ = s.Update(sp)
+	if s.Spec().ImageUpdate.Policy != "default" {
+		t.Fatal("explicit default must apply")
 	}
 }

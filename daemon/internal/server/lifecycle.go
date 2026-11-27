@@ -523,6 +523,15 @@ func (s *Server) runInstall(ctx context.Context, sp spec.ServerSpec) error {
 // Update vervangt de spec. Limieten gaan direct in; de rest bij de volgende start.
 func (s *Server) Update(sp spec.ServerSpec) error {
 	s.mu.Lock()
+	// Een spec zonder image_update (of zonder policy) laat de bestaande keuze van de eigenaar staan.
+	if old := s.spec.ImageUpdate; old != nil {
+		if sp.ImageUpdate == nil {
+			iu := *old
+			sp.ImageUpdate = &iu
+		} else if sp.ImageUpdate.Policy == "" {
+			sp.ImageUpdate.Policy = old.Policy
+		}
+	}
 	s.spec = sp
 	s.ready = compileReady(sp.ReadyPattern)
 	r := s.run
