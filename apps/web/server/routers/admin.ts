@@ -736,6 +736,10 @@ export const admin = {
         const iu = input.imageUpdates;
         pairs.push(["image_update_default_policy", iu.defaultPolicy], ["image_update_window", { start: iu.windowStart, end: iu.windowEnd }]);
       }
+      if (input.sleepMotd !== undefined) {
+        const m = input.sleepMotd;
+        pairs.push(["sleep_motd_promo", m.promo.trim()], ["sleep_motd_show_logo", m.showLogoIcon], ["sleep_motd_seed_logo", m.seedLogoIcon]);
+      }
       for (const [key, value] of pairs) {
         await getDb().insert(schema.settings).values({ key, value }).onConflictDoUpdate({ target: schema.settings.key, set: { value } });
       }

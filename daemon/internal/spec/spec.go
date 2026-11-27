@@ -61,6 +61,10 @@ type Sleep struct {
 	IdleMinutes int    `json:"idle_minutes"`
 	MOTD        string `json:"motd,omitempty"`
 	KickMessage string `json:"kick_message,omitempty"`
+	// ServerName, Promo en FaviconMode sturen de opgemaakte MOTD (zonder ServerName: alleen MOTD).
+	ServerName  string `json:"server_name,omitempty"`
+	Promo       string `json:"promo,omitempty"`
+	FaviconMode string `json:"favicon_mode,omitempty"` // server_or_logo (standaard) of server_only
 }
 
 // AutoRestart: automatisch herstarten na een crash, hooguit MaxPer10Min keer per 10 minuten.
@@ -110,9 +114,11 @@ type ServerSpec struct {
 	ConfigFiles    []ConfigFile      `json:"config_files,omitempty"`
 	StartOnInstall bool              `json:"start_on_install,omitempty"`
 	SkipInstall    bool              `json:"skip_install,omitempty"`
-	Sleep          *Sleep            `json:"sleep,omitempty"`
-	ImageUpdate    *ImageUpdate      `json:"image_update,omitempty"`
-	AutoRestart    *AutoRestart      `json:"auto_restart,omitempty"`
+	// ServerIcon "bssg": na de installatie het logo als server-icon.png zetten als er geen is.
+	ServerIcon  string       `json:"server_icon,omitempty"`
+	Sleep       *Sleep       `json:"sleep,omitempty"`
+	ImageUpdate *ImageUpdate `json:"image_update,omitempty"`
+	AutoRestart *AutoRestart `json:"auto_restart,omitempty"`
 }
 
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -127,6 +133,9 @@ var signals = map[string]bool{"SIGTERM": true, "SIGINT": true, "SIGKILL": true, 
 // Validate controleert de spec; de fout is geschikt voor een 400-antwoord.
 func (s *ServerSpec) Validate() error {
 	var errs []string
+	if s.ServerIcon != "" && s.ServerIcon != "none" && s.ServerIcon != "bssg" {
+		errs = append(errs, "server_icon invalid")
+	}
 	add := func(f string, a ...any) { errs = append(errs, fmt.Sprintf(f, a...)) }
 	if !ValidUUID(s.UUID) {
 		add("uuid invalid")
@@ -204,6 +213,12 @@ func (s *ServerSpec) Validate() error {
 		}
 		if len(s.Sleep.MOTD) > 256 || len(s.Sleep.KickMessage) > 256 {
 			add("sleep: motd/kick_message te lang")
+		}
+		if len(s.Sleep.ServerName) > 400 || len(s.Sleep.Promo) > 480 {
+			add("sleep: server_name/promo too long")
+		}
+		if m := s.Sleep.FaviconMode; m != "" && m != "server_or_logo" && m != "server_only" {
+			add("sleep.favicon_mode invalid")
 		}
 	}
 	if s.AutoRestart != nil && (s.AutoRestart.MaxPer10Min < 1 || s.AutoRestart.MaxPer10Min > 20) {

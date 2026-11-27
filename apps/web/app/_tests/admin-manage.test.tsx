@@ -149,6 +149,23 @@ describe("instellingen", () => {
   });
 });
 
+describe("MOTD van slapende servers", () => {
+  it("voorbeeld rendert Minecraft-kleuren en opslaan stuurt sleepMotd", async () => {
+    const { bodies } = renderWithTrpc(<SettingsAdmin />, admin);
+    const promo = (await screen.findByLabelText(/Promo line/)) as HTMLInputElement;
+    fireEvent.change(promo, { target: { value: "&#ff8800Hello &lWorld&r!" } });
+    const spans = Array.from(screen.getByTestId("motd-line2").querySelectorAll("span")) as HTMLElement[];
+    expect(spans.map((x) => x.textContent)).toEqual(["Hello ", "World", "!"]);
+    expect(spans[0]!.style.color).toBe("rgb(255, 136, 0)");
+    expect(spans[1]!.style.fontWeight).toBe("700");
+    expect(spans[2]!.style.color).toBe("rgb(255, 255, 255)");
+    fireEvent.click(screen.getByLabelText(/Set the BSSG logo as server-icon\.png/));
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    expect(await screen.findByText("Settings saved.")).toBeTruthy();
+    expect(input(bodies, "admin.settings.update")[0]).toMatchObject({ sleepMotd: { promo: "&#ff8800Hello &lWorld&r!", showLogoIcon: true, seedLogoIcon: false } });
+  });
+});
+
 describe("database-hosts en DNS-providers", () => {
   it("host toevoegen, testen", async () => {
     const { bodies } = renderWithTrpc(<DatabaseHostsAdmin />, admin);

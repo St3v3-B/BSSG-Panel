@@ -7,9 +7,11 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"panel/daemon/internal/engine"
+	"panel/daemon/internal/mcproto"
 	"panel/daemon/internal/spec"
 )
 
@@ -471,6 +473,9 @@ func (s *Server) doInstall(startAfter bool) {
 		s.m.rep.ReportInstall(s.uuid, false, err.Error())
 		return
 	}
+	if sp.ServerIcon == "bssg" {
+		s.seedIcon()
+	}
 	s.installLine("installatie klaar")
 	s.m.rep.ReportInstall(s.uuid, true, "")
 	go s.measureDisk()
@@ -622,4 +627,23 @@ func (s *Server) destroy() error {
 		return err
 	}
 	return nil
+}
+
+// seedIcon zet het BSSG-logo als server-icon.png in de servermap, alleen als er nog geen is.
+// Na chownTree van de install, dus het bestand krijgt zelf de juiste eigenaar.
+func (s *Server) seedIcon() {
+	dir := s.m.volume(s.uuid)
+	p := filepath.Join(dir, "server-icon.png")
+	f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, 0o644)
+	if err != nil {
+		return // bestaat al (of onbereikbaar): niet overschrijven
+	}
+	_, werr := f.Write(mcproto.LogoPNG())
+	_ = f.Chown(s.m.cfg.UID, s.m.cfg.GID)
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		_ = os.Remove(p)
+	}
 }
