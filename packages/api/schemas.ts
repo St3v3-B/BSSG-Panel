@@ -569,6 +569,22 @@ export const DnsProvider = z.object({
   zones: z.array(z.object({ id: z.string(), name: z.string() })),
 });
 
+/** Alleen echte Discord-webhooks (https://discord.com|discordapp.com/api[/vN]/webhooks/<id>/<token>). */
+export const DISCORD_WEBHOOK_RE = /^https:\/\/(?:discord|discordapp)\.com\/api(?:\/v\d+)?\/webhooks\/\d{5,25}\/[A-Za-z0-9_-]{20,200}$/;
+export const WebhookUrl = z.string().trim().max(300).regex(DISCORD_WEBHOOK_RE, "INVALID_WEBHOOK_URL");
+
+/** Nooit de volledige URL teruggeven (het token zit erin): alleen of hij gezet is en een hint. */
+export const WebhookStatus = z.object({ set: z.boolean(), hint: z.string().nullable() });
+export type WebhookStatus = z.infer<typeof WebhookStatus>;
+
+export const ServerNotifications = z.object({
+  webhook: WebhookStatus,
+  autoRestart: z.boolean(),
+  /** Max herstarts per 10 minuten (1-20). */
+  autoRestartMax: z.number().int().min(1).max(20),
+});
+export type ServerNotifications = z.infer<typeof ServerNotifications>;
+
 export const Settings = Branding.extend({
   defaultLimits: Limits,
 });

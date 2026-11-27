@@ -76,6 +76,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/remote/servers/{uuid}/event": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Gebeurtenis die een melding kan opleveren (crash, schijf bijna vol of vol)
+         * @description Best effort, met retry. `crashed`: de server stopte buiten een stop-opdracht om
+         *     (exitcode != 0, OOM-kill of onverwachte exit). `restart` zegt wat de daemon deed:
+         *     `restarted` (herstart ingepland, `restart_attempt` = poging in het venster van 10 min),
+         *     `gave_up` (limiet bereikt, server blijft offline) of `disabled` (auto-restart staat uit).
+         *     `disk_warning`: 90% van de schijflimiet; `disk_exceeded`: limiet overschreden.
+         */
+        post: operations["reportEvent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/remote/backups/{backup_id}": {
         parameters: {
             query?: never;
@@ -269,6 +295,48 @@ export interface operations {
                 "application/json": {
                     /** @enum {string} */
                     state: "installing" | "install_failed" | "offline" | "starting" | "online" | "stopping" | "disk_exceeded" | "sleeping";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reportEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    type: "crashed" | "disk_warning" | "disk_exceeded";
+                    exit_code?: number | null;
+                    oom?: boolean;
+                    /** @description Laatste consoleregels (max 30). */
+                    log_tail?: string[];
+                    /** @description Eerste regels van het nieuwste crash-report (Minecraft `crash-reports/*.txt`), max 4000 tekens. */
+                    crash_report?: string | null;
+                    /** @enum {string} */
+                    restart?: "restarted" | "gave_up" | "disabled";
+                    restart_attempt?: number;
+                    /** Format: int64 */
+                    disk_bytes?: number;
+                    /** Format: int64 */
+                    disk_limit_bytes?: number;
                 };
             };
         };

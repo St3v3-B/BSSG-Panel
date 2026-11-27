@@ -73,6 +73,12 @@ export const contract = {
     setSftpPassword: mutation("user", server.extend({ password: z.string().min(12).max(200) }), s.Ok),
     /** Eigen quotum met verbruik en keuzelijsten; null = geen quotum (kan zelf geen servers maken). */
     quota: query("user", none, s.QuotaOverview.nullable()),
+    /** Eigen Discord-webhook voor meldingen (nooit de volledige URL terug). */
+    webhook: query("user", none, s.WebhookStatus),
+    /** `url: null` verwijdert de webhook. Ongeldige URL → BAD_REQUEST. */
+    setWebhook: mutation("user", z.object({ url: s.WebhookUrl.nullable() }), s.WebhookStatus),
+    /** Stuurt een testbericht; mislukt het, dan BAD_REQUEST met message `WEBHOOK_FAILED`. */
+    testWebhook: mutation("user", none, s.Ok),
   },
 
   servers: {
@@ -116,6 +122,15 @@ export const contract = {
     /** Eigenaar of admin. Wist de data niet, draait het install-script opnieuw. */
     reinstall: mutation("user", server, s.Ok),
     /** Eigenaar of admin. Slaapstand: stoppen na idleMinutes zonder spelers, starten bij een verbindingspoging. */
+    /** Webhook en auto-restart van een server. Alleen eigenaar (of volledige admin). */
+    notifications: query("user", server, s.ServerNotifications),
+    /** `webhookUrl`: weggelaten = ongewijzigd, `null` = verwijderen. */
+    updateNotifications: mutation(
+      "user",
+      server.extend({ webhookUrl: s.WebhookUrl.nullable().optional(), autoRestart: z.boolean(), autoRestartMax: z.number().int().min(1).max(20) }),
+      s.ServerNotifications,
+    ),
+    testWebhook: mutation("user", server, s.Ok),
     updateSleep: mutation("user", server.extend({ enabled: z.boolean(), idleMinutes: z.number().int().min(1).max(1440) }), s.Ok),
     activity: query("user", server.extend(s.PageInput.shape), s.page(s.ActivityEntry)),
     /** Proxy-server (Velocity), eigenaar of admin: eigen game-servers (admin: alle) op dezelfde node die als backend kunnen. */
@@ -393,6 +408,13 @@ export const contract = {
         s.PageInput.extend({ userId: s.Id.optional(), serverUuid: s.Uuid.optional(), action: z.string().optional() }),
         s.page(s.ActivityEntry),
       ),
+    },
+
+    /** Admin-brede Discord-webhook (alle crashes, node offline, SSL-fouten, ...). */
+    notifications: {
+      get: query("admin", none, s.WebhookStatus),
+      set: mutation("admin", z.object({ url: s.WebhookUrl.nullable() }), s.WebhookStatus),
+      test: mutation("admin", none, s.Ok),
     },
 
     settings: {

@@ -64,6 +64,13 @@
       "when": 1795774954987,
       "tag": "0008_fine_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795776393240,
+      "tag": "0009_mature_jane_foster",
+      "breakpoints": true
     }
   ]
 }
