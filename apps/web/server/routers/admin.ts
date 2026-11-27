@@ -11,7 +11,7 @@ import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema, type Db } from "../db";
 import { getEnv } from "../env";
 import { buildServerSpec, validateVariables } from "../spec";
-import { fetchServerByUuid, fetchServers, limitsOf, serverVariables, toDetail, toSummary, userPublic, type ServerBundle } from "../servers-data";
+import { fetchServerByUuid, fetchServers, limitsOf, sleepOf, serverVariables, toDetail, toSummary, userPublic, type ServerBundle } from "../servers-data";
 import { getSettings } from "../settings";
 import type { Ctx } from "@panel/api";
 
@@ -380,7 +380,7 @@ export const admin = {
 
     updateLimits: async ({ input, ctx }) => {
       const b = await mustServer(input.uuid);
-      const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: await serverVariables(b.server.id), limits: input.limits, allocations: b.allocations, skipInstall: true });
+      const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: await serverVariables(b.server.id), limits: input.limits, allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server) });
       await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
       await getDb()
         .update(schema.servers)
@@ -417,6 +417,7 @@ export const admin = {
           limits: limitsOf(b.server),
           allocations: allocs.map((a, i) => ({ ip: a.ip, port: a.port, isPrimary: i === 0 })),
           skipInstall: true,
+          sleep: sleepOf(b.server),
         });
         // Binnen de transactie: faalt de daemon, dan blijft de database ongewijzigd.
         await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));

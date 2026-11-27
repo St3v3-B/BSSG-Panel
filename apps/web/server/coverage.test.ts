@@ -7,7 +7,7 @@ export const PHASE1 = [
   "auth.me", "auth.branding", "auth.discordLoginUrl", "auth.verifyTotp", "auth.logout",
   "account.get", "account.totpSetup", "account.totpEnable", "account.totpDisable",
   "servers.list", "servers.get", "servers.stats", "servers.power", "servers.sendCommand", "servers.consoleToken",
-  "servers.rename", "servers.updateVariables", "servers.reinstall", "servers.activity",
+  "servers.rename", "servers.updateVariables", "servers.reinstall", "servers.activity", "servers.updateSleep",
   "admin.dashboard",
   "admin.servers.list", "admin.servers.create", "admin.servers.updateLimits", "admin.servers.updateOwner", "admin.servers.updateAllocations", "admin.servers.delete",
   "admin.nodes.list", "admin.nodes.get",

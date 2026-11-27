@@ -83,7 +83,7 @@ export const STATUS_VARIANT: Record<ServerStatus, BadgeVariant> = {
   online: "success",
   stopping: "warning",
   disk_exceeded: "destructive",
-  sleeping: "info",
+  sleeping: "sleep",
   unknown: "secondary",
 };
 

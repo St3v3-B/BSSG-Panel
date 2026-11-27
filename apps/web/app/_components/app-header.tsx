@@ -35,12 +35,15 @@ export function AppHeader({ me }: { me: Me }) {
         <nav className="ml-2 hidden items-center gap-1 overflow-x-auto text-sm sm:flex">
           {inAdmin ? (
             <>
-              <NavLink href="/admin" active={pathname === "/admin" || pathname.startsWith("/admin/servers")}>
-                {t.admin.nav.servers}
+              <NavLink href="/admin" active={pathname === "/admin"}>
+                {t.admin2.nav.dashboard}
               </NavLink>
-              {(["nodes", "users", "templates", "activity"] as const).map((k) => (
+              <NavLink href="/admin/servers" active={pathname.startsWith("/admin/servers")}>
+                {t.admin2.nav.servers}
+              </NavLink>
+              {(["nodes", "users", "templates", "activity", "settings"] as const).map((k) => (
                 <NavLink key={k} href={`/admin/${k}`} active={pathname.startsWith(`/admin/${k}`)}>
-                  {t.admin.nav[k]}
+                  {t.admin2.nav[k]}
                 </NavLink>
               ))}
             </>

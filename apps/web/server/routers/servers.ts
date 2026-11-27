@@ -7,8 +7,9 @@ import { DaemonHttpError, DaemonUnreachableError, call, daemonFor, toTrpcError }
 import { getDb, schema } from "../db";
 import { getEnv } from "../env";
 import { signBrowserJwt } from "../lib/jwt";
-import { buildServerSpec, validateVariables } from "../spec";
-import { fetchServers, limitsOf, requireServer, serverVariables, toDetail, toSummary, type ServerBundle } from "../servers-data";
+import { buildServerSpec, templateSleepCapable, validateVariables } from "../spec";
+import { forbidApiKey } from "../apikey";
+import { fetchServers, limitsOf, sleepOf, requireServer, serverVariables, toDetail, toSummary, type ServerBundle } from "../servers-data";
 
 const ok = { ok: true as const };
 const LIVE_TIMEOUT_MS = 1500;
@@ -21,6 +22,7 @@ export async function currentSpec(b: ServerBundle, opts: { startOnInstall?: bool
     variables: await serverVariables(b.server.id),
     limits: limitsOf(b.server),
     allocations: b.allocations,
+    sleep: sleepOf(b.server),
     ...opts,
   });
 }
@@ -71,7 +73,7 @@ export async function liveStatuses(rows: ServerBundle[]): Promise<Map<string, Se
 
 export const servers: Pick<
   Implementation["servers"],
-  "list" | "get" | "stats" | "power" | "sendCommand" | "consoleToken" | "rename" | "updateVariables" | "reinstall" | "activity"
+  "list" | "get" | "stats" | "power" | "sendCommand" | "consoleToken" | "rename" | "updateVariables" | "reinstall" | "activity" | "updateSleep"
 > = {
   list: async ({ ctx }) => {
     const uid = ctx.session!.userId;
@@ -151,10 +153,10 @@ export const servers: Pick<
   updateVariables: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "owner");
     const b = a.bundle;
-    const errors = validateVariables(b.template.variables, input.variables, { onlyUserEditable: true });
+    const errors = validateVariables(b.template.variables, input.variables, { onlyUserEditable: !ctx.session!.isAdmin });
     if (errors.length) throw new TRPCError({ code: "BAD_REQUEST", message: `INVALID_VARIABLES: ${errors.join("; ")}` });
     const merged = { ...(await serverVariables(b.server.id)), ...input.variables };
-    const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: merged, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: true });
+    const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: merged, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server) });
     await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
     const entries = Object.entries(input.variables);
     if (entries.length) {
@@ -164,6 +166,18 @@ export const servers: Pick<
         .onConflictDoUpdate({ target: [schema.serverVariables.serverId, schema.serverVariables.key], set: { value: sql`excluded.value` } });
     }
     await logActivity({ action: "server.variables.update", userId: ctx.session!.userId, serverId: b.server.id, metadata: { keys: entries.map(([k]) => k) }, ip: ctx.ip, ctx });
+    return ok;
+  },
+
+  updateSleep: async ({ input, ctx }) => {
+    forbidApiKey(ctx);
+    const a = await requireServer(ctx, input.uuid, "owner");
+    const b = a.bundle;
+    if (b.server.type !== "game" || !templateSleepCapable(b.template)) throw new TRPCError({ code: "BAD_REQUEST", message: "SLEEP_NOT_SUPPORTED" });
+    const next = { ...b.server, sleepEnabled: input.enabled, sleepIdleMinutes: input.idleMinutes };
+    await call(async () => daemonFor(b.node).updateServer(b.server.uuid, await currentSpec({ ...b, server: next }, { skipInstall: true })));
+    await getDb().update(schema.servers).set({ sleepEnabled: input.enabled, sleepIdleMinutes: input.idleMinutes }).where(eq(schema.servers.id, b.server.id));
+    await logActivity({ action: "server.sleep.update", userId: ctx.session!.userId, serverId: b.server.id, metadata: { enabled: input.enabled, idleMinutes: input.idleMinutes }, ip: ctx.ip, ctx });
     return ok;
   },
 

@@ -56,6 +56,31 @@ type ConfigFile struct {
 	Set    map[string]string `json:"set"`
 }
 
+// Sleep is de slaapstand (alleen game, Minecraft Java).
+type Sleep struct {
+	IdleMinutes int    `json:"idle_minutes"`
+	MOTD        string `json:"motd,omitempty"`
+	KickMessage string `json:"kick_message,omitempty"`
+}
+
+// Standaardteksten van de slaapstand.
+const (
+	DefaultSleepMOTD = "Server slaapt - verbind om hem te starten"
+	DefaultSleepKick = "De server wordt gestart, verbind over een minuut opnieuw."
+)
+
+// Texts geeft motd en kick_message met standaardwaarden.
+func (s *Sleep) Texts() (motd, kick string) {
+	motd, kick = s.MOTD, s.KickMessage
+	if motd == "" {
+		motd = DefaultSleepMOTD
+	}
+	if kick == "" {
+		kick = DefaultSleepKick
+	}
+	return motd, kick
+}
+
 // ServerSpec is de volledige spec die het panel stuurt.
 type ServerSpec struct {
 	UUID           string            `json:"uuid"`
@@ -72,6 +97,7 @@ type ServerSpec struct {
 	ConfigFiles    []ConfigFile      `json:"config_files,omitempty"`
 	StartOnInstall bool              `json:"start_on_install,omitempty"`
 	SkipInstall    bool              `json:"skip_install,omitempty"`
+	Sleep          *Sleep            `json:"sleep,omitempty"`
 }
 
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -150,6 +176,20 @@ func (s *ServerSpec) Validate() error {
 			add("allocations[%d]: %s dubbel", i, k)
 		}
 		seen[k] = true
+	}
+	if s.Sleep != nil {
+		if s.Type != "game" {
+			add("sleep alleen voor game")
+		}
+		if s.Sleep.IdleMinutes < 1 || s.Sleep.IdleMinutes > 1440 {
+			add("sleep.idle_minutes moet tussen 1 en 1440 liggen")
+		}
+		if len(s.Allocations) == 0 {
+			add("sleep vereist een allocation")
+		}
+		if len(s.Sleep.MOTD) > 256 || len(s.Sleep.KickMessage) > 256 {
+			add("sleep: motd/kick_message te lang")
+		}
 	}
 	if s.Type == "web" && len(s.Allocations) > 0 {
 		add("web heeft geen allocations")

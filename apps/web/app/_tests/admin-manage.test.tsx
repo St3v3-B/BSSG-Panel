@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Implementation } from "@panel/api";
 import { AdminDashboard } from "@/app/_components/admin/dashboard";
 import { AdminServersList } from "@/app/_components/admin/servers-list";
-import { AdminServerPage } from "@/app/_components/admin/server-manage";
+import { SuspendSection, TemplateSection } from "@/app/_components/admin/server-manage";
 import { DatabaseHostsAdmin, DnsProvidersAdmin, SettingsAdmin } from "@/app/_components/admin/settings";
 import { UserDetail } from "@/app/_components/admin/user-detail";
 import { renderWithTrpc, sessionFor } from "./utils";
@@ -78,18 +78,17 @@ describe("serverlijst", () => {
 
 describe("serverpagina", () => {
   it("opschorten met reden en bevestiging", async () => {
-    const { bodies } = renderWithTrpc(<AdminServerPage uuid={SMP} />, admin);
+    const { bodies } = renderWithTrpc(<SuspendSection uuid={SMP} suspended={null} />, admin);
     const sec = await screen.findByTestId("suspend-section");
     fireEvent.change(within(sec).getByLabelText("Reason"), { target: { value: "betaling" } });
     fireEvent.click(within(sec).getByRole("button", { name: "Suspend server" }));
     expect(input(bodies, "admin.servers.setSuspended")).toHaveLength(0);
     fireEvent.click(within(sec).getAllByRole("button", { name: "Suspend server" })[0]!);
     await waitFor(() => expect(input(bodies, "admin.servers.setSuspended")[0]).toEqual({ uuid: SMP, suspended: true, reason: "betaling" }));
-    expect(await within(await screen.findByTestId("suspend-section")).findByTestId("suspended-info")).toBeTruthy();
   });
 
   it("template wisselen met herinstallatie", async () => {
-    const { bodies } = renderWithTrpc(<AdminServerPage uuid={SMP} />, {
+    const { bodies } = renderWithTrpc(<TemplateSection uuid={SMP} type="game" currentName="Paper" />, {
       ...admin,
       patch: (m) => {
         const orig = m.admin.templates.list;

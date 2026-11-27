@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"panel/daemon/internal/engine"
+	"panel/daemon/internal/mcproto"
 	"panel/daemon/internal/spec"
 	"panel/daemon/internal/store"
 )
@@ -51,6 +52,10 @@ type Config struct {
 	// MariaDB is de containernaam van de gedeelde MariaDB (standaard panel-mariadb;
 	// tests gebruiken een eigen naam).
 	MariaDB string
+	// SleepMinute is de duur van een "minuut" voor de slaapstand (tests: korter);
+	// Pinger telt spelers (standaard mcproto.Ping).
+	SleepMinute time.Duration
+	Pinger      func(ctx context.Context, addr string) (int, error)
 }
 
 func (c *Config) defaults() {
@@ -74,6 +79,12 @@ func (c *Config) defaults() {
 	}
 	if c.BacklogLines == 0 {
 		c.BacklogLines = 500
+	}
+	if c.SleepMinute == 0 {
+		c.SleepMinute = time.Minute
+	}
+	if c.Pinger == nil {
+		c.Pinger = mcproto.Ping
 	}
 	if c.MariaDB == "" {
 		c.MariaDB = MariaDBContainer
@@ -111,7 +122,12 @@ func NewManager(cfg Config, eng engine.Engine, rep Reporter, log *slog.Logger) *
 }
 
 // Close stopt alle achtergrondtaken. Containers blijven draaien.
-func (m *Manager) Close() { m.cancel() }
+func (m *Manager) Close() {
+	m.cancel()
+	for _, s := range m.List() {
+		s.stopSleepListener() // poort vrijgeven; na een herstart bindt Recover opnieuw
+	}
+}
 
 func (m *Manager) volume(uuid string) string {
 	return filepath.Join(m.cfg.DataDir, "volumes", uuid)
@@ -172,6 +188,7 @@ func (m *Manager) diskOffset(uuid string) time.Duration {
 func (m *Manager) register(s *Server) {
 	m.servers[s.uuid] = s
 	go s.diskLoop(m.diskOffset(s.uuid))
+	go s.sleepLoop()
 }
 
 // Get zoekt een server op uuid.
@@ -294,6 +311,7 @@ func (m *Manager) Recover(ctx context.Context) error {
 		s.installedAt = p.InstalledAt
 		s.installFailed = p.InstallFailed
 		s.installError = p.InstallError
+		s.wasSleeping = p.Sleeping
 		switch {
 		case p.InstallFailed:
 			s.state = StateInstallFailed
@@ -350,6 +368,21 @@ func (m *Manager) Recover(ctx context.Context) error {
 		s.mu.Unlock()
 		s.attachRun(c.ID, att, info.StartedAt)
 		m.log.Info("container weer gekoppeld", "uuid", uuid)
+	}
+	for _, s := range m.List() {
+		s.mu.Lock()
+		sleep := s.wasSleeping && s.run == nil && s.state == StateOffline && s.spec.Sleep != nil
+		if sleep {
+			s.state = StateSleeping
+		}
+		s.mu.Unlock()
+		if sleep {
+			go func(s *Server) {
+				s.opMu.Lock()
+				defer s.opMu.Unlock()
+				s.startSleepListener()
+			}(s)
+		}
 	}
 	for _, s := range interrupted {
 		m.rep.ReportInstall(s.uuid, false, s.installError)

@@ -27,8 +27,9 @@ fase 0 gemaakt zijn, en hoe je test. Per map staat in een eigen `CLAUDE.md` de t
 | `daemon/` behalve `daemon/proxy/` | daemon |
 | `daemon/proxy/` behalve `router.go`, `fake.go`, `fake_test.go` | web-hosting |
 | `templates/web/`, `deploy/caddy/` | web-hosting |
-| `apps/web/server/`, `apps/web/app/api/` behalve `app/api/trpc/` | panel-api |
-| `apps/web/app/` behalve `app/api/`, plus `apps/web/public/` | panel-ui |
+| `apps/web/server/`, `apps/web/app/api/` behalve `app/api/trpc/` en de admin-bestanden | panel-api |
+| `apps/web/app/` behalve `app/api/` en de admin-bestanden, plus `apps/web/public/` | panel-ui |
+| `apps/web/server/routers/admin.ts`, `apps/web/app/(panel)/admin/**`, `apps/web/app/_components/admin/**` (+ hun tests, i18n-blok `admin2`) | admin |
 | `templates/game/`, `deploy/` behalve `deploy/caddy/` en de variabelenamen in `panel.env.example` | templates-ops |
 | `packages/`, `tests/`, `scripts/`, root-bestanden, `apps/web/{lib,test}/`, `apps/web/*.{ts,json,mjs}`, `apps/web/app/api/trpc/` | orchestrator |
 
