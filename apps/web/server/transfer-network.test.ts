@@ -37,13 +37,33 @@ describe("transfer van een Velocity-backend", () => {
     const lobby = await mk("Lobby", "paper", 34601);
     h.daemon.fs(proxy).files.set("/velocity.toml", TOML);
     await alice.api.servers.updateNetwork({ uuid: proxy, members: [{ serverUuid: lobby, name: "lobby", isDefault: true }], restart: false });
-    expect(h.daemon.fs(proxy).files.get("/velocity.toml")).toContain('lobby = "127.0.0.1:34601"');
+    expect(h.daemon.fs(proxy).files.get("/velocity.toml")).toContain(`lobby = "panel-${lobby}:34601"`);
+    expect(h.daemon.proxyNetworks.get(proxy)).toEqual([lobby]);
 
     h.daemon.servers.get(lobby)!.state = "offline";
     await getDb().insert(schema.allocations).values({ nodeId: node2, ip: "10.9.8.7", port: 35001 });
     await admin.api.admin.servers.transfer({ uuid: lobby, nodeId: node2 });
     const toml = h.daemon.fs(proxy).files.get("/velocity.toml")!;
     expect(toml).toContain('lobby = "10.9.8.7:35001"');
-    expect(toml).not.toContain("127.0.0.1:34601");
+    expect(toml).not.toContain(`panel-${lobby}`);
+    // niet meer op deze node: van het gedeelde netwerk af (adres via de host op de nieuwe node)
+    expect(h.daemon.proxyNetworks.get(proxy)).toBeUndefined();
+  });
+
+  it("proxy zelf verplaatst: backends op de oude node krijgen hun adres via de host", async () => {
+    const mk = async (name: string, slug: string, port: number, ip = "127.0.0.1") =>
+      (await admin.api.admin.servers.create({ name, ownerId: alice.id, nodeId: h.localNodeId, templateId: await h.templateId(slug), limits, allocationIds: [await h.allocation(port, ip)], variables: {}, startOnInstall: false })).uuid;
+    const proxy = await mk("Proxy B", "velocity", 34610);
+    const hub = await mk("Hub", "paper", 34611, "198.51.100.4");
+    h.daemon.fs(proxy).files.set("/velocity.toml", TOML.replace("lobby", "hub").replace("lobby", "hub"));
+    await alice.api.servers.updateNetwork({ uuid: proxy, members: [{ serverUuid: hub, name: "hub", isDefault: true }], restart: false });
+    expect(h.daemon.fs(proxy).files.get("/velocity.toml")).toContain(`hub = "panel-${hub}:34611"`);
+    h.daemon.servers.get(proxy)!.state = "offline";
+    await getDb().insert(schema.allocations).values({ nodeId: node2, ip: "10.9.8.7", port: 35010 });
+    await admin.api.admin.servers.transfer({ uuid: proxy, nodeId: node2 });
+    const toml = d2.fs(proxy).files.get("/velocity.toml")!;
+    expect(toml).toContain('hub = "198.51.100.4:34611"');
+    expect(d2.proxyNetworks.get(proxy)).toBeUndefined();
+    expect(h.daemon.proxyNetworks.get(proxy)).toBeUndefined();
   });
 });

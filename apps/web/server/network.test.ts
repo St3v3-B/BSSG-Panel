@@ -83,7 +83,9 @@ describe("servers.updateNetwork", () => {
       restart: true,
     });
     const toml = files(proxy).get("/velocity.toml")!;
-    expect(toml).toContain('lobby = "127.0.0.1:34201"\nsurvival = "203.0.113.10:34202"\ntry = ["lobby", "survival"]');
+    // Op het gedeelde netwerk van de proxy: containernaam + poort (ook voor een allocation op 127.0.0.1).
+    expect(toml).toContain(`lobby = "panel-${lobby}:34201"\nsurvival = "panel-${survival}:34202"\ntry = ["lobby", "survival"]`);
+    expect(h.daemon.proxyNetworks.get(proxy)).toEqual([lobby, survival]);
     expect(toml).toContain('player-info-forwarding-mode = "modern"');
     expect(toml).toContain("# keep this comment");
     const secret = (await alice.api.servers.get({ uuid: proxy })).variables.find((v) => v.key === "VELOCITY_FORWARDING_SECRET")!.value;
@@ -133,8 +135,32 @@ describe("servers.updateNetwork", () => {
     expect(env.VELOCITY_FORWARDING).toBe("false");
     expect(env.VELOCITY_SECRET).toBe("");
     const toml = files(proxy).get("/velocity.toml")!;
-    expect(toml).toContain('main = "127.0.0.1:34201"\ntry = ["main"]');
+    expect(toml).toContain(`main = "panel-${lobby}:34201"\ntry = ["main"]`);
     expect(toml).not.toContain("survival =");
+    expect(h.daemon.proxyNetworks.get(proxy)).toEqual([lobby]);
+    expect((await alice.api.servers.get({ uuid: survival })).network.role).toBe("none");
+  });
+
+  it("daemon zonder PUT /network (oude versie): adressen via de host, zoals vroeger", async () => {
+    h.daemon.proxyNetworkUnsupported = true;
+    try {
+      await alice.api.servers.updateNetwork({ uuid: proxy, members: [{ serverUuid: lobby, name: "main", isDefault: true }, { serverUuid: survival, name: "survival", isDefault: false }], restart: false });
+      expect(files(proxy).get("/velocity.toml")!).toContain('main = "127.0.0.1:34201"\nsurvival = "203.0.113.10:34202"');
+    } finally {
+      h.daemon.proxyNetworkUnsupported = false;
+    }
+    await alice.api.servers.updateNetwork({ uuid: proxy, members: [{ serverUuid: lobby, name: "main", isDefault: true }], restart: false });
+    expect(files(proxy).get("/velocity.toml")!).toContain(`main = "panel-${lobby}:34201"\ntry = ["main"]`);
+  });
+
+  it("geen subnetten meer / andere daemonfout: niets opgeslagen", async () => {
+    h.daemon.override = (r) => (r.path === `/api/servers/${proxy}/network` ? { status: 500, body: { error: "internal", message: "no free /26 subnet left" } } : undefined);
+    try {
+      await expect(alice.api.servers.updateNetwork({ uuid: proxy, members: [{ serverUuid: survival, name: "survival", isDefault: true }], restart: false })).rejects.toThrow();
+    } finally {
+      h.daemon.override = null;
+    }
+    expect(files(proxy).get("/velocity.toml")!).toContain(`main = "panel-${lobby}:34201"\ntry = ["main"]`);
     expect((await alice.api.servers.get({ uuid: survival })).network.role).toBe("none");
   });
 

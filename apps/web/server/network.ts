@@ -80,19 +80,41 @@ export async function serverNetwork(b: ServerBundle): Promise<ServerNetwork> {
   return p ? { role: "backend", members: [], proxy: p, connectAddress: null } : NONE;
 }
 
+/** Adres van een backend op het gedeelde Docker-netwerk van de proxy (containernaam + primaire poort). */
+export const containerAddress = (b: ServerBundle): string | null => (b.allocations[0] ? `panel-${b.server.uuid}:${b.allocations[0].port}` : null);
+
+/**
+ * Zet het gedeelde netwerk (panel-net-<proxy>) op de node van de proxy voor de leden op die node
+ * en geeft per lid (uuid) het adres voor velocity.toml: op dat netwerk de containernaam (werkt
+ * ook voor een allocation op 127.0.0.1 en zonder publiek IP), anders het allocation-adres via de
+ * host (leden op een andere node, of een daemon die PUT /network nog niet kent).
+ * Andere daemonfouten worden doorgegeven.
+ */
+export async function memberAddresses(proxy: ServerBundle, members: ServerBundle[]): Promise<Map<string, string | null>> {
+  const local = members.filter((b) => b.node.id === proxy.node.id && b.allocations[0]);
+  let shared = false;
+  try {
+    await daemonFor(proxy.node).setProxyNetwork(proxy.server.uuid, local.map((b) => b.server.uuid));
+    shared = true;
+  } catch (e) {
+    if (!(e instanceof DaemonHttpError && e.status === 404)) throw e;
+  }
+  const out = new Map<string, string | null>();
+  for (const b of members) out.set(b.server.uuid, shared && local.includes(b) ? containerAddress(b) : await allocationAddress(b));
+  return out;
+}
+
 /**
  * Schrijft de adressen van alle leden van een proxy opnieuw in velocity.toml (bijvoorbeeld nadat een
- * backend naar een andere node is verplaatst). Een draaiende proxy krijgt `velocity reload`.
- * Geeft de uuid van de proxy terug als er iets is bijgewerkt, anders null.
+ * backend of de proxy naar een andere node is verplaatst). Een draaiende proxy krijgt `velocity reload`.
+ * Geeft true als velocity.toml is bijgewerkt.
  */
-export async function syncProxyAddresses(backend: ServerBundle): Promise<string | null> {
-  const [link] = await getDb().select({ proxyId: schema.networkMembers.proxyServerId }).from(schema.networkMembers).where(eq(schema.networkMembers.backendServerId, backend.server.id));
-  if (!link) return null;
-  const [proxy] = await fetchServers(eq(schema.servers.id, link.proxyId));
-  if (!proxy) return null;
+export async function rewriteProxyToml(proxy: ServerBundle): Promise<boolean> {
+  const members = await proxyMembers(proxy.server.id);
+  const addrs = await memberAddresses(proxy, members.map((x) => x.b));
   const list: Array<{ name: string; address: string }> = [];
-  for (const { m, b } of await proxyMembers(proxy.server.id)) {
-    const address = await allocationAddress(b);
+  for (const { m, b } of members) {
+    const address = addrs.get(b.server.uuid);
     if (!address) throw new Error(`no address for ${b.server.name}`);
     list.push({ name: m.name, address });
   }
@@ -101,7 +123,7 @@ export async function syncProxyAddresses(backend: ServerBundle): Promise<string 
   try {
     toml = await d.readFile(proxy.server.uuid, "/velocity.toml");
   } catch (e) {
-    if (e instanceof DaemonHttpError && e.status === 404) return null;
+    if (e instanceof DaemonHttpError && e.status === 404) return false;
     throw e;
   }
   await call(() => d.writeFile(proxy.server.uuid, "/velocity.toml", applyNetworkToml(toml, list)));
@@ -111,5 +133,14 @@ export async function syncProxyAddresses(backend: ServerBundle): Promise<string 
   } catch {
     // niet bereikbaar: geldt bij de volgende start
   }
-  return proxy.server.uuid;
+  return true;
+}
+
+/** Werkt velocity.toml bij van de proxy waar backend bij hoort. Geeft de uuid van die proxy, of null. */
+export async function syncProxyAddresses(backend: ServerBundle): Promise<string | null> {
+  const [link] = await getDb().select({ proxyId: schema.networkMembers.proxyServerId }).from(schema.networkMembers).where(eq(schema.networkMembers.backendServerId, backend.server.id));
+  if (!link) return null;
+  const [proxy] = await fetchServers(eq(schema.servers.id, link.proxyId));
+  if (!proxy) return null;
+  return (await rewriteProxyToml(proxy)) ? proxy.server.uuid : null;
 }
