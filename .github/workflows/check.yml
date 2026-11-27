@@ -32,5 +32,9 @@ jobs:
       # doen hetzelfde, dus als root met de toolchain van de setup-acties in PATH.
       - run: sudo -E env "PATH=$PATH" "HOME=$HOME" make check
 
+      # Na sudo zijn store en werkmap van root; de cache-stap van setup-node moet ze weer kunnen lezen.
+      - if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$(pnpm store path)" "$GITHUB_WORKSPACE" "$HOME/.cache" 2>/dev/null || true
+
       - if: failure()
         run: sudo docker ps -a --filter label=panel.test=true --format '{{.Names}} {{.Status}}' | head -50
