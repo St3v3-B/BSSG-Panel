@@ -170,7 +170,7 @@ describe("zonder facturatie", () => {
   it("pakketlimieten voor databases en backups", async () => {
     const [sub] = await alice.api.billing.subscriptions();
     const srv = (await serverRow(sub!.server!.uuid))!;
-    const [host] = await getDb().select().from(schema.databaseHosts);
+    const [host] = await getDb().insert(schema.databaseHosts).values({ name: "plan-test", host: "127.0.0.1", adminUser: "x", adminPasswordEnc: "x" }).returning();
     const ins = (name: string) => (tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0]) =>
       tx.insert(schema.databases).values({ serverId: srv.id, hostId: host!.id, name, username: name, passwordEnc: "x" }).returning().then((r) => r[0]!);
     await reserveDatabase(alice.id, ins("plan_db1"), srv.id);
@@ -183,6 +183,7 @@ describe("zonder facturatie", () => {
     await expect(alice.api.backups.create({ uuid: srv.uuid })).rejects.toThrow(/PLAN_LIMIT: backups/);
     await getDb().delete(schema.backups).where(eq(schema.backups.serverId, srv.id));
     await getDb().delete(schema.databases).where(eq(schema.databases.serverId, srv.id));
+    await getDb().delete(schema.databaseHosts).where(eq(schema.databaseHosts.id, host!.id));
   });
 
   it("admin kent een pakket gratis toe (ook verborgen pakketten); gebruiker zegt op en verwijdert", async () => {
