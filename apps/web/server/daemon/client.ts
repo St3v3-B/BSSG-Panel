@@ -2,6 +2,7 @@
  * Client voor de node-daemon (packages/api/openapi.yaml). Eén instantie per node.
  * Netwerkfout of timeout → DaemonUnreachableError; HTTP-fout → DaemonHttpError.
  */
+import { openAsBlob } from "node:fs";
 import type { DaemonFileEntry, DaemonRoute, DaemonRouteWithStatus, DaemonServerSpec, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
 
 export class DaemonUnreachableError extends Error {
@@ -144,6 +145,31 @@ export class DaemonClient {
   }
   decompress(uuid: string, path: string) {
     return this.request<void>("POST", `/api/servers/${uuid}/files/decompress`, { path }, 300_000);
+  }
+
+  /** Multipart upload of one local file to a directory of the server, with a (one-time) transfer JWT. */
+  async uploadFile(uuid: string, directory: string, token: string, name: string, localFile: string, timeoutMs = 900_000): Promise<void> {
+    const form = new FormData();
+    form.append("files", await openAsBlob(localFile), name);
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/api/servers/${uuid}/files/upload?${new URLSearchParams({ directory, token })}`, { method: "POST", body: form, signal: AbortSignal.timeout(timeoutMs), cache: "no-store" });
+    } catch (e) {
+      throw new DaemonUnreachableError(this.nodeId, e);
+    }
+    const text = await res.text().catch(() => "");
+    if (res.ok) return;
+    let code = `http_${res.status}`;
+    let message = text.slice(0, 500);
+    try {
+      const j = JSON.parse(text) as { error?: string; message?: string };
+      if (j.error) code = j.error;
+      if (j.message) message = j.message;
+    } catch {
+      /* no JSON */
+    }
+    if (res.status === 502 || res.status === 503 || res.status === 504) throw new DaemonUnreachableError(this.nodeId, new Error(`${res.status} ${message}`));
+    throw new DaemonHttpError(res.status, code, message || code);
   }
 
   // ---------- routes (web) ----------

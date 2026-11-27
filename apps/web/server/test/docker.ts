@@ -2,7 +2,7 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { promisify } from "node:util";
-import { reapStale } from "./docker-pg";
+import { AGENT, reapStale } from "./docker-pg";
 
 const run = promisify(execFile);
 export const docker = async (...args: string[]) => (await run("docker", args, { timeout: 180_000 })).stdout.trim();
@@ -15,12 +15,12 @@ export interface TestContainer {
 
 export async function startContainer(o: { image: string; port: number; env?: Record<string, string>; args?: string[]; ready: (id: string) => Promise<void>; timeoutMs?: number }): Promise<TestContainer> {
   await reapStale().catch(() => {});
-  const instance = `panel-api-${process.pid}-${randomBytes(3).toString("hex")}`;
+  const instance = `${AGENT}-${process.pid}-${randomBytes(3).toString("hex")}`;
   const id = await docker(
     "run", "-d", "--rm",
     "--label", "panel.test=true",
     "--label", `panel.instance=${instance}`,
-    "--label", "panel.agent=panel-api",
+    "--label", `panel.agent=${AGENT}`,
     "--label", `panel.api.pid=${process.pid}`,
     "--name", instance,
     ...Object.entries(o.env ?? {}).flatMap(([k, v]) => ["-e", `${k}=${v}`]),

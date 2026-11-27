@@ -6,7 +6,7 @@ import { logActivity } from "../activity";
 import { getDb, schema } from "../db";
 import { decrypt, encrypt, randomToken } from "../lib/crypto";
 import { createDatabase, dropDatabase, setPassword, testHost } from "../lib/mariadb";
-import { requireServer } from "../servers-data";
+import { requireServer, type ServerAccess } from "../servers-data";
 import type { Ctx } from "@panel/api";
 
 type HostRow = typeof schema.databaseHosts.$inferSelect;
@@ -55,6 +55,41 @@ async function defaultHost(nodeId: number): Promise<HostRow> {
   return h;
 }
 
+/** Creates a database + user on a host and records it (shared by `databases.create` and the app installer). */
+export async function createServerDatabase(ctx: Ctx, a: ServerAccess, uuid: string, baseName: string, hostId: number | null) {
+  let host: HostRow;
+  if (hostId) {
+    const [h] = await getDb().select().from(schema.databaseHosts).where(eq(schema.databaseHosts.id, hostId));
+    if (!h) throw new TRPCError({ code: "NOT_FOUND", message: "DATABASE_HOST_NOT_FOUND" });
+    host = h;
+  } else host = await defaultHost(a.bundle.node.id);
+  const short = uuid.slice(0, 8);
+  const name = `s${short}_${baseName}`;
+  const username = `u${short}_${randomToken(6).replace(/[^A-Za-z0-9]/g, "x").slice(0, 7)}`;
+  const password = newPassword();
+  const [dup] = await getDb().select({ id: schema.databases.id }).from(schema.databases).where(and(eq(schema.databases.hostId, host.id), eq(schema.databases.name, name)));
+  if (dup) throw new TRPCError({ code: "CONFLICT", message: "DATABASE_EXISTS" });
+  try {
+    await createDatabase(host, name, username, password);
+  } catch (e) {
+    if ((e as { errno?: number }).errno === 1007) throw new TRPCError({ code: "CONFLICT", message: "DATABASE_EXISTS" });
+    throw mariaError(e);
+  }
+  const [row] = await getDb()
+    .insert(schema.databases)
+    .values({ serverId: a.bundle.server.id, hostId: host.id, name, username, passwordEnc: encrypt(password) })
+    .returning();
+  await logActivity({ action: "server.database.create", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { name, hostId: host.id }, ip: ctx.ip, ctx });
+  return toDatabase(row!, host, uuid);
+}
+
+export async function removeServerDatabase(id: number): Promise<void> {
+  const [r] = await getDb().select({ d: schema.databases, h: schema.databaseHosts }).from(schema.databases).innerJoin(schema.databaseHosts, eq(schema.databaseHosts.id, schema.databases.hostId)).where(eq(schema.databases.id, id));
+  if (!r) return;
+  await dropDatabase(r.h, r.d.name, r.d.username);
+  await getDb().delete(schema.databases).where(eq(schema.databases.id, id));
+}
+
 export const databases: Implementation["databases"] = {
   list: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "database.manage");
@@ -69,30 +104,7 @@ export const databases: Implementation["databases"] = {
 
   create: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "database.manage", { mutates: true });
-    let host: HostRow;
-    if (input.hostId) {
-      const [h] = await getDb().select().from(schema.databaseHosts).where(eq(schema.databaseHosts.id, input.hostId));
-      if (!h) throw new TRPCError({ code: "NOT_FOUND", message: "DATABASE_HOST_NOT_FOUND" });
-      host = h;
-    } else host = await defaultHost(a.bundle.node.id);
-    const short = input.uuid.slice(0, 8);
-    const name = `s${short}_${input.name}`;
-    const username = `u${short}_${randomToken(6).replace(/[^A-Za-z0-9]/g, "x").slice(0, 7)}`;
-    const password = newPassword();
-    const [dup] = await getDb().select({ id: schema.databases.id }).from(schema.databases).where(and(eq(schema.databases.hostId, host.id), eq(schema.databases.name, name)));
-    if (dup) throw new TRPCError({ code: "CONFLICT", message: "DATABASE_EXISTS" });
-    try {
-      await createDatabase(host, name, username, password);
-    } catch (e) {
-      if ((e as { errno?: number }).errno === 1007) throw new TRPCError({ code: "CONFLICT", message: "DATABASE_EXISTS" });
-      throw mariaError(e);
-    }
-    const [row] = await getDb()
-      .insert(schema.databases)
-      .values({ serverId: a.bundle.server.id, hostId: host.id, name, username, passwordEnc: encrypt(password) })
-      .returning();
-    await logActivity({ action: "server.database.create", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { name, hostId: host.id }, ip: ctx.ip, ctx });
-    return toDatabase(row!, host, input.uuid);
+    return createServerDatabase(ctx, a, input.uuid, input.name, input.hostId);
   },
 
   resetPassword: async ({ input, ctx }) => {

@@ -7,13 +7,15 @@ import { randomBytes } from "node:crypto";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
+/** Label/name prefix of this test run; agents set TEST_AGENT to keep their own containers apart. */
+export const AGENT = process.env.TEST_AGENT ?? "panel-api";
 const docker = async (...args: string[]) => (await run("docker", args, { timeout: 120_000 })).stdout.trim();
 
 export async function reapStale(): Promise<void> {
-  const out = await docker("ps", "-a", "--filter", "label=panel.test=true", "--filter", "label=panel.agent=panel-api", "--format", '{{.ID}} {{.Label "panel.instance"}} {{.Label "panel.api.pid"}}');
+  const out = await docker("ps", "-a", "--filter", "label=panel.test=true", "--filter", `label=panel.agent=${AGENT}`, "--format", '{{.ID}} {{.Label "panel.instance"}} {{.Label "panel.api.pid"}}');
   for (const line of out.split("\n").filter(Boolean)) {
     const [id, instance, pid] = line.split(" ");
-    if (!id || !instance?.startsWith("panel-api-") || !pid) continue;
+    if (!id || !instance?.startsWith(`${AGENT}-`) || !pid) continue;
     let alive = true;
     try {
       process.kill(Number(pid), 0);
@@ -32,12 +34,12 @@ export interface TestPg {
 
 export async function startPostgres(): Promise<TestPg> {
   await reapStale().catch(() => {});
-  const instance = `panel-api-${process.pid}-${randomBytes(3).toString("hex")}`;
+  const instance = `${AGENT}-${process.pid}-${randomBytes(3).toString("hex")}`;
   const id = await docker(
     "run", "-d", "--rm",
     "--label", "panel.test=true",
     "--label", `panel.instance=${instance}`,
-    "--label", "panel.agent=panel-api",
+    "--label", `panel.agent=${AGENT}`,
     "--label", `panel.api.pid=${process.pid}`,
     "--name", instance,
     "--tmpfs", "/var/lib/postgresql/data",
