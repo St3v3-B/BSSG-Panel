@@ -61,6 +61,7 @@ export function createMock(): Implementation {
     content: [] as Array<s.InstalledContent & { serverUuid: string }>,
     subusers: [] as Array<{ serverUuid: string; userId: number; permissions: s.Permission[]; createdAt: Date }>,
     apiKeys: [] as s.ApiKey[],
+    phpSettings: new Map<string, s.PhpSettings>(),
     admins: ["100000000000000001"],
     settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 } } as s.Settings,
     totpEnabled: new Map<number, boolean>([[1, true]]),
@@ -400,7 +401,7 @@ export function createMock(): Implementation {
       list: ({ input }) => db.schedules.filter((x) => x.serverUuid === input.uuid),
       create: ({ input }) => {
         const { uuid, ...rest } = input;
-        const x: s.Schedule = { id: id(), serverUuid: uuid, ...rest, lastRunAt: null, nextRunAt: new Date(Date.now() + 86_400_000), lastResult: null };
+        const x: s.Schedule = { id: id(), serverUuid: uuid, ...rest, lastRunAt: null, nextRunAt: new Date(Date.now() + 86_400_000), lastResult: null, lastOutput: null };
         db.schedules.push(x);
         return x;
       },
@@ -412,6 +413,14 @@ export function createMock(): Implementation {
       },
       delete: ({ input }) => ((db.schedules = db.schedules.filter((x) => x.id !== input.id)), ok),
       runNow: () => ok,
+    },
+    siteSettings: {
+      php: ({ input }) => {
+        srv(input.uuid);
+        const defaults: s.PhpSettings = { memoryLimitMb: 256, uploadMaxMb: 64, maxExecutionTime: 120, maxInputVars: 3000, displayErrors: false, timezone: "Europe/Amsterdam", opcache: true, disabledExtensions: [] };
+        return { settings: db.phpSettings.get(input.uuid) ?? defaults, defaults, managed: db.phpSettings.has(input.uuid), ramLimitMb: 1024, extensions: ["gd", "intl", "exif", "mysqli"] };
+      },
+      updatePhp: ({ input }) => (db.phpSettings.set(input.uuid, input.settings), ok),
     },
     subusers: {
       list: ({ input }) => db.subusers.filter((x) => x.serverUuid === input.uuid).map((x) => ({ user: user(x.userId), permissions: x.permissions, createdAt: x.createdAt })),
