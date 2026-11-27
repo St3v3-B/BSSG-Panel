@@ -66,9 +66,9 @@ describe("velocity.toml", () => {
 });
 
 describe("servers.updateNetwork", () => {
-  it("kandidaten: alleen eigen paper-servers, fabric (geen forwarding-variabelen) niet", async () => {
+  it("kandidaten: eigen paper- en fabric-servers (met forwarding-variabelen), geen proxies", async () => {
     const c = await alice.api.servers.networkCandidates({ uuid: proxy });
-    expect(c.map((x) => x.uuid).sort()).toEqual([lobby, survival].sort());
+    expect(c.map((x) => x.uuid).sort()).toEqual([lobby, survival, fab].sort());
     expect(c.find((x) => x.uuid === lobby)).toMatchObject({ suggestedName: "lobby-server", address: "127.0.0.1:34201", takenBy: null });
     expect(c.find((x) => x.uuid === survival)!.address).toBe("203.0.113.10:34202");
     expect((await admin.api.servers.networkCandidates({ uuid: proxy })).map((x) => x.uuid)).toContain(bobs);
@@ -131,7 +131,7 @@ describe("servers.updateNetwork", () => {
     await expect(alice.api.servers.updateNetwork({ uuid: proxy, members: m(bobs), restart: false })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(bob.api.servers.updateNetwork({ uuid: proxy, members: [], restart: false })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(alice.api.servers.updateNetwork({ uuid: lobby, members: [], restart: false })).rejects.toMatchObject({ message: "NOT_A_PROXY" });
-    await expect(alice.api.servers.updateNetwork({ uuid: proxy, members: m(fab), restart: false })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(alice.api.servers.updateNetwork({ uuid: proxy, members: m(await create("Proxy 3", alice, "velocity", 34206)), restart: false })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(alice.api.servers.updateNetwork({ uuid: proxy, members: m(survival, "Bad Name"), restart: false })).rejects.toThrow();
     await expect(alice.api.servers.updateNetwork({ uuid: proxy, members: m(survival, "x", false), restart: false })).rejects.toMatchObject({ message: "NETWORK_NEEDS_ONE_DEFAULT" });
     await expect(alice.api.servers.networkCandidates({ uuid: lobby })).rejects.toMatchObject({ message: "NOT_A_PROXY" });
