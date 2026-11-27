@@ -115,6 +115,8 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /api/servers/{uuid}/files/delete", p(a.withServer(a.deleteFiles)))
 	mux.Handle("POST /api/servers/{uuid}/files/compress", p(a.withServer(a.compress)))
 	mux.Handle("POST /api/servers/{uuid}/files/decompress", p(a.withServer(a.decompress)))
+	mux.Handle("GET /api/servers/{uuid}/transfer/export", p(a.withServer(a.exportData)))
+	mux.Handle("PUT /api/servers/{uuid}/transfer/import", p(a.withServer(a.importData)))
 	mux.HandleFunc("POST /api/servers/{uuid}/files/upload", a.cors(a.upload))
 	mux.HandleFunc("GET /api/servers/{uuid}/files/download", a.cors(a.download))
 	mux.HandleFunc("OPTIONS /api/servers/{uuid}/files/upload", a.cors(preflight))

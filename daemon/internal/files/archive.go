@@ -348,3 +348,40 @@ func (x *extractor) zipEntry(zf *zip.File) error {
 	}
 	return nil
 }
+
+// ExportTar schrijft de hele datamap als niet-gecomprimeerde tar (voor het verplaatsen van een
+// server naar een andere node). Symlinks blijven symlinks; sockets en devices worden overgeslagen.
+func (r *Root) ExportTar(w io.Writer) error {
+	names, err := readNames(r.Dir)
+	if err != nil {
+		return err
+	}
+	root, err := r.rootFD()
+	if err != nil {
+		return err
+	}
+	defer unix.Close(root)
+	tw := tar.NewWriter(w)
+	for _, n := range names {
+		if err := addTree(tw, root, n, n, "", n, 0); err != nil {
+			return err
+		}
+	}
+	return tw.Close()
+}
+
+func readNames(dir string) ([]string, error) {
+	d, err := os.Open(dir)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer d.Close()
+	return d.Readdirnames(-1)
+}
+
+// ImportTar pakt een tar-stroom (zoals ExportTar maakt) uit in de datamap, met dezelfde
+// veiligheidsregels als Decompress.
+func (r *Root) ImportTar(rd io.Reader, budget Budget) error {
+	x := &extractor{r: r, dir: ".", budget: budget}
+	return x.tar(rd)
+}
