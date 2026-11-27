@@ -15,7 +15,7 @@ const ok = { ok: true as const };
 export function installCommand(n: Pick<NodeRow, "fqdn" | "daemonPort" | "sftpPort">, token: string): string {
   const env = getEnv();
   return [
-    `# Op ${n.fqdn}, als root, in een checkout van de panel-repository:`,
+    `# On ${n.fqdn}, as root, in a checkout of the panel repository:`,
     `sudo PANEL_URL='${env.PANEL_URL}' NODE_DOMAIN='${n.fqdn}' NODE_TOKEN='${token}' DAEMON_PORT='${n.daemonPort}' SFTP_PORT='${n.sftpPort}' \\`,
     `  deploy/install.sh --non-interactive`,
   ].join("\n");
@@ -23,7 +23,7 @@ export function installCommand(n: Pick<NodeRow, "fqdn" | "daemonPort" | "sftpPor
 
 const uniqueErr = (e: unknown) => {
   const c = (e as { cause?: { code?: string }; code?: string }).cause?.code ?? (e as { code?: string }).code;
-  if (c === "23505") return new TRPCError({ code: "CONFLICT", message: "NODE_EXISTS: naam of fqdn bestaat al" });
+  if (c === "23505") return new TRPCError({ code: "CONFLICT", message: "NODE_EXISTS: name or fqdn already exists" });
   return e;
 };
 
@@ -75,7 +75,7 @@ export const nodeMutations: Pick<Implementation["admin"]["nodes"], "create" | "u
 
   regenerateToken: async ({ input, ctx }) => {
     const n = await nodeById(input.id);
-    if (n.isLocal) throw new TRPCError({ code: "BAD_REQUEST", message: "LOCAL_NODE: het token staat in panel.env (NODE_TOKEN)" });
+    if (n.isLocal) throw new TRPCError({ code: "BAD_REQUEST", message: "LOCAL_NODE: the token is in panel.env (NODE_TOKEN)" });
     const t = newToken();
     await getDb().update(schema.nodes).set({ tokenHash: t.tokenHash, tokenEnc: t.tokenEnc }).where(eq(schema.nodes.id, n.id));
     await logActivity({ action: "admin.node.regenerate_token", userId: ctx.session!.userId, metadata: { id: n.id }, ip: ctx.ip, ctx });

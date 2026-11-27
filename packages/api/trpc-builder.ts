@@ -85,7 +85,7 @@ function build(def: Record<string, unknown>, impl: Record<string, unknown>, path
     const p = path ? `${path}.${key}` : key;
     const handler = impl?.[key];
     if (isProc(node)) {
-      if (typeof handler !== "function") throw new Error(`implementatie ontbreekt voor ${p}`);
+      if (typeof handler !== "function") throw new Error(`implementation missing for ${p}`);
       const access = node.access;
       const proc = t.procedure
         .use(({ ctx, next }) => {

@@ -65,8 +65,8 @@ type Sleep struct {
 
 // Standaardteksten van de slaapstand.
 const (
-	DefaultSleepMOTD = "Server slaapt - verbind om hem te starten"
-	DefaultSleepKick = "De server wordt gestart, verbind over een minuut opnieuw."
+	DefaultSleepMOTD = "Server is sleeping - join to start it"
+	DefaultSleepKick = "The server is starting, please reconnect in a minute."
 )
 
 // Texts geeft motd en kick_message met standaardwaarden.
@@ -114,35 +114,35 @@ func (s *ServerSpec) Validate() error {
 	var errs []string
 	add := func(f string, a ...any) { errs = append(errs, fmt.Sprintf(f, a...)) }
 	if !ValidUUID(s.UUID) {
-		add("uuid ongeldig")
+		add("uuid invalid")
 	}
 	if s.Type != "game" && s.Type != "web" {
-		add("type moet game of web zijn")
+		add("type must be game or web")
 	}
 	if strings.TrimSpace(s.Image) == "" {
-		add("image ontbreekt")
+		add("image missing")
 	}
 	if strings.TrimSpace(s.Startup) == "" {
-		add("startup ontbreekt")
+		add("startup missing")
 	}
 	switch s.Stop.Type {
 	case "command":
 		if s.Stop.Value == "" {
-			add("stop.value ontbreekt")
+			add("stop.value missing")
 		}
 	case "signal":
 		if !signals[s.Stop.Value] {
-			add("stop.value moet SIGTERM, SIGINT, SIGKILL of SIGQUIT zijn")
+			add("stop.value must be SIGTERM, SIGINT, SIGKILL or SIGQUIT")
 		}
 	default:
-		add("stop.type moet command of signal zijn")
+		add("stop.type must be command or signal")
 	}
 	if _, err := regexp.Compile(s.ReadyPattern); err != nil {
 		add("ready_pattern: %v", err)
 	}
 	for k := range s.Environment {
 		if !envKeyRe.MatchString(k) {
-			add("environment: ongeldige sleutel %q", k)
+			add("environment: invalid key %q", k)
 		}
 	}
 	l := s.Limits
@@ -163,10 +163,10 @@ func (s *ServerSpec) Validate() error {
 	}
 	for i, a := range s.Allocations {
 		if ip := net.ParseIP(a.IP); ip == nil || ip.To4() == nil {
-			add("allocations[%d].ip ongeldig", i)
+			add("allocations[%d].ip invalid", i)
 		}
 		if a.Port < 1 || a.Port > 65535 {
-			add("allocations[%d].port ongeldig", i)
+			add("allocations[%d].port invalid", i)
 		}
 	}
 	seen := map[string]bool{}
@@ -182,30 +182,30 @@ func (s *ServerSpec) Validate() error {
 			add("sleep alleen voor game")
 		}
 		if s.Sleep.IdleMinutes < 1 || s.Sleep.IdleMinutes > 1440 {
-			add("sleep.idle_minutes moet tussen 1 en 1440 liggen")
+			add("sleep.idle_minutes must be between 1 and 1440")
 		}
 		if len(s.Allocations) == 0 {
-			add("sleep vereist een allocation")
+			add("sleep requires an allocation")
 		}
 		if len(s.Sleep.MOTD) > 256 || len(s.Sleep.KickMessage) > 256 {
 			add("sleep: motd/kick_message te lang")
 		}
 	}
 	if s.Type == "web" && len(s.Allocations) > 0 {
-		add("web heeft geen allocations")
+		add("web has no allocations")
 	}
 	if s.HTTPPort != nil && (*s.HTTPPort < 1 || *s.HTTPPort > 65535) {
-		add("http_port ongeldig")
+		add("http_port invalid")
 	}
 	if strings.TrimSpace(s.Install.Image) == "" {
-		add("install.image ontbreekt")
+		add("install.image missing")
 	}
 	if strings.TrimSpace(s.Install.Script) == "" {
-		add("install.script ontbreekt")
+		add("install.script missing")
 	}
 	for i, f := range s.ConfigFiles {
 		if f.Format != "properties" && f.Format != "yaml" && f.Format != "json" && f.Format != "toml" {
-			add("config_files[%d].format ongeldig", i)
+			add("config_files[%d].format invalid", i)
 		}
 		if _, err := CleanRel(f.Path); err != nil {
 			add("config_files[%d].path: %v", i, err)

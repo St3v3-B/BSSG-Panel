@@ -67,9 +67,9 @@ export const TemplateSpec = z
   .superRefine((t, ctx) => {
     for (const v of t.variables) {
       if ((BUILTIN_VARIABLES as readonly string[]).includes(v.key))
-        ctx.addIssue({ code: "custom", message: `${v.key} is ingebouwd en mag niet als variabele`, path: ["variables"] });
+        ctx.addIssue({ code: "custom", message: `${v.key} is built in and may not be defined as a variable`, path: ["variables"] });
     }
-    if (t.type === "web" && !t.http_port) ctx.addIssue({ code: "custom", message: "web-templates hebben http_port nodig", path: ["http_port"] });
+    if (t.type === "web" && !t.http_port) ctx.addIssue({ code: "custom", message: "web templates require http_port", path: ["http_port"] });
   });
 
 export type TemplateSpec = z.infer<typeof TemplateSpec>;

@@ -13,22 +13,22 @@ const port = (def: number) =>
     if (v === undefined) return def;
     const n = Number(v);
     if (!Number.isInteger(n) || n < 1 || n > 65535) {
-      ctx.addIssue({ code: "custom", message: `ongeldige poort: ${v}` });
+      ctx.addIssue({ code: "custom", message: `invalid port: ${v}` });
       return z.NEVER;
     }
     return n;
   });
-const required = z.string({ error: "ontbreekt" }).trim().min(1, "ontbreekt");
-const domain = required.regex(/^[a-z0-9.-]+$/i, "ongeldig domein").transform((d) => d.toLowerCase());
+const required = z.string({ error: "missing" }).trim().min(1, "missing");
+const domain = required.regex(/^[a-z0-9.-]+$/i, "invalid domain").transform((d) => d.toLowerCase());
 
 const EnvSchema = z
   .object({
     PANEL_DOMAIN: domain,
     NODE_DOMAIN: domain,
-    OWNER_DISCORD_ID: required.regex(/^\d{15,21}$/, "geen Discord-ID"),
+    OWNER_DISCORD_ID: required.regex(/^\d{15,21}$/, "not a Discord ID"),
     DISCORD_CLIENT_ID: required,
     DISCORD_CLIENT_SECRET: required,
-    PANEL_ENCRYPTION_KEY: required.refine((k) => Buffer.from(k, "base64").length === 32, "moet 32 bytes base64 zijn"),
+    PANEL_ENCRYPTION_KEY: required.refine((k) => Buffer.from(k, "base64").length === 32, "must be 32 bytes of base64"),
     NODE_TOKEN: required.min(16, "te kort"),
     NODE_PUBLIC_IP: optional,
     MARIADB_ROOT_PASSWORD: optional,
@@ -61,11 +61,11 @@ let cached: Env | null = null;
 export function parseEnv(source: Record<string, string | undefined> = process.env): Env {
   const r = EnvSchema.safeParse(source);
   if (!r.success) {
-    throw new EnvError(`ongeldige omgeving: ${r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
+    throw new EnvError(`invalid environment: ${r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`);
   }
   const env = r.data;
   if (env.PANEL_INSECURE_TEST_LOGIN && !env.isTestDomain) {
-    throw new EnvError("PANEL_INSECURE_TEST_LOGIN=1 mag alleen met een PANEL_DOMAIN op .test; het panel start niet");
+    throw new EnvError("PANEL_INSECURE_TEST_LOGIN=1 is only allowed with a PANEL_DOMAIN ending in .test; the panel will not start");
   }
   return env;
 }

@@ -21,9 +21,9 @@ import (
 const MaxPacket = 2048
 
 var (
-	ErrVarInt   = errors.New("mcproto: ongeldige VarInt")
+	ErrVarInt   = errors.New("mcproto: invalid VarInt")
 	ErrTooLarge = errors.New("mcproto: pakket te groot")
-	ErrBadPkt   = errors.New("mcproto: ongeldig pakket")
+	ErrBadPkt   = errors.New("mcproto: invalid packet")
 )
 
 // ReadVarInt leest een VarInt (max 5 bytes).

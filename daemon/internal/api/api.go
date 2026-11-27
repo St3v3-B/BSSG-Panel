@@ -120,9 +120,9 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("OPTIONS /api/servers/{uuid}/files/upload", a.cors(preflight))
 	mux.HandleFunc("OPTIONS /api/servers/{uuid}/files/download", a.cors(preflight))
 
-	// Fase 4: nog niet geïmplementeerd.
+	// Fase 4: not implemented yet.
 	ni := func(w http.ResponseWriter, _ *http.Request) {
-		writeErr(w, http.StatusNotImplemented, "not_implemented", "nog niet geïmplementeerd")
+		writeErr(w, http.StatusNotImplemented, "not_implemented", "not implemented yet")
 	}
 	mux.Handle("POST /api/servers/{uuid}/backups", p(ni))
 	mux.Handle("POST /api/servers/{uuid}/backups/{backup_id}/restore", p(ni))
@@ -133,7 +133,7 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("DELETE /api/routes/{host}", p(a.removeRoute))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
-		writeErr(w, http.StatusNotFound, "not_found", "onbekend pad")
+		writeErr(w, http.StatusNotFound, "not_found", "unknown path")
 	})
 	return recoverer(a.log, mux)
 }
@@ -146,7 +146,7 @@ func recoverer(log *slog.Logger, h http.Handler) http.Handler {
 					panic(v)
 				}
 				log.Error("panic in handler", "path", r.URL.Path, "panic", v)
-				writeErr(w, http.StatusInternalServerError, "internal", "interne fout")
+				writeErr(w, http.StatusInternalServerError, "internal", "internal error")
 			}
 		}()
 		h.ServeHTTP(w, r)
@@ -159,7 +159,7 @@ func (a *API) protect(h http.HandlerFunc) http.Handler {
 		hdr := r.Header.Get("Authorization")
 		tok, ok := strings.CutPrefix(hdr, "Bearer ")
 		if !ok || !auth.TokenEqual(strings.TrimSpace(tok), a.opt.NodeToken) {
-			writeErr(w, http.StatusUnauthorized, "unauthorized", "node-token ontbreekt of is ongeldig")
+			writeErr(w, http.StatusUnauthorized, "unauthorized", "node token missing or invalid")
 			return
 		}
 		h(w, r)
@@ -172,7 +172,7 @@ func (a *API) withServer(h serverHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s, ok := a.mgr.Get(r.PathValue("uuid"))
 		if !ok {
-			writeErr(w, http.StatusNotFound, "not_found", "server onbekend op deze node")
+			writeErr(w, http.StatusNotFound, "not_found", "server unknown on this node")
 			return
 		}
 		h(w, r, s)
@@ -182,7 +182,7 @@ func (a *API) withServer(h serverHandler) http.HandlerFunc {
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec := json.NewDecoder(io.LimitReader(r.Body, 4<<20))
 	if err := dec.Decode(v); err != nil {
-		writeErr(w, http.StatusBadRequest, "bad_request", "ongeldige JSON: "+err.Error())
+		writeErr(w, http.StatusBadRequest, "bad_request", "invalid JSON: "+err.Error())
 		return false
 	}
 	return true
@@ -252,7 +252,7 @@ func (a *API) updateServer(w http.ResponseWriter, r *http.Request, s *server.Ser
 	}
 	sp.UUID = strings.ToLower(sp.UUID)
 	if sp.UUID != s.UUID() {
-		writeErr(w, http.StatusBadRequest, "bad_request", "uuid in body wijkt af van het pad")
+		writeErr(w, http.StatusBadRequest, "bad_request", "uuid in body differs from the path")
 		return
 	}
 	if err := sp.Validate(); err != nil {
@@ -296,7 +296,7 @@ func (a *API) power(w http.ResponseWriter, r *http.Request, s *server.Server) {
 		return
 	}
 	if !powerActions[body.Action] {
-		writeErr(w, http.StatusBadRequest, "bad_request", "action moet start, stop, restart of kill zijn")
+		writeErr(w, http.StatusBadRequest, "bad_request", "action must be start, stop, restart or kill")
 		return
 	}
 	if err := s.Power(body.Action); err != nil {
@@ -319,7 +319,7 @@ func (a *API) commands(w http.ResponseWriter, r *http.Request, s *server.Server)
 	}
 	for _, c := range body.Commands {
 		if len(c) > 2000 || strings.ContainsAny(c, "\r\n") {
-			writeErr(w, http.StatusBadRequest, "bad_request", "commando te lang of bevat een regeleinde")
+			writeErr(w, http.StatusBadRequest, "bad_request", "command too long or contains a line break")
 			return
 		}
 	}
@@ -337,7 +337,7 @@ func (a *API) logs(w http.ResponseWriter, r *http.Request, s *server.Server) {
 	if v := r.URL.Query().Get("lines"); v != "" {
 		i, err := strconv.Atoi(v)
 		if err != nil || i < 1 || i > 500 {
-			writeErr(w, http.StatusBadRequest, "bad_request", "lines moet tussen 1 en 500 liggen")
+			writeErr(w, http.StatusBadRequest, "bad_request", "lines must be between 1 and 500")
 			return
 		}
 		n = i

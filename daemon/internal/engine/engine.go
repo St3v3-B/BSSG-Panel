@@ -10,7 +10,7 @@ import (
 )
 
 // ErrNotFound: de container bestaat niet.
-var ErrNotFound = errors.New("engine: container niet gevonden")
+var ErrNotFound = errors.New("engine: container not found")
 
 // Mount is een bind mount.
 type Mount struct {

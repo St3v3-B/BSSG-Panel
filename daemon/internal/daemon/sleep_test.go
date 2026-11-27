@@ -142,7 +142,7 @@ func TestSleepMode(t *testing.T) {
 	players.Store(0)
 	ws.next("poort bezet", 10*time.Second, func(m map[string]any) bool {
 		l, _ := m["line"].(string)
-		return m["event"] == "daemon_message" && m["level"] == "warning" && strings.Contains(l, "bezet")
+		return m["event"] == "daemon_message" && m["level"] == "warning" && strings.Contains(l, "in use")
 	})
 	h.waitState(u1, "offline", 2*time.Second)
 }
@@ -196,7 +196,7 @@ func TestRealDockerSleep(t *testing.T) {
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	waitFor(t, "listener", 10*time.Second, func() bool { _, err := mcproto.Ping(context.Background(), addr); return err == nil })
 	players.Store(1)
-	if msg := mcLogin(t, addr); !strings.Contains(msg, "gestart") {
+	if msg := mcLogin(t, addr); !strings.Contains(msg, "starting") {
 		t.Fatal(msg)
 	}
 	h.waitState(u, "online", 30*time.Second)

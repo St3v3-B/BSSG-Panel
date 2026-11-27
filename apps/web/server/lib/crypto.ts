@@ -11,7 +11,7 @@ export function encrypt(plain: string, key: Buffer = getEnv().encryptionKey): st
 
 export function decrypt(enc: string, key: Buffer = getEnv().encryptionKey): string {
   const [v, ivB64, ctB64] = enc.split(":");
-  if (v !== "v1" || !ivB64 || !ctB64) throw new Error("onbekend versleutelformaat");
+  if (v !== "v1" || !ivB64 || !ctB64) throw new Error("unknown encryption format");
   const iv = Buffer.from(ivB64, "base64");
   const all = Buffer.from(ctB64, "base64");
   const d = createDecipheriv("aes-256-gcm", key, iv);

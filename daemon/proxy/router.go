@@ -79,7 +79,7 @@ type RouteStatus struct {
 }
 
 // ErrNotFound: de hostnaam heeft geen route.
-var ErrNotFound = errors.New("proxy: route niet gevonden")
+var ErrNotFound = errors.New("proxy: route not found")
 
 // Router beheert de dynamische routes in Caddy. De vaste routes (panel en
 // daemon-subdomein) staan in de Caddy-basisconfig en vallen hierbuiten: een

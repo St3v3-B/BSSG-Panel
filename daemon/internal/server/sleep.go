@@ -76,7 +76,7 @@ func (s *Server) checkIdle() {
 }
 
 func (s *Server) goToSleep(minutes int) {
-	s.DaemonMessage("info", fmt.Sprintf("Geen spelers sinds %d min: de server gaat slapen.", minutes))
+	s.DaemonMessage("info", fmt.Sprintf("No players for %d min: the server is going to sleep.", minutes))
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	err := s.doStop(false)
@@ -85,7 +85,7 @@ func (s *Server) goToSleep(minutes int) {
 	sleeping := s.state == StateSleeping
 	s.mu.Unlock()
 	if err != nil {
-		s.m.log.Warn("stoppen voor slaapstand mislukt", "uuid", s.uuid, "err", err)
+		s.m.log.Warn("stopping for sleep mode failed", "uuid", s.uuid, "err", err)
 	}
 	if sleeping {
 		s.startSleepListener()
@@ -130,8 +130,8 @@ func (s *Server) startSleepListener() {
 		case <-time.After(500 * time.Millisecond): // docker-proxy laat de poort soms net later los
 		}
 	}
-	s.m.log.Warn("slaapstand: poort binden mislukt", "uuid", s.uuid, "addr", addr, "err", lastErr)
-	s.DaemonMessage("warning", "Slaapstand: poort "+addr+" is bezet; de server staat uit en wordt niet automatisch gewekt.")
+	s.m.log.Warn("sleep mode: binding port failed", "uuid", s.uuid, "addr", addr, "err", lastErr)
+	s.DaemonMessage("warning", "Sleep mode: port "+addr+" is in use; the server is off and will not be woken automatically.")
 	s.mu.Lock()
 	if s.state == StateSleeping {
 		s.setStateLocked(StateOffline)
@@ -155,9 +155,9 @@ func (s *Server) wake() {
 	if s.State() != StateSleeping {
 		return
 	}
-	s.DaemonMessage("info", "Verbindingspoging: de server wordt gewekt.")
+	s.DaemonMessage("info", "Connection attempt: waking the server.")
 	if err := s.Power("start"); err != nil {
-		s.m.log.Warn("wekken mislukt", "uuid", s.uuid, "err", err)
+		s.m.log.Warn("waking failed", "uuid", s.uuid, "err", err)
 	}
 }
 

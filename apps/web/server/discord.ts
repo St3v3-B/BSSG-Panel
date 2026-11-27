@@ -78,7 +78,7 @@ async function fetchProfile(code: string): Promise<DiscordProfile> {
   });
   if (!tok.ok) throw new Error(`discord token ${tok.status}`);
   const { access_token } = (await tok.json()) as { access_token?: string };
-  if (!access_token) throw new Error("discord gaf geen access_token");
+  if (!access_token) throw new Error("discord returned no access_token");
   const me = await fetch(`${DISCORD_API}/users/@me`, { headers: { authorization: `Bearer ${access_token}` }, signal: AbortSignal.timeout(10_000) });
   if (!me.ok) throw new Error(`discord /users/@me ${me.status}`);
   const u = (await me.json()) as DiscordUser;
@@ -111,7 +111,7 @@ export async function finishLogin(req: Request): Promise<Response> {
   try {
     profile = await fetchProfile(code);
   } catch (e) {
-    console.error("[auth] discord-login mislukt:", e);
+    console.error("[auth] discord login failed:", e);
     return fail("discord");
   }
   const r = await loginWithProfile(profile, req, "discord");

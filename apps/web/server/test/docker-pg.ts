@@ -63,7 +63,7 @@ export async function startPostgres(): Promise<TestPg> {
         await new Promise((r) => setTimeout(r, 300));
       }
     }
-    if (okCount < 2) throw new Error("postgres start niet");
+    if (okCount < 2) throw new Error("postgres does not start");
     return { url: `postgres://postgres:test@127.0.0.1:${port}/panel`, instance, stop };
   } catch (e) {
     await stop();

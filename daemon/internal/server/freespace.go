@@ -52,14 +52,14 @@ func (m *Manager) FreeWatch(interval time.Duration, statfs func(string) (int64, 
 			}
 		}
 		if worst == nil {
-			m.log.Warn("minder dan 5% vrije schijf, geen draaiende server om te stoppen", "free", free, "total", total)
+			m.log.Warn("less than 5% free disk, no running server to stop", "free", free, "total", total)
 			continue
 		}
-		m.log.Warn("minder dan 5% vrije schijf: server gestopt", "uuid", worst.uuid, "growth", growth)
+		m.log.Warn("less than 5% free disk: server stopped", "uuid", worst.uuid, "growth", growth)
 		worst.mu.Lock()
 		worst.diskStopping = true
 		worst.publishLocked(Msg{"event": "daemon_message", "level": "error",
-			"line": fmt.Sprintf("De schijf van de node is bijna vol (%d%% vrij); deze server groeide het snelst en wordt gestopt.", free*100/total)})
+			"line": fmt.Sprintf("The node's disk is almost full (%d%% free); this server grew fastest and is being stopped.", free*100/total)})
 		worst.mu.Unlock()
 		lastStop = time.Now()
 		go worst.stopForDisk()

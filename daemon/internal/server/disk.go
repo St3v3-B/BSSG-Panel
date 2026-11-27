@@ -11,7 +11,7 @@ import (
 )
 
 // ErrDiskExceeded: de softe disk-limiet is bereikt (API: 507 bij schrijven, 409 bij start).
-var ErrDiskExceeded = errors.New("disk-limiet van de server bereikt")
+var ErrDiskExceeded = errors.New("server disk limit reached")
 
 // Root geeft veilige toegang tot de data-map.
 func (s *Server) Root() *files.Root {
@@ -121,7 +121,7 @@ func (s *Server) evaluateDiskLocked() bool {
 			if s.state == StateDiskExceeded {
 				s.setStateLocked(StateOffline)
 			}
-			s.publishLocked(Msg{"event": "daemon_message", "level": "info", "line": "Schijfgebruik weer onder de limiet; de server kan starten."})
+			s.publishLocked(Msg{"event": "daemon_message", "level": "info", "line": "Disk usage is back under the limit; the server can start."})
 		}
 		if limit <= 0 || n*100 < limit*85 {
 			s.diskWarned = false
@@ -133,7 +133,7 @@ func (s *Server) evaluateDiskLocked() bool {
 	if n*10 >= limit*9 && !s.diskWarned {
 		s.diskWarned = true
 		s.publishLocked(Msg{"event": "daemon_message", "level": "warning",
-			"line": fmt.Sprintf("Schijfgebruik %d van %d MB (%d%%). Bij 100%% wordt de server gestopt.", mb(n), mb(limit), n*100/limit)})
+			"line": fmt.Sprintf("Disk usage %d of %d MB (%d%%). At 100%% the server will be stopped.", mb(n), mb(limit), n*100/limit)})
 	}
 	if n <= limit {
 		return false
@@ -141,7 +141,7 @@ func (s *Server) evaluateDiskLocked() bool {
 	if !s.diskExceeded {
 		s.diskExceeded = true
 		s.publishLocked(Msg{"event": "daemon_message", "level": "error",
-			"line": fmt.Sprintf("Disk-limiet overschreden (%d van %d MB): server wordt gestopt en schrijven is geblokkeerd.", mb(n), mb(limit))})
+			"line": fmt.Sprintf("Disk limit exceeded (%d of %d MB): the server is being stopped and writing is blocked.", mb(n), mb(limit))})
 	}
 	if s.run != nil {
 		if s.diskStopping {
@@ -160,7 +160,7 @@ func (s *Server) stopForDisk() {
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
 	if err := s.doStop(false); err != nil && s.ctx.Err() == nil {
-		s.m.log.Warn("stoppen wegens disk mislukt", "uuid", s.uuid, "err", err)
+		s.m.log.Warn("stopping due to disk failed", "uuid", s.uuid, "err", err)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

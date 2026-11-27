@@ -15,7 +15,7 @@ export function base32Decode(s: string): Buffer {
   let bits = "";
   for (const c of s.replace(/=+$/, "").replace(/\s+/g, "").toUpperCase()) {
     const i = ALPHABET.indexOf(c);
-    if (i < 0) throw new Error("ongeldige base32");
+    if (i < 0) throw new Error("invalid base32");
     bits += i.toString(2).padStart(5, "0");
   }
   const bytes: number[] = [];

@@ -73,7 +73,7 @@ type Daemon struct {
 	closeOnce sync.Once
 }
 
-// DiskQuotaMode: harde XFS-quota zijn nog niet geïmplementeerd (alleen gedetecteerd en gelogd).
+// DiskQuotaMode: harde XFS-quota zijn not implemented yet (alleen gedetecteerd en gelogd).
 const DiskQuotaMode = "soft"
 
 // New bouwt de daemon; Start zet hem aan.
@@ -156,7 +156,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 	d.mgr.ReconcileNetworks(ctx)
 	if err := d.routes.Sync(ctx); err != nil {
-		d.log.Warn("routes synchroniseren mislukt", "err", err)
+		d.log.Warn("syncing routes failed", "err", err)
 		d.needSync.Store(true)
 	}
 
@@ -189,7 +189,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 
 	if server.DetectXFSPrjquota(filepath.Join(d.cfg.DataDir, "volumes")) {
-		d.log.Warn("XFS met prjquota gedetecteerd; harde quota zijn nog niet geïmplementeerd, de daemon gebruikt de softe limiet")
+		d.log.Warn("XFS met prjquota gedetecteerd; harde quota zijn not implemented yet, de daemon gebruikt de softe limiet")
 	}
 	fi := d.deps.FreeInterval
 	if fi == 0 {
@@ -209,7 +209,7 @@ func listenUnix(p string) (net.Listener, error) {
 	}
 	if fi, err := os.Lstat(p); err == nil {
 		if fi.Mode()&os.ModeSocket == 0 {
-			return nil, errors.New("bestaat al en is geen socket")
+			return nil, errors.New("already exists and is not a socket")
 		}
 		_ = os.Remove(p)
 	}
@@ -229,7 +229,7 @@ func (d *Daemon) serve(ln net.Listener, h http.Handler) {
 	d.httpSrv = append(d.httpSrv, srv)
 	go func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			d.log.Error("http-server gestopt", "err", err)
+			d.log.Error("http server stopped", "err", err)
 		}
 	}()
 }
@@ -248,7 +248,7 @@ func (d *Daemon) routerLoop() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
 		if err := d.routes.Sync(ctx); err != nil {
-			d.log.Warn("routes synchroniseren mislukt", "why", why, "err", err)
+			d.log.Warn("syncing routes failed", "why", why, "err", err)
 			d.needSync.Store(true)
 			return
 		}

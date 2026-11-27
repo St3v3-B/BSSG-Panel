@@ -72,7 +72,7 @@ async function runBoot(): Promise<void> {
   const t = await loadTemplatesFromDir(env.TEMPLATES_DIR);
   for (const e of t.errors) console.warn(`[boot] template overgeslagen: ${e}`);
   if (t.inserted.length || t.updated.length) console.info(`[boot] templates nieuw: ${t.inserted.join(", ") || "-"}; bijgewerkt: ${t.updated.join(", ") || "-"}`);
-  if (env.PANEL_INSECURE_TEST_LOGIN) console.warn("[boot] PANEL_INSECURE_TEST_LOGIN staat aan (alleen voor tests)");
+  if (env.PANEL_INSECURE_TEST_LOGIN) console.warn("[boot] PANEL_INSECURE_TEST_LOGIN is enabled (tests only)");
 }
 
 export async function boot(): Promise<void> {

@@ -6,7 +6,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
 export async function runMigrations(url = process.env.DATABASE_URL) {
-  if (!url) throw new Error("DATABASE_URL ontbreekt");
+  if (!url) throw new Error("DATABASE_URL is missing");
   const client = postgres(url, { max: 1, onnotice: () => {} });
   try {
     await migrate(drizzle(client), { migrationsFolder: join(dirname(fileURLToPath(import.meta.url)), "migrations") });

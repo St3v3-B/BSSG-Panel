@@ -62,7 +62,7 @@ export async function nodeIp(node: NodeRef): Promise<string> {
   const c = ipCache.get(node.id);
   if (c && c.until > Date.now()) return c.ip;
   const [ip] = await dns().a(node.fqdn);
-  if (!ip) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NODE_IP_UNKNOWN: zet NODE_PUBLIC_IP" });
+  if (!ip) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NODE_IP_UNKNOWN: set NODE_PUBLIC_IP" });
   ipCache.set(node.id, { ip, until: Date.now() + 10 * 60_000 });
   return ip;
 }

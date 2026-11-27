@@ -71,7 +71,7 @@ export async function loadTemplatesFromDir(dir: string): Promise<TemplateLoadRes
         continue;
       }
       if (parsed.spec.type !== kind) {
-        res.errors.push(`${kind}/${f}: type ${parsed.spec.type} hoort niet in ${kind}/`);
+        res.errors.push(`${kind}/${f}: type ${parsed.spec.type} does not belong in ${kind}/`);
         continue;
       }
       const r = await upsertTemplate(parsed.spec, yaml);

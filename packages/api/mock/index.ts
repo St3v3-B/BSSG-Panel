@@ -122,7 +122,7 @@ export function createMock(): Implementation {
   const pageOf = <T>(items: T[], limit: number) => ({ items: items.slice(0, limit), nextCursor: items.length > limit ? String(limit) : null });
   const signed = (path: string) => ({ url: `https://node1.test${path}?token=mock`, expiresAt: new Date(Date.now() + 10 * 60_000) });
   const database = (dbId: number, serverUuid: string, name: string): s.Database => ({
-    id: dbId, serverUuid, hostId: 1, hostName: "mariadb", host: "203.0.113.10", port: 3306, name: `s${dbId}_${name}`, username: `u${dbId}_${name}`.slice(0, 32), password: "mock-wachtwoord", adminerUrl: "https://adminer.test",
+    id: dbId, serverUuid, hostId: 1, hostName: "mariadb", host: "203.0.113.10", port: 3306, name: `s${dbId}_${name}`, username: `u${dbId}_${name}`.slice(0, 32), password: "mock-password", adminerUrl: "https://adminer.test",
   });
   const databases: s.Database[] = [database(1, data.servers[2]!.uuid, "wordpress")];
 
@@ -132,7 +132,7 @@ export function createMock(): Implementation {
       branding: () => ({ panelName: db.settings.panelName, logoUrl: db.settings.logoUrl, accentColor: db.settings.accentColor }),
       discordLoginUrl: () => ({ url: "/?mock-login=1" }),
       verifyTotp: ({ input }) => {
-        if (input.code !== "123456") throw new TRPCError({ code: "BAD_REQUEST", message: "INVALID_CODE (mock: gebruik 123456)" });
+        if (input.code !== "123456") throw new TRPCError({ code: "BAD_REQUEST", message: "INVALID_CODE (mock: use 123456)" });
         return ok;
       },
       emergencyLogin: () => ok,
@@ -142,7 +142,7 @@ export function createMock(): Implementation {
       get: ({ ctx }) => me(ctx.session!),
       totpSetup: () => ({ secret: "JBSWY3DPEHPK3PXP", otpauthUrl: "otpauth://totp/Blokgenoten%20Panel:steve?secret=JBSWY3DPEHPK3PXP&issuer=Blokgenoten%20Panel" }),
       totpEnable: ({ input, ctx }) => {
-        if (input.code !== "123456") throw new TRPCError({ code: "BAD_REQUEST", message: "INVALID_CODE (mock: gebruik 123456)" });
+        if (input.code !== "123456") throw new TRPCError({ code: "BAD_REQUEST", message: "INVALID_CODE (mock: use 123456)" });
         db.totpEnabled.set(uid(ctx), true);
         return ok;
       },
@@ -233,7 +233,7 @@ export function createMock(): Implementation {
       },
       resetPassword: ({ input }) => {
         const x = databases.find((y) => y.id === input.id) ?? notFound("database");
-        x.password = "nieuw-mock-wachtwoord";
+        x.password = "nieuw-mock-password";
         return x;
       },
       delete: () => ok,
@@ -271,7 +271,7 @@ export function createMock(): Implementation {
       invite: ({ input }) => {
         let u = db.users.find((x) => x.discordId === input.who || x.name === input.who);
         if (!u) {
-          if (!/^\d{15,21}$/.test(input.who)) throw new TRPCError({ code: "NOT_FOUND", message: "onbekende gebruikersnaam" });
+          if (!/^\d{15,21}$/.test(input.who)) throw new TRPCError({ code: "NOT_FOUND", message: "unknown username" });
           u = { id: id(), discordId: input.who, name: null, avatarUrl: null };
           db.users.push(u);
         }
@@ -289,7 +289,7 @@ export function createMock(): Implementation {
     admin: {
       dashboard: () => ({
         nodes: db.nodes.map(nodeHealth),
-        alerts: [{ kind: "install_failed", message: "Installatie van blokgenoten.test loopt nog", at: new Date(), serverUuid: data.servers[2]!.uuid, nodeId: 1 }],
+        alerts: [{ kind: "install_failed", message: "Installation of blokgenoten.test is still running", at: new Date(), serverUuid: data.servers[2]!.uuid, nodeId: 1 }],
         serverCount: db.servers.length,
         userCount: db.users.length,
       }),
@@ -375,7 +375,7 @@ export function createMock(): Implementation {
         list: () => db.templates.map(({ yaml: _y, variables: _v, ...t }) => t),
         get: ({ input }) => db.templates.find((t) => t.id === input.id) ?? notFound("template"),
         create: ({ input }) => {
-          const t: s.TemplateDetail = { id: id(), slug: `mock-${db.nextId}`, name: "Nieuwe template", type: "game", version: 1, description: null, serverCount: 0, yaml: input.yaml, variables: [] };
+          const t: s.TemplateDetail = { id: id(), slug: `mock-${db.nextId}`, name: "New template", type: "game", version: 1, description: null, serverCount: 0, yaml: input.yaml, variables: [] };
           db.templates.push(t);
           return t;
         },

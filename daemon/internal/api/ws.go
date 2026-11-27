@@ -73,7 +73,7 @@ func (a *API) websocket(w http.ResponseWriter, r *http.Request) {
 		CheckOrigin:     a.checkOrigin,
 	}
 	if !a.checkOrigin(r) {
-		writeErr(w, http.StatusForbidden, "forbidden", "origin niet toegestaan")
+		writeErr(w, http.StatusForbidden, "forbidden", "origin not allowed")
 		return
 	}
 	conn, err := up.Upgrade(w, r, nil)
@@ -169,13 +169,13 @@ func (s *session) reader() {
 		if err != nil {
 			var ne net.Error
 			if errors.As(err, &ne) && ne.Timeout() && !s.authed() {
-				_ = s.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(CloseAuthTimeout, "geen auth binnen 10 s"), time.Now().Add(2*time.Second))
+				_ = s.conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(CloseAuthTimeout, "no auth within 10 s"), time.Now().Add(2*time.Second))
 			}
 			return
 		}
 		var in wsIn
 		if err := json.Unmarshal(data, &in); err != nil {
-			s.sub.Send(msg(server.Msg{"event": "error", "message": "ongeldige JSON"}))
+			s.sub.Send(msg(server.Msg{"event": "error", "message": "invalid JSON"}))
 			continue
 		}
 		if in.Event == "auth" {
@@ -194,11 +194,11 @@ func (s *session) reader() {
 		switch in.Event {
 		case "send_command":
 			if !claims.Has("console.write") {
-				s.sub.Send(msg(server.Msg{"event": "error", "message": "recht console.write ontbreekt"}))
+				s.sub.Send(msg(server.Msg{"event": "error", "message": "permission console.write missing"}))
 				continue
 			}
 			if in.Command == "" || len(in.Command) > 2000 || strings.ContainsAny(in.Command, "\r\n") {
-				s.sub.Send(msg(server.Msg{"event": "error", "message": "ongeldig commando"}))
+				s.sub.Send(msg(server.Msg{"event": "error", "message": "invalid command"}))
 				continue
 			}
 			if err := srv.SendCommand(in.Command); err != nil {
@@ -206,11 +206,11 @@ func (s *session) reader() {
 			}
 		case "set_state":
 			if !claims.Has("power") {
-				s.sub.Send(msg(server.Msg{"event": "error", "message": "recht power ontbreekt"}))
+				s.sub.Send(msg(server.Msg{"event": "error", "message": "permission power missing"}))
 				continue
 			}
 			if !powerActions[in.State] {
-				s.sub.Send(msg(server.Msg{"event": "error", "message": "state moet start, stop, restart of kill zijn"}))
+				s.sub.Send(msg(server.Msg{"event": "error", "message": "state must be start, stop, restart or kill"}))
 				continue
 			}
 			if err := srv.Power(in.State); err != nil {
@@ -219,7 +219,7 @@ func (s *session) reader() {
 		case "request_stats":
 			s.sub.Send(srv.StatsMessage())
 		default:
-			s.sub.Send(msg(server.Msg{"event": "error", "message": "onbekend event " + in.Event}))
+			s.sub.Send(msg(server.Msg{"event": "error", "message": "unknown event " + in.Event}))
 		}
 	}
 }
@@ -231,12 +231,12 @@ func (s *session) auth(token string) bool {
 	claims, err := s.a.jwt.Verify(ctx, token)
 	if err != nil {
 		s.a.log.Debug("ws: token afgewezen", "err", err)
-		s.sub.Close(CloseTokenInvalid, "token ongeldig")
+		s.sub.Close(CloseTokenInvalid, "token invalid")
 		return false
 	}
 	srv, ok := s.a.mgr.Get(s.uuid)
 	if !ok {
-		s.sub.Close(CloseUnknown, "server onbekend")
+		s.sub.Close(CloseUnknown, "server unknown")
 		return false
 	}
 	if !strings.EqualFold(claims.ServerUUID, srv.UUID()) {
@@ -244,13 +244,13 @@ func (s *session) auth(token string) bool {
 		return false
 	}
 	if !claims.Has("console.read") {
-		s.sub.Close(CloseNoConsole, "recht console.read ontbreekt")
+		s.sub.Close(CloseNoConsole, "permission console.read missing")
 		return false
 	}
 	s.mu.Lock()
 	if s.claims != nil && s.claims.Subject != claims.Subject {
 		s.mu.Unlock()
-		s.sub.Close(CloseTokenInvalid, "token hoort bij een andere gebruiker")
+		s.sub.Close(CloseTokenInvalid, "token belongs to another user")
 		return false
 	}
 	s.claims = claims
@@ -279,7 +279,7 @@ func (s *session) auth(token string) bool {
 	success := msg(server.Msg{"event": "auth_success", "permissions": perms})
 	if first {
 		if !srv.Subscribe(s.sub, success) {
-			s.sub.Close(CloseUnknown, "server onbekend")
+			s.sub.Close(CloseUnknown, "server unknown")
 			return false
 		}
 	} else {

@@ -78,7 +78,7 @@ describe("serverinstellingen", () => {
     const base = await loadServer(GAME);
     const server = { ...base, variables: [{ ...base.variables[0]!, pattern: "^(latest|\\d+\\.\\d+(\\.\\d+)?)$" }] };
     const { bodies } = renderWithTrpc(<VariablesCard server={server} />, { session: sessionFor("admin") });
-    const input = screen.getByLabelText("Minecraft-versie");
+    const input = screen.getByLabelText("Minecraft version");
     fireEvent.change(input, { target: { value: "nieuw" } });
     expect(screen.getByText(/patroon/)).toBeTruthy();
     expect((screen.getByRole("button", { name: /Variabelen opslaan/ }) as HTMLButtonElement).disabled).toBe(true);

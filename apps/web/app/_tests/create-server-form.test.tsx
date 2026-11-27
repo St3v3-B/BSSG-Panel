@@ -27,7 +27,7 @@ describe("CreateServerForm", () => {
     expect((await screen.findByTestId("selected-owner")).textContent).toContain("123456789012345678");
 
     // template-variabele met patroon
-    const version = await screen.findByLabelText("Minecraft-versie");
+    const version = await screen.findByLabelText("Minecraft version");
     expect((version as HTMLInputElement).value).toBe("latest");
     fireEvent.change(version, { target: { value: "geen versie" } });
 
@@ -67,8 +67,8 @@ describe("CreateServerForm", () => {
     fireEvent.click(await screen.findByRole("option", { name: /blokgenoot/ }));
     fireEvent.click(screen.getByRole("button", { name: "Website" }));
     const web = await screen.findByTestId("web-templates");
-    fireEvent.click(within(web).getByRole("radio", { name: /Statische site/ }));
-    expect(within(web).getByRole("radio", { name: /Statische site/ }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(within(web).getByRole("radio", { name: /Static site/ }));
+    expect(within(web).getByRole("radio", { name: /Static site/ }).getAttribute("aria-checked")).toBe("true");
     await waitFor(() => expect(screen.queryByTestId("allocations")).toBeNull());
     submit();
     await waitFor(() => expect(onCreated).toHaveBeenCalled());

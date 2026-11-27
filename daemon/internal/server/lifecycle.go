@@ -140,7 +140,7 @@ func (s *Server) Power(action string) error {
 			return &StateError{st, "installatie loopt"}
 		}
 		if st == StateInstallFailed {
-			return &StateError{st, "installatie is mislukt; installeer opnieuw"}
+			return &StateError{st, "installation failed; reinstall"}
 		}
 		if s.DiskExceeded() {
 			s.measureDisk() // misschien is er intussen opgeruimd
@@ -153,7 +153,7 @@ func (s *Server) Power(action string) error {
 			return &StateError{st, "installatie loopt"}
 		}
 	default:
-		return fmt.Errorf("onbekende actie %q", action)
+		return fmt.Errorf("unknown action %q", action)
 	}
 	go func() {
 		s.opMu.Lock()
@@ -172,8 +172,8 @@ func (s *Server) Power(action string) error {
 			}
 		}
 		if err != nil && s.ctx.Err() == nil {
-			s.m.log.Warn("power mislukt", "uuid", s.uuid, "action", action, "err", err)
-			s.DaemonMessage("error", fmt.Sprintf("%s mislukt: %v", action, err))
+			s.m.log.Warn("power action failed", "uuid", s.uuid, "action", action, "err", err)
+			s.DaemonMessage("error", fmt.Sprintf("%s failed: %v", action, err))
 		}
 	}()
 	return nil
@@ -270,7 +270,7 @@ func (s *Server) attachRun(id string, att engine.Attachment, startedAt time.Time
 		defer close(logsDone)
 		rc, err := s.m.eng.Logs(runCtx, id, true)
 		if err != nil {
-			s.m.log.Warn("logs volgen mislukt", "uuid", s.uuid, "err", err)
+			s.m.log.Warn("following logs failed", "uuid", s.uuid, "err", err)
 			return
 		}
 		defer rc.Close()
@@ -304,7 +304,7 @@ func (s *Server) attachRun(id string, att engine.Attachment, startedAt time.Time
 				s.setStateLocked(StateOffline)
 			}
 			if !wasStopping && (code != 0 || err != nil) {
-				s.publishLocked(Msg{"event": "daemon_message", "level": "warning", "line": fmt.Sprintf("server gestopt met exitcode %d", code)})
+				s.publishLocked(Msg{"event": "daemon_message", "level": "warning", "line": fmt.Sprintf("server stopped with exit code %d", code)})
 			}
 		}
 		s.mu.Unlock()
@@ -368,20 +368,20 @@ func (s *Server) doStop(kill bool) error {
 			case <-s.ctx.Done():
 				return s.ctx.Err()
 			case <-time.After(s.m.cfg.StopTimeout):
-				s.DaemonMessage("warning", "server stopt niet op tijd; wordt gekilld")
+				s.DaemonMessage("warning", "server did not stop in time; it will be killed")
 			}
 		}
 	} else {
 		s.setState(StateStopping)
 	}
 	if err := eng.Kill(s.ctx, r.id, "SIGKILL"); err != nil && !errors.Is(err, engine.ErrNotFound) {
-		s.m.log.Warn("kill mislukt", "uuid", s.uuid, "err", err)
+		s.m.log.Warn("kill failed", "uuid", s.uuid, "err", err)
 	}
 	select {
 	case <-r.done:
 		return nil
 	case <-time.After(30 * time.Second):
-		return errors.New("container stopt niet")
+		return errors.New("container does not stop")
 	}
 }
 
@@ -400,7 +400,7 @@ func (s *Server) Reinstall() error {
 		s.opMu.Lock()
 		defer s.opMu.Unlock()
 		if err := s.doStop(false); err != nil {
-			s.m.log.Warn("stoppen voor herinstallatie mislukt", "uuid", s.uuid, "err", err)
+			s.m.log.Warn("stopping for reinstall failed", "uuid", s.uuid, "err", err)
 		}
 		s.doInstall(false)
 	}()
@@ -448,7 +448,7 @@ func (s *Server) doInstall(startAfter bool) {
 	}
 	s.persist()
 	if err != nil {
-		s.installLine("installatie mislukt: " + err.Error())
+		s.installLine("installation failed: " + err.Error())
 		s.m.rep.ReportInstall(s.uuid, false, err.Error())
 		return
 	}
@@ -457,7 +457,7 @@ func (s *Server) doInstall(startAfter bool) {
 	go s.measureDisk()
 	if startAfter {
 		if err := s.doStart(); err != nil {
-			s.DaemonMessage("error", "starten na installatie mislukt: "+err.Error())
+			s.DaemonMessage("error", "starten na installation failed: "+err.Error())
 		}
 	}
 }
@@ -508,7 +508,7 @@ func (s *Server) runInstall(ctx context.Context, sp spec.ServerSpec) error {
 		return err
 	}
 	if code != 0 {
-		return fmt.Errorf("install-script eindigde met exitcode %d", code)
+		return fmt.Errorf("install script exited with code %d", code)
 	}
 	return nil
 }
@@ -544,7 +544,7 @@ func (s *Server) Update(sp spec.ServerSpec) error {
 	}
 	if r != nil {
 		if err := s.m.eng.Update(s.ctx, r.id, resources(sp.Limits)); err != nil {
-			s.m.log.Warn("limieten bijwerken mislukt", "uuid", s.uuid, "err", err)
+			s.m.log.Warn("updating limits failed", "uuid", s.uuid, "err", err)
 		}
 	}
 	return nil

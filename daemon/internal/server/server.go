@@ -28,10 +28,10 @@ const (
 
 // Fouten die de API vertaalt naar statuscodes.
 var (
-	ErrNotFound     = errors.New("server niet gevonden")
-	ErrExists       = errors.New("server bestaat al met een andere spec")
-	ErrInvalidState = errors.New("kan niet in deze staat")
-	ErrNotRunning   = errors.New("server draait niet")
+	ErrNotFound     = errors.New("server not found")
+	ErrExists       = errors.New("server already exists with a different spec")
+	ErrInvalidState = errors.New("not possible in this state")
+	ErrNotRunning   = errors.New("server is not running")
 )
 
 // StateError draagt een toelichting bij ErrInvalidState.
@@ -196,7 +196,7 @@ func (s *Server) persist() {
 		return
 	}
 	if err := s.persistLocked(); err != nil {
-		s.m.log.Error("staat opslaan mislukt", "uuid", s.uuid, "err", err)
+		s.m.log.Error("saving state failed", "uuid", s.uuid, "err", err)
 	}
 }
 
@@ -228,7 +228,7 @@ func (s *Server) setStateLocked(st string) {
 	s.state = st
 	if (old == StateSleeping || st == StateSleeping) && !s.deleted {
 		if err := s.persistLocked(); err != nil {
-			s.m.log.Warn("staat opslaan mislukt", "uuid", s.uuid, "err", err)
+			s.m.log.Warn("saving state failed", "uuid", s.uuid, "err", err)
 		}
 	}
 	s.publishLocked(Msg{"event": "status", "state": st})

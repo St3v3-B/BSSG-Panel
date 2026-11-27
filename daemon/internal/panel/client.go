@@ -117,7 +117,7 @@ func (c *Client) retry(ctx context.Context, what string, fn func(context.Context
 			return nil
 		}
 		if !retryable(err) || time.Now().Add(wait).After(deadline) {
-			c.Log.Warn("panel-aanroep mislukt", "call", what, "err", err)
+			c.Log.Warn("panel call failed", "call", what, "err", err)
 			return err
 		}
 		c.Log.Debug("panel-aanroep, opnieuw", "call", what, "err", err, "wait", wait)
