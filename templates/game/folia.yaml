@@ -6,11 +6,11 @@ description: >-
   servers with many players spread across the world. Many Paper plugins do not work on Folia
   (only plugins with `folia-supported: true`). Pick a version or `latest`; the installer
   fetches the jar via the PaperMC API and verifies the SHA-256. Java 25, heap = RAM limit minus
-  15% (at least 384 MB). Behind Velocity: same as Paper (`VELOCITY_FORWARDING` + `VELOCITY_SECRET`).
+  max(25%, 512 MB), at least 512 MB heap; recommended minimum: 1.5 GB RAM. Behind Velocity: same as Paper (`VELOCITY_FORWARDING` + `VELOCITY_SECRET`).
 type: game
-version: 3
+version: 4
 image: eclipse-temurin:25-jre
-# Heap: SERVER_MEMORY min 15% (minstens 384 MB) voor metaspace, threads, netty-buffers en
+# Heap: SERVER_MEMORY min max(25%, 512 MB), heap minstens 512 MB; direct memory en code cache begrensd voor metaspace, threads, netty-buffers en
 # /tmp (tmpfs, telt mee); met 80% werd Paper 1.21.x bij 1280 MB door de cgroup OOM-killed.
 # Flags: Aikar/PaperMC-aanbevolen G1-instellingen (zonder AlwaysPreTouch, zodat een
 # server niet bij de start meteen zijn hele heap vastlegt).
@@ -20,10 +20,11 @@ image: eclipse-temurin:25-jre
 # VELOCITY_FORWARDING=false komt de eigen waarde vanzelf terug.
 startup: >-
   if [ "{{VELOCITY_FORWARDING}}" = true ]; then sed -i 's/^online-mode=.*/online-mode=false/' server.properties; fi &&
-  HEADROOM=$(( {{SERVER_MEMORY}} * 15 / 100 > 384 ? {{SERVER_MEMORY}} * 15 / 100 : 384 )) &&
+  HEADROOM=$(( {{SERVER_MEMORY}} / 4 > 512 ? {{SERVER_MEMORY}} / 4 : 512 )) &&
+  HEAP=$(( {{SERVER_MEMORY}} - HEADROOM > 512 ? {{SERVER_MEMORY}} - HEADROOM : 512 )) &&
   mkdir -p .cache/netty &&
   exec java
-  -Xms$(( {{SERVER_MEMORY}} - HEADROOM ))M -Xmx$(( {{SERVER_MEMORY}} - HEADROOM ))M
+  -Xms${HEAP}M -Xmx${HEAP}M -XX:MaxDirectMemorySize=256M -XX:ReservedCodeCacheSize=128M
   -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200
   -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+PerfDisableSharedMem
   -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M

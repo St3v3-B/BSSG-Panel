@@ -7,15 +7,16 @@ description: >-
   `mods/` (for example Fabric API). The installer fetches the server launcher via the
   Fabric meta API; on first start it downloads the Minecraft server and the libraries into
   the server directory (one time only, so the first start takes longer). Java 25 (Minecraft 1.20.5 and
-  newer), heap = RAM limit minus 15% (at least 384 MB).
+  newer), heap = RAM limit minus max(25%, 512 MB), at least 512 MB heap; recommended minimum: 1.5 GB RAM.
 type: game
-version: 3
+version: 4
 image: eclipse-temurin:25-jre
 startup: >-
-  HEADROOM=$(( {{SERVER_MEMORY}} * 15 / 100 > 384 ? {{SERVER_MEMORY}} * 15 / 100 : 384 )) &&
+  HEADROOM=$(( {{SERVER_MEMORY}} / 4 > 512 ? {{SERVER_MEMORY}} / 4 : 512 )) &&
+  HEAP=$(( {{SERVER_MEMORY}} - HEADROOM > 512 ? {{SERVER_MEMORY}} - HEADROOM : 512 )) &&
   mkdir -p .cache/netty mods &&
   exec java
-  -Xms$(( {{SERVER_MEMORY}} - HEADROOM ))M -Xmx$(( {{SERVER_MEMORY}} - HEADROOM ))M
+  -Xms${HEAP}M -Xmx${HEAP}M -XX:MaxDirectMemorySize=256M -XX:ReservedCodeCacheSize=128M
   -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200
   -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+PerfDisableSharedMem
   -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M
