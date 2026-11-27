@@ -40,7 +40,7 @@ describe("boot", () => {
     expect(nodes).toHaveLength(1);
     expect(nodes[0]).toMatchObject({ isLocal: true, fqdn: "node1.test", tokenHash: sha256(h.env.NODE_TOKEN!), sftpPort: 2222, daemonPort: 18080 });
     const keys = (await db.select().from(schema.settings)).map((s) => s.key).sort();
-    expect(keys).toEqual(["accent_color", "default_limits", "jwt_signing_key_enc", "logo_url", "panel_name"]);
+    expect(keys).toEqual(["accent_color", "default_limits", "image_update_default_policy", "image_update_window", "jwt_signing_key_enc", "logo_url", "panel_name"]);
     const [k] = await db.select().from(schema.settings).where(eq(schema.settings.key, "jwt_signing_key_enc"));
     expect(decrypt(k!.value as string)).toContain("BEGIN PRIVATE KEY");
     expect((await db.select().from(schema.templates)).map((t) => t.slug).sort()).toEqual(["testgame", "testweb"]);
