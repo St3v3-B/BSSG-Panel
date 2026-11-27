@@ -1,7 +1,6 @@
 "use client";
 import { Lock, ShieldAlert } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/app/_components/ui/button";
@@ -10,7 +9,6 @@ import { Spinner } from "@/app/_components/ui/spinner";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
 import { decideAdmin } from "@/app/_lib/auth-routing";
 import { useT } from "@/app/_lib/i18n";
-import { cn } from "@/lib/utils";
 
 /** /admin alleen voor admins met 2FA; de server controleert dit ook bij elke admin-procedure. */
 export default function AdminLayout({ children }: { children: ReactNode }) {
@@ -44,29 +42,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     );
   }
   return (
-    <>
-      <AdminSubNav />
-      {children}
-    </>
-  );
-}
-
-/** Snelle tabs binnen /admin; de hoofdnavigatie staat in de header. */
-function AdminSubNav() {
-  const t = useT().admin2.nav;
-  const path = usePathname() ?? "/admin";
-  const tabs = [
-    { href: "/admin", label: t.dashboard, active: path === "/admin" },
-    { href: "/admin/servers", label: t.servers, active: path.startsWith("/admin/servers") },
-    { href: "/admin/settings", label: t.settings, active: path.startsWith("/admin/settings") },
-  ];
-  return (
-    <nav className="scrollbar-none -mx-4 -mt-2 mb-5 flex gap-1 overflow-x-auto px-4 text-sm sm:mx-0 sm:px-0" aria-label="admin" data-testid="admin-subnav">
-      {tabs.map((x) => (
-        <Link key={x.href} href={x.href} className={cn("whitespace-nowrap rounded-lg px-3.5 py-2 transition-colors", x.active ? "bg-primary/12 font-medium" : "text-muted-foreground hover:bg-accent hover:text-foreground")}>
-          {x.label}
-        </Link>
-      ))}
-    </nav>
+    <>{children}</>
   );
 }
