@@ -7,7 +7,7 @@ import { ExternalError, fetchBytes, fetchJson } from "./http";
 
 export const GEYSER_API = "https://download.geysermc.org/v2/projects";
 export const GEYSER_HOSTS = ["download.geysermc.org"] as const;
-export const GEYSER_MAX_BYTES = 50 * 1024 * 1024; // = schrijflimiet van de daemon (Geyser-Spigot is nu ~49,8 MiB; groeit hij erboven, dan faalt aanzetten met een duidelijke fout)
+export const GEYSER_MAX_BYTES = 100 * 1024 * 1024; // = schrijflimiet van de daemon (maxWriteBytes)
 export const DEFAULT_BEDROCK_PORT = 19132;
 
 export type GeyserProject = "geyser" | "floodgate";

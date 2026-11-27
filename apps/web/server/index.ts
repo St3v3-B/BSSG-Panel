@@ -7,6 +7,7 @@ import { admin } from "./routers/admin";
 import { apps } from "./routers/apps";
 import { backups, s3Targets } from "./routers/backups";
 import { schedules } from "./routers/schedules";
+import { siteSettings } from "./routers/site-settings";
 import { account, auth } from "./routers/auth";
 import { credentials } from "./routers/credentials";
 import { databaseHosts, databases } from "./routers/databases";
@@ -18,6 +19,7 @@ import { files } from "./routers/files";
 import { network } from "./routers/network";
 import { bedrock } from "./bedrock";
 import { quotaAccount, quotaAdmin, quotaServers } from "./routers/quotas";
+import { notificationsAccount, notificationsAdmin, notificationsServer } from "./routers/notifications";
 import { servers } from "./routers/servers";
 import { subusers } from "./routers/subusers";
 
@@ -34,7 +36,7 @@ function merge(base: Tree, over: Tree): Tree {
   return out;
 }
 
-const phase1 = { apps, auth, backups, schedules, account: { ...account, ...credentials, ...quotaAccount }, servers: { ...servers, ...network, ...bedrock, ...quotaServers }, files, content, subusers, domains, databases, admin: { ...admin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders, s3Targets } };
+const phase1 = { apps, auth, backups, schedules, siteSettings, account: { ...account, ...credentials, ...quotaAccount, ...notificationsAccount }, servers: { ...servers, ...network, ...bedrock, ...quotaServers, ...notificationsServer }, files, content, subusers, domains, databases, admin: { ...admin, notifications: notificationsAdmin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders, s3Targets } };
 
 /** Paden die echt geïmplementeerd zijn (de rest is NOT_IMPLEMENTED). */
 export function implementedPaths(tree: Tree = phase1 as unknown as Tree, prefix = ""): string[] {

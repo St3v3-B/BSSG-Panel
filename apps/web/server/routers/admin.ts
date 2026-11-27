@@ -12,7 +12,7 @@ import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema, type Db } from "../db";
 import { getEnv } from "../env";
 import { buildServerSpec, validateVariables } from "../spec";
-import { fetchServerByUuid, fetchServers, limitsOf, sleepOf, serverVariables, toDetail, toSummary, userPublic, type ServerBundle } from "../servers-data";
+import { fetchServerByUuid, fetchServers, limitsOf, sleepOf, autoRestartOf, serverVariables, toDetail, toSummary, userPublic, type ServerBundle } from "../servers-data";
 import { getSettings } from "../settings";
 import { templateRow } from "../templates";
 import type { Ctx } from "@panel/api";
@@ -398,7 +398,7 @@ export const admin = {
 
     updateLimits: async ({ input, ctx }) => {
       const b = await mustServer(input.uuid);
-      const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: await serverVariables(b.server.id), limits: input.limits, allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server) });
+      const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: await serverVariables(b.server.id), limits: input.limits, allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server) });
       await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
       await getDb()
         .update(schema.servers)
@@ -438,7 +438,7 @@ export const admin = {
           limits: limitsOf(b.server),
           allocations: allocs.map((a, i) => ({ ip: a.ip, port: a.port, isPrimary: i === 0 })),
           skipInstall: true,
-          sleep: sleepOf(b.server),
+          sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server),
         });
         // Binnen de transactie: faalt de daemon, dan blijft de database ongewijzigd.
         await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
@@ -505,7 +505,7 @@ export const admin = {
         if (validateVariables([v], { [v.key]: old[v.key]! }, { onlyUserEditable: false }).length) dropped.push(v.key);
         else keep[v.key] = old[v.key]!;
       }
-      const spec = buildServerSpec({ uuid: b.server.uuid, template: tpl, variables: keep, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: !input.reinstall });
+      const spec = buildServerSpec({ uuid: b.server.uuid, template: tpl, variables: keep, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: !input.reinstall, sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server) });
       await getDb().transaction(async (tx) => {
         await tx.update(schema.servers).set({ templateId: tpl.id, ...(input.reinstall ? { status: "installing" as const } : {}) }).where(eq(schema.servers.id, b.server.id));
         await tx.delete(schema.serverVariables).where(eq(schema.serverVariables.serverId, b.server.id));

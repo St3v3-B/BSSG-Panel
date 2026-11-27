@@ -2,7 +2,9 @@
 import { Archive, CalendarClock, Database, FolderOpen, Globe, Network, Smartphone, PackagePlus, Puzzle, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ALL_PERMISSIONS, bedrockPlatform, type ContentKind, type Permission, type ServerDetail } from "@panel/api";
+import type { ContentKind, Permission, ServerDetail } from "@panel/api";
+import { ALL_PERMISSIONS } from "@panel/api/schemas";
+import { bedrockPlatform } from "@panel/api/network";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { getT, useT } from "@/app/_lib/i18n";

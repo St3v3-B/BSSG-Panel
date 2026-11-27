@@ -26,6 +26,38 @@ type Fake struct {
 	FailCreate error
 
 	networks map[string]*FakeNetwork
+
+	// ExecHandler beantwoordt Exec; standaard exitcode 0 en lege uitvoer.
+	ExecHandler func(id string, o ExecOptions) (ExecResult, error)
+	execs       []ExecOptions
+}
+
+// Execs geeft de tot nu toe uitgevoerde Exec-aanroepen.
+func (f *Fake) Execs() []ExecOptions {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]ExecOptions(nil), f.execs...)
+}
+
+func (f *Fake) Exec(ctx context.Context, id string, o ExecOptions) (ExecResult, error) {
+	c, err := f.get(id)
+	if err != nil {
+		return ExecResult{}, err
+	}
+	c.mu.Lock()
+	running := c.running
+	c.mu.Unlock()
+	if !running {
+		return ExecResult{}, fmt.Errorf("container %s is not running", id)
+	}
+	f.mu.Lock()
+	f.execs = append(f.execs, o)
+	h := f.ExecHandler
+	f.mu.Unlock()
+	if h != nil {
+		return h(id, o)
+	}
+	return ExecResult{}, nil
 }
 
 // FakeNetwork is een netwerk in de fake.
@@ -148,6 +180,7 @@ type FakeContainer struct {
 	running bool
 	started time.Time
 	exit    int
+	oom     bool
 	exited  chan struct{}
 	stdin   chan string
 	updates []Resources
@@ -177,6 +210,14 @@ func (c *FakeContainer) Exit(code int) {
 	close(c.exited)
 	c.mu.Unlock()
 	c.cond.Broadcast()
+}
+
+// ExitOOM laat de container stoppen alsof de kernel hem doodde (exitcode 137, OOMKilled).
+func (c *FakeContainer) ExitOOM() {
+	c.mu.Lock()
+	c.oom = true
+	c.mu.Unlock()
+	c.Exit(137)
 }
 
 // Exited is gesloten zodra de container gestopt is.
@@ -304,6 +345,7 @@ func (f *Fake) Start(_ context.Context, id string) error {
 	}
 	c.running = true
 	c.started = time.Now()
+	c.oom = false
 	c.exited = make(chan struct{})
 	c.mu.Unlock()
 	b := f.Behavior
@@ -346,7 +388,7 @@ func (f *Fake) Inspect(_ context.Context, id string) (Container, error) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return Container{ID: c.ID, Name: c.Config.Name, Labels: c.Config.Labels, Running: c.running, StartedAt: c.started, ExitCode: c.exit}, nil
+	return Container{ID: c.ID, Name: c.Config.Name, Labels: c.Config.Labels, Running: c.running, StartedAt: c.started, ExitCode: c.exit, OOMKilled: c.oom}, nil
 }
 
 func (f *Fake) List(_ context.Context, labels map[string]string) ([]Container, error) {

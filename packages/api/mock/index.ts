@@ -61,12 +61,16 @@ export function createMock(): Implementation {
     content: [] as Array<s.InstalledContent & { serverUuid: string }>,
     subusers: [] as Array<{ serverUuid: string; userId: number; permissions: s.Permission[]; createdAt: Date }>,
     apiKeys: [] as s.ApiKey[],
+    phpSettings: new Map<string, s.PhpSettings>(),
     admins: ["100000000000000001"],
     settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 } } as s.Settings,
     totpEnabled: new Map<number, boolean>([[1, true]]),
     quotas: new Map<number, s.QuotaInput>([[2, { maxRamMb: 4096, maxDiskMb: 50_000, maxCpuPct: 300, maxServers: 3, maxDatabases: 2, templateIds: null, nodeIds: null, maxPortsPerServer: 2 }]]),
+    webhooks: new Map<string, s.WebhookStatus>(),
+    notif: new Map<string, s.ServerNotifications>(),
     nextId: 1000,
   };
+  const hookStatus = (url: string | null | undefined): s.WebhookStatus => (url ? { set: true, hint: `…${url.slice(-4)}` } : { set: false, hint: null });
   const id = () => ++db.nextId;
   const user = (uid: number) => db.users.find((u) => u.id === uid) ?? notFound("user");
   const srv = (uuid: string) => db.servers.find((x) => x.uuid === uuid) ?? notFound("server");
@@ -219,6 +223,13 @@ export function createMock(): Implementation {
       },
       revokeApiKey: ({ input }) => ((db.apiKeys = db.apiKeys.filter((k) => k.id !== input.id)), ok),
       setSftpPassword: () => ok,
+      webhook: () => db.webhooks.get("user") ?? { set: false, hint: null },
+      setWebhook: ({ input }) => {
+        const w = hookStatus(input.url);
+        db.webhooks.set("user", w);
+        return w;
+      },
+      testWebhook: () => ok,
       quota: ({ ctx }) => overview(uid(ctx)),
     },
     servers: {
@@ -268,6 +279,14 @@ export function createMock(): Implementation {
         return ok;
       },
       reinstall: ({ input }) => ((srv(input.uuid).status = "installing"), ok),
+      notifications: ({ input }) => db.notif.get(input.uuid) ?? { webhook: { set: false, hint: null }, autoRestart: false, autoRestartMax: 3 },
+      updateNotifications: ({ input }) => {
+        const prev = db.notif.get(input.uuid) ?? { webhook: { set: false, hint: null }, autoRestart: false, autoRestartMax: 3 };
+        const n = { webhook: input.webhookUrl === undefined ? prev.webhook : hookStatus(input.webhookUrl), autoRestart: input.autoRestart, autoRestartMax: input.autoRestartMax };
+        db.notif.set(input.uuid, n);
+        return n;
+      },
+      testWebhook: () => ok,
       updateSleep: ({ input }) => ((srv(input.uuid).sleep = { ...srv(input.uuid).sleep, enabled: input.enabled, idleMinutes: input.idleMinutes }), ok),
       activity: ({ input }) => pageOf(db.activity.filter((a) => a.serverUuid === input.uuid), input.limit),
       bedrock: ({ input }) => mockBedrock(input.uuid),
@@ -429,7 +448,7 @@ export function createMock(): Implementation {
       list: ({ input }) => db.schedules.filter((x) => x.serverUuid === input.uuid),
       create: ({ input }) => {
         const { uuid, ...rest } = input;
-        const x: s.Schedule = { id: id(), serverUuid: uuid, ...rest, lastRunAt: null, nextRunAt: new Date(Date.now() + 86_400_000), lastResult: null };
+        const x: s.Schedule = { id: id(), serverUuid: uuid, ...rest, lastRunAt: null, nextRunAt: new Date(Date.now() + 86_400_000), lastResult: null, lastOutput: null };
         db.schedules.push(x);
         return x;
       },
@@ -441,6 +460,14 @@ export function createMock(): Implementation {
       },
       delete: ({ input }) => ((db.schedules = db.schedules.filter((x) => x.id !== input.id)), ok),
       runNow: () => ok,
+    },
+    siteSettings: {
+      php: ({ input }) => {
+        srv(input.uuid);
+        const defaults: s.PhpSettings = { memoryLimitMb: 256, uploadMaxMb: 64, maxExecutionTime: 120, maxInputVars: 3000, displayErrors: false, timezone: "Europe/Amsterdam", opcache: true, disabledExtensions: [] };
+        return { settings: db.phpSettings.get(input.uuid) ?? defaults, defaults, managed: db.phpSettings.has(input.uuid), ramLimitMb: 1024, extensions: ["gd", "intl", "exif", "mysqli"] };
+      },
+      updatePhp: ({ input }) => (db.phpSettings.set(input.uuid, input.settings), ok),
     },
     subusers: {
       list: ({ input }) => db.subusers.filter((x) => x.serverUuid === input.uuid).map((x) => ({ user: user(x.userId), permissions: x.permissions, createdAt: x.createdAt })),
@@ -620,6 +647,15 @@ export function createMock(): Implementation {
       activity: {
         search: ({ input }) =>
           pageOf(db.activity.filter((a) => (!input.userId || a.user?.id === input.userId) && (!input.serverUuid || a.serverUuid === input.serverUuid) && (!input.action || a.action.startsWith(input.action))), input.limit),
+      },
+      notifications: {
+        get: () => db.webhooks.get("admin") ?? { set: false, hint: null },
+        set: ({ input }) => {
+          const w = hookStatus(input.url);
+          db.webhooks.set("admin", w);
+          return w;
+        },
+        test: () => ok,
       },
       settings: {
         get: () => db.settings,

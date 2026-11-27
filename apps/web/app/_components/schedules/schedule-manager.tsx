@@ -29,7 +29,7 @@ interface Form {
 }
 const EMPTY: Form = { name: "", cron: "0 4 * * *", action: "restart", payload: "", active: true };
 
-export function ScheduleManager({ uuid }: { uuid: string }) {
+export function ScheduleManager({ uuid, web = false }: { uuid: string; web?: boolean }) {
   const t = useT();
   const utils = trpc.useUtils();
   const list = trpc.schedules.list.useQuery({ uuid });
@@ -44,7 +44,7 @@ export function ScheduleManager({ uuid }: { uuid: string }) {
           </Button>
         </div>
       ) : (
-        <ScheduleForm key={String(editing)} uuid={uuid} existing={typeof editing === "number" ? list.data?.find((s) => s.id === editing) : undefined} onDone={done} onCancel={() => setEditing(null)} />
+        <ScheduleForm key={String(editing)} uuid={uuid} web={web} existing={typeof editing === "number" ? list.data?.find((s) => s.id === editing) : undefined} onDone={done} onCancel={() => setEditing(null)} />
       )}
       {list.error ? (
         <QueryError error={list.error} />
@@ -63,7 +63,7 @@ export function ScheduleManager({ uuid }: { uuid: string }) {
   );
 }
 
-function ScheduleForm({ uuid, existing, onDone, onCancel }: { uuid: string; existing?: Schedule; onDone: () => void; onCancel: () => void }) {
+function ScheduleForm({ uuid, web, existing, onDone, onCancel }: { uuid: string; web: boolean; existing?: Schedule; onDone: () => void; onCancel: () => void }) {
   const t = useT();
   const s = t.schedules;
   const [form, setForm] = useState<Form>(existing ? { name: existing.name, cron: existing.cron, action: existing.action, payload: existing.payload ?? "", active: existing.active } : EMPTY);
@@ -71,12 +71,12 @@ function ScheduleForm({ uuid, existing, onDone, onCancel }: { uuid: string; exis
   const create = trpc.schedules.create.useMutation({ onSuccess: onDone });
   const update = trpc.schedules.update.useMutation({ onSuccess: onDone });
   const preview = previewCron(form.cron);
-  const invalid = !form.name.trim() || !preview.ok || (form.action === "command" && !form.payload.trim());
+  const invalid = !form.name.trim() || !preview.ok || ((form.action === "command" || form.action === "exec") && !form.payload.trim());
   const pending = create.isPending || update.isPending;
   const submit = () => {
     setTouched(true);
     if (invalid) return;
-    const input = { name: form.name.trim(), cron: form.cron.trim(), action: form.action, payload: form.action === "command" ? form.payload.trim() : null, active: form.active };
+    const input = { name: form.name.trim(), cron: form.cron.trim(), action: form.action, payload: form.action === "command" || form.action === "exec" ? form.payload.trim() : null, active: form.active };
     if (existing) update.mutate({ id: existing.id, ...input });
     else create.mutate({ uuid, ...input });
   };
@@ -101,17 +101,18 @@ function ScheduleForm({ uuid, existing, onDone, onCancel }: { uuid: string; exis
           <div className="space-y-1">
             <Label htmlFor="sch-action">{s.action}</Label>
             <Select id="sch-action" value={form.action} onChange={(e) => setForm({ ...form, action: e.target.value as Action })}>
-              {ScheduleAction.options.map((a) => (
+              {ScheduleAction.options.filter((a) => (web ? a !== "command" : a !== "exec")).map((a) => (
                 <option key={a} value={a}>
                   {s.actions[a]}
                 </option>
               ))}
             </Select>
           </div>
-          {form.action === "command" && (
+          {(form.action === "command" || form.action === "exec") && (
             <div className="space-y-1 sm:col-span-2">
-              <Label htmlFor="sch-payload">{s.payload}</Label>
-              <Input id="sch-payload" className="font-mono" value={form.payload} maxLength={1000} placeholder={s.payloadPlaceholder} onChange={(e) => setForm({ ...form, payload: e.target.value })} />
+              <Label htmlFor="sch-payload">{form.action === "exec" ? s.execPayload : s.payload}</Label>
+              {form.action === "exec" && <p className="text-xs text-muted-foreground">{s.execHint}</p>}
+              <Input id="sch-payload" className="font-mono" value={form.payload} maxLength={1000} placeholder={form.action === "exec" ? s.execPlaceholder : s.payloadPlaceholder} onChange={(e) => setForm({ ...form, payload: e.target.value })} />
             </div>
           )}
           <div className="space-y-1">
@@ -192,7 +193,7 @@ function ScheduleRow({ uuid, schedule: x, onEdit }: { uuid: string; schedule: Sc
           </div>
           <div className="font-mono text-xs text-muted-foreground">
             {x.cron}
-            {x.action === "command" && x.payload && ` · ${x.payload}`}
+            {(x.action === "command" || x.action === "exec") && x.payload && ` · ${x.payload}`}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {s.lastRun}: {x.lastRunAt ? formatDate(x.lastRunAt) : s.never}
@@ -231,6 +232,12 @@ function ScheduleRow({ uuid, schedule: x, onEdit }: { uuid: string; schedule: Sc
           )}
         </div>
       </div>
+      {x.action === "exec" && x.lastOutput && (
+        <details className="mt-2" data-testid="schedule-output">
+          <summary className="cursor-pointer text-xs text-muted-foreground">{s.output}</summary>
+          <pre className="mt-1 max-h-60 overflow-auto rounded-md bg-muted p-2 font-mono text-xs whitespace-pre-wrap">{x.lastOutput}</pre>
+        </details>
+      )}
       {run.isSuccess && <p className="mt-2 text-sm text-success">{s.ranNow}</p>}
       {err && <p className="mt-2 text-sm text-destructive">{errorText(err)}</p>}
     </Card>

@@ -49,6 +49,7 @@ export async function fetchServerByUuid(uuid: string): Promise<ServerBundle | nu
   return b ?? null;
 }
 
+export const autoRestartOf = (s: ServerBundle["server"]) => ({ enabled: s.autoRestart, max: s.autoRestartMax });
 export const sleepOf = (s: ServerBundle["server"]) => ({ enabled: s.sleepEnabled, idleMinutes: s.sleepIdleMinutes });
 
 export function limitsOf(s: ServerBundle["server"]) {

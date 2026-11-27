@@ -138,7 +138,7 @@ export const backups: s.Backup[] = [
 ];
 
 export const schedules: s.Schedule[] = [
-  { id: 1, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", name: "Daily restart", cron: "0 5 * * *", action: "restart", payload: null, active: true, lastRunAt: d("2026-11-26T04:00:00Z"), nextRunAt: d("2026-11-27T04:00:00Z"), lastResult: "ok" },
+  { id: 1, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", name: "Daily restart", cron: "0 5 * * *", action: "restart", payload: null, active: true, lastRunAt: d("2026-11-26T04:00:00Z"), nextRunAt: d("2026-11-27T04:00:00Z"), lastResult: "ok", lastOutput: null },
 ];
 
 export const activity: s.ActivityEntry[] = [

@@ -185,7 +185,7 @@ export const quotaServers: Pick<Implementation["servers"], "create" | "updateOwn
       const prev = { ramMb: b.server.ramMb, diskMb: b.server.diskMb, cpuPct: b.server.cpuPct };
       const others = { ...total, ramMb: total.ramMb - prev.ramMb, diskMb: total.diskMb - prev.diskMb, cpuPct: total.cpuPct - prev.cpuPct };
       checkLimits(q, others, next, prev);
-      const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: vars, limits: next, allocations: b.allocations, skipInstall: true, sleep: { enabled: b.server.sleepEnabled, idleMinutes: b.server.sleepIdleMinutes } });
+      const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: vars, limits: next, allocations: b.allocations, skipInstall: true, sleep: { enabled: b.server.sleepEnabled, idleMinutes: b.server.sleepIdleMinutes }, autoRestart: { enabled: b.server.autoRestart, max: b.server.autoRestartMax } });
       await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
       await tx.update(schema.servers).set({ cpuPct: next.cpuPct, ramMb: next.ramMb, diskMb: next.diskMb }).where(eq(schema.servers.id, b.server.id));
     });

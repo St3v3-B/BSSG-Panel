@@ -9,6 +9,7 @@
     ".": "./index.ts",
     "./mock": "./mock/index.ts",
     "./schemas": "./schemas.ts",
+    "./network": "./network.ts",
     "./template-schema": "./template-schema.ts",
     "./openapi.yaml": "./openapi.yaml"
   },

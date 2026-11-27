@@ -3,6 +3,7 @@ import type { Backup } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { and, asc, count, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { logActivity } from "./activity";
+import { notify, targetForServer } from "./notify";
 import { getDb, schema } from "./db";
 import { call, daemonFor } from "./daemon";
 import { decrypt } from "./lib/crypto";
@@ -84,6 +85,11 @@ export async function startBackup(b: ServerBundle, o: StartBackupOptions): Promi
     await call(() => daemonFor(b.node).createBackup(b.server.uuid, { backup_id: row!.id, s3: s3Credentials(target), key, ignore: [], databases }));
   } catch (e) {
     await db.update(schema.backups).set({ status: "failed", error: errText(e), completedAt: new Date() }).where(eq(schema.backups.id, row!.id));
+    // Een schema draait zonder dat iemand meekijkt: dan melden (bij een handmatige backup ziet de gebruiker de fout).
+    if (o.scheduleId) {
+      const target = await targetForServer(b.server.id).catch(() => null);
+      if (target) await notify({ kind: "backup_failed", name: row!.name, error: errText(e) }, target);
+    }
     throw e;
   }
   const [running] = await db.update(schema.backups).set({ status: "running" }).where(and(eq(schema.backups.id, row!.id), eq(schema.backups.status, "pending"))).returning();
@@ -135,10 +141,15 @@ export async function pruneBackups(serverId: number): Promise<number> {
 export async function failStaleBackups(now = new Date()): Promise<void> {
   const cutoff = new Date(now.getTime() - STALE_AFTER_MS);
   const db = getDb();
-  await db
+  const stale = await db
     .update(schema.backups)
     .set({ status: "failed", error: "no report from the node", completedAt: now })
-    .where(and(inArray(schema.backups.status, ["pending", "running"]), lt(schema.backups.createdAt, cutoff)));
+    .where(and(inArray(schema.backups.status, ["pending", "running"]), lt(schema.backups.createdAt, cutoff)))
+    .returning({ serverId: schema.backups.serverId, name: schema.backups.name });
+  for (const r of stale) {
+    const target = await targetForServer(r.serverId).catch(() => null);
+    if (target) await notify({ kind: "backup_failed", name: r.name, error: "no report from the node" }, target);
+  }
   // Een herstel dat nooit rapporteerde: de backup zelf is nog goed.
   await db.update(schema.backups).set({ status: "completed" }).where(and(eq(schema.backups.status, "restoring"), lt(schema.backups.createdAt, cutoff)));
 }

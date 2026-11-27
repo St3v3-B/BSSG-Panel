@@ -121,6 +121,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/servers/{uuid}/exec": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Runs one command inside the running container as the container user (uid 1000, never root) via `sh -c`, with a timeout and an output cap. Only for websites (`type: web`). The command is the user's own, in their own container; it is not validated. */
+        post: operations["execCommand"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{uuid}/logs": {
         parameters: {
             query?: never;
@@ -613,6 +632,16 @@ export interface components {
                 kick_message: string;
             } | null;
             /**
+             * @description Automatisch herstarten na een crash (null = uit). Een crash is een exit buiten een
+             *     stop-opdracht om (exitcode != 0, OOM-kill, of een exit terwijl de server online hoort
+             *     te zijn). De daemon herstart met backoff (5 s, 15 s, 45 s, ...) en geeft op na
+             *     `max_per_10min` herstarts binnen 10 minuten: de server blijft dan `offline`. Elke crash
+             *     wordt gemeld via `POST /api/remote/servers/{uuid}/event` (panel-remote.yaml).
+             */
+            auto_restart?: {
+                max_per_10min: number;
+            } | null;
+            /**
              * @description Alleen bij POST: niet installeren. PUT installeert nooit; herinstallatie gaat via POST /install.
              * @default false
              */
@@ -1052,6 +1081,64 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             /** @description Server draait niet */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    execCommand: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    command: string;
+                    /** @default 60 */
+                    timeout_seconds?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Command finished (also with a non-zero exit code, or after the timeout) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description -1 on timeout */
+                        exit_code: number;
+                        /** @description stdout+stderr, the last 16 KiB at most */
+                        output: string;
+                        truncated: boolean;
+                        timed_out: boolean;
+                        duration_ms: number;
+                    };
+                };
+            };
+            /** @description Invalid command, or the server is not a website */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Server is not running */
             409: {
                 headers: {
                     [name: string]: unknown;
