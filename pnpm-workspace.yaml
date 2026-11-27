@@ -2,6 +2,7 @@ packages:
   - apps/*
   - packages/*
   - tests/integration
+  - tests/e2e
 allowBuilds:
   cpu-features: false
   esbuild: true

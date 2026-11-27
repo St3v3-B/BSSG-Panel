@@ -17,6 +17,7 @@ import { getDb, schema } from "./db";
 import { EnvError, getEnv } from "./env";
 import { encrypt, sha256 } from "./lib/crypto";
 import { ensureSigningKey } from "./lib/jwt";
+import { startScheduler } from "./scheduler";
 import { ensureSettingDefaults } from "./settings";
 import { loadTemplatesFromDir } from "./templates";
 
@@ -72,6 +73,8 @@ async function runBoot(): Promise<void> {
   const t = await loadTemplatesFromDir(env.TEMPLATES_DIR);
   for (const e of t.errors) console.warn(`[boot] template overgeslagen: ${e}`);
   if (t.inserted.length || t.updated.length) console.info(`[boot] templates nieuw: ${t.inserted.join(", ") || "-"}; bijgewerkt: ${t.updated.join(", ") || "-"}`);
+  // Tests starten de tikker zelf (tick()); in het echte proces draait hij op de achtergrond.
+  if (!process.env.VITEST) startScheduler();
   if (env.PANEL_INSECURE_TEST_LOGIN) console.warn("[boot] PANEL_INSECURE_TEST_LOGIN is enabled (tests only)");
 }
 

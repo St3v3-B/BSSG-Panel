@@ -7,6 +7,7 @@ import { ALL_PERMISSIONS, type ServerStatus } from "@panel/api";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { logActivity } from "./activity";
+import { pruneBackups } from "./backups";
 import { ensureBooted } from "./boot";
 import { getDb, schema } from "./db";
 import { safeEqual, sha256 } from "./lib/crypto";
@@ -99,6 +100,56 @@ export const reportStatus = remoteHandler<{ uuid: string }>(async (req, node, { 
   const s = await serverOnNode(uuid, node);
   if (!s) return error(404, "not_found");
   await getDb().update(schema.servers).set({ status: b.state as ServerStatus }).where(eq(schema.servers.id, s.id));
+  return noContent();
+});
+
+// ---------- backups ----------
+
+/** Backup op id, alleen als de server op deze node staat. */
+async function backupOnNode(id: string, node: NodeRow) {
+  const n = Number(id);
+  if (!Number.isInteger(n) || n < 1) return null;
+  const [r] = await getDb()
+    .select({ b: schema.backups, s: schema.servers })
+    .from(schema.backups)
+    .innerJoin(schema.servers, eq(schema.servers.id, schema.backups.serverId))
+    .where(and(eq(schema.backups.id, n), eq(schema.servers.nodeId, node.id)));
+  return r ?? null;
+}
+
+export const reportBackup = remoteHandler<{ backup_id: string }>(async (req, node, { backup_id }) => {
+  const b = await body(
+    req,
+    z.object({ successful: z.boolean(), sha256: z.string().regex(/^[a-f0-9]{64}$/).nullish(), size_bytes: z.number().int().min(0).nullish(), error: z.string().nullish() }),
+  );
+  if (!b || (b.successful && !b.sha256)) return error(400, "bad_request");
+  const r = await backupOnNode(backup_id, node);
+  if (!r) return error(404, "not_found");
+  await getDb()
+    .update(schema.backups)
+    .set(b.successful ? { status: "completed", sha256: b.sha256, sizeBytes: b.size_bytes ?? null, error: null, completedAt: new Date() } : { status: "failed", error: b.error?.slice(0, 2000) ?? "unknown error", completedAt: new Date() })
+    .where(eq(schema.backups.id, r.b.id));
+  await logActivity({
+    action: b.successful ? "server.backup.completed" : "server.backup.failed",
+    serverId: r.s.id,
+    metadata: b.successful ? { id: r.b.id, sizeBytes: b.size_bytes ?? null } : { id: r.b.id, error: b.error?.slice(0, 2000) ?? null },
+  });
+  if (b.successful) await pruneBackups(r.s.id);
+  return noContent();
+});
+
+export const reportRestore = remoteHandler<{ backup_id: string }>(async (req, node, { backup_id }) => {
+  const b = await body(req, z.object({ successful: z.boolean(), error: z.string().nullish() }));
+  if (!b) return error(400, "bad_request");
+  const r = await backupOnNode(backup_id, node);
+  if (!r) return error(404, "not_found");
+  // De backup zelf blijft goed, ook als het herstel mislukte.
+  await getDb().update(schema.backups).set({ status: "completed", error: b.successful ? null : (b.error?.slice(0, 2000) ?? "restore failed") }).where(eq(schema.backups.id, r.b.id));
+  await logActivity({
+    action: b.successful ? "server.backup.restore.completed" : "server.backup.restore.failed",
+    serverId: r.s.id,
+    metadata: b.successful ? { id: r.b.id } : { id: r.b.id, error: b.error?.slice(0, 2000) ?? null },
+  });
   return noContent();
 });
 

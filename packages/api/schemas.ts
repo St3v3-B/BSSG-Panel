@@ -631,3 +631,53 @@ export const VersionOptions = z.object({
   loaderVersions: z.array(VersionOption),
 });
 export type VersionOptions = z.infer<typeof VersionOptions>;
+// ---------- quota's ----------
+
+/** Quotum per gebruiker. Geen quotum = de gebruiker kan zelf geen servers maken. null bij lijsten = alles toegestaan. */
+export const QuotaInput = z.object({
+  /** Som van ramMb over alle eigen servers. */
+  maxRamMb: z.number().int().min(0),
+  maxDiskMb: z.number().int().min(0),
+  /** Som van cpuPct (100 = één core). Servers van quotum-gebruikers hebben altijd een CPU-limiet > 0. */
+  maxCpuPct: z.number().int().min(0),
+  maxServers: z.number().int().min(0),
+  maxDatabases: z.number().int().min(0),
+  templateIds: z.array(Id).nullable(),
+  nodeIds: z.array(Id).nullable(),
+  /** Poorten per game-server; null = geen aparte grens (alleen wat vrij is). */
+  maxPortsPerServer: z.number().int().min(1).max(100).nullable(),
+});
+export type QuotaInput = z.infer<typeof QuotaInput>;
+
+export const QuotaUsage = z.object({
+  ramMb: z.number().int(),
+  diskMb: z.number().int(),
+  cpuPct: z.number().int(),
+  servers: z.number().int(),
+  databases: z.number().int(),
+});
+export type QuotaUsage = z.infer<typeof QuotaUsage>;
+
+export const QuotaOverview = z.object({
+  quota: QuotaInput,
+  usage: QuotaUsage,
+  /** Templates en nodes waaruit de gebruiker mag kiezen (al gefilterd op het quotum). */
+  templates: z.array(z.object({ id: Id, name: z.string(), type: ServerType })),
+  nodes: z.array(z.object({ id: Id, name: z.string() })),
+});
+export type QuotaOverview = z.infer<typeof QuotaOverview>;
+
+export const UserQuotaUsage = z.object({
+  user: UserPublic,
+  quota: QuotaInput.nullable(),
+  usage: QuotaUsage,
+});
+export type UserQuotaUsage = z.infer<typeof UserQuotaUsage>;
+
+/** Eigen limieten van een server (zonder swap: die staat voor quotum-gebruikers op 0). */
+export const OwnLimits = z.object({
+  cpuPct: z.number().int().min(1).max(6400),
+  ramMb: z.number().int().min(64),
+  diskMb: z.number().int().min(64),
+});
+export type OwnLimits = z.infer<typeof OwnLimits>;

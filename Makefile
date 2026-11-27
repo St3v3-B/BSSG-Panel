@@ -3,7 +3,7 @@ SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 GO ?= go
 
-.PHONY: check install openapi ts go db-migrate-test dev integration fmt
+.PHONY: check install openapi ts go db-migrate-test dev integration e2e fmt
 
 check: install openapi ts go db-migrate-test
 	@echo "make check: alles groen"
@@ -29,6 +29,10 @@ db-migrate-test:
 
 dev:
 	pnpm --filter @panel/web dev
+
+# Browser-e2e (Playwright) tegen echt panel + daemon.
+e2e:
+	bash tests/e2e/run.sh
 
 # Alleen de orchestrator draait dit (zie CLAUDE.md).
 integration:

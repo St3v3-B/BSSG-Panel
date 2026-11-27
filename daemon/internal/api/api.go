@@ -47,12 +47,13 @@ type Options struct {
 
 // API bundelt de handlers.
 type API struct {
-	opt    Options
-	mgr    *server.Manager
-	routes *Routes
-	jwt    JWTVerifier
-	system func(ctx context.Context) SystemInfo
-	log    *slog.Logger
+	opt     Options
+	mgr     *server.Manager
+	routes  *Routes
+	jwt     JWTVerifier
+	backups Backups
+	system  func(ctx context.Context) SystemInfo
+	log     *slog.Logger
 
 	jti jtiStore
 
@@ -120,12 +121,8 @@ func (a *API) Handler() http.Handler {
 	mux.HandleFunc("OPTIONS /api/servers/{uuid}/files/upload", a.cors(preflight))
 	mux.HandleFunc("OPTIONS /api/servers/{uuid}/files/download", a.cors(preflight))
 
-	// Fase 4: not implemented yet.
-	ni := func(w http.ResponseWriter, _ *http.Request) {
-		writeErr(w, http.StatusNotImplemented, "not_implemented", "not implemented yet")
-	}
-	mux.Handle("POST /api/servers/{uuid}/backups", p(ni))
-	mux.Handle("POST /api/servers/{uuid}/backups/{backup_id}/restore", p(ni))
+	mux.Handle("POST /api/servers/{uuid}/backups", p(a.withServer(a.createBackup)))
+	mux.Handle("POST /api/servers/{uuid}/backups/{backup_id}/restore", p(a.withServer(a.restoreBackup)))
 
 	mux.Handle("GET /api/routes", p(a.listRoutes))
 	mux.Handle("GET /api/routes/{host}", p(a.getRoute))

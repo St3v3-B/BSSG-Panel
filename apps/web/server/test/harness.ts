@@ -190,7 +190,7 @@ export function useHarness(opts: { env?: Record<string, string>; templates?: Rec
     if (h.templatesDir) rmSync(h.templatesDir, { recursive: true, force: true });
     resetBoot();
     resetSigningKeyCache();
-  });
+  }, 60_000);
 
   return h;
 }

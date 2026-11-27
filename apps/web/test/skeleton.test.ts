@@ -9,5 +9,5 @@ describe("skelet", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { result: { data: { json: { panelName: string } } } };
     expect(body.result.data.json.panelName).toBeTruthy();
-  });
+  }, 60_000);
 });

@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { metadataText } from "@/app/_components/admin/activity";
 import { AdminError } from "@/app/_components/admin/nodes";
 import { CopyButton } from "@/app/_components/copy-button";
+import { QuotaEditor } from "@/app/_components/quota/quota-editor";
 import { QueryError } from "@/app/_components/query-error";
 import { StatusBadge } from "@/app/_components/status-badge";
 import { Badge } from "@/app/_components/ui/badge";
@@ -133,6 +134,8 @@ export function UserDetail({ id }: { id: number }) {
               {isOwner && <p className="text-xs text-muted-foreground">{u2.ownerLocked}</p>}
             </CardContent>
           </Card>
+
+          <QuotaEditor userId={id} />
 
           <Card>
             <CardHeader>

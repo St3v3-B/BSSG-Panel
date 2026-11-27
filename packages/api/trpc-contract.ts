@@ -71,6 +71,8 @@ export const contract = {
     ),
     revokeApiKey: mutation("user", byId, s.Ok),
     setSftpPassword: mutation("user", server.extend({ password: z.string().min(12).max(200) }), s.Ok),
+    /** Eigen quotum met verbruik en keuzelijsten; null = geen quotum (kan zelf geen servers maken). */
+    quota: query("user", none, s.QuotaOverview.nullable()),
   },
 
   servers: {
@@ -85,6 +87,28 @@ export const contract = {
     sendCommand: mutation("user", server.extend({ command: z.string().min(1).max(2000) }), s.Ok),
     /** JWT (10 min) voor wss://$NODE_DOMAIN/api/servers/{uuid}/ws. Vereist console.read. */
     consoleToken: mutation("user", server, s.ConsoleToken),
+    /**
+     * Zelf een server maken binnen het eigen quotum (FORBIDDEN `NO_QUOTA`, PRECONDITION_FAILED
+     * `QUOTA_EXCEEDED: <resource>`, `TEMPLATE_NOT_ALLOWED`, `NODE_NOT_ALLOWED`, `NO_FREE_ALLOCATIONS`).
+     * Atomair: parallelle aanroepen kunnen het quotum niet overschrijden. Het panel kiest de eerste vrije poort(en)
+     * op de node; `ports` (standaard 1) geldt alleen voor game-servers.
+     */
+    create: mutation(
+      "user",
+      z.object({
+        name: z.string().min(1).max(100),
+        templateId: s.Id,
+        nodeId: s.Id,
+        limits: s.OwnLimits,
+        ports: z.number().int().min(1).max(100).default(1),
+        variables: z.record(z.string(), z.string()).default({}),
+      }),
+      s.ServerDetail,
+    ),
+    /** Eigenaar met quotum: limieten wijzigen binnen het quotum (admin: gebruik admin.servers.updateLimits). */
+    updateOwnLimits: mutation("user", server.extend({ limits: s.OwnLimits }), s.Ok),
+    /** Eigenaar: verwijdert de server; `confirmName` moet exact de servernaam zijn. */
+    deleteOwn: mutation("user", server.extend({ confirmName: z.string() }), s.Ok),
     /** Eigenaar of admin. */
     rename: mutation("user", server.extend({ name: z.string().min(1).max(100) }), s.Ok),
     /** Eigenaar of admin; gebruikers alleen userEditable, admins alle-variabelen. Effect bij de volgende start. */
@@ -294,6 +318,16 @@ export const contract = {
       create: mutation("admin", z.object({ discordId: s.DiscordId }), s.AdminUser),
       setBlocked: mutation("admin", byId.extend({ blocked: z.boolean() }), s.Ok),
       resetTotp: mutation("admin", byId, s.Ok),
+      /** null = geen quotum. */
+      getQuota: query("admin", byId, s.QuotaInput.nullable()),
+      setQuota: mutation("admin", byId.extend(s.QuotaInput.shape), s.Ok),
+      /** Haalt het quotum weg; bestaande servers blijven. */
+      clearQuota: mutation("admin", byId, s.Ok),
+    },
+
+    /** Verbruik per gebruiker met een quotum (of met servers). */
+    quotas: {
+      usage: query("admin", s.PageInput, s.page(s.UserQuotaUsage)),
     },
 
     admins: {

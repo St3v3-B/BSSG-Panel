@@ -337,3 +337,17 @@ export const activityLog = pgTable("activity_log", {
   index("activity_server_idx").on(t.serverId, t.at),
   index("activity_action_idx").on(t.action),
 ]);
+
+/** Quotum per gebruiker; geen rij = de gebruiker kan zelf geen servers maken. null in de lijsten = alles. */
+export const userQuotas = pgTable("user_quotas", {
+  userId: integer("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  maxRamMb: integer("max_ram_mb").notNull(),
+  maxDiskMb: integer("max_disk_mb").notNull(),
+  maxCpuPct: integer("max_cpu_pct").notNull(),
+  maxServers: integer("max_servers").notNull(),
+  maxDatabases: integer("max_databases").notNull(),
+  templateIds: jsonb("template_ids").$type<number[] | null>(),
+  nodeIds: jsonb("node_ids").$type<number[] | null>(),
+  maxPortsPerServer: integer("max_ports_per_server"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
