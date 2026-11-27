@@ -5,6 +5,11 @@
 #   sudo PANEL_DOMAIN=... deploy/install.sh --non-interactive
 #   deploy/install.sh --dry-run [--root DIR]    # schrijft alleen naar DIR (standaard mktemp)
 #
+# Remote node (alleen daemon + Caddy, geen panel/Postgres/Redis/MariaDB):
+#   sudo PANEL_URL=https://panel.example.com NODE_DOMAIN=node2.example.com NODE_TOKEN=... \
+#     ACME_EMAIL=admin@example.com deploy/install.sh --node-only --non-interactive
+#   (of met flags: --panel-url --node-domain --node-token --acme-email --daemon-port --sftp-port)
+#
 # Stappen: checking requirements, /etc/panel/panel.env schrijven (bestaande waarden blijven,
 # sleutels worden één keer generated, chmod 600), daemon bouwen en installeren
 # (/usr/local/bin/panel-daemon), systemd-unit installeren en (her)starten, en
@@ -26,6 +31,7 @@ NON_INTERACTIVE=0
 ROOT=""
 DAEMON_BIN_SRC="${PANEL_DAEMON_BIN:-}"
 SKIP_START=0
+NODE_ONLY=0
 
 usage() {
   cat <<'EOF'
@@ -36,6 +42,10 @@ Usage: install.sh [options]
   --root DIR          (only with --dry-run) target directory instead of /
   --daemon-bin PATH   use a prebuilt panel-daemon instead of building with Go
   --no-start          do not (re)start the unit and compose
+  --node-only         install a remote node only: daemon + systemd unit + Caddy (docker-compose.node.yml).
+                      Needs PANEL_URL, NODE_DOMAIN, NODE_TOKEN, ACME_EMAIL (environment or the flags below)
+  --panel-url URL, --node-domain HOST, --node-token TOKEN, --acme-email MAIL, --daemon-port N,
+  --sftp-port N       same as the environment variables of the same name
   -h, --help          this help
 EOF
 }
@@ -49,11 +59,20 @@ while [ $# -gt 0 ]; do
     --daemon-bin) DAEMON_BIN_SRC="${2:?--daemon-bin needs a path}"; shift ;;
     --daemon-bin=*) DAEMON_BIN_SRC="${1#--daemon-bin=}" ;;
     --no-start) SKIP_START=1 ;;
+    --node-only) NODE_ONLY=1 ;;
+    --panel-url) export PANEL_URL="${2:?--panel-url needs a value}"; shift ;;
+    --node-domain) export NODE_DOMAIN="${2:?--node-domain needs a value}"; shift ;;
+    --node-token) export NODE_TOKEN="${2:?--node-token needs a value}"; shift ;;
+    --acme-email) export ACME_EMAIL="${2:?--acme-email needs a value}"; shift ;;
+    --daemon-port) export DAEMON_PORT="${2:?--daemon-port needs a value}"; shift ;;
+    --sftp-port) export SFTP_PORT="${2:?--sftp-port needs a value}"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
   shift
 done
+
+[ "$NODE_ONLY" = 1 ] && COMPOSE_FILE="$DEPLOY/docker-compose.node.yml"
 
 log()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
@@ -97,7 +116,9 @@ check_requirements() {
   if [ -n "$DAEMON_BIN_SRC" ]; then
     [ -x "$DAEMON_BIN_SRC" ] || die "--daemon-bin $DAEMON_BIN_SRC is not an executable file"
   elif ! command -v go >/dev/null; then
-    if [ "$DRY_RUN" = 1 ]; then
+    if [ "$NODE_ONLY" = 1 ] && [ "$DRY_RUN" = 0 ]; then
+      log "go is missing: the daemon is built in a golang container"
+    elif [ "$DRY_RUN" = 1 ]; then
       warn "go is missing; skipping the daemon build (dry-run)"
     else
       die "go is missing: install Go 1.23+ or pass --daemon-bin PATH"
@@ -163,6 +184,8 @@ validate() {
       [ -z "$v" ] || [[ "$v" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || { echo "not an IPv4 address"; return 1; } ;;
     MARIADB_ROOT_PASSWORD)
       [[ "$v" =~ ^[A-Za-z0-9]{16,}$ ]] || { echo "at least 16 characters [A-Za-z0-9]"; return 1; } ;;
+    PANEL_URL)
+      [[ "$v" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || { echo "not a URL like https://panel.example.com (no path)"; return 1; } ;;
     SFTP_PORT|DAEMON_PORT)
       [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -ge 1 ] && [ "$v" -le 65535 ] || { echo "not a port number"; return 1; } ;;
   esac
@@ -326,6 +349,10 @@ install_daemon() {
   elif command -v go >/dev/null; then
     log "building daemon (go build)"
     (cd "$REPO/daemon" && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$tmp" ./cmd/panel-daemon)
+  elif [ "$NODE_ONLY" = 1 ] && [ "$DRY_RUN" = 0 ]; then
+    log "building daemon in a golang container (go is not installed)"
+    docker run --rm -v "$REPO/daemon":/src:ro -v "$(dirname "$tmp")":/out -w /src -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false \
+      golang:1.23 go build -trimpath -ldflags "-s -w" -o "/out/$(basename "$tmp")" ./cmd/panel-daemon
   else
     rm -f "$tmp"; warn "daemon not built"; return 0
   fi
@@ -368,7 +395,7 @@ check_ports() {
   command -v ss >/dev/null || return 0
   docker ps -q --filter name=^panel-caddy$ | grep -q . && return 0
   local p
-  for p in 80 443 3000; do
+  for p in 80 443 $([ "$NODE_ONLY" = 1 ] || echo 3000); do
     if ss -Hltn "sport = :$p" | grep -q .; then warn "port $p is already in use; Caddy/panel may fail to start"; fi
   done
 }
@@ -401,4 +428,92 @@ main() {
   summary
 }
 
-main
+
+# ---------------------------------------------------------------- node-only
+NODE_KEYS=(PANEL_URL NODE_DOMAIN NODE_TOKEN ACME_EMAIL DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR
+  CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER PANEL_INSTANCE DOCKER_EXTRA_LABELS)
+
+collect_node_values() {
+  log "values for the node (panel.env without panel secrets)"
+  ask PANEL_URL "URL of the panel (e.g. https://panel.example.com)"
+  ask NODE_DOMAIN "Domain of this node (e.g. node2.example.com)"
+  ask NODE_TOKEN "Node token (from the panel: Admin > Nodes)" secret
+  ask ACME_EMAIL "Email address for Let's Encrypt"
+  local key
+  for key in DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER PANEL_INSTANCE DOCKER_EXTRA_LABELS; do
+    keep_or_default "$key"
+  done
+  [ "${VAL[PANEL_INSTANCE]}" = main ] || warn "PANEL_INSTANCE=${VAL[PANEL_INSTANCE]} (normally main)"
+}
+
+write_node_env() {
+  log "writing: $ENV_FILE"
+  local dir tmp key
+  dir="$(dirname "$ENV_FILE")"
+  mkdir -p "$dir"; chmod 700 "$dir"
+  tmp="$(mktemp "$dir/.panel.env.XXXXXX")"; chmod 600 "$tmp"
+  {
+    printf '# /etc/panel/panel.env (remote node) - written by deploy/install.sh --node-only.\n'
+    for key in "${NODE_KEYS[@]}"; do printf '%s=%s\n' "$key" "${VAL[$key]}"; done
+    local extra=0
+    for key in "${OLD_ORDER[@]}"; do
+      [[ " ${NODE_KEYS[*]} " == *" $key "* ]] && continue
+      [ "$extra" = 1 ] || { printf '\n# --- other ---\n'; extra=1; }
+      printf '%s=%s\n' "$key" "${OLD[$key]}"
+    done
+  } > "$tmp"
+  if [ -f "$ENV_FILE" ] && cmp -s <(grep -v '^# /etc/panel' "$tmp") <(grep -v '^# /etc/panel' "$ENV_FILE"); then
+    rm -f "$tmp"; chmod 600 "$ENV_FILE"; log "panel.env unchanged"
+  else
+    mv -f "$tmp" "$ENV_FILE"
+  fi
+  [ "$DRY_RUN" = 1 ] || chown root:root "$ENV_FILE" "$dir"
+}
+
+start_node() {
+  if [ "$SKIP_START" = 1 ]; then log "--no-start: nothing started"; return; fi
+  log "(re)starting daemon"
+  run systemctl enable panel-daemon.service
+  run systemctl restart panel-daemon.service
+  log "starting Caddy (docker compose up -d --build)"
+  if [ "$DRY_RUN" = 1 ]; then
+    compose config -q && log "docker compose config: OK"
+    printf '[dry-run] PANEL_ENV_FILE=%q docker compose --env-file %q -f %q up -d --build\n' "$ENV_FILE" "$ENV_FILE" "$COMPOSE_FILE"
+  else
+    compose up -d --build
+  fi
+  # Firewall: alleen als ufw actief is.
+  if [ "$DRY_RUN" = 0 ] && command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q '^Status: active'; then
+    local p; for p in 80/tcp 443/tcp 443/udp "${VAL[SFTP_PORT]}/tcp"; do run ufw allow "$p" >/dev/null; done
+  fi
+}
+
+node_summary() {
+  cat <<EOT
+
+Node installed.
+  env:     $ENV_FILE
+  unit:    $UNIT_DST
+  daemon:  $BIN_DST
+  compose: PANEL_ENV_FILE=$ENV_FILE docker compose --env-file $ENV_FILE -f $COMPOSE_FILE ps
+
+DNS: an A record for ${VAL[NODE_DOMAIN]} pointing to this machine. Open ports 80, 443 and ${VAL[SFTP_PORT]} (SFTP).
+Then check Admin > Nodes in the panel: the node should be online.
+EOT
+  [ "$DRY_RUN" = 1 ] && echo "(dry-run: everything is under $ROOT)"
+  return 0
+}
+
+node_main() {
+  check_requirements
+  read_existing
+  collect_node_values
+  check_ports
+  write_node_env
+  install_daemon
+  install_unit
+  start_node
+  node_summary
+}
+
+if [ "$NODE_ONLY" = 1 ]; then node_main; else main; fi

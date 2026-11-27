@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ServerDetail } from "@panel/api";
-import { DeleteServerCard, LimitsCard, OwnerCard, PortsCard } from "@/app/_components/admin/server-manage";
+import { DeleteServerCard, LimitsCard, MoveNodeCard, OwnerCard, PortsCard } from "@/app/_components/admin/server-manage";
 import { VariablesCard } from "@/app/_components/server/server-settings";
 import AdminServersPage from "@/app/(panel)/admin/servers/page";
 import { renderWithTrpc, sessionFor } from "./utils";
@@ -63,6 +63,24 @@ describe("admin: server beheren", () => {
     fireEvent.click(screen.getByRole("button", { name: /Save ports/ }));
     expect(await screen.findByText(/Ports saved/)).toBeTruthy();
     expect(inputs(bodies, "admin.servers.updateAllocations")[0]).toEqual({ uuid: GAME, allocationIds: [3, 1] });
+  });
+
+  it("verplaatsen naar een andere node: bevestigen en transfer aanroepen", async () => {
+    const server = await loadServer();
+    const { bodies } = renderWithTrpc(<MoveNodeCard server={server} />, {
+      ...admin,
+      patch: (m) => {
+        const list = m.admin.nodes.list;
+        (m.admin.nodes as { list: unknown }).list = (async (o: never) => [...(await list(o)), { id: 2, name: "node2", fqdn: "node2.test", daemonPort: 8080, sftpPort: 2023, maxRamMb: 0, maxDiskMb: 0, s3TargetId: null, diskQuotaMode: "soft", isLocal: false }]) as never;
+      },
+    });
+    const sel = (await screen.findByLabelText("Target node")) as HTMLSelectElement;
+    await waitFor(() => expect(sel.options.length).toBeGreaterThan(0));
+    expect(Array.from(sel.options).every((o) => o.value !== String(server.node.id))).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Move server" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Move server" }));
+    expect(await screen.findByText("Server moved.")).toBeTruthy();
+    expect(inputs(bodies, "admin.servers.transfer")[0]).toEqual({ uuid: GAME, nodeId: Number(sel.value) });
   });
 
   it("variabelen: admin ziet ook niet-aanpasbare", async () => {

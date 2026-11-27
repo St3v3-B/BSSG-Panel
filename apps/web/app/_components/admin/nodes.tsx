@@ -289,6 +289,15 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
         </CardContent>
       </Card>
       <NodeBackupTarget node={d} />
+      {!d.isLocal && (
+        <Alert variant="info" data-testid="node-install-hint">
+          <div>
+            <AlertTitle>{n.nodeInstallTitle}</AlertTitle>
+            <AlertDescription>{n.nodeInstallText}</AlertDescription>
+          </div>
+        </Alert>
+      )}
+      <NodeServers nodeId={id} />
       <AllocationsAdmin nodeId={id} />
     </div>
   );
@@ -337,6 +346,41 @@ function NodeBackupTarget({ node }: { node: Node }) {
         </Button>
         {save.isSuccess && <span className="text-sm text-success">{n.s3Saved}</span>}
         {save.error && <AdminError error={save.error} />}
+      </CardContent>
+    </Card>
+  );
+}
+
+function NodeServers({ nodeId }: { nodeId: number }) {
+  const t = useT();
+  const q = trpc.admin.servers.list.useQuery({ nodeId, limit: 100 });
+  return (
+    <Card data-testid="node-servers">
+      <CardHeader>
+        <CardTitle className="text-base">{t.admin.nodes.nodeServers}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {q.error ? (
+          <QueryError error={q.error} />
+        ) : !q.data ? (
+          <Skeleton className="h-12" />
+        ) : q.data.items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t.admin.nodes.nodeNoServers}</p>
+        ) : (
+          <ul className="divide-y divide-border text-sm">
+            {q.data.items.map((s) => (
+              <li key={s.uuid} className="flex items-center justify-between gap-3 py-2">
+                <Link href={`/admin/servers/${s.uuid}`} className="truncate font-medium hover:underline">
+                  {s.name}
+                </Link>
+                <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <code className="font-mono">{s.shortId}</code>
+                  <Badge variant="secondary">{s.status}</Badge>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </CardContent>
     </Card>
   );
