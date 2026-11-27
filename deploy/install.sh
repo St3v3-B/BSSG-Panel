@@ -100,7 +100,8 @@ run() {
 }
 
 compose() {
-  PANEL_ENV_FILE="$ENV_FILE" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+  # De node-compose heeft Caddy achter het profiel "caddy"; install.sh --node-only wil Caddy altijd.
+  PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES="${COMPOSE_PROFILES:-$([ "$NODE_ONLY" = 1 ] && echo caddy)}" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
 # ---------------------------------------------------------------- vereisten

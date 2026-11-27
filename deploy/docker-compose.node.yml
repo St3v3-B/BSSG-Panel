@@ -14,6 +14,9 @@ services:
     build: ./caddy
     image: panel-caddy:local
     container_name: ${CADDY_CONTAINER:-panel-caddy}
+    # Alleen voor nodes met domeinondersteuning (COMPOSE_PROFILES=caddy). Zonder: geen Caddy op 80/443; de daemon
+    # serveert dan zelf https op DAEMON_TLS_PORT (zie join.sh en daemon/internal/tlscert).
+    profiles: ["caddy"]
     restart: unless-stopped
     labels: *labels
     environment:

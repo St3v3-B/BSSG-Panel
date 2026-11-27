@@ -38,6 +38,17 @@ export async function getJoinDaemon(_req: Request, ctx: { params: Promise<{ arch
   });
 }
 
+/** GET /join/files.tar.gz en .sha256: compose-bestand, Caddy-build en systemd-unit voor de node. */
+export async function getJoinFiles(_req: Request, ctx: { params: Promise<{ file: string }> }): Promise<Response> {
+  const { file } = await ctx.params;
+  if (file !== "files.tar.gz" && file !== "files.tar.gz.sha256") return text(404, "not found\n");
+  const f = pjoin(joinAssetsDir(), `node-${file}`);
+  if (!existsSync(f)) return text(404, "node files not available\n");
+  return file.endsWith(".sha256")
+    ? text(200, readFileSync(f, "utf8"))
+    : new Response(Readable.toWeb(createReadStream(f)) as ReadableStream, { headers: { "content-type": "application/gzip", "cache-control": "no-store" } });
+}
+
 const clientIp = (req: Request) => (req.headers.get("x-forwarded-for")?.split(",")[0] ?? req.headers.get("x-real-ip") ?? "unknown").trim();
 
 export async function joinExchange(req: Request): Promise<Response> {

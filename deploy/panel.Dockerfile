@@ -34,6 +34,9 @@ COPY . .
 RUN --mount=type=cache,id=panel-pnpm-store,target=/pnpm/store \
     pnpm config set store-dir /pnpm/store \
  && pnpm install --frozen-lockfile --filter "@panel/web..."
+# Bestanden die join.sh op een node zet (compose, Caddy-build, systemd-unit) + checksum.
+RUN mkdir -p /out && tar -czf /out/node-files.tar.gz -C deploy docker-compose.node.yml caddy systemd \
+ && sha256sum /out/node-files.tar.gz | cut -d' ' -f1 > /out/node-files.tar.gz.sha256
 RUN mkdir -p apps/web/public \
  && pnpm --filter @panel/web build
 
@@ -51,6 +54,7 @@ COPY --from=build /repo/apps/web/public ./apps/web/public
 COPY --from=build /repo/packages/db/migrations ./packages/db/migrations
 COPY --from=build /repo/templates ./templates
 COPY --from=daemon /out/ /app/join/
+COPY --from=build /out/node-files* /app/join/
 COPY --from=build /repo/deploy/join/join.sh /app/join/join.sh
 RUN mkdir -p apps/web/.next/cache && chown -R 1000:1000 apps/web/.next/cache
 # De node-image heeft gebruiker "node" met uid/gid 1000.
