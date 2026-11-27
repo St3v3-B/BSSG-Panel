@@ -11,6 +11,7 @@ const DOT: Record<ServerStatus, string> = {
   online: "bg-success",
   stopping: "bg-warning animate-pulse",
   disk_exceeded: "bg-destructive",
+  sleeping: "bg-info",
   unknown: "bg-muted-foreground",
 };
 

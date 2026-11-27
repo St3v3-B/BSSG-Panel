@@ -1,0 +1,405 @@
+"use client";
+import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import type { z } from "zod";
+import type { DatabaseHost } from "@panel/api/schemas";
+import { trpc } from "@/lib/trpc";
+import { AdminError, Field } from "@/app/_components/admin/nodes";
+import { QueryError } from "@/app/_components/query-error";
+import { Badge } from "@/app/_components/ui/badge";
+import { Button } from "@/app/_components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/_components/ui/card";
+import { Input } from "@/app/_components/ui/input";
+import { Select } from "@/app/_components/ui/select";
+import { Skeleton } from "@/app/_components/ui/skeleton";
+import { Spinner } from "@/app/_components/ui/spinner";
+import { useT } from "@/app/_lib/i18n";
+import { cn } from "@/lib/utils";
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
+
+/** Tabbladen boven de drie instellingenschermen. */
+export function SettingsTabs({ current }: { current: "general" | "db" | "dns" }) {
+  const t = useT().admin2.sub;
+  const tabs = [
+    { k: "general", href: "/admin/settings", label: t.general },
+    { k: "db", href: "/admin/settings/database-hosts", label: t.databaseHosts },
+    { k: "dns", href: "/admin/settings/dns-providers", label: t.dnsProviders },
+  ] as const;
+  return (
+    <nav className="mb-6 flex gap-1 border-b border-border text-sm" aria-label="settings">
+      {tabs.map((x) => (
+        <Link key={x.k} href={x.href} className={cn("-mb-px border-b-2 px-3 py-2", x.k === current ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}>
+          {x.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+export function SettingsAdmin() {
+  const t = useT();
+  const s = t.admin2.settings;
+  const utils = trpc.useUtils();
+  const q = trpc.admin.settings.get.useQuery();
+  const [form, setForm] = useState<null | { panelName: string; logoUrl: string; accentColor: string; cpuPct: string; ramMb: string; swapMb: string; diskMb: string }>(null);
+  useEffect(() => {
+    if (q.data && !form) {
+      const d = q.data;
+      setForm({ panelName: d.panelName, logoUrl: d.logoUrl ?? "", accentColor: d.accentColor, cpuPct: String(d.defaultLimits.cpuPct), ramMb: String(d.defaultLimits.ramMb), swapMb: String(d.defaultLimits.swapMb), diskMb: String(d.defaultLimits.diskMb) });
+    }
+  }, [q.data, form]);
+  const save = trpc.admin.settings.update.useMutation({
+    onSuccess: () => {
+      void utils.admin.settings.get.invalidate();
+      void utils.auth.branding.invalidate();
+    },
+  });
+  const [touched, setTouched] = useState(false);
+  if (q.error) return <QueryError error={q.error} />;
+  if (!form) return <Skeleton className="h-64 rounded-xl" />;
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => (save.reset(), setForm({ ...form, [k]: e.target.value }));
+  const int = (v: string) => Math.trunc(Number(v));
+  const limits = { cpuPct: int(form.cpuPct), ramMb: int(form.ramMb), swapMb: int(form.swapMb), diskMb: int(form.diskMb) };
+  const invalid = !form.panelName.trim() || !HEX.test(form.accentColor) || Object.values(limits).some((v) => !Number.isFinite(v)) || limits.cpuPct < 0 || limits.ramMb < 64 || limits.swapMb < -1 || limits.diskMb < 0;
+
+  return (
+    <form
+      className="max-w-2xl space-y-6"
+      data-testid="settings-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        setTouched(true);
+        if (invalid) return;
+        save.mutate({ panelName: form.panelName.trim(), logoUrl: form.logoUrl.trim() || null, accentColor: form.accentColor, defaultLimits: limits });
+      }}
+    >
+      <Card>
+        <CardContent className="space-y-4 pt-6">
+          <Field id="set-name" label={s.panelName}>
+            <Input id="set-name" value={form.panelName} maxLength={60} onChange={set("panelName")} />
+          </Field>
+          <Field id="set-logo" label={s.logoUrl} hint={s.logoHint}>
+            <Input id="set-logo" value={form.logoUrl} onChange={set("logoUrl")} />
+          </Field>
+          <Field id="set-accent" label={s.accent}>
+            <div className="flex items-center gap-2">
+              <input type="color" aria-label={s.accent} value={HEX.test(form.accentColor) ? form.accentColor : "#22c55e"} onChange={set("accentColor")} className="h-9 w-12 cursor-pointer rounded-md border border-input bg-background p-1" />
+              <Input id="set-accent" value={form.accentColor} onChange={set("accentColor")} className="w-32 font-mono" />
+            </div>
+          </Field>
+          <div className="space-y-1.5" data-testid="accent-preview">
+            <div className="text-sm font-medium">{s.preview}</div>
+            <div className="flex items-center gap-3 rounded-lg border border-border p-3">
+              {form.logoUrl.trim() && /^(https?:\/\/|\/)/.test(form.logoUrl.trim()) && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={form.logoUrl.trim()} alt="" className="size-8 rounded object-contain" />
+              )}
+              <span className="font-semibold" style={{ color: HEX.test(form.accentColor) ? form.accentColor : undefined }}>
+                {form.panelName || "Panel"}
+              </span>
+              <span className="rounded-md px-3 py-1.5 text-sm font-medium text-white" style={{ backgroundColor: HEX.test(form.accentColor) ? form.accentColor : "#22c55e" }}>
+                {s.previewButton}
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{s.defaultLimits}</CardTitle>
+          <CardDescription>{s.defaultLimitsHint}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <Field id="lim-cpu" label={s.cpu}>
+            <Input id="lim-cpu" type="number" value={form.cpuPct} onChange={set("cpuPct")} />
+          </Field>
+          <Field id="lim-ram" label={s.ram}>
+            <Input id="lim-ram" type="number" value={form.ramMb} onChange={set("ramMb")} />
+          </Field>
+          <Field id="lim-swap" label={s.swap}>
+            <Input id="lim-swap" type="number" value={form.swapMb} onChange={set("swapMb")} />
+          </Field>
+          <Field id="lim-disk" label={s.disk}>
+            <Input id="lim-disk" type="number" value={form.diskMb} onChange={set("diskMb")} />
+          </Field>
+        </CardContent>
+      </Card>
+      {touched && invalid && (
+        <p className="text-sm text-destructive" role="alert">
+          {s.invalid}
+        </p>
+      )}
+      {save.error && <AdminError error={save.error} />}
+      {save.isSuccess && (
+        <p className="text-sm text-success" role="status">
+          {s.saved}
+        </p>
+      )}
+      <Button type="submit" disabled={save.isPending}>
+        {save.isPending && <Spinner />} {s.save}
+      </Button>
+    </form>
+  );
+}
+
+// ---------- database-hosts ----------
+
+const EMPTY_HOST = { name: "", host: "", port: "3306", adminUser: "root", adminPassword: "", nodeId: "" };
+
+export function DatabaseHostsAdmin() {
+  const t = useT();
+  const d = t.admin2.dbHosts;
+  const utils = trpc.useUtils();
+  const hosts = trpc.admin.databaseHosts.list.useQuery();
+  const nodes = trpc.admin.nodes.list.useQuery();
+  const [editing, setEditing] = useState<null | "new" | number>(null);
+  const [form, setForm] = useState(EMPTY_HOST);
+  const [touched, setTouched] = useState(false);
+  const done = () => (setEditing(null), setForm(EMPTY_HOST), setTouched(false), void utils.admin.databaseHosts.list.invalidate());
+  const create = trpc.admin.databaseHosts.create.useMutation({ onSuccess: done });
+  const update = trpc.admin.databaseHosts.update.useMutation({ onSuccess: done });
+  const del = trpc.admin.databaseHosts.delete.useMutation({ onSuccess: () => void utils.admin.databaseHosts.list.invalidate() });
+  const test = trpc.admin.databaseHosts.test.useMutation();
+  const [confirmDel, setConfirmDel] = useState<number | null>(null);
+  const [tested, setTested] = useState<{ id: number; ok: boolean; error: string | null } | null>(null);
+
+  const startEdit = (h: z.infer<typeof DatabaseHost>) => {
+    create.reset();
+    update.reset();
+    setForm({ name: h.name, host: h.host, port: String(h.port), adminUser: h.adminUser, adminPassword: "", nodeId: h.nodeId ? String(h.nodeId) : "" });
+    setEditing(h.id);
+  };
+  const isNew = editing === "new";
+  const invalid = !form.name.trim() || !form.host.trim() || !form.adminUser.trim() || !Number.isInteger(Number(form.port)) || (isNew && !form.adminPassword);
+  const submit = () => {
+    setTouched(true);
+    if (invalid) return;
+    const base = { name: form.name.trim(), host: form.host.trim(), port: Number(form.port), adminUser: form.adminUser.trim(), nodeId: form.nodeId ? Number(form.nodeId) : null };
+    if (isNew) create.mutate({ ...base, adminPassword: form.adminPassword });
+    else if (typeof editing === "number") update.mutate({ id: editing, ...base, ...(form.adminPassword ? { adminPassword: form.adminPassword } : {}) });
+  };
+  const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm({ ...form, [k]: e.target.value });
+  const err = create.error ?? update.error ?? del.error ?? test.error;
+
+  return (
+    <div className="space-y-4" data-testid="db-hosts-admin">
+      {editing === null ? (
+        <Button onClick={() => (create.reset(), setEditing("new"))}>
+          <Plus /> {d.add}
+        </Button>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{isNew ? d.add : d.edit}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form
+              className="grid gap-4 sm:grid-cols-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                submit();
+              }}
+            >
+              <Field id="dbh-name" label={d.name}>
+                <Input id="dbh-name" value={form.name} onChange={f("name")} />
+              </Field>
+              <Field id="dbh-host" label={d.host}>
+                <Input id="dbh-host" value={form.host} onChange={f("host")} />
+              </Field>
+              <Field id="dbh-port" label={d.port}>
+                <Input id="dbh-port" type="number" value={form.port} onChange={f("port")} />
+              </Field>
+              <Field id="dbh-user" label={d.adminUser}>
+                <Input id="dbh-user" value={form.adminUser} onChange={f("adminUser")} />
+              </Field>
+              <Field id="dbh-pass" label={d.adminPassword} hint={isNew ? undefined : d.passwordKeep}>
+                <Input id="dbh-pass" type="password" autoComplete="new-password" value={form.adminPassword} onChange={f("adminPassword")} />
+              </Field>
+              <Field id="dbh-node" label={d.node}>
+                <Select id="dbh-node" value={form.nodeId} onChange={f("nodeId")}>
+                  <option value="">{d.anyNode}</option>
+                  {nodes.data?.map((n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              {touched && invalid && (
+                <p className="text-sm text-destructive sm:col-span-2" role="alert">
+                  {t.admin.nodes.required}
+                </p>
+              )}
+              <div className="flex gap-2 sm:col-span-2">
+                <Button type="submit" disabled={create.isPending || update.isPending}>
+                  {(create.isPending || update.isPending) && <Spinner />} {d.save}
+                </Button>
+                <Button variant="ghost" onClick={() => (setEditing(null), setForm(EMPTY_HOST))}>
+                  {t.common.cancel}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+      {err && <AdminError error={err} />}
+      {hosts.error ? (
+        <QueryError error={hosts.error} />
+      ) : !hosts.data ? (
+        <Skeleton className="h-32 rounded-xl" />
+      ) : hosts.data.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{d.empty}</p>
+      ) : (
+        <div className="grid gap-3">
+          {hosts.data.map((h) => (
+            <Card key={h.id} data-testid="db-host" className="p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium">{h.name}</div>
+                  <div className="font-mono text-xs text-muted-foreground">
+                    {h.adminUser}@{h.host}:{h.port}
+                  </div>
+                </div>
+                <Badge variant="secondary">{d.databases(h.databaseCount)}</Badge>
+                <div className="ml-auto flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" disabled={test.isPending} onClick={() => test.mutate({ id: h.id }, { onSuccess: (r) => setTested({ id: h.id, ...r }) })}>
+                    {test.isPending && test.variables?.id === h.id && <Spinner />} {d.test}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => startEdit(h)}>
+                    <Pencil /> {d.edit}
+                  </Button>
+                  {confirmDel === h.id ? (
+                    <>
+                      <Button size="sm" variant="destructive" disabled={del.isPending} onClick={() => del.mutate({ id: h.id }, { onSuccess: () => setConfirmDel(null) })}>
+                        {d.delete}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setConfirmDel(null)}>
+                        {t.common.cancel}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="outline" className="text-destructive" aria-label={`${d.delete} ${h.name}`} onClick={() => setConfirmDel(h.id)}>
+                      <Trash2 />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {tested?.id === h.id && (
+                <p className={cn("mt-2 text-sm", tested.ok ? "text-success" : "text-destructive")} role="status">
+                  {tested.ok ? d.testOk : d.testFail(tested.error ?? "?")}
+                </p>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- DNS-providers ----------
+
+export function DnsProvidersAdmin() {
+  const t = useT();
+  const d = t.admin2.dns;
+  const utils = trpc.useUtils();
+  const list = trpc.admin.dnsProviders.list.useQuery();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [token, setToken] = useState("");
+  const [touched, setTouched] = useState(false);
+  const inv = () => void utils.admin.dnsProviders.list.invalidate();
+  const create = trpc.admin.dnsProviders.create.useMutation({ onSuccess: () => (setOpen(false), setName(""), setToken(""), setTouched(false), inv()) });
+  const refresh = trpc.admin.dnsProviders.refreshZones.useMutation({ onSuccess: inv });
+  const del = trpc.admin.dnsProviders.delete.useMutation({ onSuccess: () => (setConfirmDel(null), inv()) });
+  const [confirmDel, setConfirmDel] = useState<number | null>(null);
+  const invalid = !name.trim() || !token.trim();
+  const err = create.error ?? refresh.error ?? del.error;
+
+  return (
+    <div className="space-y-4" data-testid="dns-admin">
+      {open ? (
+        <Card>
+          <CardContent className="pt-6">
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setTouched(true);
+                if (!invalid) create.mutate({ type: "cloudflare", name: name.trim(), apiToken: token.trim() });
+              }}
+            >
+              <Field id="dns-name" label={d.name}>
+                <Input id="dns-name" value={name} onChange={(e) => setName(e.target.value)} />
+              </Field>
+              <Field id="dns-token" label={d.apiToken} hint={d.tokenHint}>
+                <Input id="dns-token" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} />
+              </Field>
+              {touched && invalid && (
+                <p className="text-sm text-destructive" role="alert">
+                  {t.admin.nodes.required}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <Button type="submit" disabled={create.isPending}>
+                  {create.isPending && <Spinner />} {d.save}
+                </Button>
+                <Button variant="ghost" onClick={() => (setOpen(false), create.reset())}>
+                  {t.common.cancel}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      ) : (
+        <Button onClick={() => setOpen(true)}>
+          <Plus /> {d.add}
+        </Button>
+      )}
+      {err && <AdminError error={err} />}
+      {list.error ? (
+        <QueryError error={list.error} />
+      ) : !list.data ? (
+        <Skeleton className="h-32 rounded-xl" />
+      ) : list.data.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{d.empty}</p>
+      ) : (
+        <div className="grid gap-3">
+          {list.data.map((p) => (
+            <Card key={p.id} className="p-4" data-testid="dns-provider">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium">{p.name}</div>
+                  <div className="text-xs text-muted-foreground">Cloudflare</div>
+                </div>
+                <Badge variant="secondary">{d.zones(p.zones.length)}</Badge>
+                <div className="ml-auto flex gap-2">
+                  <Button size="sm" variant="outline" disabled={refresh.isPending} onClick={() => refresh.mutate({ id: p.id })}>
+                    {refresh.isPending && refresh.variables?.id === p.id ? <Spinner /> : <RefreshCw />} {d.refresh}
+                  </Button>
+                  {confirmDel === p.id ? (
+                    <>
+                      <Button size="sm" variant="destructive" disabled={del.isPending} onClick={() => del.mutate({ id: p.id })}>
+                        {d.delete}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setConfirmDel(null)}>
+                        {t.common.cancel}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="outline" className="text-destructive" aria-label={`${d.delete} ${p.name}`} onClick={() => setConfirmDel(p.id)}>
+                      <Trash2 />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {p.zones.length > 0 && <p className="mt-2 break-words text-xs text-muted-foreground">{p.zones.map((z) => z.name).join(", ")}</p>}
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

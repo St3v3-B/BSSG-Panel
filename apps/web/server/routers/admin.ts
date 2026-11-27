@@ -221,11 +221,6 @@ export async function suspensionOf(uuid: string): Promise<{ reason: string | nul
   return r?.at ? { reason: r.reason, at: r.at } : null;
 }
 
-const withSuspended = (b: ServerBundle, viewerId: number) => ({
-  ...toSummary(b, viewerId),
-  suspended: b.server.suspendedAt ? { reason: b.server.suspendedReason, at: b.server.suspendedAt } : null,
-});
-
 const cursorNum = (c: string | null | undefined) => (c && /^\d+$/.test(c) ? Number(c) : null);
 
 // ---------- implementatie ----------
@@ -312,7 +307,7 @@ export const admin = {
       );
       const rows = await fetchServers(where, { orderBy: "id_desc", limit: input.limit + 1 });
       const page = rows.slice(0, input.limit);
-      return { items: page.map((b) => withSuspended(b, uid(ctx))), nextCursor: rows.length > input.limit ? String(page[page.length - 1]!.server.id) : null };
+      return { items: page.map((b) => toSummary(b, uid(ctx))), nextCursor: rows.length > input.limit ? String(page[page.length - 1]!.server.id) : null };
     },
 
     create: async ({ input, ctx }) => {

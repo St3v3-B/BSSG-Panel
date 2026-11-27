@@ -66,6 +66,7 @@ export function toSummary(b: ServerBundle, viewerId: number, status?: ServerStat
     limits: limitsOf(b.server),
     isOwner: b.server.ownerId === viewerId,
     owner: userPublic(b.owner),
+    suspended: b.server.suspendedAt ? { reason: b.server.suspendedReason, at: b.server.suspendedAt } : null,
   };
 }
 
@@ -97,6 +98,8 @@ export function toDetail(
     })),
     node: { id: b.node.id, name: b.node.name, fqdn: b.node.fqdn },
     sftp: { host: b.node.fqdn, port: b.node.sftpPort, username: sftpUsername(viewer.name, viewer.discordId, b.server.uuid) },
+    // supported: nog niet uit de template gelezen (slaapstand-agent)
+    sleep: { supported: false, enabled: b.server.sleepEnabled, idleMinutes: b.server.sleepIdleMinutes },
     installedAt: live?.installedAt !== undefined ? live.installedAt : b.server.installedAt,
     createdAt: b.server.createdAt,
   };
