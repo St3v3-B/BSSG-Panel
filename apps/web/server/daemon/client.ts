@@ -24,6 +24,8 @@ export interface DaemonClientOptions {
   timeoutMs?: number;
 }
 
+const TRANSFER_TIMEOUT_MS = 4 * 60 * 60_000;
+
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 
 export class DaemonClient {
@@ -144,6 +146,57 @@ export class DaemonClient {
   }
   decompress(uuid: string, path: string) {
     return this.request<void>("POST", `/api/servers/${uuid}/files/decompress`, { path }, 300_000);
+  }
+
+  // ---------- verplaatsen tussen nodes ----------
+  /** Tar-stroom van de hele datamap (server moet gestopt zijn). De body moet volledig gelezen worden. */
+  async exportData(uuid: string): Promise<ReadableStream<Uint8Array>> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/api/servers/${uuid}/transfer/export`, {
+        headers: { authorization: `Bearer ${this.token}` },
+        signal: AbortSignal.timeout(TRANSFER_TIMEOUT_MS),
+        cache: "no-store",
+      });
+    } catch (e) {
+      throw new DaemonUnreachableError(this.nodeId, e);
+    }
+    if (!res.ok || !res.body) throw await this.httpError(res);
+    return res.body;
+  }
+  /** Pakt een tar-stroom uit in de datamap van de server. */
+  async importData(uuid: string, body: ReadableStream<Uint8Array>): Promise<void> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/api/servers/${uuid}/transfer/import`, {
+        method: "PUT",
+        headers: { authorization: `Bearer ${this.token}`, "content-type": "application/x-tar" },
+        body,
+        // @ts-expect-error duplex is verplicht voor een stream-body (Node/undici), ontbreekt in de DOM-types
+        duplex: "half",
+        signal: AbortSignal.timeout(TRANSFER_TIMEOUT_MS),
+        cache: "no-store",
+      });
+    } catch (e) {
+      throw new DaemonUnreachableError(this.nodeId, e);
+    }
+    if (!res.ok) throw await this.httpError(res);
+    await res.arrayBuffer().catch(() => undefined);
+  }
+
+  private async httpError(res: Response): Promise<Error> {
+    const text = await res.text().catch(() => "");
+    let code = `http_${res.status}`;
+    let message = text.slice(0, 500);
+    try {
+      const j = JSON.parse(text) as { error?: string; message?: string };
+      if (j.error) code = j.error;
+      if (j.message) message = j.message;
+    } catch {
+      /* geen JSON */
+    }
+    if (res.status === 502 || res.status === 503 || res.status === 504) return new DaemonUnreachableError(this.nodeId, new Error(`${res.status} ${message}`));
+    return new DaemonHttpError(res.status, code, message || code);
   }
 
   // ---------- routes (web) ----------

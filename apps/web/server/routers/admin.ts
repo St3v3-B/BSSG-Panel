@@ -6,6 +6,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { logActivity } from "../activity";
 import { dropServerDatabases } from "./databases";
 import { removeServerRoutes } from "./domains";
+import { transfer } from "./transfer";
 import { activityPage } from "../activity-query";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema, type Db } from "../db";
@@ -103,7 +104,7 @@ export function parsePorts(spec: string): number[] {
 }
 
 /** Controleert allocation-ID's: bestaan, op deze node, vrij (of al van `serverId`). */
-async function checkAllocations(db: Db | Tx, ids: number[], nodeId: number, serverId: number | null) {
+export async function checkAllocations(db: Db | Tx, ids: number[], nodeId: number, serverId: number | null) {
   if (new Set(ids).size !== ids.length) throw bad("DUPLICATE_ALLOCATION");
   if (!ids.length) return [];
   const rows = await db.select().from(schema.allocations).where(inArray(schema.allocations.id, ids));
@@ -117,7 +118,7 @@ async function checkAllocations(db: Db | Tx, ids: number[], nodeId: number, serv
 }
 
 /** Wijst precies `ids` toe aan de server (eerste = primair), de rest komt vrij. */
-async function assignAllocations(tx: Tx, serverId: number, ids: number[]) {
+export async function assignAllocations(tx: Tx, serverId: number, ids: number[]) {
   await tx
     .update(schema.allocations)
     .set({ serverId: null, isPrimary: false })
@@ -476,6 +477,8 @@ export const admin = {
       }
       return ok;
     },
+
+    transfer: (opts) => transfer(opts),
 
     changeTemplate: async ({ input, ctx }) => {
       const b = await mustServer(input.uuid);

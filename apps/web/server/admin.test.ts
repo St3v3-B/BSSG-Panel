@@ -198,10 +198,6 @@ describe("admin.servers", () => {
     await expect(admin.api.admin.servers.updateOwner({ uuid, ownerId: 9999 })).rejects.toThrow(/OWNER_NOT_FOUND/);
   });
 
-  it("transfer is nog niet geïmplementeerd", async () => {
-    await expect(admin.api.admin.servers.transfer({ uuid, nodeId: h.localNodeId })).rejects.toThrow(/NOT_IMPLEMENTED/);
-  });
-
   it("delete: daemon DELETE, allocations vrij, log blijft vindbaar op uuid", async () => {
     h.daemon.mode = "error500";
     await expect(admin.api.admin.servers.delete({ uuid })).rejects.toThrow();

@@ -45,7 +45,7 @@ async function domainById(ctx: Ctx, id: number, need: "any" | "domain.manage", m
 /** Caddy leidt wildcard af uit de host: `*.<hostname>`. */
 export const routeHost = (d: Pick<DomainRow, "hostname" | "wildcard">) => (d.wildcard ? `*.${d.hostname}` : d.hostname);
 
-async function routeFor(d: Pick<DomainRow, "hostname" | "targetPort" | "redirectTo" | "wildcard" | "dnsProviderId">, serverUuid: string): Promise<DaemonRoute> {
+export async function routeFor(d: Pick<DomainRow, "hostname" | "targetPort" | "redirectTo" | "wildcard" | "dnsProviderId">, serverUuid: string): Promise<DaemonRoute> {
   let dns_challenge: DaemonRoute["dns_challenge"] = null;
   if (d.wildcard) {
     const [p] = d.dnsProviderId ? await getDb().select().from(schema.dnsProviders).where(eq(schema.dnsProviders.id, d.dnsProviderId)) : [];
@@ -75,7 +75,7 @@ export async function nodeIp(node: NodeRef): Promise<string> {
 }
 export const resetNodeIpCache = () => ipCache.clear();
 
-const isMc = (d: Pick<DomainRow, "protocol">) => d.protocol === "minecraft";
+export const isMc = (d: Pick<DomainRow, "protocol">) => d.protocol === "minecraft";
 const primaryPort = (a: ServerAccess) => a.bundle.allocations[0]?.port ?? null;
 
 async function runCheck(d: DomainRow, a: ServerAccess): Promise<DnsCheck> {
