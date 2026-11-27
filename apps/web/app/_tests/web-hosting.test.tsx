@@ -21,7 +21,7 @@ describe("serverTabs", () => {
     expect(keys({ uuid: SITE, type: "web", isOwner: true, permissions: ["files.read", "domain.manage", "database.manage"] })).toEqual([
       "console", "files", "domains", "databases", "users", "settings",
     ]);
-    expect(keys({ uuid: SITE, type: "game", isOwner: false, permissions: ["console.read", "domain.manage"] })).toEqual(["console", "settings"]);
+    expect(keys({ uuid: SITE, type: "game", isOwner: false, permissions: ["console.read", "domain.manage"] })).toEqual(["console", "stats", "settings"]);
   });
 });
 
