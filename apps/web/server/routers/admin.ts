@@ -1,3 +1,4 @@
+import { emergencyAlerts } from "../emergency";
 import { randomUUID } from "node:crypto";
 import { FORWARDING_VAR, SECRET_VAR, isProxy, proxyMembers } from "../network";
 import { setVariables } from "./network";
@@ -271,6 +272,7 @@ export const admin = {
     const health = await Promise.all(nodes.map((n) => nodeHealth(n, counts.get(n.id) ?? 0)));
     const now = new Date();
     const alerts = [
+      ...(await emergencyAlerts(now)),
       ...health
         .filter((h) => !h.online)
         .map((h) => ({ kind: "node_offline" as const, message: `Node ${nodes.find((n) => n.id === h.nodeId)?.name} is unreachable${h.error ? `: ${h.error}` : ""}`, at: now, serverUuid: null, nodeId: h.nodeId })),

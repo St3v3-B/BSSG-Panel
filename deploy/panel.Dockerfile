@@ -21,7 +21,8 @@ RUN --mount=type=cache,id=panel-pnpm-store,target=/pnpm/store \
     pnpm config set store-dir /pnpm/store \
  && pnpm install --frozen-lockfile --filter "@panel/web..."
 RUN mkdir -p apps/web/public \
- && pnpm --filter @panel/web build
+ && pnpm --filter @panel/web build \
+ && pnpm --filter @panel/web build:cli
 
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production \
@@ -34,6 +35,8 @@ WORKDIR /app
 COPY --from=build /repo/apps/web/.next/standalone ./
 COPY --from=build /repo/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /repo/apps/web/public ./apps/web/public
+# CLI voor het noodaccount: deploy/install.sh --set-emergency-password
+COPY --from=build /repo/apps/web/emergency-cli.mjs ./apps/web/emergency-cli.mjs
 COPY --from=build /repo/packages/db/migrations ./packages/db/migrations
 COPY --from=build /repo/templates ./templates
 RUN mkdir -p apps/web/.next/cache && chown -R 1000:1000 apps/web/.next/cache

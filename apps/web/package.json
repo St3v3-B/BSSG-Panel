@@ -9,7 +9,9 @@
     "build": "next build",
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "emergency": "tsx server/cli/emergency.ts",
+    "build:cli": "esbuild server/cli/emergency.ts --bundle --platform=node --format=esm --target=node22 --outfile=emergency-cli.mjs --external:@node-rs/* --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\""
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
@@ -50,8 +52,10 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.3",
     "@types/react-dom": "^19.2.0",
+    "esbuild": "0.25.12",
     "jsdom": "^31.0.1",
     "tailwindcss": "^4.3.5",
+    "tsx": "4.23.15",
     "typescript": "~5.9.3",
     "vitest": "^5.1.2"
   }

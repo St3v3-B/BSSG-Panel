@@ -93,7 +93,8 @@ export async function loadSession(token: string): Promise<SessionCtx | null> {
     sessionId: row.sessionId,
     userId: row.userId,
     discordId: row.discordId ?? "",
-    isAdmin: row.adminId !== null,
+    // Het noodaccount heeft geen Discord-ID; TOTP is voor hem altijd verplicht (zie emergency.ts).
+    isAdmin: row.adminId !== null || row.isEmergency,
     isOwner: row.discordId === owner,
     isEmergency: row.isEmergency,
     blocked: row.blocked,

@@ -10,6 +10,7 @@ import { isTotpCode, TotpCodeInput } from "@/app/_components/totp-code-input";
 import { Alert, AlertDescription, AlertTitle } from "@/app/_components/ui/alert";
 import { Button } from "@/app/_components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/_components/ui/card";
+import { Input } from "@/app/_components/ui/input";
 import { Label } from "@/app/_components/ui/label";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
@@ -58,6 +59,7 @@ function LoginFlow() {
   const redirectTo = safeRedirect(params.get("redirectTo"));
   const callbackError = params.get("error");
   const me = trpc.auth.me.useQuery(undefined, { retry: false });
+  const [emergency, setEmergency] = useState(false);
   const done = !!me.data && (!me.data.totpEnabled || me.data.totpVerified);
 
   useEffect(() => {
@@ -90,7 +92,14 @@ function LoginFlow() {
           </div>
         </Alert>
       )}
-      <DiscordStep redirectTo={redirectTo} />
+      {emergency ? <EmergencyStep redirectTo={redirectTo} onBack={() => setEmergency(false)} /> : <DiscordStep redirectTo={redirectTo} />}
+      {!emergency && (
+        <p className="text-center">
+          <button type="button" data-testid="emergency-link" className="text-xs text-muted-foreground underline-offset-4 hover:underline" onClick={() => setEmergency(true)}>
+            {t.login.emergencyLink}
+          </button>
+        </p>
+      )}
     </div>
   );
 }
@@ -123,6 +132,57 @@ function DiscordStep({ redirectTo }: { redirectTo: string }) {
           </Button>
         )}
         <p className="text-center text-xs text-muted-foreground">{t.login.noAccount}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EmergencyStep({ redirectTo, onBack }: { redirectTo: string; onBack: () => void }) {
+  const router = useRouter();
+  const utils = trpc.useUtils();
+  const t = useT();
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const login = trpc.auth.emergencyLogin.useMutation({
+    onSuccess: async () => {
+      await utils.invalidate();
+      router.replace(redirectTo);
+    },
+    onError: () => setCode(""),
+  });
+  return (
+    <Card data-testid="emergency-step" className="bg-card/70 backdrop-blur-xl">
+      <CardHeader className="text-center">
+        <span className="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-primary/15 text-primary">
+          <KeyRound className="size-5" />
+        </span>
+        <CardTitle className="text-lg">{t.login.emergencyTitle}</CardTitle>
+        <CardDescription>{t.login.emergencyText}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (password && isTotpCode(code)) login.mutate({ password, code });
+          }}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="emergency-password">{t.login.password}</Label>
+            <Input id="emergency-password" type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} disabled={login.isPending} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="totp-code">{t.login.code}</Label>
+            <TotpCodeInput value={code} onChange={setCode} disabled={login.isPending} invalid={!!login.error} />
+            {login.error && <p className="text-center text-sm text-destructive">{errorText(login.error)}</p>}
+          </div>
+          <Button type="submit" className="w-full" disabled={!password || !isTotpCode(code) || login.isPending}>
+            {login.isPending && <Spinner />} {t.login.emergencySubmit}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={onBack}>
+            {t.login.backToDiscord}
+          </Button>
+        </form>
       </CardContent>
     </Card>
   );

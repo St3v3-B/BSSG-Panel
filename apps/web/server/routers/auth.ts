@@ -2,6 +2,7 @@ import type { Implementation, Me } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { logActivity } from "../activity";
+import { emergencyLogin } from "../emergency";
 import { forbidApiKey } from "../apikey";
 import { secureFor } from "../context";
 import { getDb, schema } from "../db";
@@ -74,7 +75,7 @@ async function checkRecovery(ctx: Ctx, userId: number, code: string): Promise<nu
 
 const invalidCode = () => new TRPCError({ code: "BAD_REQUEST", message: "INVALID_CODE" });
 
-export const auth: Pick<Implementation["auth"], "me" | "branding" | "discordLoginUrl" | "verifyTotp" | "logout"> = {
+export const auth: Pick<Implementation["auth"], "me" | "branding" | "discordLoginUrl" | "verifyTotp" | "emergencyLogin" | "logout"> = {
   me: async ({ ctx }) => (ctx.session ? meFor(ctx.session) : null),
 
   branding: async () => {
@@ -106,6 +107,12 @@ export const auth: Pick<Implementation["auth"], "me" | "branding" | "discordLogi
     await getDb().update(schema.sessions).set({ totpVerified: true }).where(eq(schema.sessions.id, s.sessionId));
     await logActivity({ action: "auth.totp.verified", userId: u.id, ip: ctx.ip, ctx });
     return { ...ok, recoveryCodesLeft };
+  },
+
+  emergencyLogin: async ({ input, ctx }) => {
+    const r = await emergencyLogin({ ip: ctx.ip, userAgent: ctx.userAgent, secure: secureFor(ctx) }, input);
+    ctx.resHeaders.append("set-cookie", r.setCookie);
+    return ok;
   },
 
   logout: async ({ ctx }) => {
