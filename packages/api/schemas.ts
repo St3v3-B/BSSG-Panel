@@ -160,6 +160,8 @@ export const ServerSummary = z.object({
   limits: Limits,
   isOwner: z.boolean(),
   owner: UserPublic,
+  /** Opgeschort door een admin: gestopt, en de eigenaar/subusers mogen niet starten of schrijven. */
+  suspended: z.object({ reason: z.string().nullable(), at: z.date() }).nullable().default(null),
 });
 export type ServerSummary = z.infer<typeof ServerSummary>;
 
