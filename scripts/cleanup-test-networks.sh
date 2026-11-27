@@ -5,6 +5,15 @@
 # netwerken achter tot Docker "all predefined address pools have been fully subnetted" gaf.
 set -uo pipefail
 command -v docker >/dev/null || exit 0
+# Eerst containers van afgebroken runs (proces uit het instance-label draait niet meer).
+for inst in $(docker ps -a --filter label=panel.test=true --format '{{.Label "panel.instance"}}' 2>/dev/null | sort -u); do
+  [ "$inst" = main ] && continue
+  pid=$(echo "$inst" | grep -oE '[0-9]{3,}' | head -1)
+  [ -z "$pid" ] && continue
+  kill -0 "$pid" 2>/dev/null && continue
+  ids=$(docker ps -aq --filter label=panel.test=true --filter "label=panel.instance=$inst")
+  [ -n "$ids" ] && docker rm -f $ids >/dev/null 2>&1 && echo "cleanup-test-networks: containers van $inst verwijderd"
+done
 n=0
 for id in $(docker network ls -q --filter label=panel.test=true 2>/dev/null); do
   inst=$(docker network inspect -f '{{index .Labels "panel.instance"}}' "$id" 2>/dev/null) || continue
