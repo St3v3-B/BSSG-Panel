@@ -33,7 +33,7 @@ export const PHASE2 = [
 export const PHASE3 = [
   "domains.list", "domains.add", "domains.update", "domains.remove", "domains.check", "domains.lastCheck", "domains.target", "domains.applyDns",
   "admin.dnsProviders.list", "admin.dnsProviders.create", "admin.dnsProviders.delete", "admin.dnsProviders.refreshZones",
-  "databases.list", "databases.create", "databases.resetPassword", "databases.delete",
+  "databases.list", "databases.create", "databases.resetPassword", "databases.delete", "databases.phpMyAdminInfo", "databases.phpMyAdminUrl",
   "admin.databaseHosts.list", "admin.databaseHosts.create", "admin.databaseHosts.update", "admin.databaseHosts.delete", "admin.databaseHosts.test",
 ];
 

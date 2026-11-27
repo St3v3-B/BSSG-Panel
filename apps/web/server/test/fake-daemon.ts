@@ -35,6 +35,10 @@ export class FakeDaemon {
   execResult: { exit_code: number; output: string; truncated: boolean; timed_out: boolean; duration_ms: number } = { exit_code: 0, output: "", truncated: false, timed_out: false, duration_ms: 5 };
   /** Databases van de (nep-)MariaDB van deze node: naam -> gebruiker, wachtwoord en inhoud ("dump"). */
   readonly dbs = new Map<string, { username: string; password: string; data: string }>();
+  /** phpMyAdmin-accounts (PUT /api/db/pma-users/{user}): laatste wachtwoord en databases per gebruiker. */
+  readonly pmaUsers = new Map<string, { password: string; databases: string[] }>();
+  /** Optioneel: voer de sync echt uit (bv. op een testcontainer); een fout geeft 500. */
+  pmaHook: ((user: string, password: string, databases: string[]) => Promise<void>) | null = null;
   /** Antwoord van GET /api/db/status. */
   dbAvailable = true;
   dbDumpFails = false;
@@ -65,6 +69,7 @@ export class FakeDaemon {
     this.diskFull = false;
     this.exportFails = false;
     this.dbs.clear();
+    this.pmaUsers.clear();
     this.dbAvailable = true;
     this.dbDumpFails = false;
     this.dbImportFails = false;
@@ -140,6 +145,20 @@ export class FakeDaemon {
     const path = r.path.split("?")[0]!;
     const query = new URLSearchParams(r.path.split("?")[1] ?? "");
     if (r.method === "POST" && path === "/api/images/check") return send(202);
+    const pm = /^\/api\/db\/pma-users\/([^/]+)$/.exec(path);
+    if (pm && r.method === "PUT") {
+      const b = (body ?? {}) as { password?: string; databases?: string[] };
+      const ok = /^pma_u[0-9]{1,18}$/.test(pm[1]!) && typeof b.password === "string" && b.password.length >= 8 && Array.isArray(b.databases) && b.databases.every((d) => /^[a-zA-Z0-9_]{1,64}$/.test(d) && !["mysql", "information_schema", "performance_schema", "sys"].includes(d.toLowerCase()));
+      if (!ok) return send(400, { error: "bad_request" });
+      if (!this.dbAvailable) return send(503, { error: "db_unavailable", message: "no MariaDB" });
+      this.pmaUsers.set(pm[1]!, { password: b.password!, databases: b.databases! });
+      try {
+        await this.pmaHook?.(pm[1]!, b.password!, b.databases!);
+      } catch (e) {
+        return send(500, { error: "db_error", message: String(e) });
+      }
+      return send(204);
+    }
     const dm = /^\/api\/db\/(status|databases)(?:\/([A-Za-z0-9_]+)(?:\/(password|dump|import))?)?$/.exec(path);
     if (dm) return this.handleDb(dm[1]!, dm[2], dm[3], r, query, raw, send);
     const fm = /^\/api\/servers\/([0-9a-f-]{36})\/files\/([a-z]+)$/.exec(path);

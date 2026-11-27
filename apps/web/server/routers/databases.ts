@@ -6,7 +6,10 @@ import { logActivity } from "../activity";
 import { getDb, schema } from "../db";
 import { decrypt, encrypt, randomToken } from "../lib/crypto";
 import { createDatabase, dropDatabase, setPassword, testHost } from "../lib/mariadb";
+import { apiKeyOf } from "../apikey";
 import { isFullAdmin, requireServer, type ServerAccess } from "../servers-data";
+import { issueToken, pmaAccess, pmaEnabled } from "../pma";
+import { getEnv } from "../env";
 import { reserveDatabase } from "./quotas";
 import type { Ctx } from "@panel/api";
 
@@ -142,6 +145,25 @@ export const databases: Implementation["databases"] = {
     await getDb().delete(schema.databases).where(eq(schema.databases.id, r.d.id));
     await logActivity({ action: "server.database.delete", userId: ctx.session!.userId, serverId: r.a.bundle.server.id, metadata: { name: r.d.name }, ip: ctx.ip, ctx });
     return ok;
+  },
+
+  phpMyAdminInfo: async ({ ctx }) => {
+    if (!pmaEnabled()) return { visible: false, hasRemoteDatabases: false };
+    const admin = isFullAdmin(ctx);
+    const a = await pmaAccess(ctx.session!.userId, admin);
+    return { visible: admin || a.local.length > 0, hasRemoteDatabases: a.remote > 0 };
+  },
+
+  phpMyAdminUrl: async ({ ctx }) => {
+    if (!pmaEnabled()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "PHPMYADMIN_DISABLED" });
+    // Een API-sleutel krijgt nooit directe databasetoegang via phpMyAdmin.
+    if (apiKeyOf(ctx)) throw new TRPCError({ code: "FORBIDDEN", message: "NO_ACCESS" });
+    const admin = isFullAdmin(ctx);
+    const userId = ctx.session!.userId;
+    if (!admin && (await pmaAccess(userId, false)).local.length === 0) throw new TRPCError({ code: "FORBIDDEN", message: "NO_DATABASES" });
+    const token = await issueToken({ userId, admin });
+    await logActivity({ action: "account.phpmyadmin.open", userId, metadata: {}, ip: ctx.ip, ctx });
+    return { url: `${getEnv().PANEL_URL}/phpmyadmin/signon.php?token=${encodeURIComponent(token)}` };
   },
 };
 

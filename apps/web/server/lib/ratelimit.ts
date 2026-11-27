@@ -95,6 +95,12 @@ export function getLimiter(): Limiter {
   return g.__panelLimiter;
 }
 
+/** De gedeelde Redis-verbinding (na getLimiter()); null als die er niet is. Gebruikers vallen zelf terug op geheugen. */
+export function getRedis(): Redis | null {
+  getLimiter();
+  return g.__panelRedis ?? null;
+}
+
 /** Alleen voor tests. */
 export async function resetLimiter(): Promise<void> {
   g.__panelRedis?.disconnect();

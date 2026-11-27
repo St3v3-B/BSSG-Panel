@@ -45,6 +45,8 @@ const EnvSchema = z
     MARIADB_ROOT_PASSWORD: optional,
     MARIADB_CONTAINER: optional.transform((v) => v ?? "panel-mariadb"),
     MARIADB_ADMIN_ADDR: optional,
+    /** Bearer tussen de phpMyAdmin-container en /api/pma/exchange; leeg = phpMyAdmin-koppeling uit. */
+    PMA_SHARED_SECRET: optional.refine((v) => v === undefined || v.length >= 32, "te kort (minimaal 32 tekens)"),
     DATABASE_URL: optional.transform((v) => v ?? "postgres://panel:panel@postgres:5432/panel"),
     REDIS_URL: optional.transform((v) => v ?? "redis://redis:6379"),
     SFTP_PORT: port(2022),
