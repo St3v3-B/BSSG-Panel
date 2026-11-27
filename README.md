@@ -571,8 +571,12 @@ agent followed are in [`CLAUDE.md`](CLAUDE.md); the original plan is in
 | — | Sleep mode for Minecraft, extended admin area (suspend, change template, bulk actions, settings) | 🚧 In progress |
 | **4** | Backups to S3 (with database dumps, checksums and safe restore), schedules, emergency account, `uninstall.sh`, docs | 📋 Planned |
 
-**Later / ideas:** moving servers between nodes, IPv6, a node-only install mode, bundling
-Monaco instead of loading it from a CDN.
+**Later / ideas:**
+- **Behind Nginx Proxy Manager mode** — for machines where NPM already owns ports 80/443: the panel
+  manages NPM proxy hosts through its API (NPM handles TLS and certificates), while Caddy keeps routing
+  internally over plain HTTP.
+- Game-only nodes without ports 80/443 (DNS-01 certificates and a custom port for the node domain).
+- IPv6, and bundling Monaco instead of loading it from a CDN.
 
 **Out of scope for v1:** e-mail hosting, billing and sign-up, running your own nameservers.
 
