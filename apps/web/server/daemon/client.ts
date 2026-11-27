@@ -208,6 +208,13 @@ export class DaemonClient {
   restoreBackup(uuid: string, backupId: number, body: DaemonRestoreRequest) {
     return this.request<void>("POST", `/api/servers/${uuid}/backups/${backupId}/restore`, body, 30_000);
   }
+  /** Lopende backup of herstel van deze server (null = niets). */
+  async backupProgress(uuid: string, timeoutMs = 3000): Promise<DaemonSchemas["BackupProgress"] | null> {
+    return (await this.request<{ progress: DaemonSchemas["BackupProgress"] | null }>("GET", `/api/servers/${uuid}/backups/progress`, undefined, timeoutMs)).progress;
+  }
+  cancelBackup(uuid: string, backupId: number) {
+    return this.request<void>("POST", `/api/servers/${uuid}/backups/${backupId}/cancel`, undefined, 10_000);
+  }
 
   // ---------- verplaatsen tussen nodes ----------
   /** Tar-stroom van de hele datamap (server moet gestopt zijn). De body moet volledig gelezen worden. */

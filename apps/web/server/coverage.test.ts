@@ -47,7 +47,7 @@ export const SITE_SETTINGS = ["siteSettings.php", "siteSettings.updatePhp"];
 
 /** Fase 4: backups, schema's en S3-doelen. */
 export const PHASE4 = [
-  "backups.list", "backups.create", "backups.restore", "backups.delete", "backups.downloadUrl",
+  "backups.list", "backups.create", "backups.restore", "backups.delete", "backups.downloadUrl", "backups.progress", "backups.cancel",
   "schedules.list", "schedules.create", "schedules.update", "schedules.delete", "schedules.runNow",
   "admin.s3Targets.list", "admin.s3Targets.create", "admin.s3Targets.update", "admin.s3Targets.delete", "admin.s3Targets.test",
 ];
