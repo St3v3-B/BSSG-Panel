@@ -761,8 +761,8 @@ components:
           required: [idle_minutes]
           properties:
             idle_minutes: { type: integer, minimum: 1, maximum: 1440 }
-            motd: { type: string, default: "Server slaapt - verbind om hem te starten" }
-            kick_message: { type: string, default: "De server wordt gestart, verbind over een minuut opnieuw." }
+            motd: { type: string, default: "Server is sleeping - join to start it" }
+            kick_message: { type: string, default: "The server is starting, please reconnect in a minute." }
         skip_install: { type: boolean, default: false, description: "Alleen bij POST: niet installeren. PUT installeert nooit; herinstallatie gaat via POST /install." }
 
     FileEntry:
@@ -833,7 +833,7 @@ components:
       properties:
         host: { type: string }
         server_uuid: { type: string, format: uuid }
-        port: { type: [integer, "null"], description: "poort in de container; null = http_port uit de spec" }
+        port: { type: [integer, "null"], description: "poort in de container; null = http_port uit de spec (web). Voor game-servers verplicht: de daemon koppelt de container dan aan panel-site-<uuid> (aangemaakt indien nodig) zodat Caddy erbij kan." }
         redirect_to: { type: [string, "null"], description: "Als gezet: 308 naar https://{redirect_to}{path}" }
         wildcard: { type: boolean, default: false, description: "true alleen samen met host = *.domein; de daemon leidt het ook af uit de host" }
         dns_challenge:

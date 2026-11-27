@@ -184,6 +184,8 @@ export const ServerDetail = ServerSummary.extend({
   node: z.object({ id: Id, name: z.string(), fqdn: z.string() }),
   sftp: z.object({ host: z.string(), port: z.number().int(), username: z.string() }),
   /** Slaapstand (alleen templates met sleep_capable). */
+  /** Door een admin aangezet: deze game-server mag domeinen koppelen (web: altijd). */
+  domainsAllowed: z.boolean().default(false),
   sleep: z.object({ supported: z.boolean(), enabled: z.boolean(), idleMinutes: z.number().int() }).default({ supported: false, enabled: false, idleMinutes: 10 }),
   installedAt: z.date().nullable(),
   createdAt: z.date(),
@@ -238,7 +240,13 @@ export const Domain = z.object({
   id: Id,
   serverUuid: Uuid,
   hostname: Hostname,
-  targetPort: z.number().int().nullable(), // null = standaardpoort van de webtemplate
+  /**
+   * http: via Caddy (HTTPS) naar targetPort in de container (web: null = http_port van de template;
+   * game: verplicht, bv. 8123 voor een live-map-plugin).
+   * minecraft: geen proxy; DNS-records A + SRV `_minecraft._tcp.<host>` naar de primaire allocation.
+   */
+  protocol: z.enum(["http", "minecraft"]).default("http"),
+  targetPort: z.number().int().nullable(),
   redirectTo: Hostname.nullable(),
   wildcard: z.boolean(),
   dnsProviderId: Id.nullable(),
@@ -249,7 +257,7 @@ export const Domain = z.object({
 export type Domain = z.infer<typeof Domain>;
 
 export const DnsRecordCheck = z.object({
-  type: z.enum(["A", "AAAA", "CNAME", "TXT"]),
+  type: z.enum(["A", "AAAA", "CNAME", "TXT", "SRV"]), // SRV: expected = "0 5 <poort> <doel>"
   name: z.string(), // "@" of "www"
   expected: z.string().nullable(), // null bij AAAA: hoort er niet te zijn
   actual: z.array(z.string()),

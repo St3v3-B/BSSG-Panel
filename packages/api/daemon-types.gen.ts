@@ -557,9 +557,9 @@ export interface components {
              */
             sleep?: {
                 idle_minutes: number;
-                /** @default Server slaapt - verbind om hem te starten */
+                /** @default Server is sleeping - join to start it */
                 motd: string;
-                /** @default De server wordt gestart, verbind over een minuut opnieuw. */
+                /** @default The server is starting, please reconnect in a minute. */
                 kick_message: string;
             } | null;
             /**
@@ -617,7 +617,7 @@ export interface components {
             host: string;
             /** Format: uuid */
             server_uuid: string;
-            /** @description poort in de container; null = http_port uit de spec */
+            /** @description poort in de container; null = http_port uit de spec (web). Voor game-servers verplicht: de daemon koppelt de container dan aan panel-site-<uuid> (aangemaakt indien nodig) zodat Caddy erbij kan. */
             port?: number | null;
             /** @description Als gezet: 308 naar https://{redirect_to}{path} */
             redirect_to?: string | null;

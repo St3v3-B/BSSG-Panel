@@ -59,6 +59,7 @@ export const servers: (s.ServerDetail & { ownerId: number })[] = [
     node: { id: 1, name: "node1", fqdn: "node1.test" },
     sftp: { host: "node1.test", port: 2022, username: "steve.8f6c1a2e" },
     suspended: null,
+    domainsAllowed: false,
     sleep: { supported: true, enabled: true, idleMinutes: 10 },
     installedAt: d("2026-11-20T10:00:00Z"),
     createdAt: d("2026-11-20T09:58:00Z"),
@@ -82,6 +83,7 @@ export const servers: (s.ServerDetail & { ownerId: number })[] = [
     node: { id: 1, name: "node1", fqdn: "node1.test" },
     sftp: { host: "node1.test", port: 2022, username: "steve.3a1d9b7c" },
     suspended: null,
+    domainsAllowed: false,
     sleep: { supported: true, enabled: false, idleMinutes: 10 },
     installedAt: d("2026-11-21T10:00:00Z"),
     createdAt: d("2026-11-21T09:58:00Z"),
@@ -105,6 +107,7 @@ export const servers: (s.ServerDetail & { ownerId: number })[] = [
     node: { id: 1, name: "node1", fqdn: "node1.test" },
     sftp: { host: "node1.test", port: 2022, username: "steve.c0ffee00" },
     suspended: null,
+    domainsAllowed: false,
     sleep: { supported: false, enabled: false, idleMinutes: 10 },
     installedAt: null,
     createdAt: d("2026-11-25T09:58:00Z"),
@@ -112,8 +115,8 @@ export const servers: (s.ServerDetail & { ownerId: number })[] = [
 ];
 
 export const domains: s.Domain[] = [
-  { id: 1, serverUuid: "c0ffee00-1234-4abc-8def-0123456789ab", hostname: "blokgenoten.test", targetPort: null, redirectTo: null, wildcard: false, dnsProviderId: null, sslStatus: "pending", dnsStatus: "missing", lastCheckedAt: d("2026-11-25T10:00:00Z") },
-  { id: 2, serverUuid: "c0ffee00-1234-4abc-8def-0123456789ab", hostname: "www.blokgenoten.test", targetPort: null, redirectTo: "blokgenoten.test", wildcard: false, dnsProviderId: null, sslStatus: "pending", dnsStatus: "missing", lastCheckedAt: null },
+  { id: 1, serverUuid: "c0ffee00-1234-4abc-8def-0123456789ab", hostname: "blokgenoten.test", protocol: "http", targetPort: null, redirectTo: null, wildcard: false, dnsProviderId: null, sslStatus: "pending", dnsStatus: "missing", lastCheckedAt: d("2026-11-25T10:00:00Z") },
+  { id: 2, serverUuid: "c0ffee00-1234-4abc-8def-0123456789ab", hostname: "www.blokgenoten.test", protocol: "http", targetPort: null, redirectTo: "blokgenoten.test", wildcard: false, dnsProviderId: null, sslStatus: "pending", dnsStatus: "missing", lastCheckedAt: null },
 ];
 
 export const files: s.FileEntry[] = [
