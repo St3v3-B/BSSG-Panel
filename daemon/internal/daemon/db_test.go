@@ -164,7 +164,10 @@ func TestRealDockerDBAdmin(t *testing.T) {
 	}
 
 	pw1 := "S3cret!pa$$w0rd#1"
-	if c := create("s1234_site", "u1234_a", pw1); c != 204 {
+	// De officiele image herstart MariaDB na de init; vlak daarna kan een verzoek nog 503 geven.
+	c1 := 0
+	waitFor(t, "eerste create", 60*time.Second, func() bool { c1 = create("s1234_site", "u1234_a", pw1); return c1 != 503 })
+	if c := c1; c != 204 {
 		t.Fatal("create", c)
 	}
 	if c := create("s1234_site", "u1234_b", pw1); c != 409 {
