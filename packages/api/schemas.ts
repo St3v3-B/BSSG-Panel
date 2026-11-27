@@ -267,16 +267,31 @@ export const NetworkMember = z.object({
 });
 export type NetworkMember = z.infer<typeof NetworkMember>;
 
+/** Hostnaam voor een Velocity forced host: kleine letters, geen wildcard, minstens één punt. */
+export const ForcedHostname = z
+  .string()
+  .min(3)
+  .max(253)
+  .regex(/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/, "invalid host name");
+
+/** Forced host: spelers die via `hostname` verbinden komen op backend `serverUuid` (een lid van het netwerk). */
+export const ForcedHost = z.object({ hostname: ForcedHostname, serverUuid: Uuid });
+export type ForcedHost = z.infer<typeof ForcedHost>;
+
 /**
  * Minecraft-netwerk van een server. `proxy`: Velocity-server met `members` (op volgorde van `try`) en
  * `connectAddress` (domein of allocation voor spelers). `backend`: lid van de proxy in `proxy`.
  * `none`: geen van beide (ook voor servers die geen proxy of backend kunnen zijn).
+ * Alleen bij `proxy`: `forcedHosts` (`[forced-hosts]` in velocity.toml) en `forcedHostSuggestions`
+ * (minecraft-domeinen van de proxy en zijn leden; `serverUuid` = de server waar het domein aan hangt).
  */
 export const ServerNetwork = z.object({
   role: z.enum(["none", "proxy", "backend"]),
   members: z.array(NetworkMember),
   proxy: z.object({ uuid: Uuid, name: z.string() }).nullable(),
   connectAddress: z.string().nullable(),
+  forcedHosts: z.array(ForcedHost).default([]),
+  forcedHostSuggestions: z.array(z.object({ hostname: z.string(), serverUuid: Uuid })).default([]),
 });
 export type ServerNetwork = z.infer<typeof ServerNetwork>;
 
@@ -328,7 +343,7 @@ export const ServerDetail = ServerSummary.extend({
   domainsAllowed: z.boolean().default(false),
   sleep: z.object({ supported: z.boolean(), enabled: z.boolean(), idleMinutes: z.number().int() }).default({ supported: false, enabled: false, idleMinutes: 10 }),
   /** Minecraft-netwerk (proxy of backend); `role: "none"` voor alle andere servers. */
-  network: ServerNetwork.default({ role: "none", members: [], proxy: null, connectAddress: null }),
+  network: ServerNetwork.default({ role: "none", members: [], proxy: null, connectAddress: null, forcedHosts: [], forcedHostSuggestions: [] }),
   installedAt: z.date().nullable(),
   createdAt: z.date(),
 });

@@ -59,6 +59,8 @@ export function createMock(): Implementation {
     activity: clone(data.activity),
     /** Proxy-uuid → backends (de eerste is de standaardserver); alleen servers met template "Velocity" zijn een proxy. */
     networks: new Map<string, Array<{ serverUuid: string; name: string }>>(),
+    /** Proxy-uuid → forced hosts. */
+    forcedHosts: new Map<string, s.ForcedHost[]>(),
     content: [] as Array<s.InstalledContent & { serverUuid: string }>,
     subusers: [] as Array<{ serverUuid: string; userId: number; permissions: s.Permission[]; createdAt: Date }>,
     apiKeys: [] as s.ApiKey[],
@@ -101,10 +103,12 @@ export function createMock(): Implementation {
         const b = srv(m.serverUuid);
         return { serverUuid: b.uuid, serverName: b.name, name: m.name, isDefault: i === 0, address: b.primaryAddress };
       });
-      return { role: "proxy", members, proxy: null, connectAddress: x.primaryAddress };
+      const inNet = new Set([x.uuid, ...members.map((m) => m.serverUuid)]);
+      const forcedHostSuggestions = db.domains.filter((d) => d.protocol === "minecraft" && inNet.has(d.serverUuid)).map((d) => ({ hostname: d.hostname, serverUuid: d.serverUuid }));
+      return { role: "proxy", members, proxy: null, connectAddress: x.primaryAddress, forcedHosts: db.forcedHosts.get(x.uuid) ?? [], forcedHostSuggestions };
     }
-    for (const [p, list] of db.networks) if (list.some((m) => m.serverUuid === x.uuid)) return { role: "backend", members: [], proxy: { uuid: p, name: srv(p).name }, connectAddress: null };
-    return { role: "none", members: [], proxy: null, connectAddress: null };
+    for (const [p, list] of db.networks) if (list.some((m) => m.serverUuid === x.uuid)) return { role: "backend", members: [], proxy: { uuid: p, name: srv(p).name }, connectAddress: null, forcedHosts: [], forcedHostSuggestions: [] };
+    return { role: "none", members: [], proxy: null, connectAddress: null, forcedHosts: [], forcedHostSuggestions: [] };
   };
   const detail = (x: (typeof db.servers)[number], uid: number): s.ServerDetail => {
     const { ownerId, ...rest } = x;
@@ -366,6 +370,10 @@ export function createMock(): Implementation {
         const before = db.networks.get(input.uuid) ?? [];
         const sorted = [...input.members].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
         db.networks.set(input.uuid, sorted.map((m) => ({ serverUuid: m.serverUuid, name: m.name })));
+        const fh = input.forcedHosts ?? db.forcedHosts.get(input.uuid) ?? [];
+        if (new Set(fh.map((f) => f.hostname)).size !== fh.length) throw new TRPCError({ code: "BAD_REQUEST", message: "FORCED_HOST_DUPLICATE" });
+        if (input.forcedHosts?.some((f) => !sorted.some((m) => m.serverUuid === f.serverUuid))) throw new TRPCError({ code: "BAD_REQUEST", message: "FORCED_HOST_NOT_MEMBER" });
+        db.forcedHosts.set(input.uuid, fh.filter((f) => sorted.some((m) => m.serverUuid === f.serverUuid)));
         const removed = before.filter((m) => !sorted.some((n) => n.serverUuid === m.serverUuid));
         return {
           servers: [
@@ -684,7 +692,7 @@ export function createMock(): Implementation {
             permissions: [], allocations: allocs,
             variables: t.variables.map((v) => ({ ...v, value: input.variables[v.key] ?? v.default })),
             node: { id: 1, name: "node1", fqdn: "node1.test", supportsDomains: true }, sftp: { host: "node1.test", port: 2022, username: `${owner.name ?? owner.discordId}.${uuid.slice(0, 8)}` },
-            suspended: null, network: { role: "none" as const, members: [], proxy: null, connectAddress: null },
+            suspended: null, network: { role: "none" as const, members: [], proxy: null, connectAddress: null, forcedHosts: [], forcedHostSuggestions: [] },
             domainsAllowed: t.type === "web",
             sleep: { supported: t.type === "game", enabled: false, idleMinutes: 10 },
             imageUpdate: { policy: null, effectivePolicy: db.settings.imageUpdates.defaultPolicy, available: false, reinstallRequired: false, checkedAt: null },

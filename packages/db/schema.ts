@@ -300,6 +300,18 @@ export const networkMembers = pgTable("network_members", {
   position: integer("position").notNull(),
 }, (t) => [uniqueIndex("network_members_proxy_name").on(t.proxyServerId, t.name), index("network_members_proxy_idx").on(t.proxyServerId)]);
 
+/**
+ * Velocity forced hosts: spelers die via `hostname` verbinden landen op `backendServerId` (een lid van
+ * het netwerk van de proxy). Op server-id, dus hernoemen of verplaatsen (transfer) van een backend verandert niets;
+ * verwijderen uit het netwerk haalt de regel weg. Een hostnaam hoort bij hooguit één proxy.
+ */
+export const networkForcedHosts = pgTable("network_forced_hosts", {
+  id: pk(),
+  proxyServerId: integer("proxy_server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  hostname: text("hostname").notNull().unique(),
+  backendServerId: integer("backend_server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+}, (t) => [index("network_forced_hosts_proxy_idx").on(t.proxyServerId)]);
+
 /** Via het panel geïnstalleerde plugins/mods (Modrinth/Hangar). Eén rij per project per server. */
 export const serverContent = pgTable("server_content", {
   id: pk(),
