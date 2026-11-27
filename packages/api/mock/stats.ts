@@ -15,9 +15,16 @@ function seedOf(uuid: string): number {
 }
 
 /** Ruis in [0,1) die alleen van (seed, t) afhangt, zodat herladen dezelfde grafiek geeft. */
-function noise(seed: number, t: number): number {
+function hash(seed: number, t: number): number {
   const x = Math.sin(seed * 9301 + t * 0.000_123_7) * 43758.5453;
   return x - Math.floor(x);
+}
+
+/** Vloeiende ruis in [0,1): een paar trage golven plus een beetje korrel. */
+function noise(seed: number, t: number): number {
+  const m = t / 60_000;
+  const v = 0.5 + 0.22 * Math.sin(m / 7 + seed * 10) + 0.18 * Math.sin(m / 23 + seed * 30) + 0.06 * (hash(seed, t) - 0.5);
+  return Math.min(0.999, Math.max(0, v));
 }
 
 interface MockServer {
@@ -27,7 +34,7 @@ interface MockServer {
 }
 
 /** Eén meting op tijdstip t (ms), of null als de server toen niet draaide. */
-function sample(x: MockServer, t: number, now: number) {
+function sample(x: MockServer, t: number, now: number, stepS: number) {
   const seed = seedOf(x.uuid);
   const running = x.status === "online" || x.status === "starting";
   // Gestopte servers: niets in de laatste 5 uur. Iedereen: een herstart (gat van 20 min) 3 uur geleden en een storing 4 dagen geleden.
@@ -39,10 +46,10 @@ function sample(x: MockServer, t: number, now: number) {
   const evening = Math.max(0, Math.sin(((hour - 12) / 24) * Math.PI * 2)); // druk rond 18-21 uur
   const cpuCap = x.limits.cpuPct || 400;
   const n = noise(seed, t);
-  const spike = n > 0.97 ? 0.35 : 0;
-  const cpu = Math.min(cpuCap, cpuCap * (0.08 + 0.35 * evening + 0.12 * n + spike));
+  const spike = hash(seed, t) > 0.996 ? 0.2 : 0;
+  const cpu = Math.min(cpuCap, cpuCap * (0.06 + 0.3 * evening + 0.1 * n + spike));
   const ram = x.limits.ramMb * 1024 * 1024;
-  const gc = ((t / 60_000 + seed * 100) % 37) / 37; // zaagtand van de garbage collector
+  const gc = stepS > 60 ? 0.5 : ((t / 60_000 + seed * 100) % 37) / 37; // zaagtand van de garbage collector (valt weg in gemiddelden)
   const mem = ram * (0.45 + 0.2 * evening + 0.12 * gc);
   const disk = x.limits.diskMb * 1024 * 1024 * (0.3 + 0.1 * seed) + (t / 86_400_000) * 25e6 % 2e9;
   const rx = (20_000 + 900_000 * evening) * (0.6 + 0.8 * noise(seed + 1, t));
@@ -57,8 +64,8 @@ export function mockHistory(x: MockServer, range: s.StatsRange, nowMs = Date.now
   const from = end - spanS * 1000;
   const points: s.StatsPoint[] = [];
   for (let t = from; t < end; t += step) {
-    const v = t > nowMs ? null : sample(x, t, nowMs);
-    const peak = v ? 1 + 0.25 * noise(seedOf(x.uuid) + 3, t) : 1;
+    const v = t > nowMs ? null : sample(x, t, nowMs, stepS);
+    const peak = v ? 1 + 0.25 * hash(seedOf(x.uuid) + 3, t) : 1;
     points.push({
       t: new Date(t),
       cpuPct: v ? v.cpu : null,
