@@ -1,5 +1,5 @@
 "use client";
-import { Database, FolderOpen, Globe, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
+import { Archive, CalendarClock, Database, FolderOpen, Globe, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { Permission, ServerDetail } from "@panel/api";
@@ -22,6 +22,8 @@ export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner
   if (has("files.read")) tabs.push({ key: "files", href: `${base}/files`, label: l.files, icon: FolderOpen });
   if ((server.type === "web" || server.domainsAllowed) && has("domain.manage")) tabs.push({ key: "domains", href: `${base}/domains`, label: l.domains, icon: Globe });
   if (has("database.manage")) tabs.push({ key: "databases", href: `${base}/databases`, label: l.databases, icon: Database });
+  if (has("backup.create") || has("backup.restore")) tabs.push({ key: "backups", href: `${base}/backups`, label: l.backups, icon: Archive });
+  if (has("schedule.manage")) tabs.push({ key: "schedules", href: `${base}/schedules`, label: l.schedules, icon: CalendarClock });
   if (server.isOwner) tabs.push({ key: "users", href: `${base}/users`, label: l.users, icon: Users });
   tabs.push({ key: "settings", href: `${base}/settings`, label: l.settings, icon: Settings });
   return tabs;

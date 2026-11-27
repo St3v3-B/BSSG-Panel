@@ -20,12 +20,13 @@ import { cn } from "@/lib/utils";
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
 /** Tabbladen boven de drie instellingenschermen. */
-export function SettingsTabs({ current }: { current: "general" | "db" | "dns" }) {
+export function SettingsTabs({ current }: { current: "general" | "db" | "dns" | "s3" }) {
   const t = useT().admin2.sub;
   const tabs = [
     { k: "general", href: "/admin/settings", label: t.general },
     { k: "db", href: "/admin/settings/database-hosts", label: t.databaseHosts },
     { k: "dns", href: "/admin/settings/dns-providers", label: t.dnsProviders },
+    { k: "s3", href: "/admin/settings/backup-storage", label: t.s3Targets },
   ] as const;
   return (
     <nav className="mb-6 flex gap-1 border-b border-border text-sm" aria-label="settings">
@@ -396,6 +397,153 @@ export function DnsProvidersAdmin() {
                 </div>
               </div>
               {p.zones.length > 0 && <p className="mt-2 break-words text-xs text-muted-foreground">{p.zones.map((z) => z.name).join(", ")}</p>}
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- backupopslag (S3) ----------
+
+const EMPTY_S3 = { name: "", endpoint: "", bucket: "", region: "us-east-1", pathStyle: true, accessKey: "", secretKey: "" };
+
+export function S3TargetsAdmin() {
+  const t = useT();
+  const d = t.admin2.s3;
+  const utils = trpc.useUtils();
+  const list = trpc.admin.s3Targets.list.useQuery();
+  const [editing, setEditing] = useState<null | "new" | number>(null);
+  const [form, setForm] = useState(EMPTY_S3);
+  const [touched, setTouched] = useState(false);
+  const [confirmDel, setConfirmDel] = useState<number | null>(null);
+  const [tested, setTested] = useState<{ id: number; ok: boolean; error: string | null } | null>(null);
+  const inv = () => void utils.admin.s3Targets.list.invalidate();
+  const done = () => (setEditing(null), setForm(EMPTY_S3), setTouched(false), inv());
+  const create = trpc.admin.s3Targets.create.useMutation({ onSuccess: done });
+  const update = trpc.admin.s3Targets.update.useMutation({ onSuccess: done });
+  const del = trpc.admin.s3Targets.delete.useMutation({ onSuccess: () => (setConfirmDel(null), inv()) });
+  const test = trpc.admin.s3Targets.test.useMutation();
+  const isNew = editing === "new";
+  const urlOk = /^https?:\/\/[^\s/]+/.test(form.endpoint.trim());
+  const invalid = !form.name.trim() || !urlOk || !form.bucket.trim() || (isNew && (!form.accessKey || !form.secretKey));
+  const submit = () => {
+    setTouched(true);
+    if (invalid) return;
+    const base = { name: form.name.trim(), endpoint: form.endpoint.trim(), bucket: form.bucket.trim(), region: form.region.trim() || "us-east-1", pathStyle: form.pathStyle };
+    if (isNew) create.mutate({ ...base, accessKey: form.accessKey, secretKey: form.secretKey });
+    else if (typeof editing === "number") update.mutate({ id: editing, ...base, ...(form.accessKey ? { accessKey: form.accessKey } : {}), ...(form.secretKey ? { secretKey: form.secretKey } : {}) });
+  };
+  const f = (k: "name" | "endpoint" | "bucket" | "region" | "accessKey" | "secretKey") => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value });
+  const err = create.error ?? update.error ?? del.error ?? test.error;
+  return (
+    <div className="space-y-4" data-testid="s3-admin">
+      {editing === null ? (
+        <Button onClick={() => (create.reset(), setEditing("new"))}>
+          <Plus /> {d.add}
+        </Button>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{isNew ? d.add : d.edit}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form
+              className="grid gap-4 sm:grid-cols-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                submit();
+              }}
+            >
+              <Field id="s3-name" label={d.name}>
+                <Input id="s3-name" value={form.name} onChange={f("name")} />
+              </Field>
+              <Field id="s3-endpoint" label={d.endpoint}>
+                <Input id="s3-endpoint" placeholder="http://unraid.local:9000" value={form.endpoint} onChange={f("endpoint")} />
+              </Field>
+              <Field id="s3-bucket" label={d.bucket}>
+                <Input id="s3-bucket" value={form.bucket} onChange={f("bucket")} />
+              </Field>
+              <Field id="s3-region" label={d.region}>
+                <Input id="s3-region" value={form.region} onChange={f("region")} />
+              </Field>
+              <Field id="s3-access" label={d.accessKey} hint={isNew ? undefined : d.keysKeep}>
+                <Input id="s3-access" autoComplete="off" value={form.accessKey} onChange={f("accessKey")} />
+              </Field>
+              <Field id="s3-secret" label={d.secretKey}>
+                <Input id="s3-secret" type="password" autoComplete="new-password" value={form.secretKey} onChange={f("secretKey")} />
+              </Field>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <input type="checkbox" className="size-4 accent-primary" checked={form.pathStyle} onChange={(e) => setForm({ ...form, pathStyle: e.target.checked })} /> {d.pathStyle}
+              </label>
+              {touched && invalid && (
+                <p className="text-sm text-destructive sm:col-span-2" role="alert">
+                  {t.admin.nodes.required}
+                </p>
+              )}
+              <div className="flex gap-2 sm:col-span-2">
+                <Button type="submit" disabled={create.isPending || update.isPending}>
+                  {(create.isPending || update.isPending) && <Spinner />} {d.save}
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => (setEditing(null), setForm(EMPTY_S3))}>
+                  {t.common.cancel}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+      {err && <AdminError error={err} />}
+      {list.error ? (
+        <QueryError error={list.error} />
+      ) : !list.data ? (
+        <Skeleton className="h-32 rounded-xl" />
+      ) : list.data.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{d.empty}</p>
+      ) : (
+        <div className="grid gap-3">
+          {list.data.map((x) => (
+            <Card key={x.id} data-testid="s3-target" className="p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium">{x.name}</div>
+                  <div className="font-mono text-xs text-muted-foreground">
+                    {x.endpoint} · {x.bucket} · {x.accessKeyPreview}…
+                  </div>
+                </div>
+                <div className="ml-auto flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" disabled={test.isPending} onClick={() => test.mutate({ id: x.id }, { onSuccess: (r) => setTested({ id: x.id, ...r }) })}>
+                    {test.isPending && test.variables?.id === x.id && <Spinner />} {d.test}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => (update.reset(), setForm({ name: x.name, endpoint: x.endpoint, bucket: x.bucket, region: x.region, pathStyle: x.pathStyle, accessKey: "", secretKey: "" }), setEditing(x.id))}
+                  >
+                    <Pencil /> {d.edit}
+                  </Button>
+                  {confirmDel === x.id ? (
+                    <>
+                      <Button size="sm" variant="destructive" disabled={del.isPending} onClick={() => del.mutate({ id: x.id })}>
+                        {d.delete}
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setConfirmDel(null)}>
+                        {t.common.cancel}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="outline" className="text-destructive" aria-label={`${d.delete} ${x.name}`} onClick={() => setConfirmDel(x.id)}>
+                      <Trash2 />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {tested?.id === x.id && (
+                <p className={cn("mt-2 text-sm", tested.ok ? "text-success" : "text-destructive")} role="status">
+                  {tested.ok ? d.testOk : d.testFail(tested.error ?? "?")}
+                </p>
+              )}
             </Card>
           ))}
         </div>
