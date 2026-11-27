@@ -12,6 +12,7 @@ import { databaseHosts, databases } from "./routers/databases";
 import { dnsProviders } from "./routers/dns-providers";
 import { domains } from "./routers/domains";
 import { nodeMutations } from "./routers/nodes";
+import { content } from "./routers/content";
 import { files } from "./routers/files";
 import { network } from "./routers/network";
 import { quotaAccount, quotaAdmin, quotaServers } from "./routers/quotas";
@@ -31,7 +32,7 @@ function merge(base: Tree, over: Tree): Tree {
   return out;
 }
 
-const phase1 = { auth, backups, schedules, account: { ...account, ...credentials, ...quotaAccount }, servers: { ...servers, ...network, ...quotaServers }, files, subusers, domains, databases, admin: { ...admin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders, s3Targets } };
+const phase1 = { auth, backups, schedules, account: { ...account, ...credentials, ...quotaAccount }, servers: { ...servers, ...network, ...quotaServers }, files, content, subusers, domains, databases, admin: { ...admin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders, s3Targets } };
 
 /** Paden die echt geïmplementeerd zijn (de rest is NOT_IMPLEMENTED). */
 export function implementedPaths(tree: Tree = phase1 as unknown as Tree, prefix = ""): string[] {

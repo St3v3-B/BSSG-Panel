@@ -50,6 +50,13 @@
       "when": 1795772217810,
       "tag": "0006_sparkling_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795774328947,
+      "tag": "0007_eminent_bug",
+      "breakpoints": true
     }
   ]
 }

@@ -249,6 +249,20 @@ export const networkMembers = pgTable("network_members", {
   position: integer("position").notNull(),
 }, (t) => [uniqueIndex("network_members_proxy_name").on(t.proxyServerId, t.name), index("network_members_proxy_idx").on(t.proxyServerId)]);
 
+/** Via het panel geïnstalleerde plugins/mods (Modrinth/Hangar). Eén rij per project per server. */
+export const serverContent = pgTable("server_content", {
+  id: pk(),
+  serverId: integer("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  source: text("source").notNull(),
+  projectId: text("project_id").notNull(),
+  name: text("name").notNull(),
+  versionId: text("version_id").notNull(),
+  versionNumber: text("version_number").notNull(),
+  filename: text("filename").notNull(),
+  kind: text("kind").notNull(),
+  installedAt: createdAt(),
+}, (t) => [uniqueIndex("server_content_project").on(t.serverId, t.source, t.projectId), index("server_content_server_idx").on(t.serverId)]);
+
 export const databaseHosts = pgTable("database_hosts", {
   id: pk(),
   name: text("name").notNull(),

@@ -524,6 +524,113 @@ export const DashboardAlert = z.object({
   nodeId: Id.nullable(),
 });
 
+// ---------- Minecraft: plugins, mods, modpacks, versiekiezer ----------
+
+export const ContentSource = z.enum(["modrinth", "hangar"]);
+export type ContentSource = z.infer<typeof ContentSource>;
+/** Plugin (`plugins/`) of mod (`mods/`). */
+export const ContentKind = z.enum(["plugin", "mod"]);
+export type ContentKind = z.infer<typeof ContentKind>;
+
+/** Wat een server voor plugins/mods ondersteunt (afgeleid van template en variabelen). `supported: false` = geen tabblad. */
+export const ContentInfo = z.object({
+  supported: z.boolean(),
+  kind: ContentKind.nullable(),
+  /** Map in de serverroot: `/plugins` of `/mods`. */
+  directory: z.string().nullable(),
+  /** Modrinth-loaders waarop gefilterd wordt (bv. paper, spigot, bukkit of fabric). */
+  loaders: z.array(z.string()),
+  sources: z.array(ContentSource),
+  /** Minecraft-versie van de server (`latest` is al omgezet); null voor een proxy. */
+  gameVersion: z.string().nullable(),
+  /** Modpacks (.mrpack) importeren kan alleen op Fabric. */
+  modpacks: z.boolean(),
+});
+export type ContentInfo = z.infer<typeof ContentInfo>;
+
+export const ContentHit = z.object({
+  source: ContentSource,
+  /** Modrinth: project-id; Hangar: slug. */
+  projectId: z.string(),
+  name: z.string(),
+  description: z.string(),
+  author: z.string(),
+  downloads: z.number().int(),
+  iconUrl: z.string().nullable(),
+  /** Pagina op de bronsite. */
+  url: z.string(),
+});
+export type ContentHit = z.infer<typeof ContentHit>;
+
+export const ContentSearchResult = z.object({ hits: z.array(ContentHit), total: z.number().int() });
+export type ContentSearchResult = z.infer<typeof ContentSearchResult>;
+
+export const ContentDependency = z.object({
+  projectId: z.string(),
+  name: z.string(),
+  /** Al op de server geïnstalleerd (via het panel). */
+  installed: z.boolean(),
+});
+export type ContentDependency = z.infer<typeof ContentDependency>;
+
+/** Nieuwste compatibele versie van een project plus de verplichte afhankelijkheden. */
+export const ContentResolved = z.object({
+  hit: ContentHit,
+  versionId: z.string(),
+  versionNumber: z.string(),
+  filename: z.string(),
+  size: z.number().int(),
+  dependencies: z.array(ContentDependency),
+});
+export type ContentResolved = z.infer<typeof ContentResolved>;
+
+export const InstalledContent = z.object({
+  id: Id,
+  source: ContentSource,
+  projectId: z.string(),
+  name: z.string(),
+  versionId: z.string(),
+  versionNumber: z.string(),
+  filename: z.string(),
+  kind: ContentKind,
+  installedAt: z.date(),
+});
+export type InstalledContent = z.infer<typeof InstalledContent>;
+
+export const ContentUpdate = z.object({ id: Id, versionId: z.string(), versionNumber: z.string() });
+export type ContentUpdate = z.infer<typeof ContentUpdate>;
+
+export const ModpackSource = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("modrinth"), projectId: z.string().min(1).max(64), versionId: z.string().min(1).max(64).optional() }),
+  /** Een `.mrpack` dat al in de bestanden van de server staat (max 5 MB; groter: kies de Modrinth-bron). */
+  z.object({ type: z.literal("file"), path: FilePath }),
+]);
+export type ModpackSource = z.infer<typeof ModpackSource>;
+
+export const ModpackResult = z.object({
+  name: z.string(),
+  minecraftVersion: z.string(),
+  loaderVersion: z.string().nullable(),
+  filesInstalled: z.number().int(),
+  /** Bestanden die voor clients zijn (`server: unsupported`) en dus overgeslagen zijn. */
+  filesSkipped: z.number().int(),
+  overridesApplied: z.number().int(),
+  reinstalled: z.boolean(),
+});
+export type ModpackResult = z.infer<typeof ModpackResult>;
+
+export const VersionOption = z.object({ id: z.string(), stable: z.boolean() });
+/** Beschikbare versies voor de versiekiezer (uit PaperMC Fill of Fabric meta, een uur gecachet). */
+export const VersionOptions = z.object({
+  /** Variabelen die de kiezer vervangt; leeg = geen kiezer (andere template). */
+  variables: z.object({ version: z.string().nullable(), build: z.string().nullable(), loader: z.string().nullable() }),
+  versions: z.array(VersionOption),
+  /** Builds van `minecraftVersion` (nieuwste eerst), Paper/Folia/Velocity. */
+  builds: z.array(z.string()),
+  /** Loader-versies (nieuwste eerst), Fabric. */
+  loaderVersions: z.array(VersionOption),
+});
+export type VersionOptions = z.infer<typeof VersionOptions>;
 // ---------- quota's ----------
 
 /** Quotum per gebruiker. Geen quotum = de gebruiker kan zelf geen servers maken. null bij lijsten = alles toegestaan. */

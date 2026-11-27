@@ -48,7 +48,7 @@ export class DaemonClient {
   }
 
   /** Ruwe aanroep; `raw` = octet-stream-body. Geeft de responstekst terug. */
-  private async send(method: Method, path: string, body: { json: unknown } | { raw: string } | undefined, timeoutMs = this.timeoutMs): Promise<string> {
+  private async send(method: Method, path: string, body: { json: unknown } | { raw: string | Uint8Array } | undefined, timeoutMs = this.timeoutMs): Promise<string> {
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}${path}`, {
@@ -59,7 +59,7 @@ export class DaemonClient {
           ...(body && "json" in body ? { "content-type": "application/json" } : {}),
           ...(body && "raw" in body ? { "content-type": "application/octet-stream" } : {}),
         },
-        body: body ? ("json" in body ? JSON.stringify(body.json) : body.raw) : undefined,
+        body: body ? ("json" in body ? JSON.stringify(body.json) : (body.raw as BodyInit)) : undefined,
         signal: AbortSignal.timeout(timeoutMs),
         cache: "no-store",
       });
@@ -130,7 +130,23 @@ export class DaemonClient {
   readFile(uuid: string, path: string) {
     return this.send("GET", `/api/servers/${uuid}/files/contents?path=${encodeURIComponent(path)}`, undefined, 30_000);
   }
-  async writeFile(uuid: string, path: string, content: string) {
+  /** Binair lezen (max 5 MB, de limiet van de daemon). */
+  async readFileBytes(uuid: string, path: string): Promise<Buffer> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/api/servers/${uuid}/files/contents?path=${encodeURIComponent(path)}`, {
+        headers: { authorization: `Bearer ${this.token}` },
+        signal: AbortSignal.timeout(30_000),
+        cache: "no-store",
+      });
+      if (res.ok) return Buffer.from(await res.arrayBuffer());
+    } catch (e) {
+      throw new DaemonUnreachableError(this.nodeId, e);
+    }
+    if (res.status === 502 || res.status === 503 || res.status === 504) throw new DaemonUnreachableError(this.nodeId, new Error(String(res.status)));
+    throw new DaemonHttpError(res.status, `http_${res.status}`, `http_${res.status}`);
+  }
+  async writeFile(uuid: string, path: string, content: string | Uint8Array) {
     await this.send("PUT", `/api/servers/${uuid}/files/contents?path=${encodeURIComponent(path)}`, { raw: content }, 30_000);
   }
   mkdir(uuid: string, path: string) {
