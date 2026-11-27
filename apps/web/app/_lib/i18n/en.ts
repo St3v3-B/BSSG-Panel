@@ -4,6 +4,8 @@
  */
 export const en = {
   common: {
+    lastSeen: (when: string) => `Last seen ${when}`,
+    neverSeen: "Never reached yet",
     loading: "Loading…",
     cancel: "Cancel",
     save: "Save",

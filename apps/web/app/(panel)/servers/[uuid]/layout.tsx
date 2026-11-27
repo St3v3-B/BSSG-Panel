@@ -69,7 +69,7 @@ export default function ServerLayout({ children }: { children: ReactNode }) {
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <h1 className="line-clamp-2 break-words text-2xl font-bold tracking-tight sm:text-3xl">{s.name}</h1>
-                <StatusBadge status={s.status} />
+                <StatusBadge status={s.status} lastSeenAt={s.lastSeenAt} />
               </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
                 {s.primaryAddress && <CopyText value={s.primaryAddress} className="text-foreground" />}

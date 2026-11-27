@@ -3,6 +3,8 @@ import type { Dict } from "./en";
 
 export const nl: Dict = {
   common: {
+    lastSeen: (when: string) => `Laatst gezien ${when}`,
+    neverSeen: "Nog nooit bereikt",
     loading: "Laden…",
     cancel: "Annuleren",
     save: "Opslaan",
