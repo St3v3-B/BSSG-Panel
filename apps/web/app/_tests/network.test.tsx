@@ -12,6 +12,7 @@ afterEach(cleanup);
 const PROXY = "11111111-1111-4111-8111-111111111111";
 const A = "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6";
 const B = "3a1d9b7c-5e6f-4a8b-9c0d-112233445566";
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 const admin = { session: sessionFor("admin"), locale: "en" as const };
 const inputs = (bodies: Array<{ path: string; input: unknown }>, p: string) => bodies.filter((b) => b.path === p).map((b) => b.input);
 
@@ -21,11 +22,11 @@ const proxy = (members: ServerDetail["network"]["members"] = []): ServerDetail =
   network: { role: "proxy", members, proxy: null, connectAddress: "play.example.com" },
 });
 const patch = (list: ReturnType<typeof cand>[]) => (m: Implementation) => {
-  m.servers.networkCandidates = () => list;
+  (m.servers as Mutable<typeof m.servers>).networkCandidates = () => list;
 };
 
 describe("tabblad Network", () => {
-  const base = { uuid: PROXY, type: "game", isOwner: true, permissions: [] } as const;
+  const base = { uuid: PROXY, type: "game" as const, isOwner: true, permissions: [] as ServerDetail["permissions"] };
   it("alleen op een proxy, voor de eigenaar", () => {
     expect(serverTabs({ ...base, network: { role: "proxy" } }).map((t) => t.key)).toContain("network");
     expect(serverTabs({ ...base, network: { role: "backend" } }).map((t) => t.key)).not.toContain("network");
@@ -73,7 +74,7 @@ describe("NetworkManager", () => {
       ...admin,
       patch: (m) => {
         patch([cand(A, "SMP", "smp")])(m);
-        m.servers.updateNetwork = () => ({ servers: [{ uuid: A, name: "SMP", role: "backend", restarted: false, error: null }, { uuid: PROXY, name: "Proxy", role: "proxy", restarted: false, error: "boom" }] });
+        (m.servers as Mutable<typeof m.servers>).updateNetwork = () => ({ servers: [{ uuid: A, name: "SMP", role: "backend", restarted: false, error: null }, { uuid: PROXY, name: "Proxy", role: "proxy", restarted: false, error: "boom" }] });
       },
     });
     fireEvent.click(await screen.findByLabelText("Add SMP to the network"));
