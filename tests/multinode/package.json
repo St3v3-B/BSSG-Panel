@@ -1,0 +1,22 @@
+{
+  "name": "@panel/multinode",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "multinode": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@panel/api": "workspace:*",
+    "@trpc/client": "^11.31.3",
+    "ssh2": "^1.17.0",
+    "superjson": "^2.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "@types/ssh2": "^1.15.6",
+    "typescript": "~5.9.3",
+    "vitest": "^5.1.2"
+  }
+}

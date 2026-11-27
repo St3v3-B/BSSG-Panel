@@ -21,6 +21,7 @@ import (
 
 	"panel/daemon/internal/api"
 	"panel/daemon/internal/auth"
+	"panel/daemon/internal/backup"
 	"panel/daemon/internal/config"
 	"panel/daemon/internal/engine"
 	"panel/daemon/internal/panel"
@@ -62,6 +63,7 @@ type Daemon struct {
 	mgr    *server.Manager
 	routes *api.Routes
 	api    *api.API
+	backup *backup.Service
 	sftp   *sftpd.Server
 
 	healthy   atomic.Int32 // 0 onbekend, 1 gezond, 2 ongezond
@@ -113,7 +115,9 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 		}()
 	})
 	verifier := auth.NewVerifier(d.panel.JWKS, cfg.NodeDomain)
+	d.backup = &backup.Service{Mgr: d.mgr, Rep: d.panel, Log: deps.Log}
 	d.api = api.New(api.Options{NodeToken: cfg.NodeToken, AllowedOrigins: cfg.AllowedOrigins(), AuthTimeout: deps.WSAuthTimeout}, d.mgr, routes, verifier, d.systemInfo, deps.Log)
+	d.api.SetBackups(d.backup)
 	return d, nil
 }
 

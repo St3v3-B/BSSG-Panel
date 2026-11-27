@@ -6,6 +6,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { logActivity } from "../activity";
 import { dropServerDatabases } from "./databases";
 import { removeServerRoutes } from "./domains";
+import { transfer } from "./transfer";
 import { activityPage } from "../activity-query";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema, type Db } from "../db";
@@ -103,7 +104,7 @@ export function parsePorts(spec: string): number[] {
 }
 
 /** Controleert allocation-ID's: bestaan, op deze node, vrij (of al van `serverId`). */
-async function checkAllocations(db: Db | Tx, ids: number[], nodeId: number, serverId: number | null) {
+export async function checkAllocations(db: Db | Tx, ids: number[], nodeId: number, serverId: number | null) {
   if (new Set(ids).size !== ids.length) throw bad("DUPLICATE_ALLOCATION");
   if (!ids.length) return [];
   const rows = await db.select().from(schema.allocations).where(inArray(schema.allocations.id, ids));
@@ -117,7 +118,7 @@ async function checkAllocations(db: Db | Tx, ids: number[], nodeId: number, serv
 }
 
 /** Wijst precies `ids` toe aan de server (eerste = primair), de rest komt vrij. */
-async function assignAllocations(tx: Tx, serverId: number, ids: number[]) {
+export async function assignAllocations(tx: Tx, serverId: number, ids: number[]) {
   await tx
     .update(schema.allocations)
     .set({ serverId: null, isPrimary: false })
@@ -130,6 +131,22 @@ async function assignAllocations(tx: Tx, serverId: number, ids: number[]) {
       .returning({ id: schema.allocations.id });
     if (!r.length) throw new TRPCError({ code: "CONFLICT", message: `ALLOCATION_IN_USE: ${id}` });
   }
+}
+
+/** Verwijdert een server bij de daemon, de routes, de databases en uit de database; `log` draait vlak voor het DB-delete. */
+export async function deleteServerFully(b: ServerBundle, log: (dbFailed: string[]) => Promise<void>): Promise<void> {
+  try {
+    await daemonFor(b.node).deleteServer(b.server.uuid);
+  } catch (e) {
+    if (!(e instanceof DaemonHttpError && e.status === 404)) await call(() => Promise.reject(e));
+  }
+  await removeServerRoutes(b.server.id, b.node);
+  const dbFailed = await dropServerDatabases(b.server.id);
+  await log(dbFailed);
+  await getDb().transaction(async (tx) => {
+    await tx.update(schema.allocations).set({ serverId: null, isPrimary: false }).where(eq(schema.allocations.serverId, b.server.id));
+    await tx.delete(schema.servers).where(eq(schema.servers.id, b.server.id));
+  });
 }
 
 // ---------- gebruikers ----------
@@ -429,18 +446,9 @@ export const admin = {
 
     delete: async ({ input, ctx }) => {
       const b = await mustServer(input.uuid);
-      try {
-        await daemonFor(b.node).deleteServer(b.server.uuid);
-      } catch (e) {
-        if (!(e instanceof DaemonHttpError && e.status === 404)) await call(() => Promise.reject(e));
-      }
-      await removeServerRoutes(b.server.id, b.node);
-      const dbFailed = await dropServerDatabases(b.server.id);
-      await logActivity({ action: "admin.server.delete", userId: uid(ctx), serverId: b.server.id, metadata: { serverUuid: b.server.uuid, serverName: b.server.name, ownerId: b.server.ownerId, ...(dbFailed.length ? { databasesNotDropped: dbFailed } : {}) }, ip: ctx.ip, ctx });
-      await getDb().transaction(async (tx) => {
-        await tx.update(schema.allocations).set({ serverId: null, isPrimary: false }).where(eq(schema.allocations.serverId, b.server.id));
-        await tx.delete(schema.servers).where(eq(schema.servers.id, b.server.id));
-      });
+      await deleteServerFully(b, (dbFailed) =>
+        logActivity({ action: "admin.server.delete", userId: uid(ctx), serverId: b.server.id, metadata: { serverUuid: b.server.uuid, serverName: b.server.name, ownerId: b.server.ownerId, ...(dbFailed.length ? { databasesNotDropped: dbFailed } : {}) }, ip: ctx.ip, ctx }),
+      );
       return ok;
     },
 
@@ -476,6 +484,8 @@ export const admin = {
       }
       return ok;
     },
+
+    transfer: (opts) => transfer(opts),
 
     changeTemplate: async ({ input, ctx }) => {
       const b = await mustServer(input.uuid);

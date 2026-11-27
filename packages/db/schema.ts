@@ -249,6 +249,20 @@ export const networkMembers = pgTable("network_members", {
   position: integer("position").notNull(),
 }, (t) => [uniqueIndex("network_members_proxy_name").on(t.proxyServerId, t.name), index("network_members_proxy_idx").on(t.proxyServerId)]);
 
+/** Via het panel geïnstalleerde plugins/mods (Modrinth/Hangar). Eén rij per project per server. */
+export const serverContent = pgTable("server_content", {
+  id: pk(),
+  serverId: integer("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  source: text("source").notNull(),
+  projectId: text("project_id").notNull(),
+  name: text("name").notNull(),
+  versionId: text("version_id").notNull(),
+  versionNumber: text("version_number").notNull(),
+  filename: text("filename").notNull(),
+  kind: text("kind").notNull(),
+  installedAt: createdAt(),
+}, (t) => [uniqueIndex("server_content_project").on(t.serverId, t.source, t.projectId), index("server_content_server_idx").on(t.serverId)]);
+
 export const databaseHosts = pgTable("database_hosts", {
   id: pk(),
   name: text("name").notNull(),
@@ -340,3 +354,17 @@ export const activityLog = pgTable("activity_log", {
   index("activity_server_idx").on(t.serverId, t.at),
   index("activity_action_idx").on(t.action),
 ]);
+
+/** Quotum per gebruiker; geen rij = de gebruiker kan zelf geen servers maken. null in de lijsten = alles. */
+export const userQuotas = pgTable("user_quotas", {
+  userId: integer("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  maxRamMb: integer("max_ram_mb").notNull(),
+  maxDiskMb: integer("max_disk_mb").notNull(),
+  maxCpuPct: integer("max_cpu_pct").notNull(),
+  maxServers: integer("max_servers").notNull(),
+  maxDatabases: integer("max_databases").notNull(),
+  templateIds: jsonb("template_ids").$type<number[] | null>(),
+  nodeIds: jsonb("node_ids").$type<number[] | null>(),
+  maxPortsPerServer: integer("max_ports_per_server"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});

@@ -71,6 +71,8 @@ export const contract = {
     ),
     revokeApiKey: mutation("user", byId, s.Ok),
     setSftpPassword: mutation("user", server.extend({ password: z.string().min(12).max(200) }), s.Ok),
+    /** Eigen quotum met verbruik en keuzelijsten; null = geen quotum (kan zelf geen servers maken). */
+    quota: query("user", none, s.QuotaOverview.nullable()),
   },
 
   servers: {
@@ -85,6 +87,28 @@ export const contract = {
     sendCommand: mutation("user", server.extend({ command: z.string().min(1).max(2000) }), s.Ok),
     /** JWT (10 min) voor wss://$NODE_DOMAIN/api/servers/{uuid}/ws. Vereist console.read. */
     consoleToken: mutation("user", server, s.ConsoleToken),
+    /**
+     * Zelf een server maken binnen het eigen quotum (FORBIDDEN `NO_QUOTA`, PRECONDITION_FAILED
+     * `QUOTA_EXCEEDED: <resource>`, `TEMPLATE_NOT_ALLOWED`, `NODE_NOT_ALLOWED`, `NO_FREE_ALLOCATIONS`).
+     * Atomair: parallelle aanroepen kunnen het quotum niet overschrijden. Het panel kiest de eerste vrije poort(en)
+     * op de node; `ports` (standaard 1) geldt alleen voor game-servers.
+     */
+    create: mutation(
+      "user",
+      z.object({
+        name: z.string().min(1).max(100),
+        templateId: s.Id,
+        nodeId: s.Id,
+        limits: s.OwnLimits,
+        ports: z.number().int().min(1).max(100).default(1),
+        variables: z.record(z.string(), z.string()).default({}),
+      }),
+      s.ServerDetail,
+    ),
+    /** Eigenaar met quotum: limieten wijzigen binnen het quotum (admin: gebruik admin.servers.updateLimits). */
+    updateOwnLimits: mutation("user", server.extend({ limits: s.OwnLimits }), s.Ok),
+    /** Eigenaar: verwijdert de server; `confirmName` moet exact de servernaam zijn. */
+    deleteOwn: mutation("user", server.extend({ confirmName: z.string() }), s.Ok),
     /** Eigenaar of admin. */
     rename: mutation("user", server.extend({ name: z.string().min(1).max(100) }), s.Ok),
     /** Eigenaar of admin; gebruikers alleen userEditable, admins alle-variabelen. Effect bij de volgende start. */
@@ -125,6 +149,35 @@ export const contract = {
     uploadUrl: mutation("user", server.extend({ directory: s.FilePath }), s.SignedUrl),
     downloadUrl: mutation("user", serverPath, s.SignedUrl),
     sftpDetails: query("user", server, z.object({ host: z.string(), port: z.number().int(), username: z.string() })),
+  },
+
+  /**
+   * Minecraft: plugins (Paper/Folia/Velocity) en mods (Fabric) via Modrinth en Hangar, modpacks en versiekiezer.
+   * Lezen vereist files.read, wijzigen files.write. Downloads gebeuren in het panel (hash-controle, host-allowlist);
+   * het bestand gaat via de daemon-bestands-API naar `plugins/` of `mods/`.
+   */
+  content: {
+    info: query("user", server, s.ContentInfo),
+    search: query("user", server.extend({ source: s.ContentSource, query: z.string().max(100).default(""), offset: z.number().int().min(0).max(10000).default(0), /** Zoek modpacks (Modrinth, alleen Fabric) in plaats van mods/plugins. */ modpacks: z.boolean().default(false) }), s.ContentSearchResult),
+    /** Nieuwste compatibele versie van het project (of `versionId`) plus verplichte afhankelijkheden. */
+    resolve: query("user", server.extend({ source: s.ContentSource, projectId: z.string().min(1).max(100), versionId: z.string().min(1).max(100).optional() }), s.ContentResolved),
+    /** Installeert (optioneel met verplichte afhankelijkheden) en geeft alle nieuw geïnstalleerde items terug. */
+    install: mutation(
+      "user",
+      server.extend({ source: s.ContentSource, projectId: z.string().min(1).max(100), versionId: z.string().min(1).max(100).optional(), withDependencies: z.boolean().default(false) }),
+      z.array(s.InstalledContent),
+    ),
+    list: query("user", server, z.array(s.InstalledContent)),
+    /** Zoekt per geïnstalleerd item een nieuwere compatibele versie (netwerk, dus apart van `list`). */
+    checkUpdates: query("user", server, z.array(s.ContentUpdate)),
+    /** Vervangt het bestand door de nieuwste compatibele versie. */
+    update: mutation("user", server.extend({ id: s.Id }), s.InstalledContent),
+    /** Verwijdert het bestand en het record. */
+    uninstall: mutation("user", server.extend({ id: s.Id }), s.Ok),
+    /** Fabric: .mrpack importeren (zie ModpackSource). Zet MINECRAFT_VERSION/LOADER_VERSION; `reinstall` draait het install-script. */
+    importModpack: mutation("user", server.extend({ source: s.ModpackSource, reinstall: z.boolean().default(true) }), s.ModpackResult),
+    /** Versiekiezer; `minecraftVersion` bepaalt de builds (Paper/Folia/Velocity). Eigenaar of admin. */
+    versionOptions: query("user", server.extend({ minecraftVersion: z.string().max(40).optional() }), s.VersionOptions),
   },
 
   domains: {
@@ -259,8 +312,13 @@ export const contract = {
       updateOwner: mutation("admin", server.extend({ ownerId: s.Id }), s.Ok),
       updateAllocations: mutation("admin", server.extend({ allocationIds: z.array(s.Id) }), s.Ok),
       delete: mutation("admin", server, s.Ok),
-      /** Verplaatsen naar een andere node (na v1-fase 4, contract staat alvast). */
-      transfer: mutation("admin", server.extend({ nodeId: s.Id }), s.Ok),
+      /**
+       * Verplaatsen naar een andere node: stopt de server, kopieert de data (tar-stroom via het panel),
+       * maakt hem aan op de doelnode, verwijdert hem pas daarna van de bron. Bij een fout blijft de bron intact.
+       * `allocationIds` = vrije allocations op de doelnode (eerste = primair); weglaten = eerste vrije
+       * (zoveel als de server nu heeft). Web: geen allocations. Domeinen en routes verhuizen mee.
+       */
+      transfer: mutation("admin", server.extend({ nodeId: s.Id, allocationIds: z.array(s.Id).optional() }), s.Ok),
       /** Opschorten stopt de server; eigenaar en subusers kunnen dan niet starten, schrijven of SFTP'en. Admins wel. */
       /** Domeinen koppelen aan een game-server toestaan (bv. play.example.com of map.example.com). */
       setDomainsAllowed: mutation("admin", server.extend({ allowed: z.boolean() }), s.Ok),
@@ -287,6 +345,16 @@ export const contract = {
       create: mutation("admin", z.object({ discordId: s.DiscordId }), s.AdminUser),
       setBlocked: mutation("admin", byId.extend({ blocked: z.boolean() }), s.Ok),
       resetTotp: mutation("admin", byId, s.Ok),
+      /** null = geen quotum. */
+      getQuota: query("admin", byId, s.QuotaInput.nullable()),
+      setQuota: mutation("admin", byId.extend(s.QuotaInput.shape), s.Ok),
+      /** Haalt het quotum weg; bestaande servers blijven. */
+      clearQuota: mutation("admin", byId, s.Ok),
+    },
+
+    /** Verbruik per gebruiker met een quotum (of met servers). */
+    quotas: {
+      usage: query("admin", s.PageInput, s.page(s.UserQuotaUsage)),
     },
 
     admins: {

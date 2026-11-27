@@ -1,0 +1,307 @@
+schema: 1
+slug: php-8-2
+name: PHP 8.2 (nginx + PHP-FPM)
+description: >-
+  Website with nginx and PHP-FPM 8.2, suitable for WordPress. Put your files in the
+  `public` folder; requests that do not match a file go to `index.php` (permalinks).
+  Extensions include mysqli, pdo_mysql, gd, intl, zip, exif, curl, mbstring, opcache.
+  From the site, the database is reachable as `panel-mariadb:3306`. Custom PHP settings go in
+  `php/*.ini`, custom nginx rules (inside the server block) in `nginx/*.conf`; restart afterwards.
+type: web
+version: 7
+# serversideup/php: officiële PHP-build met nginx erbij. We gebruiken alleen de binaries;
+# hun s6-entrypoint niet (dat wil als root schrijven op de rootfs).
+image: serversideup/php:8.2-fpm-nginx-alpine
+# De daemon draait dit als uid 1000 met een read-only rootfs; alleen /home/container en
+# /tmp (tmpfs) zijn schrijfbaar. Alle config wordt bij elke start in /tmp gezet. De extra
+# extensies (mysqli, gd, intl, exif) bouwt de installatie in /home/container/.php.
+startup: |
+  set -u
+  R=/tmp/php; H=/home/container
+  mkdir -p $R/conf.d $R/uploads /tmp/nginx $H/public $H/php $H/nginx $H/.php/sessions
+  CH=$(( {{SERVER_MEMORY}} / 64 )); [ "$CH" -ge 2 ] || CH=2
+  for f in $H/.php/ext/*.so; do [ -e "$f" ] && echo "extension=$f"; done > $R/conf.d/10-panel-ext.ini
+  cat > $R/conf.d/20-panel.ini <<'EOF'
+  memory_limit = {{PHP_MEMORY_LIMIT}}
+  upload_max_filesize = {{UPLOAD_MAX_SIZE}}
+  post_max_size = {{UPLOAD_MAX_SIZE}}
+  max_execution_time = 120
+  max_input_vars = 3000
+  expose_php = Off
+  display_errors = Off
+  log_errors = On
+  date.timezone = Europe/Amsterdam
+  sys_temp_dir = /tmp/php
+  upload_tmp_dir = /tmp/php/uploads
+  session.save_path = /home/container/.php/sessions
+  session.cookie_httponly = On
+  opcache.enable = 1
+  opcache.validate_timestamps = 1
+  opcache.revalidate_freq = 2
+  opcache.memory_consumption = 64
+  EOF
+  cat > $R/php-fpm.conf <<EOF
+  [global]
+  pid = $R/php-fpm.pid
+  error_log = /proc/self/fd/2
+  log_limit = 8192
+  daemonize = no
+  [www]
+  listen = $R/fpm.sock
+  pm = ondemand
+  pm.max_children = $CH
+  pm.process_idle_timeout = 30s
+  pm.max_requests = 500
+  clear_env = no
+  catch_workers_output = yes
+  decorate_workers_output = no
+  security.limit_extensions = .php
+  ping.path = /healthcheck
+  ping.response = OK
+  EOF
+  cat > /tmp/nginx/nginx.conf <<'EOF'
+  worker_processes 2;
+  pid /tmp/nginx/nginx.pid;
+  error_log stderr warn;
+  events { worker_connections 1024; }
+  http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    client_body_temp_path /tmp/nginx/client_body;
+    proxy_temp_path /tmp/nginx/proxy;
+    fastcgi_temp_path /tmp/nginx/fastcgi;
+    uwsgi_temp_path /tmp/nginx/uwsgi;
+    scgi_temp_path /tmp/nginx/scgi;
+    access_log /dev/stdout combined;
+    sendfile on;
+    server_tokens off;
+    client_max_body_size {{UPLOAD_MAX_SIZE}};
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml text/plain text/xml;
+    # Caddy (op het site-netwerk) zet X-Forwarded-For en -Proto.
+    set_real_ip_from 10.0.0.0/8;
+    set_real_ip_from 172.16.0.0/12;
+    set_real_ip_from 192.168.0.0/16;
+    real_ip_header X-Forwarded-For;
+    map $http_x_forwarded_proto $panel_https { https on; default ""; }
+    server {
+      listen 8080;
+      root /home/container/public;
+      index index.php index.html index.htm;
+      absolute_redirect off;
+      location ~ /\.(?!well-known/) { deny all; }
+      location ~* /(?:uploads|files)/.*\.php$ { deny all; }
+      location / { try_files $uri $uri/ /index.php?$args; }
+      location ~ [^/]\.php(/|$) {
+        fastcgi_split_path_info ^(.+?\.php)(/.*)$;
+        try_files $fastcgi_script_name =404;
+        include /etc/nginx/fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_param PATH_INFO $fastcgi_path_info;
+        fastcgi_param HTTPS $panel_https;
+        fastcgi_param HTTP_PROXY "";
+        fastcgi_read_timeout 300s;
+        fastcgi_pass unix:/tmp/php/fpm.sock;
+      }
+      include /home/container/nginx/*.conf;
+    }
+    # HEALTHCHECK van de image (curl http://localhost:8080/healthcheck): alleen via
+    # 127.0.0.1, test nginx en PHP-FPM (fpm-ping). Een bestand public/healthcheck
+    # blijft van buitenaf gewoon bereikbaar via de server hierboven.
+    server {
+      listen 127.0.0.1:8080;
+      access_log off;
+      location = /healthcheck {
+        include /etc/nginx/fastcgi_params;
+        fastcgi_param SCRIPT_NAME /healthcheck;
+        fastcgi_param SCRIPT_FILENAME /healthcheck;
+        fastcgi_pass unix:/tmp/php/fpm.sock;
+      }
+      location / { return 404; }
+    }
+  }
+  EOF
+  export PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d:$R/conf.d:$H/php ICU_DATA=$H/.php/icu
+  LD_LIBRARY_PATH=$H/.php/lib php-fpm -t -y $R/php-fpm.conf 2>&1 | grep -v 'test is successful' >&2
+  nginx -t -q -e stderr -c /tmp/nginx/nginx.conf || exit 1
+  LD_LIBRARY_PATH=$H/.php/lib php-fpm -y $R/php-fpm.conf & FPM=$!
+  nginx -e stderr -c /tmp/nginx/nginx.conf -g 'daemon off;' & NGX=$!
+  STOP=0
+  trap 'STOP=1; kill -QUIT $NGX $FPM 2>/dev/null' TERM INT QUIT
+  until [ -S $R/fpm.sock ] && [ -s /tmp/nginx/nginx.pid ]; do
+    kill -0 $FPM 2>/dev/null && kill -0 $NGX 2>/dev/null || break
+    sleep 0.2
+  done
+  kill -0 $FPM 2>/dev/null && kill -0 $NGX 2>/dev/null && echo "PHP-FPM and nginx ready on port 8080"
+  while kill -0 $FPM 2>/dev/null && kill -0 $NGX 2>/dev/null; do sleep 1 & wait $!; done
+  kill -QUIT $NGX $FPM 2>/dev/null; wait $NGX; wait $FPM
+  [ "$STOP" = 1 ] && exit 0
+  echo "PHP-FPM or nginx has stopped" >&2; exit 1
+stop:
+  type: signal
+  value: SIGTERM
+ready_pattern: "^PHP-FPM and nginx ready on port"
+http_port: 8080
+variables:
+  - key: PHP_MEMORY_LIMIT
+    name: PHP memory limit
+    description: memory_limit per PHP request, for example 256M.
+    default: 256M
+    user_editable: true
+    pattern: "^[0-9]{2,5}M$"
+  - key: UPLOAD_MAX_SIZE
+    name: Maximum upload size
+    description: upload_max_filesize, post_max_size and the nginx limit, for example 64M.
+    default: 64M
+    user_editable: true
+    pattern: "^[0-9]{1,4}M$"
+  # Intern: zodat ook `php` op de command line (WP-CLI, cronjobs, console) dezelfde
+  # ini's en zelfgebouwde extensies laadt als PHP-FPM. Niet wijzigen.
+  - key: PHP_INI_SCAN_DIR
+    name: PHP ini directories (internal)
+    default: /usr/local/etc/php/conf.d:/tmp/php/conf.d:/home/container/php
+    user_editable: false
+  - key: LD_LIBRARY_PATH
+    name: Libraries for PHP extensions (internal)
+    default: /home/container/.php/lib
+    user_editable: false
+  - key: ICU_DATA
+    name: ICU data for intl (internal)
+    default: /home/container/.php/icu
+    user_editable: false
+install:
+  image: serversideup/php:8.2-fpm-nginx-alpine
+  script: |
+    #!/bin/sh
+    # Bouwt mysqli, gd, intl en exif tegen exact deze PHP-build (zelfde image als de
+    # runtime) en zet ze met de benodigde bibliotheken in /home/container/.php.
+    # Draait als root in een tijdelijke container; bestaande sitebestanden blijven staan.
+    set -eu
+    # De runtime-variabelen hieronder horen niet bij het bouwen (oude bibliotheken).
+    unset PHP_INI_SCAN_DIR LD_LIBRARY_PATH ICU_DATA
+    H=/home/container
+    mkdir -p $H/php $H/nginx $H/.php/sessions
+    rm -rf $H/.php/ext $H/.php/lib $H/.php/icu
+    mkdir -p $H/.php/ext $H/.php/lib
+    ls /lib /usr/lib /usr/local/lib > /tmp/libs-before
+    echo "Installing build tools"
+    apk add --no-cache --virtual .panel-build $PHPIZE_DEPS \
+      libpng-dev libjpeg-turbo-dev freetype-dev libwebp-dev icu-dev icu-data-full >/dev/null
+    docker-php-source extract
+    for e in mysqli gd intl exif; do
+      echo "Building extension $e"
+      cd /usr/src/php/ext/$e
+      phpize >/dev/null
+      case $e in
+        gd) ./configure --with-freetype --with-jpeg --with-webp >/dev/null ;;
+        *) ./configure >/dev/null ;;
+      esac
+      make -j"$(nproc)" >/dev/null 2>&1 || make >/dev/null
+      cp modules/$e.so $H/.php/ext/
+    done
+    # Bibliotheken die de runtime-image niet heeft (libpng, icu, ...) erbij zetten.
+    for so in $H/.php/ext/*.so; do
+      ldd "$so" 2>/dev/null | awk '$2 == "=>" && $3 ~ /^\// {print $3}'
+    done | sort -u | while read -r lib; do
+      base=$(basename "$lib")
+      grep -qx "$base" /tmp/libs-before || cp -L "$lib" $H/.php/lib/
+    done
+    # ICU-data (alle talen) voor intl; de runtime vindt hem via ICU_DATA.
+    mkdir -p $H/.php/icu
+    cp /usr/share/icu/*/*.dat $H/.php/icu/
+    if [ -z "$(ls -A /home/container/public 2>/dev/null)" ]; then
+      mkdir -p /home/container/public
+      cat > /home/container/public/index.html <<'EOF'
+    <!doctype html>
+    <html lang="en" data-t-en="Your website is live 🎉" data-t-nl="Je website staat live 🎉">
+    <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
+    <title>Your website is live 🎉</title>
+    <style>
+    :root{color-scheme:dark light;--bg:#070a14;--text:#f3f5fb;--muted:#a3adc6;--card:rgba(255,255,255,.055);--edge:rgba(255,255,255,.12);--soft:rgba(255,255,255,.07);--a:#7c5cff;--b:#22d3ee;--c:#f472b6;--ok:#34d399;--warn:#fbbf24;--bad:#fb7185;--shadow:0 30px 80px -30px rgba(0,0,0,.7)}
+    @media (prefers-color-scheme:light){:root{--bg:#f3f5fb;--text:#0b1220;--muted:#4b5672;--card:rgba(255,255,255,.72);--edge:rgba(15,23,42,.1);--soft:rgba(15,23,42,.05);--shadow:0 30px 70px -35px rgba(30,41,82,.35);--a:#6d28d9;--b:#0891b2;--c:#db2777}}
+    *{box-sizing:border-box}
+    html{height:100%}
+    body{margin:0;min-height:100%;display:grid;place-items:center;padding:clamp(16px,4vw,48px);background:var(--bg);color:var(--text);font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+    .bg{position:fixed;inset:0;z-index:-1;overflow:hidden}
+    .bg i{position:absolute;width:55vmax;height:55vmax;border-radius:50%;filter:blur(70px);opacity:.55;animation:drift 22s ease-in-out infinite alternate}
+    .bg i:nth-child(1){background:var(--a);top:-20vmax;left:-15vmax}
+    .bg i:nth-child(2){background:var(--b);bottom:-25vmax;right:-15vmax;animation-duration:26s;animation-delay:-6s}
+    .bg i:nth-child(3){background:var(--c);top:30%;left:45%;width:35vmax;height:35vmax;opacity:.3;animation-duration:30s;animation-delay:-12s}
+    .bg::after{content:"";position:absolute;inset:0;background-image:linear-gradient(var(--soft) 1px,transparent 1px),linear-gradient(90deg,var(--soft) 1px,transparent 1px);background-size:44px 44px;-webkit-mask-image:radial-gradient(ellipse at center,#000 20%,transparent 70%);mask-image:radial-gradient(ellipse at center,#000 20%,transparent 70%)}
+    @media (prefers-color-scheme:light){.bg i{opacity:.28}.bg i:nth-child(3){opacity:.18}}
+    main{position:relative;width:100%;max-width:640px;padding:clamp(28px,5vw,48px);border-radius:28px;background:var(--card);border:1px solid var(--edge);box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.08);-webkit-backdrop-filter:blur(22px) saturate(150%);backdrop-filter:blur(22px) saturate(150%);animation:rise .7s cubic-bezier(.2,.8,.2,1) both}
+    .top{display:flex;align-items:center;gap:16px;margin-bottom:26px}
+    .icon{flex:none;width:60px;height:60px;display:grid;place-items:center;border-radius:18px;color:#fff;background:linear-gradient(135deg,var(--a),var(--b));box-shadow:0 12px 30px -10px var(--a),inset 0 1px 0 rgba(255,255,255,.3)}
+    .icon svg{width:30px;height:30px}
+    .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;border:1px solid var(--edge);background:var(--soft);font-size:.8rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--s,var(--ok));box-shadow:0 0 0 0 var(--s,var(--ok));animation:ping 2s ease-out infinite}
+    h1{margin:0 0 12px;font-size:clamp(2rem,6vw,3rem);line-height:1.08;letter-spacing:-.03em;font-weight:800}
+    .lead{margin:0;font-size:clamp(1rem,2.4vw,1.12rem);color:var(--muted);max-width:34em}
+    .host{margin:22px 0 0;font:600 clamp(1.05rem,3.2vw,1.35rem)/1.3 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-wrap:anywhere;background:linear-gradient(90deg,var(--a),var(--b),var(--c),var(--a));background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shine 8s linear infinite}
+    .host.big{font-size:clamp(1.5rem,5.5vw,2.25rem);letter-spacing:-.02em}
+    .nw{white-space:nowrap}
+    .bar{height:6px;margin-top:28px;border-radius:6px;background:var(--soft);overflow:hidden}
+    .bar b{display:block;width:38%;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--a),var(--b));animation:slide 1.8s cubic-bezier(.6,0,.4,1) infinite}
+    .foot{margin:28px 0 0;padding-top:18px;border-top:1px solid var(--edge);font-size:.85rem;color:var(--muted)}
+    ol{list-style:none;margin:30px 0 0;padding:0;display:grid;gap:12px}
+    li{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;padding:16px;border-radius:18px;background:var(--soft);border:1px solid var(--edge);animation:rise .6s cubic-bezier(.2,.8,.2,1) both}
+    li:nth-child(1){animation-delay:.15s}li:nth-child(2){animation-delay:.25s}li:nth-child(3){animation-delay:.35s}
+    li .n{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;font-weight:700;font-size:.95rem;color:#fff;background:linear-gradient(135deg,var(--a),var(--b))}
+    li strong{display:block;margin-bottom:2px;font-weight:650}
+    li p{margin:0;font-size:.93rem;color:var(--muted)}
+    code{font:.9em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:1px 6px;border-radius:6px;background:var(--soft);border:1px solid var(--edge);color:var(--text)}
+    .spin{animation:spin 6s linear infinite}.pulse{animation:pulse 2.4s ease-in-out infinite}.float{animation:float 3.5s ease-in-out infinite}.draw path{stroke-dasharray:30;stroke-dashoffset:30;animation:draw .8s .4s ease-out forwards}
+    @keyframes drift{to{transform:translate(8vmax,6vmax) scale(1.15)}}
+    @keyframes rise{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+    @keyframes ping{70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+    @keyframes shine{to{background-position:300% 0}}
+    @keyframes slide{0%{transform:translateX(-110%)}100%{transform:translateX(280%)}}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes pulse{50%{opacity:.55;transform:scale(.92)}}
+    @keyframes float{50%{transform:translateY(-4px)}}
+    @keyframes draw{to{stroke-dashoffset:0}}
+    @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important}.draw path{stroke-dashoffset:0}}
+    @media (max-width:480px){main{border-radius:22px}.top{margin-bottom:20px}.icon{width:52px;height:52px;border-radius:15px}}
+    html[lang=en] [lang=nl],html[lang=nl] [lang=en]{display:none}
+    .top{position:relative}
+    .lang{display:none;position:absolute;top:0;right:0;padding:3px;gap:2px;border-radius:999px;border:1px solid var(--edge);background:var(--soft)}
+    .js .lang{display:inline-flex}
+    .lang button{all:unset;cursor:pointer;padding:4px 10px;border-radius:999px;font-size:.75rem;font-weight:700;letter-spacing:.06em;color:var(--muted);transition:background .2s,color .2s}
+    .lang button:hover{color:var(--text)}
+    .lang button:focus-visible{outline:2px solid var(--b);outline-offset:1px}
+    html[lang=en] .lang [data-l=en],html[lang=nl] .lang [data-l=nl]{background:linear-gradient(135deg,var(--a),var(--b));color:#fff}
+    </style>
+    </head>
+    <body>
+    <div class="bg" aria-hidden="true"><i></i><i></i><i></i></div>
+    <main>
+    <div class="top"><div class="icon"><svg class="draw" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div><span class="pill" style="--s:var(--ok)"><span class="dot"></span><span lang="en">Online</span><span lang="nl">Online</span></span><div class="lang" role="group" aria-label="Language / Taal"><button type="button" data-l="en" title="English">EN</button><button type="button" data-l="nl" title="Nederlands">NL</button></div></div>
+    <h1><span lang="en">Your website is <span class="nw">live <span aria-hidden="true">🎉</span></span></span><span lang="nl">Je website staat <span class="nw">live <span aria-hidden="true">🎉</span></span></span></h1>
+    <p class="lead"><span lang="en">Everything is running and HTTPS is on. This is the default page &mdash; here's how to make it your own:</span><span lang="nl">Alles draait en HTTPS staat aan. Dit is de standaardpagina; zo maak je er je eigen website van:</span></p>
+    <div class="host big"><span id="h"><span lang="en">your new website</span><span lang="nl">je nieuwe website</span></span></div>
+    <ol>
+    <li><span class="n">1</span><div><strong><span lang="en">Upload your files</span><span lang="nl">Upload je bestanden</span></strong><p><span lang="en">Put your website in the <code>public/</code> folder using the file manager or SFTP.</span><span lang="nl">Zet je website in de map <code>public/</code>, via de filemanager of SFTP.</span></p></div></li>
+    <li><span class="n">2</span><div><strong><span lang="en">Create a database</span><span lang="nl">Maak een database aan</span></strong><p><span lang="en">Needed for WordPress, for example: create one for this website in the control panel.</span><span lang="nl">Nodig voor bijvoorbeeld WordPress: maak hem aan in het panel bij deze website.</span></p></div></li>
+    <li><span class="n">3</span><div><strong><span lang="en">Connect your domain</span><span lang="nl">Koppel je domein</span></strong><p><span lang="en">Add your own domain in the control panel; the certificate is set up automatically.</span><span lang="nl">Voeg je eigen domein toe in het panel; het certificaat regelt zich vanzelf.</span></p></div></li>
+    </ol>
+    <p class="foot"><span lang="en">This page disappears as soon as you put your own <code>index.html</code> or <code>index.php</code> in <code>public/</code>.</span><span lang="nl">Deze pagina verdwijnt zodra je een eigen <code>index.html</code> of <code>index.php</code> in <code>public/</code> zet.</span></p>
+    </main>
+    <script>
+    (function(){var d=document.documentElement,t={en:d.getAttribute("data-t-en"),nl:d.getAttribute("data-t-nl")};
+    function set(l){d.lang=l;document.title=t[l];try{localStorage.setItem("lang",l)}catch(e){}}
+    d.className+=" js";var s=null;try{s=localStorage.getItem("lang")}catch(e){}if(s==="nl")set("nl");
+    document.querySelectorAll(".lang button").forEach(function(b){b.onclick=function(){set(b.getAttribute("data-l"))}});if(location.hostname)document.getElementById("h").textContent=location.hostname;})();
+    </script>
+    </body>
+    </html>
+    EOF
+    fi
+    [ -e $H/php/README.txt ] || echo "*.ini files in this folder are loaded after the default settings (after a restart)." > $H/php/README.txt
+    [ -e $H/nginx/README.txt ] || echo "*.conf files in this folder are included inside the nginx server block (after a restart)." > $H/nginx/README.txt
+    PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d LD_LIBRARY_PATH=$H/.php/lib ICU_DATA=$H/.php/icu \
+      php $(for f in $H/.php/ext/*.so; do printf -- '-d extension=%s ' "$f"; done) -r 'echo (new NumberFormatter("nl_NL", NumberFormatter::DECIMAL))->format(1.5), " ", function_exists("mysqli_connect") ? "mysqli" : "";' | grep -qx '1,5 mysqli'
+    echo "Installation complete: PHP $(php -r 'echo PHP_VERSION;')"
+config_files: []

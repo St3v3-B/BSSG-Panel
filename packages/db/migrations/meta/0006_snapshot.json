@@ -1,5 +1,5 @@
 {
-  "id": "3f6e4287-1f6d-4c5a-b706-d9d030521316",
+  "id": "4340d1f8-fb7d-4a78-8312-dc80bf7a120c",
   "prevId": "b93f8fa4-8f28-4ca5-b73a-47edc5655bef",
   "version": "7",
   "dialect": "postgresql",
@@ -422,142 +422,6 @@
           ]
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.app_installs": {
-      "name": "app_installs",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "always",
-            "name": "app_installs_id_seq",
-            "schema": "public",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "2147483647",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "server_id": {
-          "name": "server_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "app_id": {
-          "name": "app_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'running'"
-        },
-        "steps": {
-          "name": "steps",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "error_code": {
-          "name": "error_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "error": {
-          "name": "error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "result_enc": {
-          "name": "result_enc",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "finished_at": {
-          "name": "finished_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        }
-      },
-      "indexes": {
-        "app_installs_server": {
-          "name": "app_installs_server",
-          "columns": [
-            {
-              "expression": "server_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "app_installs_server_id_servers_id_fk": {
-          "name": "app_installs_server_id_servers_id_fk",
-          "tableFrom": "app_installs",
-          "tableTo": "servers",
-          "columnsFrom": [
-            "server_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "app_installs_user_id_users_id_fk": {
-          "name": "app_installs_user_id_users_id_fk",
-          "tableFrom": "app_installs",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -2305,6 +2169,94 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user_quotas": {
+      "name": "user_quotas",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "max_ram_mb": {
+          "name": "max_ram_mb",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_disk_mb": {
+          "name": "max_disk_mb",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_cpu_pct": {
+          "name": "max_cpu_pct",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_servers": {
+          "name": "max_servers",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "max_databases": {
+          "name": "max_databases",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "template_ids": {
+          "name": "template_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "node_ids": {
+          "name": "node_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_ports_per_server": {
+          "name": "max_ports_per_server",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "user_quotas_user_id_users_id_fk": {
+          "name": "user_quotas_user_id_users_id_fk",
+          "tableFrom": "user_quotas",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

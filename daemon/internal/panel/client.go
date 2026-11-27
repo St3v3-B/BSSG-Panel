@@ -232,3 +232,27 @@ func (c *Client) SFTPAuth(ctx context.Context, username, password, ip string) (*
 	}
 	return &out, nil
 }
+
+// ReportBackup meldt het resultaat van een backup (asynchroon met retry).
+func (c *Client) ReportBackup(id int, ok bool, sha256 string, size int64, errMsg string) {
+	body := map[string]any{"successful": ok, "sha256": nil, "size_bytes": nil, "error": nil}
+	if ok {
+		body["sha256"], body["size_bytes"] = sha256, size
+	} else {
+		body["error"] = errMsg
+	}
+	c.async(fmt.Sprintf("backup %d", id), func(ctx context.Context) error {
+		return c.do(ctx, http.MethodPost, fmt.Sprintf("/api/remote/backups/%d", id), body, nil)
+	})
+}
+
+// ReportRestore meldt het resultaat van een herstel (asynchroon met retry).
+func (c *Client) ReportRestore(id int, ok bool, errMsg string) {
+	body := map[string]any{"successful": ok, "error": nil}
+	if !ok {
+		body["error"] = errMsg
+	}
+	c.async(fmt.Sprintf("restore %d", id), func(ctx context.Context) error {
+		return c.do(ctx, http.MethodPost, fmt.Sprintf("/api/remote/backups/%d/restore", id), body, nil)
+	})
+}

@@ -12,6 +12,7 @@ import { Button } from "@/app/_components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/_components/ui/card";
 import { Input } from "@/app/_components/ui/input";
 import { Label } from "@/app/_components/ui/label";
+import { Select } from "@/app/_components/ui/select";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { errorInfo, errorText } from "@/app/_lib/errors";
@@ -287,8 +288,101 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
           </dl>
         </CardContent>
       </Card>
+      <NodeBackupTarget node={d} />
+      {!d.isLocal && (
+        <Alert variant="info" data-testid="node-install-hint">
+          <div>
+            <AlertTitle>{n.nodeInstallTitle}</AlertTitle>
+            <AlertDescription>{n.nodeInstallText}</AlertDescription>
+          </div>
+        </Alert>
+      )}
+      <NodeServers nodeId={id} />
       <AllocationsAdmin nodeId={id} />
     </div>
+  );
+}
+
+/** Standaard S3-doel voor backups van servers op deze node. */
+function NodeBackupTarget({ node }: { node: Node }) {
+  const t = useT();
+  const n = t.admin.nodes;
+  const utils = trpc.useUtils();
+  const targets = trpc.admin.s3Targets.list.useQuery();
+  const [value, setValue] = useState(node.s3TargetId ? String(node.s3TargetId) : "");
+  const save = trpc.admin.nodes.update.useMutation({
+    onSuccess: () => {
+      void utils.admin.nodes.get.invalidate({ id: node.id });
+      void utils.admin.nodes.list.invalidate();
+    },
+  });
+  return (
+    <Card data-testid="node-backup-target">
+      <CardHeader>
+        <CardTitle className="text-base">{n.s3Title}</CardTitle>
+        <CardDescription>{n.s3Text}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-wrap items-end gap-3">
+        <div className="min-w-56 flex-1">
+          <label htmlFor="node-s3" className="sr-only">
+            {n.s3Title}
+          </label>
+          <Select id="node-s3" value={value} onChange={(e) => setValue(e.target.value)}>
+            <option value="">{n.s3None}</option>
+            {targets.data?.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <Button
+          disabled={save.isPending}
+          onClick={() =>
+            save.mutate({ id: node.id, name: node.name, fqdn: node.fqdn, daemonPort: node.daemonPort, sftpPort: node.sftpPort, maxRamMb: node.maxRamMb, maxDiskMb: node.maxDiskMb, s3TargetId: value ? Number(value) : null })
+          }
+        >
+          {save.isPending && <Spinner />} {n.s3Save}
+        </Button>
+        {save.isSuccess && <span className="text-sm text-success">{n.s3Saved}</span>}
+        {save.error && <AdminError error={save.error} />}
+      </CardContent>
+    </Card>
+  );
+}
+
+function NodeServers({ nodeId }: { nodeId: number }) {
+  const t = useT();
+  const q = trpc.admin.servers.list.useQuery({ nodeId, limit: 100 });
+  return (
+    <Card data-testid="node-servers">
+      <CardHeader>
+        <CardTitle className="text-base">{t.admin.nodes.nodeServers}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {q.error ? (
+          <QueryError error={q.error} />
+        ) : !q.data ? (
+          <Skeleton className="h-12" />
+        ) : q.data.items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t.admin.nodes.nodeNoServers}</p>
+        ) : (
+          <ul className="divide-y divide-border text-sm">
+            {q.data.items.map((s) => (
+              <li key={s.uuid} className="flex items-center justify-between gap-3 py-2">
+                <Link href={`/admin/servers/${s.uuid}`} className="truncate font-medium hover:underline">
+                  {s.name}
+                </Link>
+                <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <code className="font-mono">{s.shortId}</code>
+                  <Badge variant="secondary">{s.status}</Badge>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

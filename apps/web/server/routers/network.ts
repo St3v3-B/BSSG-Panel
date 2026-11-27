@@ -21,7 +21,7 @@ const TOML_PATH = "/velocity.toml";
 const bad = (message: string, code: "BAD_REQUEST" | "FORBIDDEN" | "CONFLICT" | "NOT_FOUND" | "PRECONDITION_FAILED" = "BAD_REQUEST") => new TRPCError({ code, message });
 
 /** Variabelen van een server bijwerken: daemon-spec (zonder install), dan database. Effect bij de volgende start. */
-async function setVariables(b: ServerBundle, vars: Record<string, string>) {
+export async function setVariables(b: ServerBundle, vars: Record<string, string>) {
   const merged = { ...(await serverVariables(b.server.id)), ...vars };
   const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: merged, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server) });
   await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));

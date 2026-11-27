@@ -1,0 +1,31 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # versie uit packageManager in package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+          cache-dependency-path: daemon/go.sum
+
+      # db-migrate-test draait een lege Postgres via Docker (aanwezig op GitHub-runners).
+      - run: make check

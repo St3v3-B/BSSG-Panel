@@ -3,7 +3,10 @@
  * Netwerkfout of timeout → DaemonUnreachableError; HTTP-fout → DaemonHttpError.
  */
 import { openAsBlob } from "node:fs";
-import type { DaemonFileEntry, DaemonRoute, DaemonRouteWithStatus, DaemonServerSpec, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
+import type { DaemonFileEntry, DaemonSchemas, DaemonRoute, DaemonRouteWithStatus, DaemonServerSpec, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
+
+type DaemonBackupRequest = DaemonSchemas["BackupRequest"];
+type DaemonRestoreRequest = DaemonSchemas["RestoreRequest"];
 
 export class DaemonUnreachableError extends Error {
   constructor(readonly nodeId: number, cause: unknown) {
@@ -24,6 +27,8 @@ export interface DaemonClientOptions {
   /** Standaardtimeout per verzoek. */
   timeoutMs?: number;
 }
+
+const TRANSFER_TIMEOUT_MS = 4 * 60 * 60_000;
 
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 
@@ -46,7 +51,7 @@ export class DaemonClient {
   }
 
   /** Ruwe aanroep; `raw` = octet-stream-body. Geeft de responstekst terug. */
-  private async send(method: Method, path: string, body: { json: unknown } | { raw: string } | undefined, timeoutMs = this.timeoutMs): Promise<string> {
+  private async send(method: Method, path: string, body: { json: unknown } | { raw: string | Uint8Array } | undefined, timeoutMs = this.timeoutMs): Promise<string> {
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}${path}`, {
@@ -57,7 +62,7 @@ export class DaemonClient {
           ...(body && "json" in body ? { "content-type": "application/json" } : {}),
           ...(body && "raw" in body ? { "content-type": "application/octet-stream" } : {}),
         },
-        body: body ? ("json" in body ? JSON.stringify(body.json) : body.raw) : undefined,
+        body: body ? ("json" in body ? JSON.stringify(body.json) : (body.raw as BodyInit)) : undefined,
         signal: AbortSignal.timeout(timeoutMs),
         cache: "no-store",
       });
@@ -128,7 +133,23 @@ export class DaemonClient {
   readFile(uuid: string, path: string) {
     return this.send("GET", `/api/servers/${uuid}/files/contents?path=${encodeURIComponent(path)}`, undefined, 30_000);
   }
-  async writeFile(uuid: string, path: string, content: string) {
+  /** Binair lezen (max 5 MB, de limiet van de daemon). */
+  async readFileBytes(uuid: string, path: string): Promise<Buffer> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/api/servers/${uuid}/files/contents?path=${encodeURIComponent(path)}`, {
+        headers: { authorization: `Bearer ${this.token}` },
+        signal: AbortSignal.timeout(30_000),
+        cache: "no-store",
+      });
+      if (res.ok) return Buffer.from(await res.arrayBuffer());
+    } catch (e) {
+      throw new DaemonUnreachableError(this.nodeId, e);
+    }
+    if (res.status === 502 || res.status === 503 || res.status === 504) throw new DaemonUnreachableError(this.nodeId, new Error(String(res.status)));
+    throw new DaemonHttpError(res.status, `http_${res.status}`, `http_${res.status}`);
+  }
+  async writeFile(uuid: string, path: string, content: string | Uint8Array) {
     await this.send("PUT", `/api/servers/${uuid}/files/contents?path=${encodeURIComponent(path)}`, { raw: content }, 30_000);
   }
   mkdir(uuid: string, path: string) {
@@ -157,8 +178,55 @@ export class DaemonClient {
     } catch (e) {
       throw new DaemonUnreachableError(this.nodeId, e);
     }
+    if (!res.ok) throw await this.httpError(res);
+  }
+
+  // ---------- backups ----------
+  createBackup(uuid: string, body: DaemonBackupRequest) {
+    return this.request<void>("POST", `/api/servers/${uuid}/backups`, body, 30_000);
+  }
+  restoreBackup(uuid: string, backupId: number, body: DaemonRestoreRequest) {
+    return this.request<void>("POST", `/api/servers/${uuid}/backups/${backupId}/restore`, body, 30_000);
+  }
+
+  // ---------- verplaatsen tussen nodes ----------
+  /** Tar-stroom van de hele datamap (server moet gestopt zijn). De body moet volledig gelezen worden. */
+  async exportData(uuid: string): Promise<ReadableStream<Uint8Array>> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/api/servers/${uuid}/transfer/export`, {
+        headers: { authorization: `Bearer ${this.token}` },
+        signal: AbortSignal.timeout(TRANSFER_TIMEOUT_MS),
+        cache: "no-store",
+      });
+    } catch (e) {
+      throw new DaemonUnreachableError(this.nodeId, e);
+    }
+    if (!res.ok || !res.body) throw await this.httpError(res);
+    return res.body;
+  }
+  /** Pakt een tar-stroom uit in de datamap van de server. */
+  async importData(uuid: string, body: ReadableStream<Uint8Array>): Promise<void> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/api/servers/${uuid}/transfer/import`, {
+        method: "PUT",
+        headers: { authorization: `Bearer ${this.token}`, "content-type": "application/x-tar" },
+        body,
+        // @ts-expect-error duplex is verplicht voor een stream-body (Node/undici), ontbreekt in de DOM-types
+        duplex: "half",
+        signal: AbortSignal.timeout(TRANSFER_TIMEOUT_MS),
+        cache: "no-store",
+      });
+    } catch (e) {
+      throw new DaemonUnreachableError(this.nodeId, e);
+    }
+    if (!res.ok) throw await this.httpError(res);
+    await res.arrayBuffer().catch(() => undefined);
+  }
+
+  private async httpError(res: Response): Promise<Error> {
     const text = await res.text().catch(() => "");
-    if (res.ok) return;
     let code = `http_${res.status}`;
     let message = text.slice(0, 500);
     try {
@@ -166,10 +234,10 @@ export class DaemonClient {
       if (j.error) code = j.error;
       if (j.message) message = j.message;
     } catch {
-      /* no JSON */
+      /* geen JSON */
     }
-    if (res.status === 502 || res.status === 503 || res.status === 504) throw new DaemonUnreachableError(this.nodeId, new Error(`${res.status} ${message}`));
-    throw new DaemonHttpError(res.status, code, message || code);
+    if (res.status === 502 || res.status === 503 || res.status === 504) return new DaemonUnreachableError(this.nodeId, new Error(`${res.status} ${message}`));
+    return new DaemonHttpError(res.status, code, message || code);
   }
 
   // ---------- routes (web) ----------

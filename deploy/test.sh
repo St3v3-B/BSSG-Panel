@@ -174,6 +174,31 @@ pass "--non-interactive without required values fails"
 env "${inst_env[@]}" PANEL_DOMAIN='bad domain' bash "$DEPLOY/install.sh" --dry-run --non-interactive --root "$WORK/root3" --daemon-bin "$BIN_STUB" >/dev/null 2>&1 \
   && fail "invalid domain accepted" || pass "invalid domain rejected"
 
+# ------------------------------------------------------------------ install.sh --node-only
+step "install.sh --node-only --dry-run"
+NROOT="$WORK/noderoot"
+node_env=(PANEL_URL=https://panel.test NODE_DOMAIN=node2.test NODE_TOKEN="$(printf 'a%.0s' {1..40})" ACME_EMAIL=it@panel.test)
+env "${node_env[@]}" bash "$DEPLOY/install.sh" --node-only --dry-run --non-interactive --root "$NROOT" --daemon-bin "$BIN_STUB" \
+  > "$WORK/node1.log" 2>&1 || { cat "$WORK/node1.log"; fail "install.sh --node-only dry-run"; }
+NE="$NROOT/etc/panel/panel.env"
+ngetv() { sed -n "s/^$1=//p" "$NE"; }
+[ "$(stat -c %a "$NE")" = 600 ] && [ "$(ngetv PANEL_URL)" = https://panel.test ] && [ "$(ngetv NODE_DOMAIN)" = node2.test ] \
+  && pass "node: panel.env written (chmod 600)" || fail "node panel.env"
+! grep -qE '^(PANEL_ENCRYPTION_KEY|DATABASE_URL|POSTGRES_PASSWORD|MARIADB_ROOT_PASSWORD|DISCORD_CLIENT_SECRET)=' "$NE" \
+  && pass "node: no panel secrets in panel.env" || fail "node env contains panel secrets"
+[ -x "$NROOT/usr/local/bin/panel-daemon" ] && cmp -s "$UNIT" "$NROOT/etc/systemd/system/panel-daemon.service" && pass "node: daemon + unit" || fail "node daemon/unit"
+grep -q 'docker-compose.node.yml' "$WORK/node1.log" && grep -q 'docker compose config: OK' "$WORK/node1.log" && pass "node: only docker-compose.node.yml" || fail "node compose"
+cp "$NE" "$WORK/node.env.1"
+env "${node_env[@]}" bash "$DEPLOY/install.sh" --node-only --dry-run --non-interactive --root "$NROOT" --daemon-bin "$BIN_STUB" > "$WORK/node2.log" 2>&1 || fail "node second run"
+cmp -s "$NE" "$WORK/node.env.1" && pass "node: idempotent" || fail "node env changed on second run"
+bash "$DEPLOY/install.sh" --node-only --dry-run --non-interactive --root "$WORK/noderoot2" --daemon-bin "$BIN_STUB" --panel-url https://panel.test --node-domain node3.test \
+  --node-token "$(printf 'b%.0s' {1..40})" --acme-email it@panel.test --sftp-port 2023 >/dev/null 2>&1 \
+  && [ "$(sed -n 's/^SFTP_PORT=//p' "$WORK/noderoot2/etc/panel/panel.env")" = 2023 ] && pass "node: flags" || fail "node flags"
+env "${node_env[@]}" NODE_TOKEN=short bash "$DEPLOY/install.sh" --node-only --dry-run --non-interactive --root "$WORK/noderoot3" --daemon-bin "$BIN_STUB" >/dev/null 2>&1 \
+  && fail "short node token accepted" || pass "node: invalid token rejected"
+env -u PANEL_URL "${node_env[@]:1}" bash "$DEPLOY/install.sh" --node-only --dry-run --non-interactive --root "$WORK/noderoot4" --daemon-bin "$BIN_STUB" >/dev/null 2>&1 \
+  && fail "node without PANEL_URL accepted" || pass "node: PANEL_URL required"
+
 # ------------------------------------------------------------------ template
 step "templates/game"
 (cd "$REPO" && pnpm --filter @panel/api exec vitest run contract.test.ts >/dev/null) && pass "contract-test (zod-schema)" || fail "contract-test"

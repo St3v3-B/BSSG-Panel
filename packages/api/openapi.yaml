@@ -463,6 +463,51 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/servers/{uuid}/transfer/export:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    get:
+      tags: [transfer]
+      operationId: exportServerData
+      summary: Alle serverdata als tar-stroom (voor verplaatsen naar een andere node)
+      description: |
+        Streamt de hele datamap als niet-gecomprimeerde tar (paden relatief aan de root, symlinks
+        blijven symlinks, speciale bestanden worden overgeslagen). De server moet gestopt zijn
+        (`offline`, `sleeping` of `install_failed`), anders 409 `invalid_state`. Alleen met het node-token;
+        het panel stuurt de stroom door naar `importServerData` van de doelnode.
+      responses:
+        "200":
+          description: tar-stroom
+          content:
+            application/x-tar:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/servers/{uuid}/transfer/import:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    put:
+      tags: [transfer]
+      operationId: importServerData
+      summary: Tar-stroom uitpakken in de datamap van een (nieuwe, gestopte) server
+      description: |
+        Pakt de tar uit in de datamap, met dezelfde veiligheidsregels als decompress (paden buiten
+        de map worden overgeslagen, bestaande bestanden vervangen). Server moet gestopt zijn, anders 409.
+        Respecteert de schijfquotum (507 `disk_exceeded`). Bij een fout blijft de gedeeltelijke inhoud staan;
+        de aanroeper verwijdert dan de hele server.
+      requestBody:
+        required: true
+        content:
+          application/x-tar:
+            schema: { type: string, format: binary }
+      responses:
+        "204": { description: Uitgepakt }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+
   /api/servers/{uuid}/backups:
     parameters: [{ $ref: "#/components/parameters/Uuid" }]
     post:

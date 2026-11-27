@@ -1,0 +1,17 @@
+{
+  "name": "@panel/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.58.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.11",
+    "typescript": "~5.9.3"
+  }
+}

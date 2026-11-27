@@ -1,0 +1,4 @@
+# On node2.mn.test (Docker + git required), as root:
+git clone --depth 1 https://github.com/St3v3-B/BSSG-Panel.git /opt/panel-node 2>/dev/null || git -C /opt/panel-node pull --ff-only
+PANEL_URL='http://127.0.0.1:35177' NODE_DOMAIN='node2.mn.test' NODE_TOKEN='sN6NRCfHnIXXYGNgJiBKgrmNPxVY1bHYomjy5qg9s9w' ACME_EMAIL='it@panel.test' DAEMON_PORT='8080' SFTP_PORT='2022' \
+  /opt/panel-node/deploy/install.sh --node-only --non-interactive

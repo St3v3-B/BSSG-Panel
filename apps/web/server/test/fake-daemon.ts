@@ -26,6 +26,8 @@ export class FakeDaemon {
   readonly dirs = new Map<string, Set<string>>();
   /** Alles wat schrijft geeft 507 disk_exceeded. */
   diskFull = false;
+  /** transfer/export geeft 500. */
+  exportFails = false;
   readonly routes = new Map<string, Record<string, unknown>>();
   private server: Server | null = null;
   url = "";
@@ -51,6 +53,7 @@ export class FakeDaemon {
     this.dirs.clear();
     this.routes.clear();
     this.diskFull = false;
+    this.exportFails = false;
     this.mode = "ok";
     this.override = null;
   }
@@ -109,6 +112,22 @@ export class FakeDaemon {
       }
       return send(404, { error: "not_found" });
     }
+    const tm = /^\/api\/servers\/([0-9a-f-]{36})\/transfer\/(export|import)$/.exec(path);
+    if (tm) {
+      const s = this.servers.get(tm[1]!);
+      if (!s) return send(404, { error: "not_found" });
+      if (s.state !== "offline" && s.state !== "install_failed") return send(409, { error: "invalid_state" });
+      const fs = this.fs(tm[1]!);
+      if (tm[2] === "export") {
+        if (this.exportFails) return send(500, { error: "internal", message: "export kapot" });
+        return send(200, new Raw(JSON.stringify({ files: [...fs.files], dirs: [...fs.dirs] })));
+      }
+      if (this.diskFull) return send(507, { error: "disk_exceeded" });
+      const t = JSON.parse(raw) as { files: [string, string][]; dirs: string[] };
+      for (const [p, c] of t.files) fs.files.set(p, c);
+      for (const d of t.dirs) fs.dirs.add(d);
+      return send(204);
+    }
     const m = /^\/api\/servers\/([0-9a-f-]{36})(\/[a-z]+)?$/.exec(path);
     if (path === "/api/system" && r.method === "GET") {
       return send(200, {
@@ -126,7 +145,8 @@ export class FakeDaemon {
     if (path === "/api/servers" && r.method === "GET") return send(200, [...this.servers.keys()].map((u) => this.state(u)));
     if (path === "/api/servers" && r.method === "POST") {
       const spec = body as DaemonServerSpec;
-      this.servers.set(spec.uuid, { spec, state: "installing", installedAt: null });
+      const skip = (spec as { skip_install?: boolean }).skip_install === true;
+      this.servers.set(spec.uuid, { spec, state: skip ? "offline" : "installing", installedAt: skip ? new Date().toISOString() : null });
       return send(202, this.state(spec.uuid));
     }
     if (!m) return send(404, { error: "not_found" });

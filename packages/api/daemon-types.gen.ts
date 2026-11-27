@@ -338,6 +338,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/servers/{uuid}/transfer/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Alle serverdata als tar-stroom (voor verplaatsen naar een andere node)
+         * @description Streamt de hele datamap als niet-gecomprimeerde tar (paden relatief aan de root, symlinks
+         *     blijven symlinks, speciale bestanden worden overgeslagen). De server moet gestopt zijn
+         *     (`offline`, `sleeping` of `install_failed`), anders 409 `invalid_state`. Alleen met het node-token;
+         *     het panel stuurt de stroom door naar `importServerData` van de doelnode.
+         */
+        get: operations["exportServerData"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/transfer/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Tar-stroom uitpakken in de datamap van een (nieuwe, gestopte) server
+         * @description Pakt de tar uit in de datamap, met dezelfde veiligheidsregels als decompress (paden buiten
+         *     de map worden overgeslagen, bestaande bestanden vervangen). Server moet gestopt zijn, anders 409.
+         *     Respecteert de schijfquotum (507 `disk_exceeded`). Bij een fout blijft de gedeeltelijke inhoud staan;
+         *     de aanroeper verwijdert dan de hele server.
+         */
+        put: operations["importServerData"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{uuid}/backups": {
         parameters: {
             query?: never;
@@ -1378,6 +1428,60 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    exportServerData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description tar-stroom */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-tar": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    importServerData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-tar": string;
+            };
+        };
+        responses: {
+            /** @description Uitgepakt */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            507: components["responses"]["DiskFull"];
         };
     };
     createBackup: {

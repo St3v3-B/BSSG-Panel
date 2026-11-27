@@ -6,7 +6,8 @@ import { logActivity } from "../activity";
 import { getDb, schema } from "../db";
 import { decrypt, encrypt, randomToken } from "../lib/crypto";
 import { createDatabase, dropDatabase, setPassword, testHost } from "../lib/mariadb";
-import { requireServer, type ServerAccess } from "../servers-data";
+import { isFullAdmin, requireServer, type ServerAccess } from "../servers-data";
+import { reserveDatabase } from "./quotas";
 import type { Ctx } from "@panel/api";
 
 type HostRow = typeof schema.databaseHosts.$inferSelect;
@@ -69,18 +70,25 @@ export async function createServerDatabase(ctx: Ctx, a: ServerAccess, uuid: stri
   const password = newPassword();
   const [dup] = await getDb().select({ id: schema.databases.id }).from(schema.databases).where(and(eq(schema.databases.hostId, host.id), eq(schema.databases.name, name)));
   if (dup) throw new TRPCError({ code: "CONFLICT", message: "DATABASE_EXISTS" });
+  // Eerst de rij reserveren (binnen de quotumlock), dan pas de database aanmaken; bij een fout weer weg.
+  const bundle = a.bundle;
+  const insert = (tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0]) =>
+    tx
+      .insert(schema.databases)
+      .values({ serverId: bundle.server.id, hostId: host.id, name, username, passwordEnc: encrypt(password) })
+      .returning()
+      .then((r) => r[0]!);
+  // Admins omzeilen het quotum.
+  const row = await (isFullAdmin(ctx) ? getDb().transaction(insert) : reserveDatabase(bundle.server.ownerId, insert));
   try {
     await createDatabase(host, name, username, password);
   } catch (e) {
+    await getDb().delete(schema.databases).where(eq(schema.databases.id, row.id));
     if ((e as { errno?: number }).errno === 1007) throw new TRPCError({ code: "CONFLICT", message: "DATABASE_EXISTS" });
     throw mariaError(e);
   }
-  const [row] = await getDb()
-    .insert(schema.databases)
-    .values({ serverId: a.bundle.server.id, hostId: host.id, name, username, passwordEnc: encrypt(password) })
-    .returning();
   await logActivity({ action: "server.database.create", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { name, hostId: host.id }, ip: ctx.ip, ctx });
-  return toDatabase(row!, host, uuid);
+  return toDatabase(row, host, uuid);
 }
 
 export async function removeServerDatabase(id: number): Promise<void> {

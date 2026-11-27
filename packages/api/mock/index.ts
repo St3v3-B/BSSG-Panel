@@ -10,7 +10,14 @@ import { ALL_PERMISSIONS } from "../schemas";
 import { suggestBackendName } from "../network";
 import type * as s from "../schemas";
 import type { Implementation, SessionCtx } from "../trpc-builder";
+import { contentProfile } from "../content";
 import * as data from "./data";
+
+const MOCK_HITS: s.ContentHit[] = [
+  { source: "modrinth", projectId: "fabric-api", name: "Fabric API", description: "Core API for Fabric mods", author: "modmuss50", downloads: 100000000, iconUrl: null, url: "https://modrinth.com/mod/fabric-api" },
+  { source: "modrinth", projectId: "lithium", name: "Lithium", description: "Server optimisation", author: "jellysquid3", downloads: 50000000, iconUrl: null, url: "https://modrinth.com/mod/lithium" },
+  { source: "hangar", projectId: "ViaVersion", name: "ViaVersion", description: "Allow newer clients", author: "ViaVersion", downloads: 9000000, iconUrl: null, url: "https://hangar.papermc.io/ViaVersion/ViaVersion" },
+];
 
 export type MockRole = "admin" | "user" | "pending" | "anonymous";
 
@@ -51,11 +58,13 @@ export function createMock(): Implementation {
     activity: clone(data.activity),
     /** Proxy-uuid → backends (de eerste is de standaardserver); alleen servers met template "Velocity" zijn een proxy. */
     networks: new Map<string, Array<{ serverUuid: string; name: string }>>(),
+    content: [] as Array<s.InstalledContent & { serverUuid: string }>,
     subusers: [] as Array<{ serverUuid: string; userId: number; permissions: s.Permission[]; createdAt: Date }>,
     apiKeys: [] as s.ApiKey[],
     admins: ["100000000000000001"],
     settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 } } as s.Settings,
     totpEnabled: new Map<number, boolean>([[1, true]]),
+    quotas: new Map<number, s.QuotaInput>([[2, { maxRamMb: 4096, maxDiskMb: 50_000, maxCpuPct: 300, maxServers: 3, maxDatabases: 2, templateIds: null, nodeIds: null, maxPortsPerServer: 2 }]]),
     nextId: 1000,
   };
   const id = () => ++db.nextId;
@@ -110,6 +119,20 @@ export function createMock(): Implementation {
     lastLoginAt: u.name ? new Date("2026-11-26T08:00:00Z") : null,
     serverCount: db.servers.filter((x) => x.ownerId === u.id).length,
   });
+  const usageOf = (uid: number): s.QuotaUsage => {
+    const own = db.servers.filter((x) => x.ownerId === uid);
+    return { ramMb: own.reduce((a, x) => a + x.limits.ramMb, 0), diskMb: own.reduce((a, x) => a + x.limits.diskMb, 0), cpuPct: own.reduce((a, x) => a + x.limits.cpuPct, 0), servers: own.length, databases: 0 };
+  };
+  const overview = (uid: number): s.QuotaOverview | null => {
+    const q = db.quotas.get(uid);
+    if (!q) return null;
+    return {
+      quota: q,
+      usage: usageOf(uid),
+      templates: db.templates.filter((t) => !q.templateIds || q.templateIds.includes(t.id)).map((t) => ({ id: t.id, name: t.name, type: t.type })),
+      nodes: db.nodes.filter((n) => !q.nodeIds || q.nodeIds.includes(n.id)).map((n) => ({ id: n.id, name: n.name })),
+    };
+  };
   const nodeHealth = (n: s.Node): s.NodeHealth => ({
     nodeId: n.id,
     online: true,
@@ -181,8 +204,27 @@ export function createMock(): Implementation {
       },
       revokeApiKey: ({ input }) => ((db.apiKeys = db.apiKeys.filter((k) => k.id !== input.id)), ok),
       setSftpPassword: () => ok,
+      quota: ({ ctx }) => overview(uid(ctx)),
     },
     servers: {
+      create: ({ input, ctx }) => {
+        const u = uid(ctx);
+        const o = overview(u);
+        if (!o) throw new TRPCError({ code: "FORBIDDEN", message: "NO_QUOTA" });
+        const tpl = o.templates.find((t) => t.id === input.templateId) ?? (() => { throw new TRPCError({ code: "FORBIDDEN", message: "TEMPLATE_NOT_ALLOWED" }); })();
+        if (o.usage.servers + 1 > o.quota.maxServers) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "QUOTA_EXCEEDED: servers" });
+        const base = db.servers.find((x) => x.type === tpl.type) ?? db.servers[0]!;
+        const x = { ...clone(base), uuid: crypto.randomUUID(), name: input.name, ownerId: u, owner: user(u), status: "installing" as const, limits: { ...input.limits, swapMb: 0 } };
+        db.servers.push(x);
+        return detail(x, u);
+      },
+      updateOwnLimits: ({ input }) => ((srv(input.uuid).limits = { ...input.limits, swapMb: 0 }), ok),
+      deleteOwn: ({ input }) => {
+        const x = srv(input.uuid);
+        if (x.name !== input.confirmName) throw new TRPCError({ code: "BAD_REQUEST", message: "NAME_MISMATCH" });
+        db.servers = db.servers.filter((y) => y !== x);
+        return ok;
+      },
       list: ({ ctx }) => {
         const u = uid(ctx);
         return db.servers.filter((x) => x.ownerId === u || u === 1 || db.subusers.some((su) => su.serverUuid === x.uuid && su.userId === u)).map((x) => summary(x, u));
@@ -237,6 +279,50 @@ export function createMock(): Implementation {
           ],
         };
       },
+    },
+    content: {
+      info: ({ input }) => {
+        const p = contentProfile(srv(input.uuid).templateName.toLowerCase());
+        return p
+          ? { supported: true, kind: p.kind, directory: p.directory, loaders: p.loaders, sources: p.sources, gameVersion: p.versionVar === "MINECRAFT_VERSION" ? "1.21.5" : null, modpacks: p.modpacks }
+          : { supported: false, kind: null, directory: null, loaders: [], sources: [], gameVersion: null, modpacks: false };
+      },
+      search: ({ input }) => {
+        if (input.modpacks) return { hits: [{ source: "modrinth" as const, projectId: "cool-pack", name: "Cool Pack", description: "A Fabric modpack", author: "someone", downloads: 1000, iconUrl: null, url: "https://modrinth.com/modpack/cool-pack" }], total: 1 };
+        const hits = MOCK_HITS.filter((h) => h.source === input.source && h.name.toLowerCase().includes(input.query.toLowerCase()));
+        return { hits, total: hits.length };
+      },
+      resolve: ({ input }) => {
+        const hit = MOCK_HITS.find((h) => h.source === input.source && h.projectId === input.projectId) ?? notFound("project");
+        const dep = MOCK_HITS.find((h) => h.projectId === "fabric-api" && h.projectId !== input.projectId);
+        return {
+          hit, versionId: input.versionId ?? "v2", versionNumber: "2.0.0", filename: `${hit.projectId}-2.0.0.jar`, size: 1234,
+          dependencies: dep ? [{ projectId: dep.projectId, name: dep.name, installed: db.content.some((c) => c.serverUuid === input.uuid && c.projectId === dep.projectId) }] : [],
+        };
+      },
+      install: ({ input }) => {
+        const hit = MOCK_HITS.find((h) => h.source === input.source && h.projectId === input.projectId) ?? notFound("project");
+        const dir = contentProfile(srv(input.uuid).templateName.toLowerCase());
+        const row = { serverUuid: input.uuid, id: db.content.length + 1, source: input.source, projectId: hit.projectId, name: hit.name, versionId: input.versionId ?? "v2", versionNumber: "2.0.0", filename: `${hit.projectId}-2.0.0.jar`, kind: dir?.kind ?? "plugin", installedAt: new Date() } as const;
+        db.content.push({ ...row });
+        return [row].map(({ serverUuid: _u, ...r }) => r);
+      },
+      list: ({ input }) => db.content.filter((c) => c.serverUuid === input.uuid).map(({ serverUuid: _u, ...r }) => r),
+      checkUpdates: ({ input }) => db.content.filter((c) => c.serverUuid === input.uuid && c.versionId === "v1").map((c) => ({ id: c.id, versionId: "v2", versionNumber: "2.0.0" })),
+      update: ({ input }) => {
+        const c = db.content.find((x) => x.id === input.id && x.serverUuid === input.uuid) ?? notFound("content");
+        Object.assign(c, { versionId: "v2", versionNumber: "2.0.0" });
+        const { serverUuid: _u, ...r } = c;
+        return r;
+      },
+      uninstall: ({ input }) => ((db.content = db.content.filter((c) => !(c.id === input.id && c.serverUuid === input.uuid))), ok),
+      importModpack: () => ({ name: "Mock pack", minecraftVersion: "1.21.5", loaderVersion: "0.16.14", filesInstalled: 12, filesSkipped: 3, overridesApplied: 5, reinstalled: true }),
+      versionOptions: () => ({
+        variables: { version: "MINECRAFT_VERSION", build: "BUILD", loader: null },
+        versions: [{ id: "1.21.5", stable: true }, { id: "1.21.4", stable: true }, { id: "1.21.3", stable: true }, { id: "1.21.4-rc1", stable: false }],
+        builds: ["120", "119"],
+        loaderVersions: [],
+      }),
     },
     files: {
       list: ({ input }) => (input.path === "/" ? db.files : []),
@@ -461,6 +547,16 @@ export function createMock(): Implementation {
         },
         setBlocked: () => ok,
         resetTotp: ({ input }) => (db.totpEnabled.set(input.id, false), ok),
+        getQuota: ({ input }) => db.quotas.get(input.id) ?? null,
+        setQuota: ({ input }) => {
+          const { id: uidIn, ...q } = input;
+          db.quotas.set(uidIn, q);
+          return ok;
+        },
+        clearQuota: ({ input }) => (db.quotas.delete(input.id), ok),
+      },
+      quotas: {
+        usage: ({ input }) => pageOf(db.users.map((u) => ({ user: u, quota: db.quotas.get(u.id) ?? null, usage: usageOf(u.id) })), input.limit),
       },
       admins: {
         list: () =>

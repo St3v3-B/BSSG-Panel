@@ -1,5 +1,5 @@
 "use client";
-import { Moon, RotateCcw } from "lucide-react";
+import { Moon, RotateCcw, TriangleAlert } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ServerDetail } from "@panel/api";
@@ -11,9 +11,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app
 import { Checkbox } from "@/app/_components/ui/checkbox";
 import { Input } from "@/app/_components/ui/input";
 import { Label } from "@/app/_components/ui/label";
+import { Select } from "@/app/_components/ui/select";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { errorText } from "@/app/_lib/errors";
 import { useT } from "@/app/_lib/i18n";
+import { isDowngrade } from "@/app/_lib/versions";
 
 /** Naam wijzigen (servers.rename). Alleen eigenaar/admin. */
 export function RenameCard({ server }: { server: ServerDetail }) {
@@ -59,6 +61,50 @@ export function RenameCard({ server }: { server: ServerDetail }) {
   );
 }
 
+const VERSION_KEYS = ["MINECRAFT_VERSION", "VELOCITY_VERSION", "BUILD", "LOADER_VERSION"];
+
+/** Dropdown with versions from PaperMC/Fabric; falls back to a text field when the list isn't available. */
+function VersionField({ v, value, options, onChange, invalid, unstable }: { v: ServerDetail["variables"][number]; value: string; options: Array<{ id: string; stable: boolean }>; onChange: (x: string) => void; invalid: boolean; unstable: boolean }) {
+  const t = useT();
+  const ids = options.filter((o) => unstable || o.stable).map((o) => o.id);
+  const all = ["latest", ...ids];
+  if (value && !all.includes(value)) all.push(value);
+  return (
+    <Select id={`var-${v.key}`} value={value} onChange={(e) => onChange(e.target.value)} aria-invalid={invalid || undefined}>
+      {all.map((id) => (
+        <option key={id} value={id}>
+          {id === "latest" ? t.versions.latest : id}
+        </option>
+      ))}
+    </Select>
+  );
+}
+
+/** After a version change: offer to reinstall straight away. */
+function ReinstallNow({ server }: { server: ServerDetail }) {
+  const t = useT();
+  const router = useRouter();
+  const utils = trpc.useUtils();
+  const reinstall = trpc.servers.reinstall.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.servers.get.invalidate({ uuid: server.uuid }), utils.servers.list.invalidate()]);
+      router.push(`/servers/${server.uuid}`);
+    },
+  });
+  return (
+    <Alert variant="warning" data-testid="version-changed">
+      <div className="space-y-2">
+        <AlertTitle>{t.versions.changedTitle}</AlertTitle>
+        <AlertDescription>{t.versions.changedText}</AlertDescription>
+        {reinstall.error && <p className="text-sm text-destructive">{errorText(reinstall.error)}</p>}
+        <Button size="sm" onClick={() => reinstall.mutate({ uuid: server.uuid })} disabled={reinstall.isPending}>
+          {reinstall.isPending ? <Spinner /> : <RotateCcw />} {t.versions.reinstallNow}
+        </Button>
+      </div>
+    </Alert>
+  );
+}
+
 /** Variabelen die de gebruiker mag aanpassen (servers.updateVariables); effect bij de volgende start. */
 export function VariablesCard({ server, all = false }: { server: ServerDetail; all?: boolean }) {
   const utils = trpc.useUtils();
@@ -66,11 +112,29 @@ export function VariablesCard({ server, all = false }: { server: ServerDetail; a
   // admins (all) zien ook de variabelen die gebruikers niet mogen aanpassen
   const editable = server.variables.filter((v) => all || v.userEditable);
   const [values, setValues] = useState<Record<string, string>>(() => Object.fromEntries(editable.map((v) => [v.key, v.value])));
-  const update = trpc.servers.updateVariables.useMutation({ onSuccess: () => utils.servers.get.invalidate({ uuid: server.uuid }) });
+  const [unstable, setUnstable] = useState(false);
+  const [versionsChanged, setVersionsChanged] = useState(false);
+  const update = trpc.servers.updateVariables.useMutation({
+    onSuccess: (_r, vars) => {
+      setVersionsChanged(Object.keys(vars.variables).some((k) => VERSION_KEYS.includes(k)));
+      void utils.servers.get.invalidate({ uuid: server.uuid });
+    },
+  });
+  const pickable = (server.isOwner || all) && editable.some((v) => VERSION_KEYS.includes(v.key));
+  const verKey = editable.find((v) => v.key === "MINECRAFT_VERSION" || v.key === "VELOCITY_VERSION")?.key;
+  const opts = trpc.content.versionOptions.useQuery(
+    { uuid: server.uuid, minecraftVersion: verKey ? values[verKey] : undefined },
+    { enabled: pickable, staleTime: 5 * 60_000, retry: false, placeholderData: (prev) => prev },
+  );
   if (editable.length === 0) return null;
   const errors = Object.fromEntries(editable.map((v) => [v.key, variableError(values[v.key] ?? "", v.pattern)]));
   const invalid = Object.values(errors).some(Boolean);
   const changed = editable.filter((v) => values[v.key] !== v.value);
+  const pk = opts.data?.variables;
+  const list = (key: string) =>
+    pk && key === pk.version && opts.data!.versions.length ? opts.data!.versions : pk && key === pk.build && opts.data!.builds.length ? opts.data!.builds.map((id) => ({ id, stable: true })) : pk && key === pk.loader && opts.data!.loaderVersions.length ? opts.data!.loaderVersions : null;
+  const mainChanged = verKey ? changed.find((v) => v.key === verKey) : undefined;
+  const downgrade = mainChanged && isDowngrade(mainChanged.value, values[mainChanged.key] ?? "");
   return (
     <Card data-testid="variables-card">
       <CardHeader>
@@ -86,36 +150,53 @@ export function VariablesCard({ server, all = false }: { server: ServerDetail; a
           }}
         >
           <div className="grid gap-4 sm:grid-cols-2">
-            {editable.map((v) => (
-              <div key={v.key} className="space-y-1.5">
-                <Label htmlFor={`var-${v.key}`}>
-                  {v.name}
-                  {all && !v.userEditable && <span className="ml-2 text-xs font-normal text-muted-foreground">({t.adminServer.locked})</span>}
-                </Label>
-                <Input
-                  id={`var-${v.key}`}
-                  value={values[v.key] ?? ""}
-                  placeholder={v.default}
-                  onChange={(e) => (setValues((c) => ({ ...c, [v.key]: e.target.value })), update.reset())}
-                  aria-invalid={!!errors[v.key] || undefined}
-                />
-                {errors[v.key] ? (
-                  <p className="text-xs text-destructive">{errors[v.key]}</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    <code className="font-mono">{v.key}</code>
-                    {v.description && <> · {v.description}</>} · {t.settings.varDefault} <code className="font-mono">{v.default}</code>
-                  </p>
-                )}
-              </div>
-            ))}
+            {editable.map((v) => {
+              const options = list(v.key);
+              const set = (x: string) => (setValues((c) => ({ ...c, [v.key]: x })), update.reset(), setVersionsChanged(false));
+              return (
+                <div key={v.key} className="space-y-1.5">
+                  <Label htmlFor={`var-${v.key}`}>
+                    {v.name}
+                    {all && !v.userEditable && <span className="ml-2 text-xs font-normal text-muted-foreground">({t.adminServer.locked})</span>}
+                  </Label>
+                  {options ? (
+                    <VersionField v={v} value={values[v.key] ?? ""} options={options} onChange={set} invalid={!!errors[v.key]} unstable={unstable} />
+                  ) : (
+                    <Input id={`var-${v.key}`} value={values[v.key] ?? ""} placeholder={v.default} onChange={(e) => set(e.target.value)} aria-invalid={!!errors[v.key] || undefined} />
+                  )}
+                  {errors[v.key] ? (
+                    <p className="text-xs text-destructive">{errors[v.key]}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      <code className="font-mono">{v.key}</code>
+                      {v.description && <> · {v.description}</>} · {t.settings.varDefault} <code className="font-mono">{v.default}</code>
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
+          {pk && opts.data!.versions.length > 0 && opts.data!.versions.some((o) => !o.stable) && (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={unstable} onChange={(e) => setUnstable(e.target.checked)} /> {t.versions.showUnstable}
+            </label>
+          )}
+          {downgrade && (
+            <Alert variant="warning" data-testid="version-downgrade">
+              <TriangleAlert />
+              <div>
+                <AlertTitle>{t.versions.downgradeTitle}</AlertTitle>
+                <AlertDescription>{t.versions.downgradeText}</AlertDescription>
+              </div>
+            </Alert>
+          )}
           {update.error && <p className="text-sm text-destructive">{errorText(update.error)}</p>}
           {update.isSuccess && (
             <p className="text-sm text-success" role="status">
               {t.settings.varsSaved}
             </p>
           )}
+          {update.isSuccess && versionsChanged && <ReinstallNow server={server} />}
           <Button type="submit" disabled={invalid || changed.length === 0 || update.isPending}>
             {update.isPending && <Spinner />} {t.settings.varsSave}
           </Button>

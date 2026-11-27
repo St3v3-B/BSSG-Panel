@@ -7,6 +7,10 @@ dist/
 !.env.example
 /daemon/bin/
 /tests/integration/.work/
+/tests/e2e/.work/
+/tests/e2e/.browsers/
+/tests/e2e/test-results/
 coverage/
 *.tsbuildinfo
 next-env.d.ts
+/tests/e2e/.libs/

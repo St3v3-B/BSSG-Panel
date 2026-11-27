@@ -581,3 +581,161 @@ export const DashboardAlert = z.object({
   serverUuid: Uuid.nullable(),
   nodeId: Id.nullable(),
 });
+
+// ---------- Minecraft: plugins, mods, modpacks, versiekiezer ----------
+
+export const ContentSource = z.enum(["modrinth", "hangar"]);
+export type ContentSource = z.infer<typeof ContentSource>;
+/** Plugin (`plugins/`) of mod (`mods/`). */
+export const ContentKind = z.enum(["plugin", "mod"]);
+export type ContentKind = z.infer<typeof ContentKind>;
+
+/** Wat een server voor plugins/mods ondersteunt (afgeleid van template en variabelen). `supported: false` = geen tabblad. */
+export const ContentInfo = z.object({
+  supported: z.boolean(),
+  kind: ContentKind.nullable(),
+  /** Map in de serverroot: `/plugins` of `/mods`. */
+  directory: z.string().nullable(),
+  /** Modrinth-loaders waarop gefilterd wordt (bv. paper, spigot, bukkit of fabric). */
+  loaders: z.array(z.string()),
+  sources: z.array(ContentSource),
+  /** Minecraft-versie van de server (`latest` is al omgezet); null voor een proxy. */
+  gameVersion: z.string().nullable(),
+  /** Modpacks (.mrpack) importeren kan alleen op Fabric. */
+  modpacks: z.boolean(),
+});
+export type ContentInfo = z.infer<typeof ContentInfo>;
+
+export const ContentHit = z.object({
+  source: ContentSource,
+  /** Modrinth: project-id; Hangar: slug. */
+  projectId: z.string(),
+  name: z.string(),
+  description: z.string(),
+  author: z.string(),
+  downloads: z.number().int(),
+  iconUrl: z.string().nullable(),
+  /** Pagina op de bronsite. */
+  url: z.string(),
+});
+export type ContentHit = z.infer<typeof ContentHit>;
+
+export const ContentSearchResult = z.object({ hits: z.array(ContentHit), total: z.number().int() });
+export type ContentSearchResult = z.infer<typeof ContentSearchResult>;
+
+export const ContentDependency = z.object({
+  projectId: z.string(),
+  name: z.string(),
+  /** Al op de server geïnstalleerd (via het panel). */
+  installed: z.boolean(),
+});
+export type ContentDependency = z.infer<typeof ContentDependency>;
+
+/** Nieuwste compatibele versie van een project plus de verplichte afhankelijkheden. */
+export const ContentResolved = z.object({
+  hit: ContentHit,
+  versionId: z.string(),
+  versionNumber: z.string(),
+  filename: z.string(),
+  size: z.number().int(),
+  dependencies: z.array(ContentDependency),
+});
+export type ContentResolved = z.infer<typeof ContentResolved>;
+
+export const InstalledContent = z.object({
+  id: Id,
+  source: ContentSource,
+  projectId: z.string(),
+  name: z.string(),
+  versionId: z.string(),
+  versionNumber: z.string(),
+  filename: z.string(),
+  kind: ContentKind,
+  installedAt: z.date(),
+});
+export type InstalledContent = z.infer<typeof InstalledContent>;
+
+export const ContentUpdate = z.object({ id: Id, versionId: z.string(), versionNumber: z.string() });
+export type ContentUpdate = z.infer<typeof ContentUpdate>;
+
+export const ModpackSource = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("modrinth"), projectId: z.string().min(1).max(64), versionId: z.string().min(1).max(64).optional() }),
+  /** Een `.mrpack` dat al in de bestanden van de server staat (max 5 MB; groter: kies de Modrinth-bron). */
+  z.object({ type: z.literal("file"), path: FilePath }),
+]);
+export type ModpackSource = z.infer<typeof ModpackSource>;
+
+export const ModpackResult = z.object({
+  name: z.string(),
+  minecraftVersion: z.string(),
+  loaderVersion: z.string().nullable(),
+  filesInstalled: z.number().int(),
+  /** Bestanden die voor clients zijn (`server: unsupported`) en dus overgeslagen zijn. */
+  filesSkipped: z.number().int(),
+  overridesApplied: z.number().int(),
+  reinstalled: z.boolean(),
+});
+export type ModpackResult = z.infer<typeof ModpackResult>;
+
+export const VersionOption = z.object({ id: z.string(), stable: z.boolean() });
+/** Beschikbare versies voor de versiekiezer (uit PaperMC Fill of Fabric meta, een uur gecachet). */
+export const VersionOptions = z.object({
+  /** Variabelen die de kiezer vervangt; leeg = geen kiezer (andere template). */
+  variables: z.object({ version: z.string().nullable(), build: z.string().nullable(), loader: z.string().nullable() }),
+  versions: z.array(VersionOption),
+  /** Builds van `minecraftVersion` (nieuwste eerst), Paper/Folia/Velocity. */
+  builds: z.array(z.string()),
+  /** Loader-versies (nieuwste eerst), Fabric. */
+  loaderVersions: z.array(VersionOption),
+});
+export type VersionOptions = z.infer<typeof VersionOptions>;
+// ---------- quota's ----------
+
+/** Quotum per gebruiker. Geen quotum = de gebruiker kan zelf geen servers maken. null bij lijsten = alles toegestaan. */
+export const QuotaInput = z.object({
+  /** Som van ramMb over alle eigen servers. */
+  maxRamMb: z.number().int().min(0),
+  maxDiskMb: z.number().int().min(0),
+  /** Som van cpuPct (100 = één core). Servers van quotum-gebruikers hebben altijd een CPU-limiet > 0. */
+  maxCpuPct: z.number().int().min(0),
+  maxServers: z.number().int().min(0),
+  maxDatabases: z.number().int().min(0),
+  templateIds: z.array(Id).nullable(),
+  nodeIds: z.array(Id).nullable(),
+  /** Poorten per game-server; null = geen aparte grens (alleen wat vrij is). */
+  maxPortsPerServer: z.number().int().min(1).max(100).nullable(),
+});
+export type QuotaInput = z.infer<typeof QuotaInput>;
+
+export const QuotaUsage = z.object({
+  ramMb: z.number().int(),
+  diskMb: z.number().int(),
+  cpuPct: z.number().int(),
+  servers: z.number().int(),
+  databases: z.number().int(),
+});
+export type QuotaUsage = z.infer<typeof QuotaUsage>;
+
+export const QuotaOverview = z.object({
+  quota: QuotaInput,
+  usage: QuotaUsage,
+  /** Templates en nodes waaruit de gebruiker mag kiezen (al gefilterd op het quotum). */
+  templates: z.array(z.object({ id: Id, name: z.string(), type: ServerType })),
+  nodes: z.array(z.object({ id: Id, name: z.string() })),
+});
+export type QuotaOverview = z.infer<typeof QuotaOverview>;
+
+export const UserQuotaUsage = z.object({
+  user: UserPublic,
+  quota: QuotaInput.nullable(),
+  usage: QuotaUsage,
+});
+export type UserQuotaUsage = z.infer<typeof UserQuotaUsage>;
+
+/** Eigen limieten van een server (zonder swap: die staat voor quotum-gebruikers op 0). */
+export const OwnLimits = z.object({
+  cpuPct: z.number().int().min(1).max(6400),
+  ramMb: z.number().int().min(64),
+  diskMb: z.number().int().min(64),
+});
+export type OwnLimits = z.infer<typeof OwnLimits>;
