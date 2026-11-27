@@ -34,7 +34,10 @@ describe("admin.nodes.create/update/delete/regenerateToken", () => {
     expect(decrypt(row!.tokenEnc!)).toBe(r.token);
     expect(r.installCommand).toContain(`NODE_TOKEN='${r.token}'`);
     expect(r.installCommand).toContain("PANEL_URL='http://127.0.0.1:3999'");
-    expect(r.installCommand).toContain("deploy/install.sh --non-interactive");
+    expect(r.installCommand).toMatch(/^# On node2\.test.*\ngit clone --depth 1 https:\/\/github\.com\/St3v3-B\/BSSG-Panel\.git \/opt\/panel-node/);
+    expect(r.installCommand).toContain("deploy/install.sh --node-only --non-interactive");
+    expect(r.installCommand).toContain("NODE_DOMAIN='node2.test'");
+    expect(r.installCommand).toContain("ACME_EMAIL='admin@panel.test'");
     expect(r.installCommand).not.toMatch(/curl|wget/);
     await expect(admin.api.admin.nodes.create({ name: "node2", fqdn: "x.test", daemonPort: 1, sftpPort: 2, maxRamMb: 0, maxDiskMb: 0, s3TargetId: null })).rejects.toMatchObject({ code: "CONFLICT" });
     await expect(player.api.admin.nodes.create({ name: "n", fqdn: "n.test", daemonPort: 1, sftpPort: 2, maxRamMb: 0, maxDiskMb: 0, s3TargetId: null })).rejects.toMatchObject({ code: "FORBIDDEN" });

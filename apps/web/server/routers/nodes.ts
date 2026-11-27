@@ -11,13 +11,29 @@ import { nodeById, nodeOut } from "./admin";
 type NodeRow = typeof schema.nodes.$inferSelect;
 const ok = { ok: true as const };
 
-/** Instructie voor de node: deploy/install.sh uit een checkout van deze repository. */
+export const REPO_URL = "https://github.com/St3v3-B/BSSG-Panel.git";
+
+/** URL waarmee een remote daemon het panel bereikt: PANEL_URL, tenzij die naar loopback wijst (lokale installatie). */
+export function publicPanelUrl(): string {
+  const env = getEnv();
+  let loopback = false;
+  try {
+    loopback = ["127.0.0.1", "localhost", "[::1]"].includes(new URL(env.PANEL_URL).hostname);
+  } catch {
+    loopback = true;
+  }
+  return loopback && !env.isTestDomain ? `https://${env.PANEL_DOMAIN}` : env.PANEL_URL;
+}
+
+/** Instructie voor de node (als root): repo klonen en deploy/install.sh --node-only draaien. */
 export function installCommand(n: Pick<NodeRow, "fqdn" | "daemonPort" | "sftpPort">, token: string): string {
   const env = getEnv();
+  const dir = "/opt/panel-node";
   return [
-    `# On ${n.fqdn}, as root, in a checkout of the panel repository:`,
-    `sudo PANEL_URL='${env.PANEL_URL}' NODE_DOMAIN='${n.fqdn}' NODE_TOKEN='${token}' DAEMON_PORT='${n.daemonPort}' SFTP_PORT='${n.sftpPort}' \\`,
-    `  deploy/install.sh --non-interactive`,
+    `# On ${n.fqdn} (Docker + git required), as root:`,
+    `git clone --depth 1 ${REPO_URL} ${dir} 2>/dev/null || git -C ${dir} pull --ff-only`,
+    `PANEL_URL='${publicPanelUrl()}' NODE_DOMAIN='${n.fqdn}' NODE_TOKEN='${token}' ACME_EMAIL='${env.ACME_EMAIL ?? `admin@${env.PANEL_DOMAIN}`}' DAEMON_PORT='${n.daemonPort}' SFTP_PORT='${n.sftpPort}' \\`,
+    `  ${dir}/deploy/install.sh --node-only --non-interactive`,
   ].join("\n");
 }
 
