@@ -89,7 +89,7 @@ export const quotaAccount: Pick<Implementation["account"], "quota"> = {
     if (!q) return null;
     const [templates, nodes, usage] = await Promise.all([
       db.select({ id: schema.templates.id, name: schema.templates.name, type: schema.templates.type }).from(schema.templates).orderBy(asc(schema.templates.type), asc(schema.templates.name)),
-      db.select({ id: schema.nodes.id, name: schema.nodes.name }).from(schema.nodes).orderBy(asc(schema.nodes.id)),
+      db.select({ id: schema.nodes.id, name: schema.nodes.name, supportsDomains: schema.nodes.supportsDomains }).from(schema.nodes).orderBy(asc(schema.nodes.id)),
       usageFor(db, [uid(ctx)]),
     ]);
     return {
@@ -110,6 +110,7 @@ export const quotaServers: Pick<Implementation["servers"], "create" | "updateOwn
     const [node] = await db.select().from(schema.nodes).where(eq(schema.nodes.id, input.nodeId));
     if (!template) throw bad("TEMPLATE_NOT_FOUND");
     if (!node) throw bad("NODE_NOT_FOUND");
+    if (template.type === "web" && !node.supportsDomains) throw bad("NODE_HAS_NO_DOMAINS: this node does not support websites");
     const errors = validateVariables(template.variables, input.variables, { onlyUserEditable: true });
     if (errors.length) throw bad(`INVALID_VARIABLES: ${errors.join("; ")}`);
     const name = input.name.trim();

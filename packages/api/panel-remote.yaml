@@ -67,6 +67,85 @@ paths:
         "204": { description: OK }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /api/remote/acme/dns:
+    post:
+      operationId: acmeDns
+      summary: DNS-01-challenge voor het node-domein (nodes zonder Caddy op 443)
+      description: |
+        De daemon zet bij nodes met `supports_domains = false` zelf een Let's Encrypt-certificaat voor `$NODE_DOMAIN` op
+        `DAEMON_TLS_PORT` (public_port). De DNS-01-challenge doet het panel: het zet/verwijdert via Cloudflare het TXT-record
+        `_acme-challenge.<fqdn>` van **de eigen node** (geen ander domein). Het Cloudflare-token verlaat het panel nooit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, value]
+              properties:
+                action: { type: string, enum: [present, cleanup] }
+                value: { type: string, description: "De TXT-waarde (base64url sha256 van de key authorization)" }
+      responses:
+        "204": { description: OK }
+        "400": { description: Geen Cloudflare-koppeling voor deze zone }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/join/exchange:
+    post:
+      operationId: joinExchange
+      summary: Join-code inruilen voor token en configuratie (publiek; de code is de authenticatie)
+      description: |
+        Eenmalig, ≤ 1 uur na het aanmaken. Het panel zet (indien Cloudflare de zone dekt) het A-record naar `ip`.
+        Ongeldige, verlopen of gebruikte codes geven 404 `invalid_code`. Ratelimit per IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, ip]
+              properties:
+                code: { type: string }
+                ip: { type: string, description: IPv4 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [node_token, panel_url, node_domain, acme_email, daemon_port, sftp_port, supports_domains, public_port, dns_mode]
+                properties:
+                  node_token: { type: string }
+                  panel_url: { type: string }
+                  node_domain: { type: string }
+                  acme_email: { type: string }
+                  daemon_port: { type: integer }
+                  sftp_port: { type: integer }
+                  supports_domains: { type: boolean }
+                  public_port: { type: integer }
+                  dns_mode: { type: string, enum: [cloudflare, manual] }
+        "404": { description: invalid_code }
+        "429": { description: Te veel pogingen }
+
+  /api/join/progress:
+    post:
+      operationId: joinProgress
+      summary: Voortgang van het join-script (Bearer node-token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                state: { type: string, enum: [docker, download, dns, daemon, certificate, ready, failed] }
+                message: { type: string, maxLength: 500 }
+      responses:
+        "204": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /api/remote/settings/image-updates:
     get:
       operationId: getImageUpdateSettings

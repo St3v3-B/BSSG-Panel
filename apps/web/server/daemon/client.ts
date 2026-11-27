@@ -92,6 +92,9 @@ export class DaemonClient {
     return text;
   }
 
+  updateDaemon() {
+    return this.request<unknown>("POST", "/api/update", undefined, 120_000);
+  }
   system(timeoutMs?: number) {
     return this.request<DaemonSystemInfo>("GET", "/api/system", undefined, timeoutMs);
   }

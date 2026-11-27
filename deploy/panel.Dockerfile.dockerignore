@@ -8,8 +8,6 @@
 .git
 .env
 .env.*
-daemon
+daemon/**/*_test.go
 docs
 tests/integration/.work
-deploy/caddy
-deploy/systemd

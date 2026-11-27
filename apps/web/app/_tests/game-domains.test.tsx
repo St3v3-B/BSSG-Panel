@@ -59,4 +59,10 @@ describe("game-server domeinen", () => {
     fireEvent.click(screen.getByRole("button", { name: /Turn off and remove domains/ }));
     await waitFor(() => expect(inputs(r.bodies, "admin.servers.setDomainsAllowed")).toEqual([{ uuid: GAME, allowed: false }]));
   });
+
+  it("node zonder domeinondersteuning: schakelaar uitgeschakeld met uitleg", () => {
+    renderWithTrpc(<DomainsAllowedSection uuid={GAME} allowed={false} nodeSupportsDomains={false} />, admin);
+    expect((screen.getByRole("checkbox") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByTestId("domains-node-off").textContent).toContain("does not support domains");
+  });
 });

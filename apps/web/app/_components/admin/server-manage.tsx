@@ -495,7 +495,7 @@ export function TemplateSection({ uuid, type, currentName }: { uuid: string; typ
 }
 
 /** Game-server: domeinen (HTTP-map, Minecraft-SRV) wel of niet toestaan. */
-export function DomainsAllowedSection({ uuid, allowed }: { uuid: string; allowed: boolean }) {
+export function DomainsAllowedSection({ uuid, allowed, nodeSupportsDomains = true }: { uuid: string; allowed: boolean; nodeSupportsDomains?: boolean }) {
   const t = useT();
   const d = t.admin2.server;
   const utils = trpc.useUtils();
@@ -516,8 +516,8 @@ export function DomainsAllowedSection({ uuid, allowed }: { uuid: string; allowed
       <CardContent className="space-y-3">
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
-            checked={allowed}
-            disabled={m.isPending}
+            checked={allowed && nodeSupportsDomains}
+            disabled={m.isPending || !nodeSupportsDomains}
             onChange={(e) => {
               if (e.target.checked) m.mutate({ uuid, allowed: true });
               else setConfirm(true);
@@ -525,6 +525,7 @@ export function DomainsAllowedSection({ uuid, allowed }: { uuid: string; allowed
           />
           {d.domainsToggle}
         </label>
+        {!nodeSupportsDomains && <p className="text-xs text-muted-foreground" data-testid="domains-node-off">{d.domainsNodeOff}</p>}
         {confirm && (
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">{d.domainsOffWarning}</span>

@@ -83,6 +83,21 @@ paths:
               schema: { $ref: "#/components/schemas/SystemInfo" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /api/update:
+    post:
+      tags: [system]
+      operationId: updateDaemon
+      summary: Daemon bijwerken (alleen node-token)
+      description: |
+        De daemon haalt `<PANEL_URL>/join/daemon/<GOARCH>` en `<...>.sha256`, controleert de sha256, vervangt zijn eigen
+        binary (atomair) en stopt daarna zichzelf zodat systemd hem herstart (containers blijven draaien).
+        Antwoord 202 direct; 204 als de binary al de huidige is (zelfde sha256). Een browser-JWT is niet voldoende.
+      responses:
+        "202": { description: Update gedownload en geverifieerd; de daemon herstart zo }
+        "204": { description: Al bijgewerkt }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "502": { description: Download of controle mislukt (het oude binary blijft) }
+
   /api/servers:
     get:
       tags: [servers]

@@ -4,6 +4,7 @@ package daemon
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -26,8 +27,10 @@ import (
 	"panel/daemon/internal/dbadmin"
 	"panel/daemon/internal/engine"
 	"panel/daemon/internal/panel"
+	"panel/daemon/internal/selfupdate"
 	"panel/daemon/internal/server"
 	"panel/daemon/internal/sftpd"
+	"panel/daemon/internal/tlscert"
 	"panel/daemon/proxy"
 )
 
@@ -55,6 +58,11 @@ type Deps struct {
 	Statfs func(string) (int64, int64, error)
 	// SFTPFailDelay na een mislukte SFTP-login (standaard 1 s).
 	SFTPFailDelay time.Duration
+	// Updater vervangt de standaard (PANEL_URL + eigen binary); Restart vervangt SIGTERM naar het eigen proces.
+	Updater *selfupdate.Updater
+	Restart func()
+	// HelloInterval: hoe vaak de hello herhaald wordt (standaard 5 min); HelloRetry: wachttijd na een mislukte hello (30 s).
+	HelloInterval, HelloRetry time.Duration
 	// DBWatchInterval: hoe vaak de MariaDB-beschikbaarheid gecontroleerd wordt (standaard 20 s).
 	DBWatchInterval time.Duration
 }
@@ -127,7 +135,15 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	})
 	verifier := auth.NewVerifier(d.panel.JWKS, cfg.NodeDomain)
 	d.backup = &backup.Service{Mgr: d.mgr, Rep: d.panel, Log: deps.Log}
-	d.api = api.New(api.Options{NodeToken: cfg.NodeToken, AllowedOrigins: cfg.AllowedOrigins(), AuthTimeout: deps.WSAuthTimeout}, d.mgr, routes, verifier, d.systemInfo, deps.Log)
+	upd := deps.Updater
+	if upd == nil {
+		upd = &selfupdate.Updater{PanelURL: cfg.PanelURL}
+	}
+	restart := deps.Restart
+	if restart == nil {
+		restart = func() { _ = syscall.Kill(os.Getpid(), syscall.SIGTERM) }
+	}
+	d.api = api.New(api.Options{NodeToken: cfg.NodeToken, AllowedOrigins: cfg.AllowedOrigins(), AuthTimeout: deps.WSAuthTimeout, Update: upd.Run, Restart: restart}, d.mgr, routes, verifier, d.systemInfo, deps.Log)
 	d.api.SetBackups(d.backup)
 	if cfg.MariaDBRootPassword != "" {
 		d.dbadm = &dbadmin.Admin{Eng: deps.Engine, Container: cfg.MariaDBContainer, RootPassword: cfg.MariaDBRootPassword}
@@ -194,6 +210,26 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 	d.tcpAddr = ln.Addr().String()
 	d.serve(ln, h)
+	if d.cfg.TLSPort > 0 {
+		m := &tlscert.Manager{
+			Domain: d.cfg.NodeDomain, Email: d.cfg.ACMEEmail, Directory: d.cfg.ACMEDirectory,
+			Dir: filepath.Join(d.cfg.DataDir, "state", "tls"), DNS: tlscert.PanelDNS{Do: d.panel.ACMEDNS}, Log: d.log,
+		}
+		m.Load()
+		tln, err := tls.Listen("tcp", net.JoinHostPort("", strconv.Itoa(d.cfg.TLSPort)), &tls.Config{GetCertificate: m.GetCertificate, MinVersion: tls.VersionTLS12})
+		if err != nil {
+			return fmt.Errorf("tls %d: %w", d.cfg.TLSPort, err)
+		}
+		d.serve(tln, h)
+		d.wg.Add(1)
+		go func() {
+			defer d.wg.Done()
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() { <-d.stop; cancel() }()
+			m.Run(ctx)
+		}()
+		d.log.Info("https listener for the node domain", "port", d.cfg.TLSPort)
+	}
 	d.log.Info("daemon luistert", "tcp", d.tcpAddr, "socket", d.cfg.DaemonSocket, "version", d.deps.Version, "servers", d.mgr.Count())
 
 	if addr := d.sftpAddr(); addr != "" {
@@ -218,7 +254,8 @@ func (d *Daemon) Start(ctx context.Context) error {
 	go d.mgr.FreeWatch(fi, d.deps.Statfs)
 
 	hasDB := d.hasMariaDB()
-	d.panel.Hello(d.deps.Version, DiskQuotaMode, hasDB)
+	d.wg.Add(1)
+	go d.helloLoop()
 	if d.dbadm != nil {
 		d.wg.Add(1)
 		go d.mariaDBWatch(hasDB)
@@ -407,6 +444,35 @@ func (d *Daemon) mariaDBWatch(announced bool) {
 			announced = now
 			d.log.Info("mariadb availability changed", "available", now)
 			d.panel.Hello(d.deps.Version, DiskQuotaMode, now)
+		}
+	}
+}
+
+// helloLoop meldt de daemon bij het panel: meteen bij de start en daarna periodiek (idempotent aan de panelkant).
+// Mislukt een hello (panel nog niet gestart, bv. omdat install.sh de daemon eerder herstart dan de stack, of een
+// storing), dan volgt na HelloRetry een nieuwe poging, dus kort nadat het panel weer antwoordt.
+func (d *Daemon) helloLoop() {
+	defer d.wg.Done()
+	every, retry := d.deps.HelloInterval, d.deps.HelloRetry
+	if every == 0 {
+		every = 5 * time.Minute
+	}
+	if retry == 0 {
+		retry = 30 * time.Second
+	}
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		err := d.panel.HelloNow(ctx, d.deps.Version, DiskQuotaMode, d.hasMariaDB())
+		cancel()
+		wait := every
+		if err != nil {
+			d.log.Warn("hello to panel failed; retrying", "err", err)
+			wait = retry
+		}
+		select {
+		case <-d.stop:
+			return
+		case <-time.After(wait):
 		}
 	}
 }

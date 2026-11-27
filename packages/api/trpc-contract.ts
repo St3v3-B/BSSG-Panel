@@ -310,6 +310,18 @@ export const contract = {
       update: mutation("admin", byId.extend(s.NodeInput.shape), s.Node),
       delete: mutation("admin", byId, s.Ok),
       regenerateToken: mutation("admin", byId, z.object({ token: z.string(), installCommand: z.string() })),
+      /**
+       * Node toevoegen met een eenmalige join-code: `curl -fsSL https://<PANEL_DOMAIN>/join | sudo bash -s -- <code>`.
+       * Het echte node-token staat niet in het commando. De code is 1 uur geldig en eenmalig.
+       */
+      createJoin: mutation("admin", s.NodeJoinInput, z.object({ node: s.Node, joinCommand: z.string(), expiresAt: z.date() })),
+      /** Nieuwe join-code voor een node die nog niet klaar is (vervangt eerdere codes). */
+      joinCommand: mutation("admin", byId, z.object({ joinCommand: z.string(), expiresAt: z.date() })),
+      /** Live voortgang van de installatie; controleert ook DNS en bereikbaarheid, en maakt bij "ready" de allocaties. */
+      joinStatus: query("admin", byId, s.NodeJoinStatus),
+      /** De node haalt de huidige daemon-binary van het panel en herstart. */
+      updateDaemon: mutation("admin", byId, s.Ok),
+      uninstallCommand: query("admin", byId, z.object({ command: z.string() })),
     },
 
     allocations: {

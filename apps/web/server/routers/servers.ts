@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { logActivity } from "../activity";
 import { activityPage } from "../activity-query";
-import { DaemonHttpError, call, daemonFor, toTrpcError } from "../daemon";
+import { DaemonHttpError, call, daemonFor, nodeHost, toTrpcError } from "../daemon";
 import { getDb, schema } from "../db";
 import { getEnv } from "../env";
 import { applyServerState, getNodeLive, resolveStatus } from "../node-cache";
@@ -108,7 +108,7 @@ export const servers: Pick<
       // Opgeschort: alleen-lezen console (geen console.write/power).
       permissions: isSuspendedFor(ctx, a.bundle) ? a.permissions.filter((p) => p === "console.read") : a.permissions,
     });
-    return { token, socketUrl: `wss://${a.bundle.node.fqdn}/api/servers/${a.bundle.server.uuid}/ws`, expiresAt: new Date(claims.exp * 1000) };
+    return { token, socketUrl: `wss://${nodeHost(a.bundle.node)}/api/servers/${a.bundle.server.uuid}/ws`, expiresAt: new Date(claims.exp * 1000) };
   },
 
   rename: async ({ input, ctx }) => {

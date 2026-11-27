@@ -43,6 +43,10 @@ type Options struct {
 	AllowedOrigins []string // naast "geen Origin"
 	AuthTimeout    time.Duration
 	PingInterval   time.Duration
+	// Update haalt en installeert de huidige daemon-binary (POST /api/update); changed=false: al bijgewerkt.
+	Update func(context.Context) (changed bool, err error)
+	// Restart herstart het proces na een geslaagde update (systemd start de nieuwe binary).
+	Restart func()
 }
 
 // API bundelt de handlers.
@@ -98,6 +102,7 @@ func (a *API) Handler() http.Handler {
 	p := a.protect
 
 	mux.Handle("GET /api/system", p(a.getSystem))
+	mux.Handle("POST /api/update", p(a.updateDaemon))
 	mux.Handle("GET /api/servers", p(a.listServers))
 	mux.Handle("POST /api/servers", p(a.createServer))
 	mux.Handle("GET /api/servers/{uuid}", p(a.withServer(a.getServer)))
@@ -392,4 +397,29 @@ func (a *API) logs(w http.ResponseWriter, r *http.Request, s *server.Server) {
 
 func (a *API) stats(w http.ResponseWriter, _ *http.Request, s *server.Server) {
 	writeJSON(w, http.StatusOK, s.Stats())
+}
+
+// updateDaemon: alleen met het node-token (protect); een browser-JWT volstaat niet.
+func (a *API) updateDaemon(w http.ResponseWriter, r *http.Request) {
+	if a.opt.Update == nil {
+		writeErr(w, http.StatusNotImplemented, "not_implemented", "updates are not enabled")
+		return
+	}
+	changed, err := a.opt.Update(r.Context())
+	if err != nil {
+		a.log.Warn("daemon update failed", "err", err)
+		writeErr(w, http.StatusBadGateway, "update_failed", err.Error())
+		return
+	}
+	if !changed {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "restarting"})
+	if a.opt.Restart != nil {
+		go func() {
+			time.Sleep(500 * time.Millisecond) // antwoord eerst afleveren
+			a.opt.Restart()
+		}()
+	}
 }

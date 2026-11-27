@@ -1,5 +1,5 @@
 "use client";
-import { KeyRound, Plus, Server, Trash2 } from "lucide-react";
+import { Check, KeyRound, Plus, Server, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import type { Node } from "@panel/api";
@@ -9,6 +9,7 @@ import { QueryError } from "@/app/_components/query-error";
 import { Alert, AlertDescription, AlertTitle } from "@/app/_components/ui/alert";
 import { Badge } from "@/app/_components/ui/badge";
 import { Button } from "@/app/_components/ui/button";
+import { Checkbox } from "@/app/_components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/_components/ui/card";
 import { Input } from "@/app/_components/ui/input";
 import { Label } from "@/app/_components/ui/label";
@@ -71,30 +72,48 @@ export function TokenOnce({ title, token, installCommand, onDone }: { title: str
   );
 }
 
-const EMPTY = { name: "", fqdn: "", daemonPort: "8080", sftpPort: "2022", maxRamMb: "0", maxDiskMb: "0" };
+const EMPTY = { name: "", fqdn: "", supportsDomains: true, publicPort: "8443", allocationPorts: "25565-25600", daemonPort: "8080", sftpPort: "2022", maxRamMb: "0", maxDiskMb: "0" };
 
 export function NodesAdmin() {
   const t = useT();
   const n = t.admin.nodes;
+  const j = n.join;
   const utils = trpc.useUtils();
   const nodes = trpc.admin.nodes.list.useQuery();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [touched, setTouched] = useState(false);
-  const create = trpc.admin.nodes.create.useMutation({
+  const create = trpc.admin.nodes.createJoin.useMutation({
     onSuccess: () => {
-      setForm(EMPTY);
       setOpen(false);
       setTouched(false);
       void utils.admin.nodes.list.invalidate();
     },
   });
-  const invalid = !form.name.trim() || !form.fqdn.trim();
+  const invalid = !form.name.trim() || (!!form.allocationPorts.trim() && !portsValid(form.allocationPorts));
   const num = (v: string) => Math.max(0, Math.trunc(Number(v) || 0));
+  const suggestion = `${form.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "node"}.<panel domain>`;
 
   return (
     <div className="space-y-6" data-testid="nodes-admin">
-      {create.data && <TokenOnce title={n.tokenTitle} token={create.data.token} installCommand={create.data.installCommand} onDone={() => create.reset()} />}
+      {create.data && (
+        <Card data-testid="node-join-created">
+          <CardHeader>
+            <CardTitle className="text-base">{create.data.node.name}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <JoinWizard nodeId={create.data.node.id} command={create.data.joinCommand} expiresAt={create.data.expiresAt} />
+            <div className="flex gap-2">
+              <Link href={`/admin/nodes/${create.data.node.id}`} className="text-sm underline">
+                {create.data.node.name}
+              </Link>
+              <Button size="sm" variant="outline" onClick={() => create.reset()}>
+                {n.done}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {open ? (
         <Card>
           <CardHeader>
@@ -109,41 +128,63 @@ export function NodesAdmin() {
                 if (invalid) return;
                 create.mutate({
                   name: form.name.trim(),
-                  fqdn: form.fqdn.trim(),
+                  fqdn: form.fqdn.trim() || undefined,
+                  supportsDomains: form.supportsDomains,
+                  publicPort: form.supportsDomains ? undefined : num(form.publicPort),
+                  allocationPorts: form.allocationPorts.replace(/\s+/g, ""),
                   daemonPort: num(form.daemonPort),
                   sftpPort: num(form.sftpPort),
                   maxRamMb: num(form.maxRamMb),
                   maxDiskMb: num(form.maxDiskMb),
+                  s3TargetId: null,
                 });
               }}
             >
               <div className="grid gap-4 sm:grid-cols-2">
-                {(
-                  [
-                    ["name", n.name, "node2"],
-                    ["fqdn", n.fqdn, "node2.example.com"],
-                    ["daemonPort", n.daemonPort, ""],
-                    ["sftpPort", n.sftpPort, ""],
-                    ["maxRamMb", n.maxRam, ""],
-                    ["maxDiskMb", n.maxDisk, ""],
-                  ] as const
-                ).map(([k, label, ph]) => (
-                  <Field key={k} id={`node-${k}`} label={label}>
-                    <Input
-                      id={`node-${k}`}
-                      value={form[k]}
-                      placeholder={ph}
-                      inputMode={k === "name" || k === "fqdn" ? undefined : "numeric"}
-                      onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))}
-                    />
-                  </Field>
-                ))}
+                <Field id="node-name" label={n.name}>
+                  <Input id="node-name" value={form.name} placeholder="node2" onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+                </Field>
+                <Field id="node-fqdn" label={j.domainOptional} hint={j.domainHint(suggestion)}>
+                  <Input id="node-fqdn" value={form.fqdn} placeholder="node2.example.com" onChange={(e) => setForm((f) => ({ ...f, fqdn: e.target.value }))} />
+                </Field>
               </div>
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <Checkbox checked={form.supportsDomains} onChange={(e) => setForm((f) => ({ ...f, supportsDomains: e.target.checked }))} data-testid="node-supports-domains" />
+                  {j.supportsDomains}
+                </label>
+                <p className="text-xs text-muted-foreground">{j.supportsHint}</p>
+              </div>
+              {!form.supportsDomains && (
+                <Field id="node-publicPort" label={j.publicPort} hint={j.publicPortHint}>
+                  <Input id="node-publicPort" className="w-40" inputMode="numeric" value={form.publicPort} onChange={(e) => setForm((f) => ({ ...f, publicPort: e.target.value }))} />
+                </Field>
+              )}
+              <Field id="node-allocationPorts" label={j.allocationPorts}>
+                <Input id="node-allocationPorts" value={form.allocationPorts} placeholder="25565-25600" onChange={(e) => setForm((f) => ({ ...f, allocationPorts: e.target.value }))} />
+              </Field>
+              <details className="rounded-md border border-border p-3">
+                <summary className="cursor-pointer text-sm">{j.advanced}</summary>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  {(
+                    [
+                      ["daemonPort", n.daemonPort],
+                      ["sftpPort", n.sftpPort],
+                      ["maxRamMb", n.maxRam],
+                      ["maxDiskMb", n.maxDisk],
+                    ] as const
+                  ).map(([k, label]) => (
+                    <Field key={k} id={`node-${k}`} label={label}>
+                      <Input id={`node-${k}`} value={form[k]} inputMode="numeric" onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} />
+                    </Field>
+                  ))}
+                </div>
+              </details>
               {touched && invalid && <p className="text-xs text-destructive">{n.required}</p>}
               {create.error && <AdminError error={create.error} />}
               <div className="flex gap-2">
                 <Button type="submit" disabled={create.isPending}>
-                  {create.isPending && <Spinner />} {n.create}
+                  {create.isPending && <Spinner />} {j.submit}
                 </Button>
                 <Button variant="ghost" onClick={() => (setOpen(false), create.reset())}>
                   {t.common.cancel}
@@ -175,6 +216,101 @@ export function NodesAdmin() {
   );
 }
 
+/** Live voortgang van een join: wachten op de node, Docker, DNS, daemon, certificaat, klaar. */
+export function JoinWizard({ nodeId, command, expiresAt }: { nodeId: number; command?: string; expiresAt?: Date }) {
+  const t = useT();
+  const j = t.admin.nodes.join;
+  const utils = trpc.useUtils();
+  const [cmd, setCmd] = useState(command ? { command, expiresAt } : null);
+  const status = trpc.admin.nodes.joinStatus.useQuery({ id: nodeId }, { refetchInterval: (q) => (q.state.data?.state === "ready" ? false : 3000) });
+  const renew = trpc.admin.nodes.joinCommand.useMutation({
+    onSuccess: (r) => {
+      setCmd({ command: r.joinCommand, expiresAt: r.expiresAt });
+      void utils.admin.nodes.joinStatus.invalidate({ id: nodeId });
+    },
+  });
+  const st = status.data;
+  const order = ["waiting", "docker", "download", "dns", "daemon", "certificate", "ready"] as const;
+  const idx = st?.state ? order.indexOf(st.state === "failed" ? "waiting" : st.state) : 0;
+  const steps: Array<{ key: keyof typeof j.steps; done: boolean; active: boolean }> = st
+    ? [
+        { key: "waiting", done: st.codeUsed, active: !st.codeUsed },
+        { key: "docker", done: idx >= order.indexOf("download"), active: st.codeUsed && idx < order.indexOf("download") },
+        { key: "dns", done: st.dns.ok, active: st.codeUsed && !st.dns.ok },
+        { key: "daemon", done: st.daemonConnected, active: st.codeUsed && st.dns.ok && !st.daemonConnected },
+        { key: "certificate", done: st.certificateOk, active: st.daemonConnected && !st.certificateOk },
+        { key: "ready", done: st.state === "ready", active: false },
+      ]
+    : [];
+  const expired = !!st && !st.codeUsed && !st.codeExpiresAt;
+  return (
+    <div className="space-y-4" data-testid="join-wizard">
+      {st?.state !== "ready" && (
+        <div className="space-y-2">
+          <div className="text-sm font-medium">{j.commandTitle}</div>
+          {cmd ? (
+            <>
+              <div className="flex items-start gap-1 rounded-md border border-border bg-muted/40 px-3 py-2">
+                <code className="flex-1 break-all font-mono text-xs" data-testid="join-command">
+                  {cmd.command}
+                </code>
+                <CopyButton value={cmd.command} label={t.common.copyX(j.commandTitle)} />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {j.commandText} {cmd.expiresAt && j.expires(new Date(cmd.expiresAt).toLocaleTimeString())}
+              </p>
+            </>
+          ) : (
+            expired && <p className="text-sm text-muted-foreground">{j.expired}</p>
+          )}
+          {st && !st.codeUsed && (
+            <Button size="sm" variant="outline" disabled={renew.isPending} onClick={() => renew.mutate({ id: nodeId })}>
+              {renew.isPending && <Spinner />} {j.newCode}
+            </Button>
+          )}
+          {st?.codeUsed && !st.daemonConnected && (
+            <Button size="sm" variant="outline" disabled={renew.isPending} onClick={() => renew.mutate({ id: nodeId })}>
+              {j.newCode}
+            </Button>
+          )}
+        </div>
+      )}
+      {st && st.state !== "ready" && !st.dns.ok && (
+        <div className="space-y-1 rounded-md border border-border p-3 text-sm" data-testid="join-dns">
+          {st.dns.mode === "cloudflare" && st.codeUsed ? (
+            <p>{j.dnsAuto}</p>
+          ) : (
+            <>
+              <p>{j.dnsRecord}</p>
+              <code className="block font-mono text-xs">
+                {st.dns.record.name} A {st.dns.record.value ?? j.dnsIpUnknown}
+              </code>
+            </>
+          )}
+          {st.dns.resolvedIp && <p className="text-xs text-muted-foreground">{j.dnsResolved(st.dns.resolvedIp)}</p>}
+        </div>
+      )}
+      {st && (
+        <div>
+          <div className="mb-2 text-sm font-medium">{j.stepsTitle}</div>
+          <ol className="space-y-1.5 text-sm" data-testid="join-steps">
+            {steps.map((x) => (
+              <li key={x.key} className="flex items-center gap-2" data-done={x.done} data-active={x.active}>
+                <span className="grid size-5 place-items-center">{x.done ? <Check className="size-4 text-success" /> : x.active ? <Spinner /> : <span className="size-2 rounded-full bg-muted-foreground/40" />}</span>
+                <span className={x.done ? "" : "text-muted-foreground"}>{j.steps[x.key]}</span>
+              </li>
+            ))}
+          </ol>
+          {st.message && st.state !== "ready" && <p className={`mt-2 text-xs ${st.state === "failed" ? "text-destructive" : "text-muted-foreground"}`}>{st.state === "failed" ? `${j.failed}: ` : ""}{st.message}</p>}
+          {st.state === "ready" && <p className="mt-2 text-sm text-success">{j.readyText(st.allocationsCreated)}</p>}
+        </div>
+      )}
+      {status.error && <AdminError error={status.error} />}
+      {renew.error && <AdminError error={renew.error} />}
+    </div>
+  );
+}
+
 function NodeCard({ node }: { node: Node }) {
   const t = useT();
   const n = t.admin.nodes;
@@ -194,6 +330,7 @@ function NodeCard({ node }: { node: Node }) {
         </div>
         <div className="flex gap-1.5">
           {node.isLocal && <Badge variant="info">{n.local}</Badge>}
+          {!node.supportsDomains && <Badge variant="secondary">{n.join.noDomains}</Badge>}
           {node.diskQuotaMode ? <Badge variant="secondary">{node.diskQuotaMode}</Badge> : <Badge variant="warning">{n.neverConnected}</Badge>}
         </div>
       </div>
@@ -210,6 +347,7 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
   const utils = trpc.useUtils();
   const node = trpc.admin.nodes.get.useQuery({ id }, { retry: false });
   const regen = trpc.admin.nodes.regenerateToken.useMutation();
+  const updateDaemon = trpc.admin.nodes.updateDaemon.useMutation();
   const [confirm, setConfirm] = useState(false);
   const del = trpc.admin.nodes.delete.useMutation({
     onSuccess: async () => {
@@ -236,6 +374,11 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
           <Button variant="outline" onClick={() => regen.mutate({ id })} disabled={regen.isPending}>
             {regen.isPending ? <Spinner /> : <KeyRound />} {n.regenerate}
           </Button>
+          {!d.isLocal && (
+            <Button variant="outline" onClick={() => updateDaemon.mutate({ id })} disabled={updateDaemon.isPending}>
+              {updateDaemon.isPending && <Spinner />} {n.join.updateDaemon}
+            </Button>
+          )}
           {!d.isLocal &&
             (confirm ? (
               <>
@@ -254,7 +397,17 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
         </div>
       </div>
       {regen.data && <TokenOnce title={n.regenerated} token={regen.data.token} installCommand={regen.data.installCommand} onDone={() => regen.reset()} />}
-      {(regen.error || del.error) && <AdminError error={regen.error ?? del.error} />}
+      {(regen.error || del.error || updateDaemon.error) && <AdminError error={regen.error ?? del.error ?? updateDaemon.error} />}
+      {updateDaemon.isSuccess && <p className="text-sm text-success" role="status">{n.join.updateStarted}</p>}
+      {confirm && !d.isLocal && <UninstallHint nodeId={id} serverCount={h.serverCount} />}
+      {!d.isLocal && d.joinState && d.joinState !== "ready" && (
+        <Card>
+          <CardContent className="pt-6">
+            <JoinWizard nodeId={id} />
+          </CardContent>
+        </Card>
+      )}
+      {!d.isLocal && <NodeDomainSupport node={d} />}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">{n.health}</CardTitle>
@@ -301,6 +454,56 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
       <NodeServers nodeId={id} />
       <AllocationsAdmin nodeId={id} />
     </div>
+  );
+}
+
+function UninstallHint({ nodeId, serverCount }: { nodeId: number; serverCount: number }) {
+  const t = useT();
+  const j = t.admin.nodes.join;
+  const q = trpc.admin.nodes.uninstallCommand.useQuery({ id: nodeId });
+  return (
+    <Alert variant="info" data-testid="node-uninstall">
+      <div className="min-w-0 flex-1 space-y-2">
+        <AlertTitle>{j.uninstallTitle}</AlertTitle>
+        <AlertDescription>{serverCount > 0 ? j.removeHint : j.uninstallText}</AlertDescription>
+        {q.data && (
+          <div className="flex items-start gap-1 rounded-md border border-border bg-background/60 px-3 py-2 text-foreground">
+            <code className="flex-1 break-all font-mono text-xs">{q.data.command}</code>
+            <CopyButton value={q.data.command} label={t.common.copyX(j.uninstallTitle)} />
+          </div>
+        )}
+      </div>
+    </Alert>
+  );
+}
+
+/** Domeinondersteuning (websites en domeinen voor gameservers) aan/uit; aan->uit alleen zonder websites/domeinen. */
+function NodeDomainSupport({ node }: { node: Node }) {
+  const t = useT();
+  const j = t.admin.nodes.join;
+  const utils = trpc.useUtils();
+  const m = trpc.admin.nodes.update.useMutation({
+    onSuccess: () => {
+      void utils.admin.nodes.get.invalidate({ id: node.id });
+      void utils.admin.nodes.list.invalidate();
+    },
+  });
+  const toggle = () =>
+    m.mutate({ id: node.id, name: node.name, fqdn: node.fqdn, daemonPort: node.daemonPort, sftpPort: node.sftpPort, maxRamMb: node.maxRamMb, maxDiskMb: node.maxDiskMb, s3TargetId: node.s3TargetId, supportsDomains: !node.supportsDomains, publicPort: node.supportsDomains ? 8443 : 443 });
+  return (
+    <Card data-testid="node-domain-support">
+      <CardHeader>
+        <CardTitle className="text-base">{j.domainsTitle}</CardTitle>
+        <CardDescription>{node.supportsDomains ? j.domainsOn : `${j.domainsOff} ${node.publicPort}.`}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <Button variant="outline" onClick={toggle} disabled={m.isPending}>
+          {m.isPending && <Spinner />} {node.supportsDomains ? j.domainsToggleOff : j.domainsToggleOn}
+        </Button>
+        {m.isSuccess && node.supportsDomains && <p className="text-xs text-muted-foreground">{j.domainsOnNote}</p>}
+        {m.error && <AdminError error={m.error} />}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -369,7 +572,7 @@ function NodeBackupTarget({ node }: { node: Node }) {
         <Button
           disabled={save.isPending}
           onClick={() =>
-            save.mutate({ id: node.id, name: node.name, fqdn: node.fqdn, daemonPort: node.daemonPort, sftpPort: node.sftpPort, maxRamMb: node.maxRamMb, maxDiskMb: node.maxDiskMb, s3TargetId: value ? Number(value) : null })
+            save.mutate({ id: node.id, name: node.name, fqdn: node.fqdn, daemonPort: node.daemonPort, sftpPort: node.sftpPort, maxRamMb: node.maxRamMb, maxDiskMb: node.maxDiskMb, s3TargetId: value ? Number(value) : null, supportsDomains: node.supportsDomains, publicPort: node.publicPort })
           }
         >
           {save.isPending && <Spinner />} {n.s3Save}

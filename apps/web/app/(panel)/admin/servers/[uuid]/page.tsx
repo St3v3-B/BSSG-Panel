@@ -54,7 +54,7 @@ export default function AdminServerPage() {
           <TemplateSection uuid={s.uuid} type={s.type} currentName={s.templateName} />
           <LimitsCard key={`l-${JSON.stringify(s.limits)}`} server={s} />
           <OwnerCard server={s} />
-          {s.type === "game" && <DomainsAllowedSection uuid={s.uuid} allowed={s.domainsAllowed} />}
+          {s.type === "game" && <DomainsAllowedSection uuid={s.uuid} allowed={s.domainsAllowed} nodeSupportsDomains={s.node.supportsDomains} />}
           {s.type === "game" && <PortsCard key={`p-${s.allocations.map((a) => a.id).join()}`} server={s} />}
           <MoveNodeCard key={`m-${s.node.id}`} server={s} />
           <VariablesCard server={s} all />

@@ -21,6 +21,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Daemon bijwerken (alleen node-token)
+         * @description De daemon haalt `<PANEL_URL>/join/daemon/<GOARCH>` en `<...>.sha256`, controleert de sha256, vervangt zijn eigen
+         *     binary (atomair) en stopt daarna zichzelf zodat systemd hem herstart (containers blijven draaien).
+         *     Antwoord 202 direct; 204 als de binary al de huidige is (zelfde sha256). Een browser-JWT is niet voldoende.
+         */
+        post: operations["updateDaemon"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers": {
         parameters: {
             query?: never;
@@ -1075,6 +1097,39 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    updateDaemon: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Update gedownload en geverifieerd; de daemon herstart zo */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Al bijgewerkt */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Download of controle mislukt (het oude binary blijft) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     listServers: {
