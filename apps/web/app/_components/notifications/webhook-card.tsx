@@ -1,7 +1,8 @@
 "use client";
 import { Bell } from "lucide-react";
 import { useState } from "react";
-import { DISCORD_WEBHOOK_RE, type ServerNotifications, type WebhookStatus } from "@panel/api";
+import type { ServerNotifications, WebhookStatus } from "@panel/api";
+import { DISCORD_WEBHOOK_RE } from "@panel/api/schemas";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/app/_components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/_components/ui/card";

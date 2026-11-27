@@ -12,7 +12,13 @@ import { getDb, schema } from "../db";
 import { implementation } from "../index";
 import { logActivity } from "../activity";
 
-const caller = createCallerFactory(buildRouter(implementation));
+// Lui opbouwen: server/index.ts importeert (via de scheduler/boot) ook deze module, dus bij het
+// laden is `implementation` nog niet klaar.
+function makeCallerFactory() {
+  return createCallerFactory(buildRouter(implementation));
+}
+let cachedFactory: ReturnType<typeof makeCallerFactory> | null = null;
+const caller = (ctx: Ctx) => (cachedFactory ??= makeCallerFactory())(ctx);
 
 export const COMMANDS = [
   { name: "servers", description: "List your servers and their status", type: 1 },
