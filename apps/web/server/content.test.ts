@@ -113,7 +113,7 @@ describe("content.info en zoeken", () => {
     expect(url).not.toContain("server_side");
     await alice.api.content.search({ uuid: fab, source: "modrinth", query: "" });
     expect(decodeURIComponent(searchUrls.at(-1)!)).toContain("server_side:required");
-    expect(decodeURIComponent(searchUrls.at(-1)!)).toContain("project_type:mod]");
+    expect(decodeURIComponent(searchUrls.at(-1)!)).toContain("[[\"project_type:mod\"]");
     expect(ext.calls.filter((c) => c.url.includes("modrinth")).every((c) => c.headers["user-agent"] === "bssg-panel/1.0")).toBe(true);
     await alice.api.content.search({ uuid: fab, source: "modrinth", query: "pack", modpacks: true });
     const mp = decodeURIComponent(searchUrls.at(-1)!);
