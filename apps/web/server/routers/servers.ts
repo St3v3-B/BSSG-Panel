@@ -3,17 +3,18 @@ import { TRPCError } from "@trpc/server";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { logActivity } from "../activity";
 import { activityPage } from "../activity-query";
-import { DaemonHttpError, DaemonUnreachableError, call, daemonFor, toTrpcError } from "../daemon";
+import { DaemonHttpError, call, daemonFor, toTrpcError } from "../daemon";
 import { getDb, schema } from "../db";
 import { getEnv } from "../env";
+import { applyServerState } from "../node-cache";
 import { signBrowserJwt } from "../lib/jwt";
 import { buildServerSpec, templateSleepCapable, validateVariables } from "../spec";
 import { serverNetwork } from "../network";
 import { forbidApiKey } from "../apikey";
-import { imagePolicyOf, fetchServers, limitsOf, sleepOf, autoRestartOf, requireServer, isSuspendedFor, serverVariables, toDetail, toSummary, type ServerBundle } from "../servers-data";
+import { imagePolicyOf, fetchServers, limitsOf, sleepOf, autoRestartOf, requireServer, isSuspendedFor, serverVariables, toDetail, toSummary, liveViews, type ServerBundle } from "../servers-data";
 
 const ok = { ok: true as const };
-const LIVE_TIMEOUT_MS = 1500;
+const POWER_STATE: Record<"start" | "stop" | "restart" | "kill", ServerStatus> = { start: "starting", stop: "stopping", restart: "stopping", kill: "offline" };
 
 /** Spec zoals hij nu in de database staat. */
 export async function currentSpec(b: ServerBundle, opts: { startOnInstall?: boolean; skipInstall?: boolean } = {}) {
@@ -28,50 +29,6 @@ export async function currentSpec(b: ServerBundle, opts: { startOnInstall?: bool
   });
 }
 
-/** Status live bij de daemon (korte timeout), anders uit de database. Werkt de database bij. */
-export async function liveState(b: ServerBundle): Promise<{ status: ServerStatus; installedAt: Date | null }> {
-  const fallback = { status: b.server.status, installedAt: b.server.installedAt };
-  let st;
-  try {
-    st = await daemonFor(b.node).getServer(b.server.uuid, LIVE_TIMEOUT_MS);
-  } catch (e) {
-    // Onbereikbaar (of geen token voor die node): status onbekend, niet de DB-status.
-    if (e instanceof DaemonUnreachableError || e instanceof TRPCError) return { ...fallback, status: "unknown" };
-    if (e instanceof DaemonHttpError) return fallback;
-    throw e;
-  }
-  const status = st.state as ServerStatus;
-  const installedAt = b.server.installedAt ?? (st.installed_at ? new Date(st.installed_at) : null);
-  if (status !== b.server.status || installedAt?.getTime() !== b.server.installedAt?.getTime()) {
-    await getDb().update(schema.servers).set({ status, installedAt }).where(eq(schema.servers.id, b.server.id));
-  }
-  return { status, installedAt };
-}
-
-/** Status per server via één GET /api/servers per node; onbereikbare node → unknown. */
-export async function liveStatuses(rows: ServerBundle[]): Promise<Map<string, ServerStatus>> {
-  const out = new Map<string, ServerStatus>();
-  const byNode = new Map<number, ServerBundle[]>();
-  for (const b of rows) byNode.set(b.node.id, [...(byNode.get(b.node.id) ?? []), b]);
-  await Promise.all(
-    [...byNode.values()].map(async (list) => {
-      let states;
-      try {
-        states = await daemonFor(list[0]!.node).listServers(LIVE_TIMEOUT_MS);
-      } catch (e) {
-        if (e instanceof DaemonUnreachableError || e instanceof TRPCError) for (const b of list) out.set(b.server.uuid, "unknown");
-        return; // HTTP-fout: DB-status
-      }
-      const m = new Map(states.map((st) => [st.uuid, st.state as ServerStatus]));
-      for (const b of list) {
-        const st = m.get(b.server.uuid);
-        if (st) out.set(b.server.uuid, st);
-      }
-    }),
-  );
-  return out;
-}
-
 export const servers: Pick<
   Implementation["servers"],
   "list" | "get" | "stats" | "power" | "sendCommand" | "consoleToken" | "rename" | "updateVariables" | "reinstall" | "activity" | "updateSleep" | "updateImagePolicy" | "updateImageNow"
@@ -80,19 +37,22 @@ export const servers: Pick<
     const uid = ctx.session!.userId;
     const subOf = getDb().select({ id: schema.subusers.serverId }).from(schema.subusers).where(eq(schema.subusers.userId, uid));
     const rows = await fetchServers(or(eq(schema.servers.ownerId, uid), inArray(schema.servers.id, subOf)));
-    const live = await liveStatuses(rows);
-    return rows.map((b) => toSummary(b, uid, live.get(b.server.uuid)));
+    const live = await liveViews(rows);
+    return rows.map((b) => {
+      const l = live.get(b.server.uuid);
+      return toSummary(b, uid, l?.status, l?.lastSeenAt);
+    });
   },
 
   get: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "any");
     const [live, vars, [viewer], net] = await Promise.all([
-      liveState(a.bundle),
+      liveViews([a.bundle]).then((m) => m.get(a.bundle.server.uuid)!),
       serverVariables(a.bundle.server.id),
       getDb().select().from(schema.users).where(eq(schema.users.id, ctx.session!.userId)),
       serverNetwork(a.bundle),
     ]);
-    return toDetail(a.bundle, { id: viewer!.id, name: viewer!.name, discordId: viewer!.discordId }, a.permissions, vars, live, net);
+    return toDetail(a.bundle, { id: viewer!.id, name: viewer!.name, discordId: viewer!.discordId }, a.permissions, vars, { status: live.status, lastSeenAt: live.lastSeenAt, installedAt: a.bundle.server.installedAt ?? live.installedAt }, net);
   },
 
   stats: async ({ input, ctx }) => {
@@ -119,6 +79,8 @@ export const servers: Pick<
   power: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "power", { mutates: input.action === "start" || input.action === "restart" });
     await call(() => daemonFor(a.bundle.node).power(input.uuid, input.action));
+    // Cache direct bijwerken; de daemon pusht de echte status en de monitor corrigeert zo nodig.
+    await applyServerState(a.bundle.node.id, input.uuid, POWER_STATE[input.action]).catch(() => {});
     await logActivity({ action: `server.power.${input.action}`, userId: ctx.session!.userId, serverId: a.bundle.server.id, ip: ctx.ip, ctx });
     return ok;
   },
@@ -207,6 +169,7 @@ export const servers: Pick<
     const a = await requireServer(ctx, input.uuid, "owner", { mutates: true });
     await call(() => daemonFor(a.bundle.node).reinstall(input.uuid));
     await getDb().update(schema.servers).set({ status: "installing" }).where(eq(schema.servers.id, a.bundle.server.id));
+    await applyServerState(a.bundle.node.id, input.uuid, "installing").catch(() => {});
     await logActivity({ action: "server.reinstall", userId: ctx.session!.userId, serverId: a.bundle.server.id, ip: ctx.ip, ctx });
     return ok;
   },

@@ -7,6 +7,7 @@ import { POST as install } from "@/app/api/remote/servers/[uuid]/install/route";
 import { POST as status } from "@/app/api/remote/servers/[uuid]/status/route";
 import { getDb, schema } from "./db";
 import { verifyJwt } from "./lib/jwt";
+import { pollAllNow } from "./node-cache";
 import { OWNER, useHarness, type TestUser } from "./test/harness";
 
 const h = useHarness();
@@ -91,9 +92,14 @@ describe("remote-API", () => {
   it("servers/{uuid}/status werkt de status bij; onbekende server 404; foute body 400", async () => {
     expect((await status(req(`/api/remote/servers/${uuid}/status`, { state: "online" }), params({ uuid }))).status).toBe(204);
     expect((await serverRow()).status).toBe("online");
-    // De lijst vraagt de status live aan de daemon (fase 2), niet uit de database.
+    // De lijst leest de cache van de node-monitor: eerst een poll, dan wint wat de daemon meldt.
     h.daemon.servers.get(uuid)!.state = "offline";
+    await pollAllNow();
     expect((await player.api.servers.list())[0]!.status).toBe("offline");
+    // Een push werkt de cache direct bij, zonder te wachten op de volgende poll.
+    await status(req(`/api/remote/servers/${uuid}/status`, { state: "starting" }), params({ uuid }));
+    expect((await player.api.servers.list())[0]!.status).toBe("starting");
+    await status(req(`/api/remote/servers/${uuid}/status`, { state: "online" }), params({ uuid }));
     const other = "00000000-0000-4000-8000-000000000000";
     expect((await status(req(`/api/remote/servers/${other}/status`, { state: "online" }), params({ uuid: other }))).status).toBe(404);
     expect((await status(req(`/api/remote/servers/${uuid}/status`, { state: "kapot" }), params({ uuid }))).status).toBe(400);

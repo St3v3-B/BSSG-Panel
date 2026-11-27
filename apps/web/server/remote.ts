@@ -17,6 +17,7 @@ import { notify, targetForServer } from "./notify";
 import { getLimiter } from "./lib/ratelimit";
 import { logImageUpdate, remoteImageSettings, storeImageReport } from "./image-updates";
 import { fetchServerByUuid, sftpUsername } from "./servers-data";
+import { applyServerState } from "./node-cache";
 
 type NodeRow = typeof schema.nodes.$inferSelect;
 
@@ -90,6 +91,8 @@ export const reportInstall = remoteHandler<{ uuid: string }>(async (req, node, {
     .update(schema.servers)
     .set(b.successful ? { installedAt: new Date(), status: s.status === "installing" || s.status === "install_failed" ? "offline" : s.status } : { status: "install_failed" })
     .where(eq(schema.servers.id, s.id));
+  const [after] = await getDb().select({ status: schema.servers.status, installedAt: schema.servers.installedAt }).from(schema.servers).where(eq(schema.servers.id, s.id));
+  if (after) await applyServerState(node.id, uuid, after.status, after.installedAt).catch(() => {});
   await logActivity({
     action: b.successful ? "server.install.completed" : "server.install.failed",
     serverId: s.id,
@@ -105,6 +108,7 @@ export const reportStatus = remoteHandler<{ uuid: string }>(async (req, node, { 
   const s = await serverOnNode(uuid, node);
   if (!s) return error(404, "not_found");
   await getDb().update(schema.servers).set({ status: b.state as ServerStatus }).where(eq(schema.servers.id, s.id));
+  await applyServerState(node.id, uuid, b.state as ServerStatus).catch(() => {});
   return noContent();
 });
 

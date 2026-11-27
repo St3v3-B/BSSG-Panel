@@ -213,7 +213,7 @@ export function AdminServersList() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center gap-1">
-                        <StatusBadge status={s.status} />
+                        <StatusBadge status={s.status} lastSeenAt={s.lastSeenAt} />
                         {s.suspended && (
                           <Badge variant="warning" title={s.suspended.reason ?? undefined}>
                             <Ban /> {l.suspended}

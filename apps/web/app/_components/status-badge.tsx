@@ -1,7 +1,8 @@
 import { Moon } from "lucide-react";
 import type { ServerStatus } from "@panel/api";
 import { Badge } from "@/app/_components/ui/badge";
-import { statusLabel, STATUS_VARIANT } from "@/app/_lib/format";
+import { formatDate, statusLabel, STATUS_VARIANT } from "@/app/_lib/format";
+import { useT } from "@/app/_lib/i18n";
 import { cn } from "@/lib/utils";
 
 const DOT: Record<ServerStatus, string> = {
@@ -16,9 +17,12 @@ const DOT: Record<ServerStatus, string> = {
   unknown: "bg-muted-foreground",
 };
 
-export function StatusBadge({ status, className }: { status: ServerStatus; className?: string }) {
+/** Bij `unknown` toont de tooltip wanneer de node de server voor het laatst bevestigde. */
+export function StatusBadge({ status, className, lastSeenAt }: { status: ServerStatus; className?: string; lastSeenAt?: Date | null }) {
+  const t = useT();
+  const title = status === "unknown" && lastSeenAt !== undefined ? (lastSeenAt ? t.common.lastSeen(formatDate(lastSeenAt)) : t.common.neverSeen) : undefined;
   return (
-    <Badge variant={STATUS_VARIANT[status]} className={className} data-status={status}>
+    <Badge variant={STATUS_VARIANT[status]} className={className} data-status={status} title={title}>
       {status === "sleeping" ? <Moon aria-hidden /> : <span className={cn("size-1.5 rounded-full", DOT[status])} aria-hidden />}
       {statusLabel(status)}
     </Badge>

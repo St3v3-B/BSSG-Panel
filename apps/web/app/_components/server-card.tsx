@@ -15,6 +15,7 @@ import { UsageMeter } from "@/app/_components/usage-meter";
 import { displayName } from "@/app/_components/user-avatar";
 import { formatBytes, formatCpuLimit, formatMb, formatPct, isRunning, usagePct } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
+import { applyOptimisticPower } from "@/app/_lib/optimistic-power";
 import { cn } from "@/lib/utils";
 
 const STATUS_TONE: Record<ServerSummary["status"], string> = {
@@ -35,7 +36,13 @@ export function ServerCard({ server }: { server: ServerSummary }) {
   const stats = trpc.servers.stats.useQuery({ uuid: server.uuid }, { enabled: running, refetchInterval: running ? 10_000 : false, retry: false });
   const s = running ? stats.data : null;
   const utils = trpc.useUtils();
-  const start = trpc.servers.power.useMutation({ onSettled: () => void utils.servers.list.invalidate() });
+  const start = trpc.servers.power.useMutation({
+    onMutate: ({ uuid, action }) => applyOptimisticPower(utils, uuid, action),
+    onError: (_e, _v, rollback) => rollback?.(),
+    onSettled: () => void utils.servers.list.invalidate(),
+  });
+  // Details alvast ophalen zodra de muis of het toetsenbord op de kaart komt: de serverpagina opent dan zonder skeleton.
+  const prefetch = () => void utils.servers.get.prefetch({ uuid: server.uuid }, { staleTime: 10_000 });
   const Icon = server.type === "web" ? Globe : Gamepad2;
   const ramLimit = server.limits.ramMb * 1024 * 1024;
   const diskLimit = server.limits.diskMb * 1024 * 1024;
@@ -43,7 +50,7 @@ export function ServerCard({ server }: { server: ServerSummary }) {
   const tone = STATUS_TONE[server.status];
   const canStart = server.isOwner && !server.suspended && powerAvailability(server.status).start && server.status !== "sleeping";
   return (
-    <Card className="group relative flex flex-col gap-4 overflow-hidden p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-foreground/20 sm:p-5" data-testid="server-card" data-status={server.status} style={{ "--tone": tone } as CSSProperties}>
+    <Card className="group relative flex flex-col gap-4 overflow-hidden p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-foreground/20 sm:p-5" data-testid="server-card" data-status={server.status} onMouseEnter={prefetch} onFocus={prefetch} onTouchStart={prefetch} style={{ "--tone": tone } as CSSProperties}>
       <span aria-hidden className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[var(--tone)] to-transparent opacity-80" />
       <span aria-hidden className={cn("pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-[var(--tone)] blur-3xl transition-opacity", running ? "opacity-20 group-hover:opacity-30" : "opacity-[0.07]")} />
       <div className="relative flex flex-wrap items-start justify-between gap-x-3 gap-y-2.5">
@@ -62,7 +69,7 @@ export function ServerCard({ server }: { server: ServerSummary }) {
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-1.5 max-sm:w-full sm:flex-col sm:items-end sm:gap-1">
-          <StatusBadge status={server.status} />
+          <StatusBadge status={server.status} lastSeenAt={server.lastSeenAt} />
           <ImageUpdateBadge info={server.imageUpdate} />
         </div>
       </div>

@@ -16,7 +16,7 @@ import { useT } from "@/app/_lib/i18n";
 export default function OverviewPage() {
   const t = useT();
   useDocumentTitle(t.overview.title);
-  const servers = trpc.servers.list.useQuery(undefined, { refetchInterval: 30_000 });
+  const servers = trpc.servers.list.useQuery(undefined, { refetchInterval: 10_000 });
   const quota = trpc.account.quota.useQuery(undefined, { retry: false });
   const list = servers.data ?? [];
   const online = list.filter((s) => s.status === "online").length;
