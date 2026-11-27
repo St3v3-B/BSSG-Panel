@@ -34,6 +34,15 @@ type Claims struct {
 	// token is afgegeven. Ontbreken ze (console-JWT), dan is er niets te vergelijken.
 	Path      *string `json:"path,omitempty"`
 	Directory *string `json:"directory,omitempty"`
+	// Archive staat alleen in archief-downloadtokens: wat er ingepakt wordt.
+	Archive *ArchiveClaim `json:"archive,omitempty"`
+}
+
+// ArchiveClaim beschrijft een archief-download (GET /files/archive).
+type ArchiveClaim struct {
+	Root   string   `json:"root"`
+	Paths  []string `json:"paths"`
+	Format string   `json:"format"`
 }
 
 // Has geeft aan of de claims een recht bevatten.

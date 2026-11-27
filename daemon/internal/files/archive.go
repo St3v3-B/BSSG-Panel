@@ -114,69 +114,7 @@ func (r *Root) Compress(rootDir string, paths []string, budget Budget) (Entry, e
 }
 
 func addTree(tw *tar.Writer, dirfd int, name, arcName, skipRel, rel string, depth int) error {
-	if depth > 256 {
-		return errors.New("te diep genest")
-	}
-	if rel == skipRel {
-		return nil
-	}
-	var st unix.Stat_t
-	if err := unix.Fstatat(dirfd, name, &st, unix.AT_SYMLINK_NOFOLLOW); err != nil {
-		return mapErr(err)
-	}
-	mode := fileMode(st.Mode)
-	hdr := &tar.Header{Name: arcName, Mode: int64(mode.Perm()), ModTime: time.Unix(st.Mtim.Unix()), Uid: 1000, Gid: 1000, Format: tar.FormatPAX}
-	switch {
-	case mode.IsDir():
-		hdr.Typeflag = tar.TypeDir
-		hdr.Name += "/"
-		if err := tw.WriteHeader(hdr); err != nil {
-			return err
-		}
-		fd, err := unix.Openat(dirfd, name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-		if err != nil {
-			return mapErr(err)
-		}
-		f := os.NewFile(uintptr(fd), name)
-		defer f.Close()
-		names, err := f.Readdirnames(-1)
-		if err != nil {
-			return err
-		}
-		for _, n := range names {
-			if err := addTree(tw, fd, n, arcName+"/"+n, skipRel, rel+"/"+n, depth+1); err != nil {
-				return err
-			}
-		}
-		return nil
-	case mode&os.ModeSymlink != 0:
-		buf := make([]byte, 4096)
-		n, err := unix.Readlinkat(dirfd, name, buf)
-		if err != nil {
-			return mapErr(err)
-		}
-		hdr.Typeflag = tar.TypeSymlink
-		hdr.Linkname = string(buf[:n])
-		return tw.WriteHeader(hdr)
-	case mode.IsRegular():
-		fd, err := unix.Openat(dirfd, name, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-		if err != nil {
-			return mapErr(err)
-		}
-		f := os.NewFile(uintptr(fd), name)
-		defer f.Close()
-		hdr.Typeflag = tar.TypeReg
-		hdr.Size = st.Size
-		if err := tw.WriteHeader(hdr); err != nil {
-			return err
-		}
-		_, err = io.CopyN(tw, f, st.Size)
-		if errors.Is(err, io.EOF) {
-			return fmt.Errorf("%s shrank while being archived", arcName)
-		}
-		return err
-	}
-	return nil // sockets, devices: overslaan
+	return walkTree(tarSink{tw}, dirfd, name, arcName, skipRel, rel, depth)
 }
 
 // ArchiveKind geeft het formaat op basis van de naam, of "".
