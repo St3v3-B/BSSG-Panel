@@ -16,13 +16,15 @@
  * Alles vóór de database-update wordt bij een fout teruggedraaid door de doelserver te verwijderen;
  * de bron blijft dan ongemoeid (en wordt weer gestart als hij draaide).
  */
-import type { Implementation } from "@panel/api";
+import { bedrockPlatform, type Implementation } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { and, asc, count, eq, isNull } from "drizzle-orm";
 import { logActivity } from "../activity";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema } from "../db";
+import { bedrockAllocation } from "../bedrock";
 import { decrypt } from "../lib/crypto";
+import { DEFAULT_BEDROCK_PORT, geyserConfig, geyserConfigPath } from "../lib/geyser";
 import { buildServerSpec } from "../spec";
 import { imagePolicyOf, fetchServerByUuid, limitsOf, serverVariables, sleepOf, autoRestartOf } from "../servers-data";
 import { isBackend, syncProxyAddresses } from "../network";
@@ -75,7 +77,12 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
     if (!targetHost) throw precondition(`NO_DATABASE_HOST_ON_TARGET: node ${target.name} has no MariaDB (install it with install.sh --node-only, or check that the daemon is up to date)`);
   }
 
-  // Allocations op het doel (alleen game): opgegeven of de eerste vrije.
+  // Bedrock (Geyser) gaat mee: een eigen UDP-allocation op het doel en een bijgewerkte Geyser-config.
+  const platform = b.server.type === "game" ? bedrockPlatform(b.template.slug) : null;
+  const oldBedrock = platform ? bedrockAllocation(b) : null;
+  const javaCount = b.allocations.filter((a) => a.id !== oldBedrock?.id).length;
+
+  // Allocations op het doel (alleen game): opgegeven of de eerste vrije. Dit zijn de Java-poorten; de Bedrock-poort komt erbij.
   const isWeb = b.server.type === "web";
   let allocIds: number[] = [];
   if (!isWeb) {
@@ -83,19 +90,34 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
       await checkAllocations(db, input.allocationIds, target.id, null);
       allocIds = input.allocationIds;
     } else {
-      const want = Math.max(1, b.allocations.length);
+      const want = Math.max(1, javaCount);
       const free = await db
-        .select({ id: schema.allocations.id })
+        .select({ id: schema.allocations.id, port: schema.allocations.port })
         .from(schema.allocations)
         .where(and(eq(schema.allocations.nodeId, target.id), isNull(schema.allocations.serverId)))
-        .orderBy(asc(schema.allocations.port))
-        .limit(want);
+        .orderBy(asc(schema.allocations.port));
       if (free.length < want) throw precondition(`NO_FREE_ALLOCATION: node ${target.name} has ${free.length} free allocation(s), ${want} needed`);
-      allocIds = free.map((f) => f.id);
+      // Met Bedrock aan: de typische Bedrock-poorten niet als Java-poort nemen zolang er andere zijn.
+      const bedrockish = (p: number) => !!oldBedrock && (p === oldBedrock.port || p === DEFAULT_BEDROCK_PORT);
+      allocIds = [...free.filter((f) => !bedrockish(f.port)), ...free.filter((f) => bedrockish(f.port))].slice(0, want).map((f) => f.id);
     }
   } else if (input.allocationIds?.length) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "WEB_HAS_NO_ALLOCATIONS" });
   }
+  // Bedrock-allocation op het doel: op het IP van de nieuwe primaire poort, bij voorkeur dezelfde poort als nu, anders 19132, anders de laagste vrije.
+  let bedrockTarget: { id: number; ip: string; port: number } | null = null;
+  if (oldBedrock && allocIds.length) {
+    const [primary] = await checkAllocations(db, [allocIds[0]!], target.id, null);
+    const free = await db
+      .select({ id: schema.allocations.id, ip: schema.allocations.ip, port: schema.allocations.port })
+      .from(schema.allocations)
+      .where(and(eq(schema.allocations.nodeId, target.id), isNull(schema.allocations.serverId), eq(schema.allocations.ip, primary!.ip)))
+      .orderBy(asc(schema.allocations.port));
+    const candidates = free.filter((f) => !allocIds.includes(f.id));
+    bedrockTarget = candidates.find((f) => f.port === oldBedrock.port) ?? candidates.find((f) => f.port === DEFAULT_BEDROCK_PORT) ?? candidates[0] ?? null;
+    if (!bedrockTarget) throw precondition(`NO_FREE_BEDROCK_ALLOCATION: Bedrock is on, but node ${target.name} has no free allocation on ${primary!.ip} for it (add one, or turn Bedrock off first)`);
+  }
+  const allIds = bedrockTarget ? [...allocIds, bedrockTarget.id] : allocIds;
 
   const src = daemonFor(b.node);
   const dst = daemonFor(target);
@@ -116,7 +138,7 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
       await call(() => waitForState(src, uuid, ["offline"], 120_000));
     }
 
-    const targetAllocs = allocIds.length ? await checkAllocations(db, allocIds, target.id, null) : [];
+    const targetAllocs = allIds.length ? await checkAllocations(db, allIds, target.id, null) : [];
     const spec = buildServerSpec({
       uuid,
       template: b.template,
@@ -132,6 +154,11 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
 
     await call(async () => dst.importData(uuid, await src.exportData(uuid)));
 
+    // Geyser luistert op de Bedrock-poort en praat met de Java-poort; beide kunnen op het doel anders zijn.
+    if (bedrockTarget && platform) {
+      await call(() => dst.writeFile(uuid, geyserConfigPath(platform), geyserConfig({ port: bedrockTarget.port, javaPort: targetAllocs[0]!.port })));
+    }
+
     // Databases kopieren: zelfde naam, gebruiker en wachtwoord. Pas na een gelukte create telt de database als
     // "van ons" op het doel (een bestaande met dezelfde naam geeft 409 en wordt dus nooit weggegooid).
     for (const r of movable) {
@@ -146,11 +173,11 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
     for (const d of domains.filter((d) => !isMc(d))) await call(async () => dst.putRoute(await routeFor(d, uuid)));
 
     await db.transaction(async (tx) => {
-      await checkAllocations(tx, allocIds, target.id, null);
+      await checkAllocations(tx, allIds, target.id, null);
       // Oude allocations (andere node) vrijgeven, nieuwe toewijzen.
       await tx.update(schema.allocations).set({ serverId: null, isPrimary: false }).where(eq(schema.allocations.serverId, b.server.id));
-      if (allocIds.length) await assignAllocations(tx, b.server.id, allocIds);
-      await tx.update(schema.servers).set({ nodeId: target.id, status: "offline", bedrockAllocationId: null, ...(target.supportsDomains ? {} : { domainsAllowed: false }) }).where(eq(schema.servers.id, b.server.id));
+      if (allIds.length) await assignAllocations(tx, b.server.id, allIds);
+      await tx.update(schema.servers).set({ nodeId: target.id, status: "offline", bedrockAllocationId: bedrockTarget?.id ?? null, ...(target.supportsDomains ? {} : { domainsAllowed: false }) }).where(eq(schema.servers.id, b.server.id));
       for (const r of movable) await tx.update(schema.databases).set({ hostId: targetHost!.id }).where(eq(schema.databases.id, r.d.id));
     });
   } catch (e) {
@@ -200,7 +227,7 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
     action: "admin.server.transfer",
     userId: ctx.session!.userId,
     serverId: b.server.id,
-    metadata: { serverUuid: uuid, from: b.node.id, to: target.id, allocationIds: allocIds, databases: movable.map((r) => r.d.name), restarted: wasRunning, warnings },
+    metadata: { serverUuid: uuid, from: b.node.id, to: target.id, allocationIds: allocIds, ...(bedrockTarget ? { bedrockPort: bedrockTarget.port } : {}), databases: movable.map((r) => r.d.name), restarted: wasRunning, warnings },
     ip: ctx.ip,
     ctx,
   });
