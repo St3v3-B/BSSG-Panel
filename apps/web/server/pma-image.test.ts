@@ -188,6 +188,7 @@ describe("phpMyAdmin-image met single sign-on", () => {
     const src = await js.text();
     expect(src).toContain("panel_theme");
     expect(src).toContain("panel-embed");
+    expect(src).toContain("panel_accent");
     const ret = await get("/panel-return.html");
     expect(ret.status).toBe(200);
     expect(await ret.text()).toContain("panel-return.js");

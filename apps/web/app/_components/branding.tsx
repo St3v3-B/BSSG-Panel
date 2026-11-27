@@ -13,12 +13,21 @@ function luminance(hex: string): number {
   return 0.2126 * ch[0]! + 0.7152 * ch[1]! + 0.0722 * ch[2]!;
 }
 
+/** localStorage-sleutel met de accentkleur (#rrggbb), gedeeld met phpMyAdmin op /phpmyadmin/. */
+export const ACCENT_KEY = "panel_accent";
+
 /** Zet de accentkleur uit de instellingen als --primary. */
 export function BrandingEffect() {
   const branding = trpc.auth.branding.useQuery(undefined, { staleTime: 60_000 });
   const accent = branding.data?.accentColor;
   useEffect(() => {
     if (!accent || !/^#[0-9a-fA-F]{6}$/.test(accent)) return;
+    // Ook voor phpMyAdmin (zelfde domein): panel-theme.js daar leest deze sleutel en neemt de accentkleur over.
+    try {
+      localStorage.setItem(ACCENT_KEY, accent);
+    } catch {
+      /* geen storage */
+    }
     const root = document.documentElement;
     root.style.setProperty("--primary", accent);
     root.style.setProperty("--primary-foreground", luminance(accent) > 0.35 ? "oklch(0.145 0 0)" : "oklch(0.985 0 0)");
