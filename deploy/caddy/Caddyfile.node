@@ -1,0 +1,18 @@
+# Caddy-basisconfig van een remote node (deploy/install.sh --node-only).
+# Zelfde opzet als Caddyfile, maar zonder panel: alleen $NODE_DOMAIN -> daemon-socket.
+# Dynamische routes (klantdomeinen van websites op deze node) zet de daemon via de
+# admin-socket in de server "panel" (zie Caddyfile).
+{
+	email {$ACME_EMAIL}
+	admin unix//run/panel/caddy-admin.sock
+	servers :443 {
+		name panel
+	}
+	import /etc/caddy/global.d/*.caddy
+}
+
+{$NODE_DOMAIN} {
+	reverse_proxy unix//run/panel/daemon.sock {
+		flush_interval -1
+	}
+}

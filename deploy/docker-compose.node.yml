@@ -1,0 +1,44 @@
+# Alleen Caddy voor een remote node (deploy/install.sh --node-only): $NODE_DOMAIN -> daemon-socket,
+# automatische HTTPS. De daemon zelf draait als systemd-unit (panel-daemon). Geen panel, Postgres,
+# Redis of MariaDB. Start met:
+#   PANEL_ENV_FILE=/etc/panel/panel.env docker compose --env-file /etc/panel/panel.env -f deploy/docker-compose.node.yml up -d --build
+name: panel-node
+
+x-labels: &labels
+  panel.managed: "true"
+  panel.instance: ${PANEL_INSTANCE:-main}
+  panel.role: infra
+
+services:
+  caddy:
+    build: ./caddy
+    image: panel-caddy:local
+    container_name: ${CADDY_CONTAINER:-panel-caddy}
+    restart: unless-stopped
+    labels: *labels
+    environment:
+      NODE_DOMAIN: ${NODE_DOMAIN:?NODE_DOMAIN ontbreekt in het env-bestand}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL ontbreekt in het env-bestand}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile.node:/etc/caddy/Caddyfile:ro
+      - ./caddy/global.d:/etc/caddy/global.d:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - type: bind
+        source: /run/panel
+        target: /run/panel
+        bind:
+          create_host_path: true
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+volumes:
+  caddy_data:
+    labels: *labels
+  caddy_config:
+    labels: *labels
