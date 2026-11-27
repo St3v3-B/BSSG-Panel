@@ -104,7 +104,7 @@ describe("admin.servers.changeTemplate", () => {
     expect((await player.api.servers.get({ uuid })).templateName).toBe("Testspel 2");
     await getDb().update(schema.servers).set({ status: "offline" }).where(eq(schema.servers.id, serverId));
     await admin.api.admin.servers.changeTemplate({ uuid, templateId: gameId, reinstall: true });
-    expect(h.daemon.last("POST", `/api/servers/${uuid}/reinstall`)).toBeTruthy();
+    expect(h.daemon.last("POST", `/api/servers/${uuid}/install`)).toBeTruthy();
     const [s] = await getDb().select().from(schema.servers).where(eq(schema.servers.id, serverId));
     expect(s).toMatchObject({ templateId: gameId, status: "installing" });
   });
