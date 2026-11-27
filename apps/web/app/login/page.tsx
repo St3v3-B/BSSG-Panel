@@ -10,6 +10,7 @@ import { isTotpCode, TotpCodeInput } from "@/app/_components/totp-code-input";
 import { Alert, AlertDescription, AlertTitle } from "@/app/_components/ui/alert";
 import { Button } from "@/app/_components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/_components/ui/card";
+import { Input } from "@/app/_components/ui/input";
 import { Label } from "@/app/_components/ui/label";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
@@ -58,6 +59,7 @@ function LoginFlow() {
   const redirectTo = safeRedirect(params.get("redirectTo"));
   const callbackError = params.get("error");
   const me = trpc.auth.me.useQuery(undefined, { retry: false });
+  const [emergency, setEmergency] = useState(false);
   const done = !!me.data && (!me.data.totpEnabled || me.data.totpVerified);
 
   useEffect(() => {
@@ -90,7 +92,14 @@ function LoginFlow() {
           </div>
         </Alert>
       )}
-      <DiscordStep redirectTo={redirectTo} />
+      {emergency ? <EmergencyStep redirectTo={redirectTo} onBack={() => setEmergency(false)} /> : <DiscordStep redirectTo={redirectTo} />}
+      {!emergency && (
+        <p className="text-center">
+          <button type="button" data-testid="emergency-link" className="text-xs text-muted-foreground underline-offset-4 hover:underline" onClick={() => setEmergency(true)}>
+            {t.login.emergencyLink}
+          </button>
+        </p>
+      )}
     </div>
   );
 }
@@ -128,19 +137,100 @@ function DiscordStep({ redirectTo }: { redirectTo: string }) {
   );
 }
 
-function TotpStep({ redirectTo, name }: { redirectTo: string; name: string | null }) {
+function EmergencyStep({ redirectTo, onBack }: { redirectTo: string; onBack: () => void }) {
   const router = useRouter();
   const utils = trpc.useUtils();
   const t = useT();
+  const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
-  const verify = trpc.auth.verifyTotp.useMutation({
+  const login = trpc.auth.emergencyLogin.useMutation({
     onSuccess: async () => {
       await utils.invalidate();
       router.replace(redirectTo);
     },
     onError: () => setCode(""),
   });
+  return (
+    <Card data-testid="emergency-step" className="bg-card/70 backdrop-blur-xl">
+      <CardHeader className="text-center">
+        <span className="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-primary/15 text-primary">
+          <KeyRound className="size-5" />
+        </span>
+        <CardTitle className="text-lg">{t.login.emergencyTitle}</CardTitle>
+        <CardDescription>{t.login.emergencyText}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (password && isTotpCode(code)) login.mutate({ password, code });
+          }}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="emergency-password">{t.login.password}</Label>
+            <Input id="emergency-password" type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} disabled={login.isPending} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="totp-code">{t.login.code}</Label>
+            <TotpCodeInput value={code} onChange={setCode} disabled={login.isPending} invalid={!!login.error} />
+            {login.error && <p className="text-center text-sm text-destructive">{errorText(login.error)}</p>}
+          </div>
+          <Button type="submit" className="w-full" disabled={!password || !isTotpCode(code) || login.isPending}>
+            {login.isPending && <Spinner />} {t.login.emergencySubmit}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={onBack}>
+            {t.login.backToDiscord}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TotpStep({ redirectTo, name }: { redirectTo: string; name: string | null }) {
+  const router = useRouter();
+  const utils = trpc.useUtils();
+  const t = useT();
+  const [code, setCode] = useState("");
+  const [recovery, setRecovery] = useState(false);
+  const [low, setLow] = useState<number | null>(null);
+  const verify = trpc.auth.verifyTotp.useMutation({
+    onSuccess: async (r) => {
+      // Bijna geen herstelcodes meer: eerst even waarschuwen, daarna doorgaan.
+      if (r.recoveryCodesLeft !== null && r.recoveryCodesLeft <= 2) return setLow(r.recoveryCodesLeft);
+      await utils.invalidate();
+      router.replace(redirectTo);
+    },
+    onError: () => setCode(""),
+  });
+  const valid = recovery ? code.trim().length >= 10 : isTotpCode(code);
   const logout = trpc.auth.logout.useMutation({ onSettled: () => window.location.assign("/login") });
+
+  if (low !== null) {
+    return (
+      <Card data-testid="recovery-low" className="bg-card/70 backdrop-blur-xl">
+        <CardContent className="space-y-4 pt-6">
+          <Alert variant="warning">
+            <CircleAlert />
+            <div>
+              <AlertTitle>{t.login.recoveryLowTitle(low)}</AlertTitle>
+              <AlertDescription>{t.login.recoveryLowText}</AlertDescription>
+            </div>
+          </Alert>
+          <Button
+            className="w-full"
+            onClick={async () => {
+              await utils.invalidate();
+              router.replace(redirectTo);
+            }}
+          >
+            {t.login.continue}
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card data-testid="totp-step" className="bg-card/70 backdrop-blur-xl">
@@ -156,18 +246,36 @@ function TotpStep({ redirectTo, name }: { redirectTo: string; name: string | nul
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            if (isTotpCode(code)) verify.mutate({ code });
+            if (valid) verify.mutate({ code: code.trim() });
           }}
         >
           <div className="space-y-2">
             <Label htmlFor="totp-code" className="sr-only">
               {t.login.code}
             </Label>
-            <TotpCodeInput value={code} onChange={setCode} autoFocus disabled={verify.isPending} invalid={!!verify.error} />
+            {recovery ? (
+              <Input id="totp-code" autoFocus autoComplete="off" spellCheck={false} placeholder="xxxxx-xxxxx" aria-label={t.login.recoveryCode} value={code} onChange={(e) => setCode(e.target.value)} disabled={verify.isPending} aria-invalid={!!verify.error || undefined} className="h-11 text-center font-mono" />
+            ) : (
+              <TotpCodeInput value={code} onChange={setCode} autoFocus disabled={verify.isPending} invalid={!!verify.error} />
+            )}
             {verify.error && <p className="text-center text-sm text-destructive">{errorText(verify.error)}</p>}
           </div>
-          <Button type="submit" className="w-full" disabled={!isTotpCode(code) || verify.isPending}>
+          <Button type="submit" className="w-full" disabled={!valid || verify.isPending}>
             {verify.isPending && <Spinner />} {t.login.confirm}
+          </Button>
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className="w-full text-muted-foreground"
+            data-testid="toggle-recovery"
+            onClick={() => {
+              setRecovery(!recovery);
+              setCode("");
+              verify.reset();
+            }}
+          >
+            {recovery ? t.login.useApp : t.login.useRecovery}
           </Button>
           <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => logout.mutate()} disabled={logout.isPending}>
             <LogOut /> {t.nav.logout}

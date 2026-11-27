@@ -49,7 +49,8 @@ export const contract = {
     branding: query("public", none, s.Branding),
     /** URL naar Discord OAuth2; de callback is de route handler /api/auth/discord/callback. */
     discordLoginUrl: query("public", z.object({ redirectTo: z.string().startsWith("/").optional() }), z.object({ url: z.string() })),
-    verifyTotp: mutation("pending", z.object({ code: z.string().regex(/^\d{6}$/) }), s.Ok),
+    /** `code` is een TOTP-code (6 cijfers) of een herstelcode (xxxxx-xxxxx); een herstelcode wordt verbruikt. Roteert het sessietoken. */
+    verifyTotp: mutation("pending", z.object({ code: z.string().min(6).max(20) }), s.VerifyTotpResult),
     /** Noodaccount (fase 4): wachtwoord + verplichte TOTP. Werkt ook als Discord plat ligt. */
     emergencyLogin: mutation("public", z.object({ password: z.string().min(1), code: z.string().regex(/^\d{6}$/) }), s.Ok),
     logout: mutation("pending", none, s.Ok),
@@ -60,7 +61,15 @@ export const contract = {
     /** Start 2FA-instelling: geeft een nieuw secret (nog niet actief). */
     totpSetup: mutation("user", none, z.object({ secret: z.string(), otpauthUrl: z.string() })),
     /** Bevestigt met een code; daarna is TOTP aan en deze sessie geverifieerd. */
-    totpEnable: mutation("user", z.object({ code: z.string().regex(/^\d{6}$/) }), s.Ok),
+    /** Geeft 10 herstelcodes terug die maar één keer getoond worden. */
+    totpEnable: mutation("user", z.object({ code: z.string().regex(/^\d{6}$/) }), s.RecoveryCodes.extend({ ok: z.literal(true) })),
+    recoveryCodesStatus: query("user", none, s.RecoveryStatus),
+    /** Vervangt alle herstelcodes; vereist een geldige TOTP-code. */
+    regenerateRecoveryCodes: mutation("user", z.object({ code: z.string().regex(/^\d{6}$/) }), s.RecoveryCodes),
+    sessions: query("user", none, z.array(s.SessionInfo)),
+    revokeSession: mutation("user", z.object({ id: z.string().uuid() }), s.Ok),
+    /** Alle sessies behalve de huidige. */
+    revokeOtherSessions: mutation("user", none, z.object({ revoked: z.number().int() })),
     totpDisable: mutation("user", z.object({ code: z.string().regex(/^\d{6}$/) }), s.Ok),
     apiKeys: query("user", none, z.array(s.ApiKey)),
     /** `key` is de volledige sleutel en wordt maar één keer getoond. */
@@ -397,6 +406,8 @@ export const contract = {
       create: mutation("admin", z.object({ discordId: s.DiscordId }), s.AdminUser),
       setBlocked: mutation("admin", byId.extend({ blocked: z.boolean() }), s.Ok),
       resetTotp: mutation("admin", byId, s.Ok),
+      /** Beëindigt alle sessies van een gebruiker. */
+      revokeSessions: mutation("admin", byId, z.object({ revoked: z.number().int() })),
       /** null = geen quotum. */
       getQuota: query("admin", byId, s.QuotaInput.nullable()),
       setQuota: mutation("admin", byId.extend(s.QuotaInput.shape), s.Ok),

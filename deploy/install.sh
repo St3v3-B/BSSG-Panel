@@ -32,6 +32,7 @@ ROOT=""
 DAEMON_BIN_SRC="${PANEL_DAEMON_BIN:-}"
 SKIP_START=0
 NODE_ONLY=0
+SET_EMERGENCY=0
 
 usage() {
   cat <<'EOF'
@@ -42,6 +43,9 @@ Usage: install.sh [options]
   --root DIR          (only with --dry-run) target directory instead of /
   --daemon-bin PATH   use a prebuilt panel-daemon instead of building with Go
   --no-start          do not (re)start the unit and compose
+  --set-emergency-password
+                      set the password + TOTP of the emergency account (for when Discord is down) in the
+                      running panel container; prints a QR code once. Changes nothing else.
   --node-only         install a remote node only: daemon + systemd unit + Caddy + its own MariaDB (docker-compose.node.yml).
                       Needs PANEL_URL, NODE_DOMAIN, NODE_TOKEN, ACME_EMAIL (environment or the flags below)
   --panel-url URL, --node-domain HOST, --node-token TOKEN, --acme-email MAIL, --daemon-port N,
@@ -60,6 +64,7 @@ while [ $# -gt 0 ]; do
     --daemon-bin=*) DAEMON_BIN_SRC="${1#--daemon-bin=}" ;;
     --no-start) SKIP_START=1 ;;
     --node-only) NODE_ONLY=1 ;;
+    --set-emergency-password) SET_EMERGENCY=1 ;;
     --panel-url) export PANEL_URL="${2:?--panel-url needs a value}"; shift ;;
     --node-domain) export NODE_DOMAIN="${2:?--node-domain needs a value}"; shift ;;
     --node-token) export NODE_TOKEN="${2:?--node-token needs a value}"; shift ;;
@@ -540,4 +545,17 @@ node_main() {
   node_summary
 }
 
-if [ "$NODE_ONLY" = 1 ]; then node_main; else main; fi
+set_emergency_password() {
+  [ "$NODE_ONLY" = 1 ] && die "--set-emergency-password is for the panel host, not for --node-only"
+  [ -f "$ENV_FILE" ] || die "$ENV_FILE not found: install the panel first"
+  command -v docker >/dev/null || die "docker is missing"
+  if [ "$DRY_RUN" = 1 ]; then
+    printf '[dry-run] docker exec -it panel-web node apps/web/emergency-cli.mjs\n'
+    return 0
+  fi
+  log "setting the emergency account password (panel-web container)"
+  docker exec -it panel-web node apps/web/emergency-cli.mjs
+}
+
+if [ "$SET_EMERGENCY" = 1 ]; then set_emergency_password
+elif [ "$NODE_ONLY" = 1 ]; then node_main; else main; fi

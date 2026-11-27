@@ -19,6 +19,20 @@ export const Hostname = z
 export const Ok = z.object({ ok: z.literal(true) });
 export type Ok = z.infer<typeof Ok>;
 
+/** Resultaat van auth.verifyTotp: bij een herstelcode het aantal overgebleven codes (anders null). */
+export const VerifyTotpResult = z.object({ ok: z.literal(true), recoveryCodesLeft: z.number().int().nullable() });
+export const RecoveryCodes = z.object({ recoveryCodes: z.array(z.string()) });
+export const RecoveryStatus = z.object({ remaining: z.number().int(), total: z.number().int() });
+export const SessionInfo = z.object({
+  id: z.string(),
+  userAgent: z.string().nullable(),
+  ip: z.string().nullable(),
+  createdAt: z.date(),
+  lastSeenAt: z.date(),
+  current: z.boolean(),
+});
+export type SessionInfo = z.infer<typeof SessionInfo>;
+
 export const PageInput = z.object({
   cursor: z.string().nullish(),
   limit: z.number().int().min(1).max(100).default(50),

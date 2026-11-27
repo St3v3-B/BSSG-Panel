@@ -2,6 +2,7 @@ import { DiscordId } from "@panel/api";
 import { z } from "zod";
 import { ensureBooted } from "./boot";
 import { testLoginEnabled } from "./env";
+import { allowPerIp } from "./http-limits";
 import { loginWithProfile } from "./login";
 
 const Body = z.object({ discordId: DiscordId, name: z.string().min(1).max(100) });
@@ -12,6 +13,7 @@ const json = (status: number, body: unknown, headers: Record<string, string> = {
 export async function testLogin(req: Request): Promise<Response> {
   if (!testLoginEnabled()) return new Response("Not Found", { status: 404 });
   await ensureBooted();
+  if (!(await allowPerIp(req, "test-login"))) return json(429, { error: "too_many_requests" }, { "retry-after": "60" });
   let input: z.output<typeof Body>;
   try {
     const r = Body.safeParse(await req.json());

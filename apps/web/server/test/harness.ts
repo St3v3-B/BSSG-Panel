@@ -102,7 +102,7 @@ export function baseEnv(over: Record<string, string> = {}): Record<string, strin
   };
 }
 
-const ENV_KEYS = Object.keys(baseEnv()).concat(["DATABASE_URL", "DAEMON_URL", "TEMPLATES_DIR", "NODE_PUBLIC_IP", "REDIS_URL", "MARIADB_ROOT_PASSWORD", "MARIADB_CONTAINER", "MARIADB_ADMIN_ADDR"]);
+const ENV_KEYS = Object.keys(baseEnv()).concat(["DATABASE_URL", "DAEMON_URL", "TEMPLATES_DIR", "NODE_PUBLIC_IP", "REDIS_URL", "MARIADB_ROOT_PASSWORD", "MARIADB_CONTAINER", "MARIADB_ADMIN_ADDR", "SESSION_IDLE_DAYS", "SESSION_MAX_DAYS"]);
 
 export function applyEnv(vars: Record<string, string | undefined>): void {
   for (const k of ENV_KEYS) delete process.env[k];
@@ -148,8 +148,11 @@ export function useHarness(opts: { env?: Record<string, string>; templates?: Rec
 
     /** Nieuwe caller met verse context (na wijzigingen aan sessie/admin-lijst). */
     async refresh(u: TestUser): Promise<TestUser> {
-      const ctx = await h.ctxFor(u.cookie);
-      return { ...u, ctx, api: caller(ctx) };
+      // Na tokenrotatie (verifyTotp/totpEnable) staat het nieuwe cookie in de response-headers van de oude context.
+      const rotated = u.ctx?.resHeaders.getSetCookie().filter((c) => c.startsWith(`${SESSION_COOKIE}=`)).pop();
+      const cookie = rotated && !/Max-Age=0/.test(rotated) ? rotated.split(";")[0]!.replace(/%3D/g, "=") : u.cookie;
+      const ctx = await h.ctxFor(cookie);
+      return { ...u, cookie, ctx, api: caller(ctx) };
     },
 
     anon: async (): Promise<Api> => caller(await h.ctxFor(null)),

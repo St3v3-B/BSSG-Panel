@@ -18,6 +18,16 @@ const port = (def: number) =>
     }
     return n;
   });
+const days = (def: number) =>
+  optional.transform((v, ctx) => {
+    if (v === undefined) return def;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 1 || n > 3650) {
+      ctx.addIssue({ code: "custom", message: `invalid number of days: ${v}` });
+      return z.NEVER;
+    }
+    return n;
+  });
 const required = z.string({ error: "missing" }).trim().min(1, "missing");
 const domain = required.regex(/^[a-z0-9.-]+$/i, "invalid domain").transform((d) => d.toLowerCase());
 
@@ -43,6 +53,8 @@ const EnvSchema = z
     DAEMON_URL: optional,
     TEMPLATES_DIR: optional.transform((v) => v ?? "/app/templates"),
     DISCORD_BOT_TOKEN: optional,
+    SESSION_IDLE_DAYS: days(30),
+    SESSION_MAX_DAYS: days(90),
     PANEL_INSECURE_TEST_LOGIN: optional.transform((v) => v === "1" || v === "true"),
   })
   .transform((e) => ({
