@@ -1,13 +1,16 @@
 "use client";
 import {
   Archive,
+  ChevronDown,
   ChevronRight,
   Download,
   File as FileIcon,
   FileArchive,
   FilePlus,
   Folder,
+  FolderInput,
   FolderPlus,
+  KeyRound,
   Link2,
   MoreHorizontal,
   Pencil,
@@ -16,10 +19,12 @@ import {
   Upload,
 } from "lucide-react";
 import { useMemo, useRef, useState, type FormEvent } from "react";
-import type { FileEntry, ServerDetail } from "@panel/api";
+import type { ArchiveFormat, FileEntry, ServerDetail } from "@panel/api";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
+import { ChmodDialog } from "@/app/_components/files/chmod-dialog";
 import { FileActionError } from "@/app/_components/files/file-action-error";
+import { FileSearchForm, FileSearchResults, type SearchQuery } from "@/app/_components/files/file-search";
 import { Button } from "@/app/_components/ui/button";
 import { Card } from "@/app/_components/ui/card";
 import { Checkbox } from "@/app/_components/ui/checkbox";
@@ -36,7 +41,20 @@ import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { QueryError } from "@/app/_components/query-error";
 import { formatBytes, formatDate } from "@/app/_lib/format";
-import { breadcrumbs, fileNameError, isArchive, isEditable, joinPath, parentPath, startDownload, UploadError, uploadErrorText, uploadFiles } from "@/app/_lib/files";
+import {
+  breadcrumbs,
+  fileNameError,
+  isArchive,
+  isEditable,
+  joinPath,
+  normalizePath,
+  parentPath,
+  startArchiveDownload,
+  startDownload,
+  UploadError,
+  uploadErrorText,
+  uploadFiles,
+} from "@/app/_lib/files";
 import { useT } from "@/app/_lib/i18n";
 
 type Prompt = { kind: "mkdir" } | { kind: "newfile" } | { kind: "rename"; entry: FileEntry };
@@ -48,13 +66,15 @@ export interface FileManagerProps {
   onEdit: (path: string) => void;
   /** Voor tests: upload-implementatie vervangen. */
   upload?: typeof uploadFiles;
+  /** Voor tests: archief-download vervangen. */
+  downloadArchive?: (url: string) => void;
 }
 
 export function sortEntries(entries: FileEntry[]): FileEntry[] {
   return [...entries].sort((a, b) => (a.isDirectory !== b.isDirectory ? (a.isDirectory ? -1 : 1) : a.name.localeCompare(b.name, "nl")));
 }
 
-export function FileManager({ server, path, onNavigate, onEdit, upload = uploadFiles }: FileManagerProps) {
+export function FileManager({ server, path, onNavigate, onEdit, upload = uploadFiles, downloadArchive = startArchiveDownload }: FileManagerProps) {
   const uuid = server.uuid;
   const t = useT();
   const canWrite = server.permissions.includes("files.write");
@@ -69,6 +89,9 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
   const [notice, setNotice] = useState<string | null>(null);
   const [uploading, setUploading] = useState<{ names: string; fraction: number } | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [search, setSearch] = useState<SearchQuery | null>(null);
+  const [chmodFor, setChmodFor] = useState<FileEntry[] | null>(null);
+  const [moving, setMoving] = useState<string[] | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const refresh = () => utils.files.list.invalidate({ uuid, path });
@@ -86,9 +109,11 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
   const del = trpc.files.delete.useMutation({ onSuccess: () => (setConfirmDelete(null), done(t.files.deleted)), onError: fail });
   const compress = trpc.files.compress.useMutation({ onSuccess: (r) => done(t.files.compressed(r.archive.name)), onError: fail });
   const decompress = trpc.files.decompress.useMutation({ onSuccess: () => done(t.files.decompressed), onError: fail });
+  const move = trpc.files.move.useMutation({ onSuccess: (_r, v) => (setMoving(null), done(t.files.moved(v.paths.length))), onError: fail });
   const uploadUrl = trpc.files.uploadUrl.useMutation();
   const downloadUrl = trpc.files.downloadUrl.useMutation();
-  const busy = mkdir.isPending || rename.isPending || del.isPending || compress.isPending || decompress.isPending || write.isPending;
+  const archiveUrl = trpc.files.archiveUrl.useMutation();
+  const busy = mkdir.isPending || rename.isPending || del.isPending || compress.isPending || decompress.isPending || write.isPending || move.isPending;
 
   const toggle = (p: string) =>
     setSelected((cur) => {
@@ -124,6 +149,26 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
       fail(e);
     }
   }
+
+  async function doArchive(root: string, paths: string[], format: ArchiveFormat) {
+    try {
+      const signed = await archiveUrl.mutateAsync({ uuid, root, paths, format });
+      downloadArchive(signed.url);
+    } catch (e) {
+      fail(e);
+    }
+  }
+  /** De huidige map als archief (de map zelf als bovenste map in het archief; "/" = alles). */
+  const downloadFolder = (format: ArchiveFormat) => (path === "/" ? doArchive("/", ["/"], format) : doArchive(parentPath(path), [path], format));
+  const selectedEntries = () => entries.filter((e) => selected.has(e.path));
+  const navigateFromSearch = (p: string) => {
+    setSearch(null);
+    onNavigate(p);
+  };
+  const editFromSearch = (p: string) => {
+    setSearch(null);
+    onEdit(p);
+  };
 
   function submitPrompt(name: string) {
     if (!prompt) return;
@@ -161,6 +206,8 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
           ))}
         </nav>
         <div className="flex flex-wrap items-center gap-2">
+          <FileSearchForm key={path} onSearch={setSearch} />
+          <ArchiveMenu label={t.files.downloadFolder} variant="ghost" onPick={(f) => void downloadFolder(f)} disabled={archiveUrl.isPending} />
           <Button variant="ghost" size="icon-sm" onClick={() => void list.refetch()} aria-label={t.common.refresh} title={t.common.refresh}>
             <RefreshCw className={cn(list.isFetching && "animate-spin")} />
           </Button>
@@ -202,6 +249,21 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
           <Progress value={uploading.fraction * 100} />
         </div>
       )}
+      {search && (
+        <FileSearchResults key={`${path}|${search.query}|${search.content}`} uuid={uuid} path={path} search={search} onClose={() => setSearch(null)} onNavigate={navigateFromSearch} onEdit={editFromSearch} />
+      )}
+      {moving && <MovePrompt count={moving.length} initial={path} pending={move.isPending} onCancel={() => setMoving(null)} onSubmit={(destination) => move.mutate({ uuid, paths: moving, destination })} />}
+      {chmodFor && (
+        <ChmodDialog
+          uuid={uuid}
+          entries={chmodFor}
+          onClose={() => setChmodFor(null)}
+          onDone={(n) => {
+            setChmodFor(null);
+            done(t.files.chmodDone(n));
+          }}
+        />
+      )}
       {prompt && <NamePrompt key={prompt.kind + (prompt.kind === "rename" ? prompt.entry.path : "")} prompt={prompt} pending={busy} onCancel={() => setPrompt(null)} onSubmit={submitPrompt} />}
 
       {selected.size > 0 && (
@@ -219,13 +281,21 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
             </>
           ) : (
             <>
-              {selected.size === 1 && !entries.find((e) => selected.has(e.path))?.isDirectory && (
+              {selected.size === 1 && !entries.find((e) => selected.has(e.path))?.isDirectory ? (
                 <Button size="sm" variant="outline" onClick={() => void doDownload([...selected][0]!)}>
                   <Download /> {t.files.download}
                 </Button>
+              ) : (
+                <ArchiveMenu label={t.files.download} variant="outline" onPick={(f) => void doArchive(path, [...selected], f)} disabled={archiveUrl.isPending} />
               )}
               {canWrite && (
                 <>
+                  <Button size="sm" variant="outline" onClick={() => setMoving([...selected])}>
+                    <FolderInput /> {t.files.move}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setChmodFor(selectedEntries())}>
+                    <KeyRound /> {t.files.permissions}
+                  </Button>
                   <Button size="sm" variant="outline" disabled={compress.isPending} onClick={() => compress.mutate({ uuid, root: path, paths: [...selected] })}>
                     {compress.isPending ? <Spinner /> : <Archive />} {t.files.compress}
                   </Button>
@@ -315,6 +385,8 @@ export function FileManager({ server, path, onNavigate, onEdit, upload = uploadF
                     onDownload={() => void doDownload(e.path)}
                     onRename={() => setPrompt({ kind: "rename", entry: e })}
                     onDecompress={() => decompress.mutate({ uuid, path: e.path })}
+                    onArchive={(f) => void doArchive(path, [e.path], f)}
+                    onChmod={() => setChmodFor([e])}
                     onDelete={() => {
                       setSelected(new Set([e.path]));
                       setConfirmDelete([e.path]);
@@ -341,6 +413,8 @@ function FileRow(props: {
   onDownload: () => void;
   onRename: () => void;
   onDecompress: () => void;
+  onArchive: (format: ArchiveFormat) => void;
+  onChmod: () => void;
   onDelete: () => void;
 }) {
   const t = useT();
@@ -376,7 +450,16 @@ function FileRow(props: {
                 <Pencil /> {canWrite ? t.files.edit : t.files.view}
               </DropdownMenuItem>
             )}
-            {!e.isDirectory && (
+            {e.isDirectory ? (
+              <>
+                <DropdownMenuItem onSelect={() => props.onArchive("zip")}>
+                  <Download /> {t.files.downloadZip}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => props.onArchive("tar.gz")}>
+                  <Download /> {t.files.downloadTarGz}
+                </DropdownMenuItem>
+              </>
+            ) : (
               <DropdownMenuItem onSelect={props.onDownload}>
                 <Download /> {t.files.download}
               </DropdownMenuItem>
@@ -386,6 +469,11 @@ function FileRow(props: {
                 <DropdownMenuItem onSelect={props.onRename}>
                   <Pencil /> {t.files.rename}
                 </DropdownMenuItem>
+                {!e.isSymlink && (
+                  <DropdownMenuItem onSelect={props.onChmod}>
+                    <KeyRound /> {t.files.permissions}
+                  </DropdownMenuItem>
+                )}
                 {isArchive(e.name) && (
                   <DropdownMenuItem onSelect={props.onDecompress}>
                     <Archive /> {t.files.extract}
@@ -431,6 +519,59 @@ function NamePrompt({ prompt, pending, onSubmit, onCancel }: { prompt: Prompt; p
       </div>
       <Button type="submit" disabled={pending}>
         {pending && <Spinner />} {prompt.kind === "rename" ? t.files.rename : t.common.create}
+      </Button>
+      <Button variant="ghost" onClick={onCancel}>
+        {t.common.cancel}
+      </Button>
+    </form>
+  );
+}
+
+/** Knop met keuze tussen .zip en .tar.gz. */
+function ArchiveMenu({ label, variant, onPick, disabled }: { label: string; variant: "outline" | "ghost"; onPick: (f: ArchiveFormat) => void; disabled?: boolean }) {
+  const t = useT();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button size="sm" variant={variant} disabled={disabled}>
+          {disabled ? <Spinner /> : <Download />} {label} <ChevronDown className="size-3.5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => onPick("zip")}>{t.files.downloadZip}</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onPick("tar.gz")}>{t.files.downloadTarGz}</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function MovePrompt({ count, initial, pending, onSubmit, onCancel }: { count: number; initial: string; pending: boolean; onSubmit: (dest: string) => void; onCancel: () => void }) {
+  const t = useT();
+  const [dest, setDest] = useState(initial);
+  const [touched, setTouched] = useState(false);
+  const err = dest.trim().startsWith("/") ? null : t.files.moveInvalid;
+  const submit = (ev: FormEvent) => {
+    ev.preventDefault();
+    setTouched(true);
+    if (!err) onSubmit(normalizePath(dest.trim()));
+  };
+  return (
+    <form onSubmit={submit} className="flex flex-wrap items-start gap-2 rounded-lg border border-border p-3" data-testid="move-prompt">
+      <div className="min-w-56 flex-1 space-y-1">
+        <Input
+          autoFocus
+          aria-label={t.files.movePrompt}
+          placeholder={t.files.movePrompt}
+          className="font-mono"
+          value={dest}
+          onChange={(e) => setDest(e.target.value)}
+          onKeyDown={(e) => e.key === "Escape" && onCancel()}
+          aria-invalid={(touched && !!err) || undefined}
+        />
+        {touched && err && <p className="text-xs text-destructive">{err}</p>}
+      </div>
+      <Button type="submit" disabled={pending}>
+        {pending && <Spinner />} {t.files.move} ({count})
       </Button>
       <Button variant="ghost" onClick={onCancel}>
         {t.common.cancel}
