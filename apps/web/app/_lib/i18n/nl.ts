@@ -579,6 +579,7 @@ export const nl: Dict = {
     date: "Gemaakt",
     withDatabases: "Met databases",
     checksum: "SHA-256",
+    failedReason: "Reden",
     download: "Downloaden",
     restore: "Herstellen",
     delete: "Verwijderen",

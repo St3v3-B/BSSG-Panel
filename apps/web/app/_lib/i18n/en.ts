@@ -580,6 +580,7 @@ export const en = {
     date: "Created",
     withDatabases: "With databases",
     checksum: "SHA-256",
+    failedReason: "Reason",
     download: "Download",
     restore: "Restore",
     delete: "Delete",
