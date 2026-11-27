@@ -72,4 +72,34 @@ describe.skipIf(!process.env.BENCH)("bench", () => {
     await time("admin.nodes.get(dead)", () => admin.api.admin.nodes.get({ id: nodeIds[2]! }), 3);
     await time("admin.nodes.get(slow)", () => admin.api.admin.nodes.get({ id: nodeIds[1]! }), 3);
   }, 300_000);
+
+  it("EXPLAIN van de hete queries op veel data (met en zonder de nieuwe indexen)", async () => {
+    const { sql } = await import("drizzle-orm");
+    const db = getDb();
+    const N = Number(process.env.BENCH_ROWS ?? 20000);
+    const tpl = await h.templateId("testgame");
+    await db.execute(sql`insert into servers (uuid, name, owner_id, node_id, template_id, type, cpu_pct, ram_mb, disk_mb, status)
+      select gen_random_uuid(), 'x' || g, ${admin.id}, ${nodeIds[0]}, ${tpl}, 'game', 100, 1024, 1024, 'offline' from generate_series(1, ${N}) g`);
+    await db.execute(sql`insert into allocations (node_id, ip, port, server_id, is_primary)
+      select ${nodeIds[0]}, '10.1.0.1', 30000 + s.id, s.id, true from servers s where s.name like 'x%'`);
+    await db.execute(sql`insert into subusers (server_id, user_id, permissions) select s.id, ${admin.id}, '{}' from servers s where s.name like 'x%' and s.id % 3 = 0`);
+    await db.execute(sql`insert into domains (server_id, hostname) select s.id, 'd' || s.id || '.test' from servers s where s.name like 'x%'`);
+    await db.execute(sql`analyze`);
+    const queries: Record<string, ReturnType<typeof sql>> = {
+      "allocations where server_id in (50 ids)": sql`select * from allocations where server_id in (select id from servers order by id desc limit 50)`,
+      "subusers where user_id": sql`select server_id from subusers where user_id = ${admin.id}`,
+      "domains where server_id in (50 ids)": sql`select server_id, hostname from domains where server_id in (select id from servers order by id desc limit 50)`,
+      "servers where status = install_failed": sql`select uuid from servers where status = 'install_failed'`,
+    };
+    const run = async (label: string) => {
+      for (const [name, q] of Object.entries(queries)) {
+        const rows = (await db.execute(sql`explain (analyze, format json) ${q}`)) as unknown as Array<Record<string, Array<{ "Execution Time": number; Plan: { "Node Type": string } }>>>;
+        const e = Object.values(rows[0]!)[0]![0]!;
+        console.log(`BENCH explain ${label.padEnd(12)} ${name.padEnd(42)} ${e["Execution Time"].toFixed(2).padStart(8)} ms  ${e.Plan["Node Type"]}`);
+      }
+    };
+    await run("met index");
+    for (const i of ["allocations_server_idx", "subusers_user_idx", "domains_server_idx", "servers_status_idx"]) await db.execute(sql.raw(`drop index ${i}`));
+    await run("zonder index");
+  }, 300_000);
 });
