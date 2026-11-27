@@ -6,7 +6,7 @@ import { activityPage } from "../activity-query";
 import { DaemonHttpError, call, daemonFor, toTrpcError } from "../daemon";
 import { getDb, schema } from "../db";
 import { getEnv } from "../env";
-import { applyServerState } from "../node-cache";
+import { applyServerState, getNodeLive, resolveStatus } from "../node-cache";
 import { signBrowserJwt } from "../lib/jwt";
 import { buildServerSpec, templateSleepCapable, validateVariables } from "../spec";
 import { serverNetwork } from "../network";
@@ -80,7 +80,12 @@ export const servers: Pick<
     const a = await requireServer(ctx, input.uuid, "power", { mutates: input.action === "start" || input.action === "restart" });
     await call(() => daemonFor(a.bundle.node).power(input.uuid, input.action));
     // Cache direct bijwerken; de daemon pusht de echte status en de monitor corrigeert zo nodig.
-    await applyServerState(a.bundle.node.id, input.uuid, POWER_STATE[input.action]).catch(() => {});
+    // Niet op "starting" zetten als de server al draait: anders blijft een start-klik op een
+    // online server (of een herhaalde start) de status op "starting" houden.
+    const live = await getNodeLive(a.bundle.node.id).catch(() => null);
+    const current = resolveStatus(live, input.uuid, a.bundle.server.status).status;
+    const alreadyUp = input.action === "start" && (current === "online" || current === "starting");
+    if (!alreadyUp) await applyServerState(a.bundle.node.id, input.uuid, POWER_STATE[input.action]).catch(() => {});
     await logActivity({ action: `server.power.${input.action}`, userId: ctx.session!.userId, serverId: a.bundle.server.id, ip: ctx.ip, ctx });
     return ok;
   },
