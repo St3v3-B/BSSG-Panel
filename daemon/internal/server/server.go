@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"panel/daemon/internal/engine"
+	"panel/daemon/internal/mcproto"
 	"panel/daemon/internal/spec"
 )
 
@@ -67,6 +68,7 @@ type persisted struct {
 	InstalledAt   *time.Time      `json:"installed_at"`
 	InstallFailed bool            `json:"install_failed,omitempty"`
 	InstallError  string          `json:"install_error,omitempty"`
+	Sleeping      bool            `json:"sleeping,omitempty"`
 }
 
 // run is één draaiende container.
@@ -117,6 +119,10 @@ type Server struct {
 	diskStopping  bool
 	diskGrowth    int64 // recente groei (afnemend gemiddelde)
 	deleted       bool
+	sleepL        *mcproto.Listener
+	sleepPending  bool // stop wegens slaapstand loopt: exit → sleeping
+	idleSince     time.Time
+	wasSleeping   bool // uit de opgeslagen staat (Recover)
 }
 
 func (s *Server) UUID() string { return s.uuid }
@@ -178,7 +184,8 @@ func (s *Server) Logs(n int) []string {
 }
 
 func (s *Server) persistLocked() error {
-	p := persisted{Spec: s.spec, InstalledAt: s.installedAt, InstallFailed: s.installFailed, InstallError: s.installError}
+	p := persisted{Spec: s.spec, InstalledAt: s.installedAt, InstallFailed: s.installFailed, InstallError: s.installError,
+		Sleeping: s.state == StateSleeping}
 	return s.m.writeState(s.uuid, p)
 }
 
@@ -217,7 +224,13 @@ func (s *Server) setStateLocked(st string) {
 	if s.state == st {
 		return
 	}
+	old := s.state
 	s.state = st
+	if (old == StateSleeping || st == StateSleeping) && !s.deleted {
+		if err := s.persistLocked(); err != nil {
+			s.m.log.Warn("staat opslaan mislukt", "uuid", s.uuid, "err", err)
+		}
+	}
 	s.publishLocked(Msg{"event": "status", "state": st})
 	s.m.rep.ReportStatus(s.uuid, st)
 	if s.m.onState != nil {

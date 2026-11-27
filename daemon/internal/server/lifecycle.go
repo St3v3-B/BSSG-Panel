@@ -196,6 +196,7 @@ func (s *Server) doStart() error {
 	if s.DiskExceeded() {
 		return ErrDiskExceeded
 	}
+	s.stopSleepListener() // poort vrijgeven vóór de container hem bindt
 	s.setState(StateStarting)
 	if err := s.launch(sp); err != nil {
 		s.setState(StateOffline)
@@ -261,6 +262,7 @@ func (s *Server) attachRun(id string, att engine.Attachment, startedAt time.Time
 	s.run = r
 	s.startedAt = &t
 	s.sample = engine.StatsSample{}
+	s.idleSince = time.Time{}
 	s.mu.Unlock()
 
 	logsDone := make(chan struct{})
@@ -296,6 +298,8 @@ func (s *Server) attachRun(id string, att engine.Attachment, startedAt time.Time
 			wasStopping := s.state == StateStopping
 			if s.diskExceeded {
 				s.setStateLocked(StateDiskExceeded)
+			} else if s.sleepPending {
+				s.setStateLocked(StateSleeping)
 			} else {
 				s.setStateLocked(StateOffline)
 			}
@@ -339,6 +343,10 @@ func (s *Server) doStop(kill bool) error {
 	sp := s.spec
 	s.mu.Unlock()
 	if r == nil {
+		if s.State() == StateSleeping {
+			s.stopSleepListener()
+			s.setState(StateOffline)
+		}
 		return nil
 	}
 	eng := s.m.eng
@@ -522,6 +530,18 @@ func (s *Server) Update(sp spec.ServerSpec) error {
 	if stop {
 		go s.stopForDisk()
 	}
+	if s.State() == StateSleeping {
+		go func() {
+			s.opMu.Lock()
+			defer s.opMu.Unlock()
+			s.stopSleepListener()
+			if s.Spec().Sleep == nil {
+				s.setState(StateOffline)
+			} else {
+				s.startSleepListener() // eventueel nieuwe poort of teksten
+			}
+		}()
+	}
 	if r != nil {
 		if err := s.m.eng.Update(s.ctx, r.id, resources(sp.Limits)); err != nil {
 			s.m.log.Warn("limieten bijwerken mislukt", "uuid", s.uuid, "err", err)
@@ -541,6 +561,7 @@ func (s *Server) destroy() error {
 
 	s.opMu.Lock()
 	defer s.opMu.Unlock()
+	s.stopSleepListener()
 	s.mu.Lock()
 	r := s.run
 	s.run = nil
