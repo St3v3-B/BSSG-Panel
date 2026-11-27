@@ -282,6 +282,7 @@ export function MoveNodeCard({ server, onMoved }: { server: ServerDetail; onMove
             )}
           </div>
         )}
+        {server.allocations.some((a) => a.role === "bedrock") && <p className="text-sm text-muted-foreground" data-testid="move-bedrock-hint">{t.adminServer.moveBedrockHint}</p>}
         {move.error && <AdminError error={move.error} />}
         {move.isSuccess && (
           <p className="text-sm text-success" role="status">

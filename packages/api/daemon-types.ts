@@ -13,6 +13,7 @@ export type RemoteSchemas = R["schemas"];
 export type DaemonServerSpec = D["schemas"]["ServerSpec"];
 export type DaemonServerState = D["schemas"]["ServerState"];
 export type DaemonStats = D["schemas"]["Stats"];
+export type DaemonServerStats = D["schemas"]["ServerStats"];
 export type DaemonSystemInfo = D["schemas"]["SystemInfo"];
 export type DaemonRoute = D["schemas"]["Route"];
 export type DaemonRouteWithStatus = D["schemas"]["RouteWithStatus"];

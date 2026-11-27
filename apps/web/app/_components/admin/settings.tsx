@@ -24,11 +24,11 @@ export function SettingsAdmin() {
   const s = t.admin2.settings;
   const utils = trpc.useUtils();
   const q = trpc.admin.settings.get.useQuery();
-  const [form, setForm] = useState<null | { panelName: string; logoUrl: string; accentColor: string; cpuPct: string; ramMb: string; swapMb: string; diskMb: string; promo: string; showLogoIcon: boolean; seedLogoIcon: boolean }>(null);
+  const [form, setForm] = useState<null | { panelName: string; logoUrl: string; accentColor: string; cpuPct: string; ramMb: string; swapMb: string; diskMb: string; promo: string; showLogoIcon: boolean; seedLogoIcon: boolean; retentionDays: string }>(null);
   useEffect(() => {
     if (q.data && !form) {
       const d = q.data;
-      setForm({ panelName: d.panelName, logoUrl: d.logoUrl ?? "", accentColor: d.accentColor, cpuPct: String(d.defaultLimits.cpuPct), ramMb: String(d.defaultLimits.ramMb), swapMb: String(d.defaultLimits.swapMb), diskMb: String(d.defaultLimits.diskMb), promo: d.sleepMotd.promo, showLogoIcon: d.sleepMotd.showLogoIcon, seedLogoIcon: d.sleepMotd.seedLogoIcon });
+      setForm({ panelName: d.panelName, logoUrl: d.logoUrl ?? "", accentColor: d.accentColor, cpuPct: String(d.defaultLimits.cpuPct), ramMb: String(d.defaultLimits.ramMb), swapMb: String(d.defaultLimits.swapMb), diskMb: String(d.defaultLimits.diskMb), promo: d.sleepMotd.promo, showLogoIcon: d.sleepMotd.showLogoIcon, seedLogoIcon: d.sleepMotd.seedLogoIcon, retentionDays: String(d.activityRetentionDays) });
     }
   }, [q.data, form]);
   const save = trpc.admin.settings.update.useMutation({
@@ -40,10 +40,10 @@ export function SettingsAdmin() {
   const [touched, setTouched] = useState(false);
   if (q.error) return <QueryError error={q.error} />;
   if (!form) return <Skeleton className="h-64 rounded-xl" />;
-  const set = (k: "panelName" | "logoUrl" | "accentColor" | "cpuPct" | "ramMb" | "swapMb" | "diskMb" | "promo") => (e: React.ChangeEvent<HTMLInputElement>) => (save.reset(), setForm({ ...form, [k]: e.target.value }));
+  const set = (k: "panelName" | "logoUrl" | "accentColor" | "cpuPct" | "ramMb" | "swapMb" | "diskMb" | "promo" | "retentionDays") => (e: React.ChangeEvent<HTMLInputElement>) => (save.reset(), setForm({ ...form, [k]: e.target.value }));
   const int = (v: string) => Math.trunc(Number(v));
   const limits = { cpuPct: int(form.cpuPct), ramMb: int(form.ramMb), swapMb: int(form.swapMb), diskMb: int(form.diskMb) };
-  const invalid = !form.panelName.trim() || !HEX.test(form.accentColor) || Object.values(limits).some((v) => !Number.isFinite(v)) || limits.cpuPct < 0 || limits.ramMb < 64 || limits.swapMb < -1 || limits.diskMb < 0 || form.promo.length > 120;
+  const invalid = !form.panelName.trim() || !HEX.test(form.accentColor) || Object.values(limits).some((v) => !Number.isFinite(v)) || limits.cpuPct < 0 || limits.ramMb < 64 || limits.swapMb < -1 || limits.diskMb < 0 || form.promo.length > 120 || !/^\d{1,4}$/.test(form.retentionDays.trim()) || int(form.retentionDays) > 3650;
 
   return (
     <form
@@ -53,7 +53,7 @@ export function SettingsAdmin() {
         e.preventDefault();
         setTouched(true);
         if (invalid) return;
-        save.mutate({ panelName: form.panelName.trim(), logoUrl: form.logoUrl.trim() || null, accentColor: form.accentColor, defaultLimits: limits, sleepMotd: { promo: form.promo.trim(), showLogoIcon: form.showLogoIcon, seedLogoIcon: form.seedLogoIcon } });
+        save.mutate({ panelName: form.panelName.trim(), logoUrl: form.logoUrl.trim() || null, accentColor: form.accentColor, defaultLimits: limits, sleepMotd: { promo: form.promo.trim(), showLogoIcon: form.showLogoIcon, seedLogoIcon: form.seedLogoIcon }, activityRetentionDays: int(form.retentionDays) });
       }}
     >
       <Card>
@@ -125,6 +125,17 @@ export function SettingsAdmin() {
             <input type="checkbox" checked={form.seedLogoIcon} onChange={(e) => (save.reset(), setForm({ ...form, seedLogoIcon: e.target.checked }))} />
             {s.seedLogoIcon}
           </label>
+        </CardContent>
+      </Card>
+      <Card data-testid="retention-card">
+        <CardHeader>
+          <CardTitle className="text-base">{s.retentionTitle}</CardTitle>
+          <CardDescription>{s.retentionHint}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Field id="set-retention" label={s.activityRetention} hint={s.activityRetentionHint}>
+            <Input id="set-retention" type="number" value={form.retentionDays} onChange={set("retentionDays")} className="w-32" />
+          </Field>
         </CardContent>
       </Card>
       {touched && invalid && (

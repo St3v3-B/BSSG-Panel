@@ -1,10 +1,10 @@
 /** backups.* (backup.create / backup.restore) en admin.s3Targets.*. */
 import type { Ctx, Implementation } from "@panel/api";
 import { TRPCError } from "@trpc/server";
-import { asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { logActivity } from "../activity";
 import { databaseCredentials, deleteBackup, startBackup, toBackup } from "../backups";
-import { call, daemonFor } from "../daemon";
+import { DaemonHttpError, call, daemonFor, toTrpcError } from "../daemon";
 import { getDb, schema } from "../db";
 import { decrypt, encrypt } from "../lib/crypto";
 import { presignGet, s3Credentials, testTarget } from "../lib/s3";
@@ -33,6 +33,7 @@ async function targetOf(b: BackupRow): Promise<S3Row> {
   return t;
 }
 
+const ACTIVE = ["pending", "running", "restoring"] as const;
 const hasAny = (a: ServerAccess) => a.permissions.includes("backup.create") || a.permissions.includes("backup.restore");
 
 export const backups: Implementation["backups"] = {
@@ -83,7 +84,54 @@ export const backups: Implementation["backups"] = {
     await logActivity({ action: "server.backup.download", userId: uid(ctx), serverId: b.serverId, metadata: { id: b.id }, ip: ctx.ip, ctx });
     return { url, expiresAt: new Date(Date.now() + seconds * 1000) };
   },
+
+  progress: async ({ input, ctx }) => {
+    const a = await requireServer(ctx, input.uuid, "any");
+    if (!hasAny(a)) throw new TRPCError({ code: "FORBIDDEN", message: "MISSING_PERMISSION: backup.create" });
+    // Alleen de daemon vragen als er volgens de database iets loopt.
+    const [active] = await getDb()
+      .select({ id: schema.backups.id })
+      .from(schema.backups)
+      .where(and(eq(schema.backups.serverId, a.bundle.server.id), inArray(schema.backups.status, ACTIVE)))
+      .limit(1);
+    if (!active) return null;
+    let p;
+    try {
+      p = await daemonFor(a.bundle.node).backupProgress(input.uuid);
+    } catch {
+      return null; // node onbereikbaar of oude daemon: de UI valt terug op "loopt"
+    }
+    if (!p) return null;
+    return {
+      backupId: p.backup_id,
+      operation: p.operation,
+      phase: p.phase,
+      bytes: p.bytes,
+      totalBytes: p.total_bytes,
+      percent: Math.max(0, Math.min(100, p.percent)),
+      etaSeconds: p.eta_seconds ?? null,
+      startedAt: new Date(p.started_at),
+      cancellable: p.cancellable,
+    };
+  },
+
+  cancel: async ({ input, ctx }) => {
+    const [row] = await getDb().select({ status: schema.backups.status }).from(schema.backups).where(eq(schema.backups.id, input.id));
+    const restoring = row?.status === "restoring";
+    const { b, a, uuid } = await backupFor(ctx, input.id, restoring ? "backup.restore" : "backup.create");
+    if (!(ACTIVE as readonly string[]).includes(b.status)) throw new TRPCError({ code: "CONFLICT", message: "BACKUP_NOT_RUNNING" });
+    try {
+      await daemonFor(a.bundle.node).cancelBackup(uuid, b.id);
+    } catch (e) {
+      if (e instanceof DaemonHttpError && e.status === 404 && e.code === "not_running") throw new TRPCError({ code: "CONFLICT", message: "BACKUP_NOT_RUNNING" });
+      if (e instanceof DaemonHttpError && e.status === 409) throw new TRPCError({ code: "CONFLICT", message: "BACKUP_NOT_CANCELLABLE" });
+      throw toTrpcError(e);
+    }
+    await logActivity({ action: restoring ? "server.backup.restore.cancel" : "server.backup.cancel", userId: uid(ctx), serverId: b.serverId, metadata: { id: b.id, name: b.name }, ip: ctx.ip, ctx });
+    return ok;
+  },
 };
+
 
 // ---------- admin.s3Targets ----------
 

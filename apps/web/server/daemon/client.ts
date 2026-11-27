@@ -3,7 +3,7 @@
  * Netwerkfout of timeout → DaemonUnreachableError; HTTP-fout → DaemonHttpError.
  */
 import { openAsBlob } from "node:fs";
-import type { DaemonChmodRequest, DaemonFileEntry, DaemonSchemas, DaemonSearchResult, DaemonRoute, DaemonRouteWithStatus, DaemonServerSpec, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
+import type { DaemonChmodRequest, DaemonFileEntry, DaemonSchemas, DaemonSearchResult, DaemonRoute, DaemonRouteWithStatus, DaemonServerSpec, DaemonServerStats, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
 
 type DaemonBackupRequest = DaemonSchemas["BackupRequest"];
 type DaemonRestoreRequest = DaemonSchemas["RestoreRequest"];
@@ -146,6 +146,11 @@ export class DaemonClient {
   stats(uuid: string, timeoutMs?: number) {
     return this.request<DaemonStats>("GET", `/api/servers/${uuid}/stats`, undefined, timeoutMs);
   }
+
+  /** Alle draaiende servers in één keer (404 bij een oudere daemon). */
+  allStats(timeoutMs?: number) {
+    return this.request<{ servers: DaemonServerStats[] }>("GET", "/api/stats", undefined, timeoutMs);
+  }
   logs(uuid: string, lines = 100) {
     return this.request<{ lines: string[] }>("GET", `/api/servers/${uuid}/logs?lines=${lines}`);
   }
@@ -218,6 +223,13 @@ export class DaemonClient {
   }
   restoreBackup(uuid: string, backupId: number, body: DaemonRestoreRequest) {
     return this.request<void>("POST", `/api/servers/${uuid}/backups/${backupId}/restore`, body, 30_000);
+  }
+  /** Lopende backup of herstel van deze server (null = niets). */
+  async backupProgress(uuid: string, timeoutMs = 3000): Promise<DaemonSchemas["BackupProgress"] | null> {
+    return (await this.request<{ progress: DaemonSchemas["BackupProgress"] | null }>("GET", `/api/servers/${uuid}/backups/progress`, undefined, timeoutMs)).progress;
+  }
+  cancelBackup(uuid: string, backupId: number) {
+    return this.request<void>("POST", `/api/servers/${uuid}/backups/${backupId}/cancel`, undefined, 10_000);
   }
 
   // ---------- verplaatsen tussen nodes ----------

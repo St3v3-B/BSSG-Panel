@@ -12,6 +12,7 @@ import type * as s from "../schemas";
 import type { Implementation, SessionCtx } from "../trpc-builder";
 import { contentProfile } from "../content";
 import * as data from "./data";
+import { mockHistory, mockSparkline } from "./stats";
 
 const MOCK_HITS: s.ContentHit[] = [
   { source: "modrinth", projectId: "fabric-api", name: "Fabric API", description: "Core API for Fabric mods", author: "modmuss50", downloads: 100000000, iconUrl: null, url: "https://modrinth.com/mod/fabric-api" },
@@ -63,7 +64,7 @@ export function createMock(): Implementation {
     apiKeys: [] as s.ApiKey[],
     phpSettings: new Map<string, s.PhpSettings>(),
     admins: ["100000000000000001"],
-    settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 }, imageUpdates: { defaultPolicy: "notify", windowStart: "04:00", windowEnd: "05:00" }, sleepMotd: { promo: "&e⚡ &fJoin to wake it up &8• &7Hosted on &b&lBSSG Panel", showLogoIcon: true, seedLogoIcon: true } } as s.Settings,
+    settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 }, imageUpdates: { defaultPolicy: "notify", windowStart: "04:00", windowEnd: "05:00" }, sleepMotd: { promo: "&e⚡ &fJoin to wake it up &8• &7Hosted on &b&lBSSG Panel", showLogoIcon: true, seedLogoIcon: true }, activityRetentionDays: 90 } as s.Settings,
     totpEnabled: new Map<number, boolean>([[1, true]]),
     quotas: new Map<number, s.QuotaInput>([[2, { maxRamMb: 4096, maxDiskMb: 50_000, maxCpuPct: 300, maxServers: 3, maxDatabases: 2, templateIds: null, nodeIds: null, maxPortsPerServer: 2 }]]),
     webhooks: new Map<string, s.WebhookStatus>(),
@@ -290,6 +291,22 @@ export function createMock(): Implementation {
         const x = srv(input.uuid);
         return x.status === "online" || x.status === "starting" ? fakeStats(x) : null;
       },
+      statsHistory: ({ input, ctx }) => {
+        const x = srv(input.uuid);
+        const u = uid(ctx);
+        if (x.ownerId !== u && u !== 1 && !db.subusers.some((su) => su.serverUuid === x.uuid && su.userId === u)) throw new TRPCError({ code: "NOT_FOUND", message: "server" });
+        return mockHistory(x, input.range);
+      },
+      statsSparklines: ({ input, ctx }) => {
+        const u = uid(ctx);
+        const out: Record<string, s.StatsSparkline> = {};
+        for (const x of db.servers) {
+          if (!input.uuids.includes(x.uuid)) continue;
+          if (x.ownerId !== u && u !== 1 && !db.subusers.some((su) => su.serverUuid === x.uuid && su.userId === u)) continue;
+          out[x.uuid] = mockSparkline(x);
+        }
+        return out;
+      },
       power: ({ input }) => {
         const x = srv(input.uuid);
         x.status = input.action === "stop" || input.action === "kill" ? "offline" : "online";
@@ -504,6 +521,26 @@ export function createMock(): Implementation {
       restore: () => ok,
       delete: ({ input }) => ((db.backups = db.backups.filter((b) => b.id !== input.id)), ok),
       downloadUrl: ({ input }) => ({ url: `https://s3.test/backups/${input.id}.tar.zst`, expiresAt: new Date(Date.now() + 10 * 60_000) }),
+      // Nep-voortgang: een backup duurt 60 s over 512 MB en is daarna klaar.
+      progress: ({ input }) => {
+        const b = db.backups.find((x) => x.serverUuid === input.uuid && (x.status === "running" || x.status === "pending" || x.status === "restoring"));
+        if (!b) return null;
+        const total = 512 * 1024 * 1024;
+        const elapsed = Date.now() - b.createdAt.getTime();
+        if (elapsed >= 60_000) {
+          Object.assign(b, { status: "completed", sizeBytes: total / 2, sha256: "f".repeat(64), completedAt: new Date() });
+          return null;
+        }
+        const frac = elapsed / 60_000;
+        const restore = b.status === "restoring";
+        return { backupId: b.id, operation: restore ? "restore" : "backup", phase: restore ? "downloading" : "archiving", bytes: Math.round(total * frac), totalBytes: total, percent: Math.min(99, Math.floor(frac * 100)), etaSeconds: elapsed > 1000 ? Math.round((60_000 - elapsed) / 1000) : null, startedAt: b.createdAt, cancellable: true };
+      },
+      cancel: ({ input }) => {
+        const b = db.backups.find((x) => x.id === input.id) ?? notFound("backup");
+        if (b.status === "restoring") b.status = "completed";
+        else Object.assign(b, { status: "failed", error: "cancelled", completedAt: new Date() });
+        return ok;
+      },
     },
     schedules: {
       list: ({ input }) => db.schedules.filter((x) => x.serverUuid === input.uuid),

@@ -314,7 +314,7 @@ paths:
                 successful: { type: boolean }
                 sha256: { type: [string, "null"] }
                 size_bytes: { type: [integer, "null"], format: int64 }
-                error: { type: [string, "null"] }
+                error: { type: [string, "null"], description: "`cancelled` als het panel de backup afbrak (POST .../cancel)" }
       responses:
         "204": { description: OK }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -337,7 +337,7 @@ paths:
               required: [successful]
               properties:
                 successful: { type: boolean }
-                error: { type: [string, "null"] }
+                error: { type: [string, "null"], description: "`cancelled` als het panel het herstel afbrak (de data is dan ongewijzigd)" }
       responses:
         "204": { description: OK }
         "401": { $ref: "#/components/responses/Unauthorized" }

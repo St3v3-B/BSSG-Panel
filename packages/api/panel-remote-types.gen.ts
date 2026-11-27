@@ -703,6 +703,7 @@ export interface operations {
                     sha256?: string | null;
                     /** Format: int64 */
                     size_bytes?: number | null;
+                    /** @description `cancelled` als het panel de backup afbrak (POST .../cancel) */
                     error?: string | null;
                 };
             };
@@ -732,6 +733,7 @@ export interface operations {
             content: {
                 "application/json": {
                     successful: boolean;
+                    /** @description `cancelled` als het panel het herstel afbrak (de data is dan ongewijzigd) */
                     error?: string | null;
                 };
             };

@@ -164,6 +164,47 @@ export const Stats = z.object({
 });
 export type Stats = z.infer<typeof Stats>;
 
+/** Periode voor `servers.statsHistory`. */
+export const StatsRange = z.enum(["1h", "24h", "7d", "30d"]);
+export type StatsRange = z.infer<typeof StatsRange>;
+
+/**
+ * Eén stap in de verbruiksgeschiedenis. Alle meetwaarden null = geen meting (server uit of node
+ * onbereikbaar): de grafiek toont dan een gat. Gemiddelden over de stap, plus de piek van CPU/RAM.
+ */
+export const StatsPoint = z.object({
+  t: z.date(), // begin van de stap
+  cpuPct: z.number().nullable(), // 100 = één core vol
+  cpuMaxPct: z.number().nullable(),
+  memoryBytes: z.number().nullable(),
+  memoryMaxBytes: z.number().nullable(),
+  diskBytes: z.number().nullable(),
+  rxBytesPerSec: z.number().nullable(),
+  txBytesPerSec: z.number().nullable(),
+});
+export type StatsPoint = z.infer<typeof StatsPoint>;
+
+export const StatsHistory = z.object({
+  range: StatsRange,
+  stepSeconds: z.number().int().positive(),
+  from: z.date(),
+  to: z.date(),
+  /** Huidige limieten (0 = onbeperkt), voor een limietlijn in de grafiek. */
+  cpuLimitPct: z.number(),
+  memoryLimitBytes: z.number(),
+  diskLimitBytes: z.number(),
+  /** Op volgorde, elke stap precies één keer (dus ook de gaten). */
+  points: z.array(StatsPoint),
+});
+export type StatsHistory = z.infer<typeof StatsHistory>;
+
+/** Compacte reeks voor de serverkaarten: de laatste 60 minuten per minuut, null = geen meting. */
+export const StatsSparkline = z.object({
+  cpuPct: z.array(z.number().nullable()),
+  memoryBytes: z.array(z.number().nullable()),
+});
+export type StatsSparkline = z.infer<typeof StatsSparkline>;
+
 /** Beleid voor image-updates (zie docs bij `servers.updateImagePolicy`). */
 export const ImagePolicy = z.enum(["auto", "notify", "off"]);
 export type ImagePolicy = z.infer<typeof ImagePolicy>;
@@ -494,6 +535,25 @@ export const Backup = z.object({
 });
 export type Backup = z.infer<typeof Backup>;
 
+/** Live voortgang van een lopende backup of herstel (BackupProgress van de daemon). */
+export const BackupPhase = z.enum(["preparing", "dumping", "archiving", "stopping", "downloading", "applying", "finishing", "done", "failed", "cancelled"]);
+export type BackupPhase = z.infer<typeof BackupPhase>;
+export const BackupProgress = z.object({
+  backupId: Id,
+  operation: z.enum(["backup", "restore"]),
+  phase: BackupPhase,
+  /** Verwerkt in deze fase (brondata bij een backup, gedownload bij een herstel). */
+  bytes: z.number(),
+  /** 0 = onbekend */
+  totalBytes: z.number(),
+  percent: z.number().min(0).max(100),
+  /** Geschatte resterende seconden; null = onbekend. */
+  etaSeconds: z.number().nullable(),
+  startedAt: z.date(),
+  cancellable: z.boolean(),
+});
+export type BackupProgress = z.infer<typeof BackupProgress>;
+
 // ---------- schema's ----------
 
 export const ScheduleAction = z.enum(["restart", "command", "backup", "exec"]);
@@ -774,6 +834,8 @@ export const Settings = Branding.extend({
   defaultLimits: Limits,
   imageUpdates: ImageUpdateSettings,
   sleepMotd: SleepMotdSettings,
+  /** Activiteitenlog zoveel dagen bewaren; 0 = altijd. Oudere regels ruimt een periodieke taak op. */
+  activityRetentionDays: z.number().int().min(0).max(3650),
 });
 export type Settings = z.infer<typeof Settings>;
 

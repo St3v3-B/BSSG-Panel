@@ -1,5 +1,5 @@
 "use client";
-import { Archive, CalendarClock, Database, FolderOpen, Globe, Network, Smartphone, PackagePlus, Puzzle, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
+import { Archive, CalendarClock, ChartLine, Database, FolderOpen, Globe, Network, Smartphone, PackagePlus, Puzzle, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
@@ -23,6 +23,7 @@ export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner
   const has = (p: Permission) => server.permissions.includes(p);
   const l = getT().server.tabs;
   const tabs: ServerTab[] = [server.type === "web" ? { key: "console", href: base, label: l.logs, icon: ScrollText } : { key: "console", href: base, label: l.console, icon: SquareTerminal }];
+  if (has("console.read")) tabs.push({ key: "stats", href: `${base}/stats`, label: l.stats, icon: ChartLine });
   if (has("files.read")) tabs.push({ key: "files", href: `${base}/files`, label: l.files, icon: FolderOpen });
   if (server.content && has("files.read")) tabs.push({ key: "content", href: `${base}/content`, label: server.content === "plugin" ? l.plugins : l.mods, icon: Puzzle });
   if ((server.type === "web" || server.domainsAllowed) && has("domain.manage")) tabs.push({ key: "domains", href: `${base}/domains`, label: l.domains, icon: Globe });

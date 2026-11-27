@@ -259,6 +259,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Laatste meting van alle draaiende servers in één keer
+         * @description Voor de verbruiksgrafieken: het panel vraagt dit elke minuut per node. Alleen servers met een
+         *     draaiende container staan erin. Oudere daemons kennen dit pad niet (404); het panel valt dan
+         *     terug op `GET /api/servers/{uuid}/stats` per draaiende server.
+         */
+        get: operations["listStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{uuid}/ws": {
         parameters: {
             query?: never;
@@ -584,6 +606,54 @@ export interface paths {
          * @description Resultaat via `POST /api/remote/backups/{backup_id}` naar het panel.
          */
         post: operations["createBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/backups/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Voortgang van de lopende backup of het lopende herstel van deze server
+         * @description `progress` is null als er niets loopt (ook direct na een daemon-herstart: lopend werk overleeft die niet).
+         */
+        get: operations["getBackupProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/backups/{backup_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                backup_id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lopende backup of herstel afbreken
+         * @description Een backup kan tot het afronden worden afgebroken (het half geüploade object wordt verwijderd); een herstel alleen
+         *     tijdens `stopping` en `downloading`, dus voordat de data wordt omgewisseld: de oude data blijft dan heel en een
+         *     server die draaide start weer. Het resultaat komt zoals altijd via `POST /api/remote/backups/{backup_id}[/restore]`,
+         *     met `successful: false` en `error: "cancelled"`.
+         */
+        post: operations["cancelBackup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -964,6 +1034,10 @@ export interface components {
              */
             uptime_ms: number;
         };
+        ServerStats: components["schemas"]["Stats"] & {
+            /** Format: uuid */
+            uuid: string;
+        };
         Limits: {
             /** @description 100 = één core, 0 = onbeperkt */
             cpu_pct: number;
@@ -1167,6 +1241,37 @@ export interface components {
             /** @description Dumps komen in het archief onder `_databases/{name}.sql` */
             databases: components["schemas"]["DatabaseCredentials"][];
         };
+        BackupProgress: {
+            backup_id: number;
+            /** @enum {string} */
+            operation: "backup" | "restore";
+            /**
+             * @description backup: preparing (meten) → dumping (alleen met databases) → archiving (streamen naar S3) → finishing.
+             *     herstel: stopping → downloading (downloaden + checksum + uitpakken) → applying (omwisselen + databases) → finishing.
+             *     `done`/`failed`/`cancelled` alleen in het laatste websocket-bericht.
+             * @enum {string}
+             */
+            phase: "preparing" | "dumping" | "archiving" | "stopping" | "downloading" | "applying" | "finishing" | "done" | "failed" | "cancelled";
+            /**
+             * Format: int64
+             * @description verwerkt in deze fase: gelezen brondata (backup) of gedownloade bytes (herstel)
+             */
+            bytes: number;
+            /**
+             * Format: int64
+             * @description 0 = onbekend
+             */
+            total_bytes: number;
+            percent: number;
+            /**
+             * Format: int64
+             * @description geschatte resterende tijd van de fase; null = onbekend
+             */
+            eta_seconds: number | null;
+            /** Format: date-time */
+            started_at: string;
+            cancellable: boolean;
+        };
         RestoreRequest: {
             s3: components["schemas"]["S3Credentials"];
             key: string;
@@ -1233,9 +1338,17 @@ export interface components {
             state?: string;
             message?: string;
             backup_id?: number;
+            /** @enum {string} */
+            operation?: "backup" | "restore";
+            phase?: string;
             /** Format: int64 */
             bytes?: number;
+            /** Format: int64 */
+            total_bytes?: number;
             percent?: number;
+            /** Format: int64 */
+            eta_seconds?: number | null;
+            cancellable?: boolean;
             cpu_pct?: number;
             /** Format: int64 */
             memory_bytes?: number;
@@ -1823,6 +1936,29 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metingen per server */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        servers: components["schemas"]["ServerStats"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     websocket: {
         parameters: {
             query?: never;
@@ -2327,6 +2463,72 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getBackupProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        progress: components["schemas"]["BackupProgress"] | null;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    cancelBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                backup_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Annuleren gestart */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Server onbekend, of `not_running`: deze backup loopt niet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `not_cancellable`: het herstel wisselt al om of de backup rondt af */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     restoreBackup: {

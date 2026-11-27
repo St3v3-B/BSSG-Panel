@@ -122,6 +122,7 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("GET /api/servers/{uuid}/stats", p(a.withServer(a.stats)))
 	mux.Handle("GET /api/servers/{uuid}/network", p(a.withServer(a.getProxyNetwork)))
 	mux.Handle("PUT /api/servers/{uuid}/network", p(a.withServer(a.setProxyNetwork)))
+	mux.Handle("GET /api/stats", p(a.allStats))
 	mux.HandleFunc("GET /api/servers/{uuid}/ws", a.websocket)
 
 	mux.Handle("GET /api/servers/{uuid}/files/list", p(a.withServer(a.listFiles)))
@@ -145,6 +146,8 @@ func (a *API) Handler() http.Handler {
 
 	mux.Handle("POST /api/servers/{uuid}/backups", p(a.withServer(a.createBackup)))
 	mux.Handle("POST /api/servers/{uuid}/backups/{backup_id}/restore", p(a.withServer(a.restoreBackup)))
+	mux.Handle("GET /api/servers/{uuid}/backups/progress", p(a.withServer(a.backupProgress)))
+	mux.Handle("POST /api/servers/{uuid}/backups/{backup_id}/cancel", p(a.withServer(a.cancelBackup)))
 
 	mux.Handle("GET /api/db/status", p(a.dbStatus))
 	mux.Handle("POST /api/db/databases", p(a.dbCreate))
@@ -408,6 +411,22 @@ func (a *API) logs(w http.ResponseWriter, r *http.Request, s *server.Server) {
 
 func (a *API) stats(w http.ResponseWriter, _ *http.Request, s *server.Server) {
 	writeJSON(w, http.StatusOK, s.Stats())
+}
+
+type serverStats struct {
+	UUID string `json:"uuid"`
+	server.Stats
+}
+
+// allStats: de laatste meting van alle draaiende servers (voor de verbruiksgrafieken van het panel).
+func (a *API) allStats(w http.ResponseWriter, _ *http.Request) {
+	out := []serverStats{}
+	for _, s := range a.mgr.List() {
+		if st, ok := s.RunningStats(); ok {
+			out = append(out, serverStats{UUID: s.UUID(), Stats: st})
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string][]serverStats{"servers": out})
 }
 
 // updateDaemon: alleen met het node-token (protect); een browser-JWT volstaat niet.

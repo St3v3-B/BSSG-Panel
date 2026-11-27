@@ -2,7 +2,7 @@
 import type { CSSProperties } from "react";
 import { Gamepad2, Globe, Moon, Play } from "lucide-react";
 import Link from "next/link";
-import type { ServerSummary } from "@panel/api";
+import type { ServerSummary, StatsSparkline } from "@panel/api";
 import { trpc } from "@/lib/trpc";
 import { CopyButton } from "@/app/_components/copy-button";
 import { ImageUpdateBadge } from "@/app/_components/image-updates";
@@ -12,6 +12,8 @@ import { Button } from "@/app/_components/ui/button";
 import { Card } from "@/app/_components/ui/card";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { UsageMeter } from "@/app/_components/usage-meter";
+import { niceCeil } from "@/app/_components/stats/chart-math";
+import { Sparkline } from "@/app/_components/stats/usage-chart";
 import { displayName } from "@/app/_components/user-avatar";
 import { formatBytes, formatCpuLimit, formatMb, formatPct, isRunning, usagePct } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
@@ -30,7 +32,7 @@ const STATUS_TONE: Record<ServerSummary["status"], string> = {
   unknown: "var(--muted-foreground)",
 };
 
-export function ServerCard({ server }: { server: ServerSummary }) {
+export function ServerCard({ server, sparkline }: { server: ServerSummary; sparkline?: StatsSparkline }) {
   const t = useT();
   const running = isRunning(server.status);
   const stats = trpc.servers.stats.useQuery({ uuid: server.uuid }, { enabled: running, refetchInterval: running ? 10_000 : false, retry: false });
@@ -86,6 +88,16 @@ export function ServerCard({ server }: { server: ServerSummary }) {
       </div>
 
       <div className="relative grid gap-3">
+        {running && sparkline && sparkline.cpuPct.filter((v) => v !== null).length >= 2 && (
+          <div className="-mb-1 space-y-1" data-testid="card-sparkline">
+            <div className="text-[11px] text-muted-foreground">{t.stats.sparkLabel}</div>
+            <Sparkline
+              values={sparkline.cpuPct}
+              yMax={niceCeil(Math.max(...sparkline.cpuPct.map((v) => v ?? 0)) * 1.15, 10)}
+              label={t.stats.sparkLabel}
+            />
+          </div>
+        )}
         <UsageMeter
           label={t.server.cpu}
           value={s ? formatPct(s.cpuPct) : "–"}

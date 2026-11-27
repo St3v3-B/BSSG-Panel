@@ -240,6 +240,49 @@ describe("backups.*", () => {
     expect(await lastBackup(b.id)).toMatchObject({ status: "failed", error: "upload: connection refused" });
     await expect(admin.api.admin.s3Targets.delete({ id: targetId })).rejects.toMatchObject({ code: "CONFLICT" });
   });
+
+  it("progress en cancel: alleen met lopende backup; daemonfouten vertaald; geannuleerd rapport zonder melding", async () => {
+    h.daemon.override = (r) => (r.method === "POST" && r.path.endsWith("/backups") ? { status: 202 } : undefined);
+    // Niets actief: geen daemonverzoek.
+    for (const b of await owner.api.backups.list({ uuid })) if (b.status === "running" || b.status === "pending") await getDb().update(schema.backups).set({ status: "failed" }).where(eq(schema.backups.id, b.id));
+    h.daemon.requests.length = 0;
+    expect(await creator.api.backups.progress({ uuid })).toBeNull();
+    expect(h.daemon.requests.some((r) => r.path.endsWith("/backups/progress"))).toBe(false);
+    await expect(stranger.api.backups.progress({ uuid })).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    const b = await creator.api.backups.create({ uuid, name: "lang", includeDatabases: false });
+    const live = { backup_id: b.id, operation: "backup", phase: "archiving", bytes: 50, total_bytes: 200, percent: 24, eta_seconds: 9, started_at: "2026-11-27T10:00:00Z", cancellable: true };
+    let cancelReply: { status: number; body?: unknown } = { status: 202 };
+    h.daemon.override = (r) => {
+      if (r.method === "GET" && r.path === `/api/servers/${uuid}/backups/progress`) return { status: 200, body: { progress: live } };
+      if (r.method === "POST" && r.path === `/api/servers/${uuid}/backups/${b.id}/cancel`) return cancelReply;
+      return undefined;
+    };
+    expect(await restorer.api.backups.progress({ uuid })).toEqual({ backupId: b.id, operation: "backup", phase: "archiving", bytes: 50, totalBytes: 200, percent: 24, etaSeconds: 9, startedAt: new Date("2026-11-27T10:00:00Z"), cancellable: true });
+
+    // Annuleren van een backup vraagt backup.create.
+    await expect(restorer.api.backups.cancel({ id: b.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(stranger.api.backups.cancel({ id: b.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    cancelReply = { status: 409, body: { error: "not_cancellable", message: "too late" } };
+    await expect(creator.api.backups.cancel({ id: b.id })).rejects.toMatchObject({ code: "CONFLICT", message: "BACKUP_NOT_CANCELLABLE" });
+    cancelReply = { status: 404, body: { error: "not_running", message: "nothing" } };
+    await expect(creator.api.backups.cancel({ id: b.id })).rejects.toMatchObject({ code: "CONFLICT", message: "BACKUP_NOT_RUNNING" });
+    cancelReply = { status: 202 };
+    expect(await creator.api.backups.cancel({ id: b.id })).toEqual({ ok: true });
+    expect(h.daemon.last("POST", `/api/servers/${uuid}/backups/${b.id}/cancel`)).toBeTruthy();
+
+    // Daemon onbereikbaar of kapot: progress is null (de UI valt terug op "bezig").
+    h.daemon.override = () => ({ status: 500, body: { error: "internal", message: "kapot" } });
+    expect(await creator.api.backups.progress({ uuid })).toBeNull();
+
+    // Het rapport van de daemon: failed met "cancelled", eigen activiteit.
+    expect((await reportBackupRoute(req(`/api/remote/backups/${b.id}`, { successful: false, error: "cancelled" }), params({ backup_id: String(b.id) }))).status).toBe(204);
+    expect(await lastBackup(b.id)).toMatchObject({ status: "failed", error: "cancelled" });
+    const acts = await getDb().select().from(schema.activityLog).where(eq(schema.activityLog.serverId, (await lastBackup(b.id)).serverId));
+    expect(acts.map((a) => a.action)).toEqual(expect.arrayContaining(["server.backup.cancel", "server.backup.cancelled"]));
+    await expect(creator.api.backups.cancel({ id: b.id })).rejects.toMatchObject({ code: "CONFLICT", message: "BACKUP_NOT_RUNNING" });
+    h.daemon.override = (r) => (r.method === "POST" && r.path.includes("/backups") ? { status: 202 } : undefined);
+  });
 });
 
 describe("schedules.*", () => {

@@ -203,14 +203,14 @@ export const reportBackup = remoteHandler<{ backup_id: string }>(async (req, nod
     .set(b.successful ? { status: "completed", sha256: b.sha256, sizeBytes: b.size_bytes ?? null, error: null, completedAt: new Date() } : { status: "failed", error: b.error?.slice(0, 2000) ?? "unknown error", completedAt: new Date() })
     .where(eq(schema.backups.id, r.b.id));
   await logActivity({
-    action: b.successful ? "server.backup.completed" : "server.backup.failed",
+    action: b.successful ? "server.backup.completed" : b.error === "cancelled" ? "server.backup.cancelled" : "server.backup.failed",
     serverId: r.s.id,
     metadata: b.successful ? { id: r.b.id, sizeBytes: b.size_bytes ?? null } : { id: r.b.id, error: b.error?.slice(0, 2000) ?? null },
   });
   const bundle = await fetchServerByUuid(r.s.uuid);
   if (bundle) await thawWorld(bundle);
   if (b.successful) await pruneBackups(r.s.id);
-  else await notifyServer(r.s.id, { kind: "backup_failed", name: r.b.name, error: b.error ?? "unknown error" });
+  else if (b.error !== "cancelled") await notifyServer(r.s.id, { kind: "backup_failed", name: r.b.name, error: b.error ?? "unknown error" }); // afgebroken door de gebruiker: geen melding
   return noContent();
 });
 

@@ -1,6 +1,6 @@
 /** Instellingen in de tabel `settings` (panelnaam, logo, kleur, standaardlimieten). */
 import type { ImagePolicy, ImageUpdateSettings, Limits, Settings } from "@panel/api";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import { DEFAULT_PROMO, setSleepMotdConfig, type SleepMotdConfig } from "./sleep-motd";
 
@@ -14,7 +14,17 @@ export const SETTING_DEFAULTS = {
   sleep_motd_promo: DEFAULT_PROMO,
   sleep_motd_show_logo: true,
   sleep_motd_seed_logo: true,
+  activity_retention_days: 90,
 };
+
+export const DEFAULT_ACTIVITY_RETENTION_DAYS = SETTING_DEFAULTS.activity_retention_days;
+
+/** Bewaartermijn van het activiteitenlog in dagen (0 = altijd). */
+export async function getActivityRetentionDays(): Promise<number> {
+  const [r] = await getDb().select().from(schema.settings).where(eq(schema.settings.key, "activity_retention_days"));
+  const n = r?.value;
+  return typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : DEFAULT_ACTIVITY_RETENTION_DAYS;
+}
 
 /** MOTD-instellingen uit de DB; ververst ook de cache die buildServerSpec gebruikt. */
 export async function getSleepMotdSettings(): Promise<SleepMotdConfig> {
@@ -77,5 +87,6 @@ export async function getSettings(): Promise<Settings> {
     defaultLimits: { ...SETTING_DEFAULTS.default_limits, ...(limits ?? {}) },
     imageUpdates: await getImageUpdateSettings(),
     sleepMotd: await getSleepMotdSettings(),
+    activityRetentionDays: await getActivityRetentionDays(),
   };
 }

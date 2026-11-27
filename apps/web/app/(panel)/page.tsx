@@ -11,6 +11,7 @@ import { EmptyState } from "@/app/_components/ui/empty-state";
 import { Card } from "@/app/_components/ui/card";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
+import { isRunning } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,9 @@ export default function OverviewPage() {
   const quota = trpc.account.quota.useQuery(undefined, { retry: false });
   const list = servers.data ?? [];
   const online = list.filter((s) => s.status === "online").length;
+  // Sparklines voor alle draaiende servers in één aanroep (elke minuut ververst, zoals de metingen).
+  const runningUuids = list.filter((s) => isRunning(s.status)).map((s) => s.uuid).sort();
+  const sparks = trpc.servers.statsSparklines.useQuery({ uuids: runningUuids.slice(0, 200) }, { enabled: runningUuids.length > 0, refetchInterval: 60_000, placeholderData: (prev) => prev, retry: false });
 
   return (
     <>
@@ -92,7 +96,7 @@ export default function OverviewPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" data-testid="server-list">
           {list.map((s) => (
-            <ServerCard key={s.uuid} server={s} />
+            <ServerCard key={s.uuid} server={s} sparkline={sparks.data?.[s.uuid]} />
           ))}
         </div>
       )}

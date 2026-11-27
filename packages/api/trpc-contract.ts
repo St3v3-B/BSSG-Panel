@@ -99,6 +99,16 @@ export const contract = {
     get: query("user", server, s.ServerDetail),
     /** Momentopname; live stats gaan via de websocket. Vereist console.read. */
     stats: query("user", server, s.Stats.nullable()),
+    /**
+     * Verbruiksgeschiedenis (het panel meet elke minuut; bewaard: 1 min 24 u, 15 min 7 d, 1 u 30 d).
+     * Stappen: 1h = 1 min, 24h = 5 min, 7d = 30 min, 30d = 2 u. Vereist console.read.
+     */
+    statsHistory: query("user", server.extend({ range: s.StatsRange }), s.StatsHistory),
+    /**
+     * Sparklines voor de serverkaarten, in één aanroep. Servers zonder console.read (of onbekend)
+     * ontbreken in het resultaat in plaats van een fout te geven.
+     */
+    statsSparklines: query("user", z.object({ uuids: z.array(s.Uuid).max(200) }), z.record(z.string(), s.StatsSparkline)),
     /** Vereist power. */
     power: mutation("user", server.extend({ action: s.PowerAction }), s.Ok),
     /** Vereist console.write. */
@@ -325,6 +335,10 @@ export const contract = {
     restore: mutation("user", byId, s.Ok), // backup.restore
     delete: mutation("user", byId, s.Ok), // backup.create
     downloadUrl: mutation("user", byId, s.SignedUrl),
+    /** Lopende backup of herstel van de server (null = niets of node onbereikbaar). Recht: backup.create of backup.restore. */
+    progress: query("user", server, s.BackupProgress.nullable()),
+    /** Lopende backup (backup.create) of herstel (backup.restore) afbreken. CONFLICT BACKUP_NOT_RUNNING / BACKUP_NOT_CANCELLABLE. */
+    cancel: mutation("user", byId, s.Ok),
   },
 
   schedules: {
