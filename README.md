@@ -23,6 +23,7 @@ a live console, a file manager and SFTP — on your own machine, behind Discord 
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)
 ![Caddy](https://img.shields.io/badge/Caddy-2-1f88c0?logo=caddy&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-required-2496ed?logo=docker&logoColor=white)
+![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Status](https://img.shields.io/badge/status-active%20development-orange)
 
 </div>
@@ -654,8 +655,14 @@ Issues and pull requests are welcome. Please:
 
 ## 📄 License
 
-No license has been chosen yet, which means all rights are reserved by default. If you'd like
-to use this code, open an issue and ask.
+BSSG Panel is free software, licensed under the **GNU Affero General Public License v3.0 or later**
+([AGPL-3.0-or-later](LICENSE)).
+
+In short: you may use, study, modify and share it. If you modify it and let other people use your
+modified version — **including over a network, e.g. running it as a hosting panel for others** — you
+must make your modified source code available to those users under the same license.
+
+Copyright (C) 2026 St3v3-B and contributors.
 
 ---
 
