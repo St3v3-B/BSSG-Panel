@@ -273,9 +273,9 @@ export function createMock(): Implementation {
         const removed = before.filter((m) => !sorted.some((n) => n.serverUuid === m.serverUuid));
         return {
           servers: [
-            { uuid: p.uuid, name: p.name, role: "proxy" as const, restarted: input.restart, error: null },
-            ...sorted.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "backend" as const, restarted: input.restart, error: null })),
-            ...removed.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "removed" as const, restarted: input.restart, error: null })),
+            { uuid: p.uuid, name: p.name, role: "proxy" as const, restarted: false, reloaded: input.restart, error: null },
+            ...sorted.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "backend" as const, restarted: input.restart, reloaded: false, error: null })),
+            ...removed.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "removed" as const, restarted: input.restart, reloaded: false, error: null })),
           ],
         };
       },

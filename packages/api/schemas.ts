@@ -215,9 +215,9 @@ export const NetworkCandidate = z.object({
 });
 export type NetworkCandidate = z.infer<typeof NetworkCandidate>;
 
-/** Uitkomst per betrokken server (proxy en backends) van `updateNetwork`. */
+/** Uitkomst per betrokken server (proxy en backends) van `updateNetwork`. `reloaded`: proxy kreeg `velocity reload` i.p.v. een herstart. */
 export const NetworkUpdateResult = z.object({
-  servers: z.array(z.object({ uuid: Uuid, name: z.string(), role: z.enum(["proxy", "backend", "removed"]), restarted: z.boolean(), error: z.string().nullable() })),
+  servers: z.array(z.object({ uuid: Uuid, name: z.string(), role: z.enum(["proxy", "backend", "removed"]), restarted: z.boolean(), reloaded: z.boolean(), error: z.string().nullable() })),
 });
 export type NetworkUpdateResult = z.infer<typeof NetworkUpdateResult>;
 
