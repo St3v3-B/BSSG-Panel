@@ -24,6 +24,13 @@ RUN mkdir -p apps/web/public \
  && pnpm --filter @panel/web build
 
 FROM ${NODE_IMAGE} AS runtime
+# Git-versie van de checkout (door install.sh meegegeven); getoond onder Admin > Settings > Updates.
+ARG PANEL_COMMIT=unknown
+ARG PANEL_COMMIT_DATE=
+ARG PANEL_COMMIT_MESSAGE=
+ENV PANEL_COMMIT=${PANEL_COMMIT} \
+    PANEL_COMMIT_DATE=${PANEL_COMMIT_DATE} \
+    PANEL_COMMIT_MESSAGE=${PANEL_COMMIT_MESSAGE}
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     HOSTNAME=0.0.0.0 \
