@@ -13,6 +13,8 @@ import (
 type Backups interface {
 	StartBackup(sv *server.Server, req backup.BackupRequest) error
 	StartRestore(sv *server.Server, backupID int, req backup.RestoreRequest) error
+	Progress(uuid string) (backup.Progress, bool)
+	Cancel(uuid string, backupID int) error
 }
 
 // SetBackups koppelt de backup-service (zonder: 501).
@@ -75,9 +77,46 @@ func (a *API) restoreBackup(w http.ResponseWriter, r *http.Request, s *server.Se
 	w.WriteHeader(http.StatusAccepted)
 }
 
+// backupProgress geeft de lopende backup of het lopende herstel (progress: null als er niets loopt).
+func (a *API) backupProgress(w http.ResponseWriter, r *http.Request, s *server.Server) {
+	if a.backups == nil {
+		writeErr(w, http.StatusNotImplemented, "not_implemented", "backups are not enabled")
+		return
+	}
+	if p, ok := a.backups.Progress(s.UUID()); ok {
+		writeJSON(w, http.StatusOK, map[string]any{"progress": p})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"progress": nil})
+}
+
+func (a *API) cancelBackup(w http.ResponseWriter, r *http.Request, s *server.Server) {
+	if a.backups == nil {
+		writeErr(w, http.StatusNotImplemented, "not_implemented", "backups are not enabled")
+		return
+	}
+	id, err := strconv.Atoi(r.PathValue("backup_id"))
+	if err != nil || id < 1 {
+		writeErr(w, http.StatusBadRequest, "bad_request", "invalid backup_id")
+		return
+	}
+	if err := a.backups.Cancel(s.UUID(), id); err != nil {
+		backupErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
 func backupErr(w http.ResponseWriter, err error) {
-	if errors.Is(err, backup.ErrBusy) {
+	switch {
+	case errors.Is(err, backup.ErrBusy):
 		writeErr(w, http.StatusConflict, "conflict", err.Error())
+		return
+	case errors.Is(err, backup.ErrNotRunning):
+		writeErr(w, http.StatusNotFound, "not_running", err.Error())
+		return
+	case errors.Is(err, backup.ErrNotCancellable):
+		writeErr(w, http.StatusConflict, "not_cancellable", err.Error())
 		return
 	}
 	writeErr(w, http.StatusInternalServerError, "internal", err.Error())

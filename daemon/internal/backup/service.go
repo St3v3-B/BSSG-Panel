@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"panel/daemon/internal/engine"
@@ -74,31 +73,12 @@ type Service struct {
 	ProgressEvery time.Duration
 
 	mu   sync.Mutex
-	busy map[string]bool
+	jobs map[string]*job
 	wg   sync.WaitGroup
 }
 
 // Wait wacht op lopende taken (tests).
 func (s *Service) Wait() { s.wg.Wait() }
-
-func (s *Service) lock(uuid string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.busy == nil {
-		s.busy = map[string]bool{}
-	}
-	if s.busy[uuid] {
-		return false
-	}
-	s.busy[uuid] = true
-	return true
-}
-
-func (s *Service) unlock(uuid string) {
-	s.mu.Lock()
-	delete(s.busy, uuid)
-	s.mu.Unlock()
-}
 
 var (
 	reDBName = regexp.MustCompile(`^[A-Za-z0-9_]{1,64}$`)
@@ -132,18 +112,26 @@ func (s *Service) dbImage() string {
 
 // StartBackup start een backup op de achtergrond; het resultaat gaat naar het panel.
 func (s *Service) StartBackup(sv *server.Server, req BackupRequest) error {
-	if !s.lock(sv.UUID()) {
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
+	j := s.begin(sv.UUID(), req.BackupID, "backup", PhasePreparing, cancel)
+	if j == nil {
+		cancel()
 		return ErrBusy
 	}
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		defer s.unlock(sv.UUID())
-		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
+		defer s.end(sv.UUID())
 		defer cancel()
-		sha, size, err := s.runBackup(ctx, sv, req)
+		stop := s.ticker(sv, j)
+		sha, size, err := s.runBackup(ctx, sv, j, req)
+		stop()
+		s.finish(sv, j, err)
 		if err != nil {
 			msg := scrub(err.Error(), req.S3, req.Databases)
+			if j.isCancelled() {
+				msg = CancelledMsg
+			}
 			s.Log.Warn("backup failed", "uuid", sv.UUID(), "backup", req.BackupID, "err", msg)
 			s.Rep.ReportBackup(req.BackupID, false, "", 0, msg)
 			return
@@ -155,18 +143,29 @@ func (s *Service) StartBackup(sv *server.Server, req BackupRequest) error {
 
 // StartRestore start een herstel op de achtergrond.
 func (s *Service) StartRestore(sv *server.Server, backupID int, req RestoreRequest) error {
-	if !s.lock(sv.UUID()) {
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
+	j := s.begin(sv.UUID(), backupID, "restore", PhaseStopping, cancel)
+	if j == nil {
+		cancel()
 		return ErrBusy
 	}
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		defer s.unlock(sv.UUID())
-		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Hour)
+		defer s.end(sv.UUID())
 		defer cancel()
-		err := s.runRestore(ctx, sv, backupID, req)
+		stop := s.ticker(sv, j)
+		err := s.runRestore(ctx, sv, j, req)
+		stop()
+		s.finish(sv, j, err)
 		if err != nil {
 			msg := scrub(err.Error(), req.S3, req.Databases)
+			if j.isCancelled() {
+				s.Log.Info("restore cancelled", "uuid", sv.UUID(), "backup", backupID)
+				sv.DaemonMessage("info", "restore cancelled; the server data was not changed")
+				s.Rep.ReportRestore(backupID, false, CancelledMsg)
+				return
+			}
 			s.Log.Warn("restore failed", "uuid", sv.UUID(), "backup", backupID, "err", msg)
 			sv.DaemonMessage("error", "restore failed: "+msg)
 			s.Rep.ReportRestore(backupID, false, msg)
@@ -208,7 +207,7 @@ func (s *Service) tmpDir(pattern string) (string, error) {
 
 // ---------- backup ----------
 
-func (s *Service) runBackup(ctx context.Context, sv *server.Server, req BackupRequest) (string, int64, error) {
+func (s *Service) runBackup(ctx context.Context, sv *server.Server, j *job, req BackupRequest) (string, int64, error) {
 	if !reSafe2.MatchString(req.Key) || strings.Contains(req.Key, "..") {
 		return "", 0, errors.New("invalid S3 key")
 	}
@@ -221,6 +220,9 @@ func (s *Service) runBackup(ctx context.Context, sv *server.Server, req BackupRe
 	}
 	var dumpDir string
 	if len(req.Databases) > 0 {
+		if err := j.enter(PhaseDumping, 0); err != nil {
+			return "", 0, err
+		}
 		dumpDir, err = s.tmpDir("backup-" + sv.UUID() + "-")
 		if err != nil {
 			return "", 0, err
@@ -234,6 +236,9 @@ func (s *Service) runBackup(ctx context.Context, sv *server.Server, req BackupRe
 			if err := s.dump(ctx, sv, db, dumpDir); err != nil {
 				return "", 0, fmt.Errorf("dump of database %s: %w", db.Name, err)
 			}
+		}
+		if err := j.enter(PhasePreparing, 0); err != nil {
+			return "", 0, err
 		}
 	}
 	vol := s.Mgr.Volume(sv.UUID())
@@ -253,72 +258,45 @@ func (s *Service) runBackup(ctx context.Context, sv *server.Server, req BackupRe
 			}
 		}
 	}
+	if err := j.enter(PhaseArchiving, total); err != nil {
+		return "", 0, err
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	hasher := sha256.New()
 	pr, pw := io.Pipe()
-	var read atomic.Int64
 	encDone := make(chan error, 1)
 	go func() {
 		err := compressTar(io.MultiWriter(hasher, pw), func(tw *tar.Writer) error {
-			return writeTar(ctx, tw, root, ig, dumpDir, &read)
+			return writeTar(ctx, tw, root, ig, dumpDir, &j.bytes)
 		})
 		pw.CloseWithError(err) // nil = EOF
 		encDone <- err
 	}()
-	stopProg := s.progress(ctx, sv, req.BackupID, &read, total)
 	size, putErr := store.put(ctx, req.Key, pr)
 	pr.CloseWithError(errors.New("upload ended")) // maakt de encoder los bij een fout
 	encErr := <-encDone
-	stopProg()
+	if putErr == nil && encErr == nil {
+		// Vanaf hier niet meer te annuleren; kwam de annulering net te laat binnen, dan toch weg ermee.
+		if err := j.advance(PhaseFinishing); err != nil {
+			putErr = err
+		}
+	}
 	if putErr != nil || encErr != nil {
 		_ = store.remove(context.Background(), req.Key)
+		if j.isCancelled() {
+			return "", 0, errCancelled
+		}
 		if encErr != nil && !errors.Is(encErr, io.ErrClosedPipe) {
 			return "", 0, fmt.Errorf("archiving: %w", encErr)
 		}
 		return "", 0, fmt.Errorf("upload: %w", putErr)
 	}
-	s.publish(sv, req.BackupID, read.Load(), 100)
 	return hex.EncodeToString(hasher.Sum(nil)), size, nil
 }
 
 var reSafe2 = regexp.MustCompile(`^[A-Za-z0-9_./=+-]{1,512}$`)
-
-func (s *Service) publish(sv *server.Server, id int, bytes int64, pct int) {
-	sv.Publish(server.Msg{"event": "backup_progress", "backup_id": id, "bytes": bytes, "percent": pct})
-}
-
-// progress publiceert backup_progress tot de teruggegeven stop wordt aangeroepen.
-func (s *Service) progress(ctx context.Context, sv *server.Server, id int, read *atomic.Int64, total int64) (stop func()) {
-	done := make(chan struct{})
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		t := time.NewTicker(s.progressEvery())
-		defer t.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-ctx.Done():
-				return
-			case <-t.C:
-				n := read.Load()
-				pct := 0
-				if total > 0 {
-					pct = int(n * 99 / total)
-					if pct > 99 {
-						pct = 99
-					}
-				}
-				s.publish(sv, id, n, pct)
-			}
-		}
-	}()
-	return func() { close(done); wg.Wait() }
-}
 
 // ---------- databasetools ----------
 
@@ -398,7 +376,7 @@ func (s *Service) load(ctx context.Context, sv *server.Server, db Database, dir 
 
 // ---------- herstel ----------
 
-func (s *Service) runRestore(ctx context.Context, sv *server.Server, id int, req RestoreRequest) (err error) {
+func (s *Service) runRestore(ctx context.Context, sv *server.Server, j *job, req RestoreRequest) (err error) {
 	if !reSafe2.MatchString(req.Key) || strings.Contains(req.Key, "..") || !reSHA.MatchString(req.SHA256) {
 		return errors.New("invalid restore request")
 	}
@@ -426,7 +404,9 @@ func (s *Service) runRestore(ctx context.Context, sv *server.Server, id int, req
 			sv.StartAfter() // ook na een mislukt herstel: de oude data is dan heel
 		}
 	}()
-	s.publish(sv, id, 0, 0)
+	if err := j.enter(PhaseDownloading, 0); err != nil {
+		return err
+	}
 
 	// Stap 2+3: downloaden, checksum bijhouden en uitpakken naar een tijdelijke map naast de data.
 	tmp, err := os.MkdirTemp(parent, ".restore-"+uuid+"-")
@@ -448,7 +428,14 @@ func (s *Service) runRestore(ctx context.Context, sv *server.Server, id int, req
 	if err := os.Chown(dumpDir, uid, gid); err != nil {
 		return err
 	}
-	if err := s.download(ctx, sv, id, store, req, tmp, dumpDir, uid, gid); err != nil {
+	if err := s.download(ctx, j, store, req, tmp, dumpDir, uid, gid); err != nil {
+		if j.isCancelled() {
+			return errCancelled
+		}
+		return err
+	}
+	// Vanaf hier geen annuleren meer: na deze controle wordt de data omgewisseld.
+	if err := j.advance(PhaseApplying); err != nil {
 		return err
 	}
 
@@ -490,13 +477,13 @@ func (s *Service) runRestore(ctx context.Context, sv *server.Server, id int, req
 			s.Log.Warn("removing old data failed", "dir", old, "err", err)
 		}
 	}
-	s.publish(sv, id, 0, 100)
+	_ = j.advance(PhaseFinishing)
 	return nil
 }
 
 // download haalt het object op, pakt het uit en controleert de SHA-256 en de lengte.
 // Pas als alles klopt geeft hij nil.
-func (s *Service) download(ctx context.Context, sv *server.Server, id int, store *objectStore, req RestoreRequest, tmp, dumpDir string, uid, gid int) error {
+func (s *Service) download(ctx context.Context, j *job, store *objectStore, req RestoreRequest, tmp, dumpDir string, uid, gid int) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	body, size, err := store.get(ctx, req.Key)
@@ -504,9 +491,10 @@ func (s *Service) download(ctx context.Context, sv *server.Server, id int, store
 		return fmt.Errorf("download: %w", err)
 	}
 	defer body.Close()
+	j.setTotal(size)
 	hasher := sha256.New()
-	var got atomic.Int64
-	tee := io.TeeReader(&countReader{r: body, n: &got}, hasher)
+	got := &j.bytes
+	tee := io.TeeReader(&countReader{r: body, n: got}, hasher)
 	dst, err := os.OpenRoot(tmp)
 	if err != nil {
 		return err
@@ -517,25 +505,6 @@ func (s *Service) download(ctx context.Context, sv *server.Server, id int, store
 		return err
 	}
 	defer dumps.Close()
-
-	done := make(chan struct{})
-	go func() {
-		t := time.NewTicker(s.progressEvery())
-		defer t.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-t.C:
-				pct := 0
-				if size > 0 {
-					pct = int(got.Load() * 99 / size)
-				}
-				s.publish(sv, id, got.Load(), pct)
-			}
-		}
-	}()
-	defer close(done)
 
 	if err := extract(ctx, tee, dst, dumps, uid, gid); err != nil {
 		return fmt.Errorf("download/extract: %w", err)

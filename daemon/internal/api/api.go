@@ -139,6 +139,8 @@ func (a *API) Handler() http.Handler {
 
 	mux.Handle("POST /api/servers/{uuid}/backups", p(a.withServer(a.createBackup)))
 	mux.Handle("POST /api/servers/{uuid}/backups/{backup_id}/restore", p(a.withServer(a.restoreBackup)))
+	mux.Handle("GET /api/servers/{uuid}/backups/progress", p(a.withServer(a.backupProgress)))
+	mux.Handle("POST /api/servers/{uuid}/backups/{backup_id}/cancel", p(a.withServer(a.cancelBackup)))
 
 	mux.Handle("GET /api/db/status", p(a.dbStatus))
 	mux.Handle("POST /api/db/databases", p(a.dbCreate))
