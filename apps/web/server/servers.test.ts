@@ -64,7 +64,7 @@ describe("servers.list / get", () => {
 
   it("get/list: daemon hangt -> laatste bekende status, pas na de drempel `unknown`; nooit wachten op de daemon", async () => {
     process.env.NODE_POLL_TIMEOUT_MS = "150";
-    process.env.NODE_STALE_AFTER_MS = "400";
+    process.env.NODE_STALE_AFTER_MS = "1500";
     try {
       setState("online");
       await pollAllNow();
@@ -74,7 +74,7 @@ describe("servers.list / get", () => {
       expect((await player.api.servers.get({ uuid })).status).toBe("online");
       expect((await player.api.servers.list())[0]!.status).toBe("online");
       expect(Date.now() - t).toBeLessThan(500);
-      await new Promise((r) => setTimeout(r, 450));
+      await new Promise((r) => setTimeout(r, 1600));
       const t2 = Date.now();
       const d = await player.api.servers.get({ uuid });
       expect(d.status).toBe("unknown");
