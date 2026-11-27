@@ -31,7 +31,16 @@
 }
 
 {$PANEL_DOMAIN} {
-	reverse_proxy panel:3000
+	# phpMyAdmin (container panel-phpmyadmin op het netwerk panel-pma); het panel regelt de single sign-on.
+	# PMA_ABSOLUTE_URI=https://$PANEL_DOMAIN/phpmyadmin/ zorgt dat phpMyAdmin zijn eigen links goed maakt.
+	redir /phpmyadmin /phpmyadmin/ 308
+	handle_path /phpmyadmin/* {
+		reverse_proxy phpmyadmin:80
+	}
+
+	handle {
+		reverse_proxy panel:3000
+	}
 }
 
 {$NODE_DOMAIN} {

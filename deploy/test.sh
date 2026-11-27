@@ -63,6 +63,9 @@ sed -e 's/^PANEL_DOMAIN=.*/PANEL_DOMAIN=panel.test/' \
 # MARIADB_ROOT_PASSWORD staat leeg in het voorbeeld; voor de test een vaste waarde.
 sed -i '/^MARIADB_ROOT_PASSWORD=/d' "$TEST_ENV"
 echo "MARIADB_ROOT_PASSWORD=testtesttesttest" >> "$TEST_ENV"
+# Idem voor de phpMyAdmin-geheimen (install.sh genereert ze).
+sed -i '/^PMA_SHARED_SECRET=/d;/^PMA_BLOWFISH_SECRET=/d' "$TEST_ENV"
+printf 'PMA_SHARED_SECRET=%s\nPMA_BLOWFISH_SECRET=%s\n' "$(printf 's%.0s' {1..40})" "$(printf 'b%.0s' {1..40})" >> "$TEST_ENV"
 compose() { PANEL_ENV_FILE="$TEST_ENV" docker compose --env-file "$TEST_ENV" -f "$DEPLOY/docker-compose.yml" "$@"; }
 compose config -q || fail "compose config"
 CFG="$(compose config --format json)"
@@ -105,6 +108,16 @@ check_cfg "caddy-containernaam = CADDY_CONTAINER (panel-caddy)" "c.services.cadd
 check_cfg "panel: env_file read + NODE_DOMAIN to host-gateway" \
   "c.services.panel.extra_hosts.some(h=>/^node1\\.test[:=]host-gateway$/.test(h))&&c.services.panel.environment.NODE_DOMAIN==='node1.test'"
 check_cfg "backend-netwerk is intern" "c.networks.backend.internal===true"
+check_cfg "phpmyadmin: eigen image, geen poorten, alleen netwerken backend en pma, caps beperkt" \
+  "(p=>p.container_name==='panel-phpmyadmin'&&!p.ports&&Object.keys(p.networks).sort().join()==='backend,pma'&&p.cap_drop.includes('ALL')&&p.security_opt.some(o=>o.startsWith('no-new-privileges')))(c.services.phpmyadmin)"
+check_cfg "phpmyadmin: absolute URI, MariaDB-host, geheimen uit env" \
+  "(e=>e.PMA_ABSOLUTE_URI==='https://panel.test/phpmyadmin/'&&e.PMA_DB_HOST==='panel-mariadb'&&e.PMA_PANEL_URL==='http://panel:3000'&&e.PMA_SHARED_SECRET.length>=32&&e.PMA_BLOWFISH_SECRET.length>=32&&!('NODE_TOKEN' in e)&&!('MARIADB_ROOT_PASSWORD' in e))(c.services.phpmyadmin.environment)"
+check_cfg "netwerk panel-pma: intern, alleen caddy en phpmyadmin (Caddy niet op backend)" \
+  "c.networks.pma.name==='panel-pma'&&c.networks.pma.internal===true&&Object.entries(c.services).filter(([,v])=>v.networks&&'pma' in v.networks).map(([k])=>k).sort().join()==='caddy,phpmyadmin'&&!('backend' in c.services.caddy.networks)"
+if PANEL_ENV_FILE="$TEST_ENV" docker compose --env-file <(grep -v '^PMA_SHARED_SECRET=' "$TEST_ENV") -f "$DEPLOY/docker-compose.yml" config -q >/dev/null 2>&1; then
+  fail "compose without PMA_SHARED_SECRET should fail"
+fi
+pass "compose without PMA_SHARED_SECRET fails"
 # shellcheck disable=SC2016
 grep -q '^      - \${PANEL_ENV_FILE:-/etc/panel/panel.env}$' "$DEPLOY/docker-compose.yml" \
   && pass "env_file defaults to /etc/panel/panel.env" || fail "env_file defaults to /etc/panel/panel.env"
@@ -143,6 +156,8 @@ pw="$(getv POSTGRES_PASSWORD)"
 diff <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$DEPLOY/panel.env.example") <(sed -n '/^# --- other/q; s/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$E") >/dev/null \
   && pass "same variables in the same order as panel.env.example" || fail "variables differ from panel.env.example"
 [[ "$(getv MARIADB_ROOT_PASSWORD)" =~ ^[0-9a-f]{48}$ ]] && pass "MARIADB_ROOT_PASSWORD generated" || fail "MARIADB_ROOT_PASSWORD"
+[[ "$(getv PMA_SHARED_SECRET)" =~ ^[0-9a-f]{64}$ ]] && [[ "$(getv PMA_BLOWFISH_SECRET)" =~ ^[0-9a-f]{64}$ ]] && [ "$(getv PMA_SHARED_SECRET)" != "$(getv PMA_BLOWFISH_SECRET)" ] \
+  && pass "PMA_SHARED_SECRET and PMA_BLOWFISH_SECRET generated (distinct)" || fail "PMA secrets"
 [ -x "$ROOT/usr/local/bin/panel-daemon" ] && pass "daemon installed (stub)" || fail "daemon"
 cmp -s "$UNIT" "$ROOT/etc/systemd/system/panel-daemon.service" && pass "unit installed" || fail "unit"
 grep -q '^\[dry-run\] systemctl restart panel-daemon.service$' "$WORK/install1.log" && pass "systemctl only printed" || fail "systemctl"

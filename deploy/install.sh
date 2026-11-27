@@ -199,6 +199,8 @@ validate() {
       [ -z "$v" ] || [[ "$v" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || { echo "not an IPv4 address"; return 1; } ;;
     MARIADB_ROOT_PASSWORD)
       [[ "$v" =~ ^[A-Za-z0-9]{16,}$ ]] || { echo "at least 16 characters [A-Za-z0-9]"; return 1; } ;;
+    PMA_SHARED_SECRET|PMA_BLOWFISH_SECRET)
+      [[ "$v" =~ ^[A-Za-z0-9]{32,}$ ]] || { echo "at least 32 characters [A-Za-z0-9]"; return 1; } ;;
     PANEL_URL)
       [[ "$v" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || { echo "not a URL like https://panel.example.com (no path)"; return 1; } ;;
     SFTP_PORT|DAEMON_PORT)
@@ -256,6 +258,7 @@ keep_or_generate() {
 gen_encryption_key() { random_b64; }
 gen_node_token() { random_hex 32; }
 gen_pg_password() { random_hex 24; }
+gen_pma_secret() { random_hex 32; }
 
 collect_values() {
   log "values for panel.env"
@@ -293,6 +296,11 @@ collect_values() {
   if ! grep -q '^MARIADB_ROOT_PASSWORD=' "$EXAMPLE" && [ -z "${OLD[MARIADB_ROOT_PASSWORD]+x}" ]; then
     OLD_ORDER+=(MARIADB_ROOT_PASSWORD)
   fi
+
+  # phpMyAdmin (single sign-on): gedeeld geheim met het panel en blowfish-sleutel. Ook bij een upgrade
+  # (install.sh --non-interactive) gegenereerd als ze nog ontbreken.
+  keep_or_generate PMA_SHARED_SECRET gen_pma_secret
+  keep_or_generate PMA_BLOWFISH_SECRET gen_pma_secret
 
   # De daemon bereikt het lokale panel rechtstreeks (127.0.0.1:3000 wordt door compose
   # gepubliceerd): geen afhankelijkheid van externe DNS of hairpin-NAT. Een gezette waarde blijft.

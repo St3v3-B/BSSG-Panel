@@ -1,0 +1,8 @@
+{
+    "name": "BSSG Panel",
+    "version": "5.2",
+    "description": "Theme of the BSSG panel: purple accent, dark by default with a light variant. Built on the Bootstrap theme.",
+    "author": "BSSG Panel",
+    "url": "https://github.com/",
+    "supports": ["5.1", "5.2"]
+}

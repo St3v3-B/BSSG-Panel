@@ -140,6 +140,44 @@ services:
         aliases: [mariadb]
     logging: *logging
 
+  # phpMyAdmin onder https://$PANEL_DOMAIN/phpmyadmin/ (Caddy -> hier), met single sign-on vanuit het panel:
+  # - de image (deploy/phpmyadmin/) bevat onze config, signon.php en het thema bssg;
+  # - zit op `backend` (bereikt panel:3000 voor /api/pma/exchange en MariaDB) en op `pma` (alleen Caddy
+  #   en deze container), dus Caddy hoeft niet op backend (Postgres/Redis);
+  # - geen gepubliceerde poorten, geen internet (beide netwerken zijn intern);
+  # - gebruikers loggen nooit zelf in: het panel geeft per login een eigen MariaDB-account met alleen hun databases.
+  phpmyadmin:
+    build:
+      context: ./phpmyadmin
+      labels: *labels
+    image: panel-phpmyadmin:local
+    container_name: panel-phpmyadmin
+    restart: unless-stopped
+    labels: *labels
+    environment:
+      PMA_ABSOLUTE_URI: https://${PANEL_DOMAIN}/phpmyadmin/
+      PMA_DB_HOST: ${MARIADB_CONTAINER:-panel-mariadb}
+      PMA_PANEL_URL: http://panel:3000
+      PMA_SHARED_SECRET: ${PMA_SHARED_SECRET:?PMA_SHARED_SECRET ontbreekt in het env-bestand (deploy/install.sh opnieuw draaien)}
+      PMA_BLOWFISH_SECRET: ${PMA_BLOWFISH_SECRET:?PMA_BLOWFISH_SECRET ontbreekt in het env-bestand (deploy/install.sh opnieuw draaien)}
+      UPLOAD_LIMIT: 256M
+      MEMORY_LIMIT: 512M
+      MAX_EXECUTION_TIME: "300"
+      HIDE_PHP_VERSION: "1"
+      TZ: Europe/Amsterdam
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    # Apache start als root op :80 en wisselt naar www-data; de entrypoint zet de rechten van een configbestand.
+    cap_add: [CHOWN, SETUID, SETGID, NET_BIND_SERVICE]
+    depends_on:
+      panel:
+        condition: service_started
+      mariadb:
+        condition: service_healthy
+    networks: [backend, pma]
+    logging: *logging
+
   # Basisconfig van web-hosting (deploy/caddy/, zie de README daar):
   # - Caddyfile gebruikt {$PANEL_DOMAIN}, {$NODE_DOMAIN}, {$ACME_EMAIL} en importeert
   #   /etc/caddy/global.d/*.caddy (in productie leeg; tests/staging zetten daar opties);
@@ -179,10 +217,16 @@ services:
           create_host_path: true
     depends_on:
       - panel
-    networks: [frontend]
+    # pma: alleen om phpmyadmin:80 te bereiken (handle_path /phpmyadmin/* in de Caddyfile).
+    networks: [frontend, pma]
     logging: *logging
 
 networks:
+  # Caddy <-> phpMyAdmin, verder niemand. Intern: geen internet.
+  pma:
+    name: panel-pma
+    internal: true
+    labels: *labels
   # Caddy + panel; het panel heeft hier ook uitgaand internet (Discord).
   frontend:
     name: panel-frontend
