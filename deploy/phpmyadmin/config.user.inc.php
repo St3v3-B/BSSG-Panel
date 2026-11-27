@@ -48,6 +48,7 @@ $cfg['ShowCreateDb'] = false;      // databases maak je in het panel (de gebruik
 $cfg['AllowUserDropDatabase'] = true;
 $cfg['CheckConfigurationPermissions'] = false;
 $cfg['DefaultLang'] = 'en';
+$cfg['PmaNoRelation_DisableWarning'] = true; // geen phpMyAdmin-opslagdatabase (pmadb); geen melding op de startpagina
 $cfg['ShowPhpInfo'] = false;
 $cfg['ShowServerInfo'] = false;
 $cfg['NavigationLinkWithMainPanel'] = true;

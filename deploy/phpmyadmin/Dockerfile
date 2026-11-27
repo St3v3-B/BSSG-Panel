@@ -22,6 +22,9 @@ RUN set -eu; \
 RUN printf '<?php\n// blowfish_secret: zie config.user.inc.php\n' > /etc/phpmyadmin/config.secret.inc.php \
  && chown root:www-data /etc/phpmyadmin/config.secret.inc.php && chmod 0640 /etc/phpmyadmin/config.secret.inc.php
 
+# Gelijk aan LoginCookieValidity (3600), anders waarschuwt phpMyAdmin op de startpagina.
+RUN printf 'session.gc_maxlifetime=3600\n' > /usr/local/etc/php/conf.d/panel-session.ini
+
 COPY config.user.inc.php /etc/phpmyadmin/config.user.inc.php
 COPY signon.php /var/www/html/signon.php
 RUN chmod 0644 /etc/phpmyadmin/config.user.inc.php /var/www/html/signon.php \
