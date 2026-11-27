@@ -2,13 +2,19 @@
  * Sessies (tabel `sessions`, alleen SHA-256 van het token) en het cookie `panel_session`.
  */
 import type { SessionCtx } from "@panel/api";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, lt, ne } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import { getEnv } from "./env";
 import { randomToken, sha256 } from "./lib/crypto";
 
 export const SESSION_COOKIE = "panel_session";
-export const SESSION_TTL_MS = 30 * 24 * 3600_000;
+const DAY_MS = 24 * 3600_000;
+/** Absolute levensduur van een sessie (SESSION_MAX_DAYS). */
+export const sessionMaxMs = () => getEnv().SESSION_MAX_DAYS * DAY_MS;
+/** Zonder gebruik verloopt een sessie na zoveel tijd (SESSION_IDLE_DAYS). */
+export const sessionIdleMs = () => getEnv().SESSION_IDLE_DAYS * DAY_MS;
+/** last_seen_at wordt hooguit zo vaak bijgewerkt. */
+const TOUCH_INTERVAL_MS = 60_000;
 
 export function parseCookies(header: string | null): Map<string, string> {
   const m = new Map<string, string>();
@@ -46,11 +52,12 @@ export function cookie(name: string, value: string, opts: { secure: boolean; max
   ].join("; ");
 }
 
-export const sessionCookie = (token: string, secure: boolean) => cookie(SESSION_COOKIE, token, { secure, maxAgeSeconds: SESSION_TTL_MS / 1000 });
+export const sessionCookie = (token: string, secure: boolean) => cookie(SESSION_COOKIE, token, { secure, maxAgeSeconds: sessionMaxMs() / 1000 });
 export const clearSessionCookie = (secure: boolean) => cookie(SESSION_COOKIE, "", { secure, maxAgeSeconds: 0 });
 
 export async function createSession(userId: number, opts: { ip: string | null; userAgent: string | null; totpVerified: boolean }): Promise<{ token: string; sessionId: string }> {
   const token = randomToken(32);
+  await purgeExpiredSessions().catch(() => {});
   const [row] = await getDb()
     .insert(schema.sessions)
     .values({
@@ -59,7 +66,7 @@ export async function createSession(userId: number, opts: { ip: string | null; u
       totpVerified: opts.totpVerified,
       ip: opts.ip,
       userAgent: opts.userAgent?.slice(0, 500) ?? null,
-      expiresAt: new Date(Date.now() + SESSION_TTL_MS),
+      expiresAt: new Date(Date.now() + sessionMaxMs()),
     })
     .returning({ id: schema.sessions.id });
   return { token, sessionId: row!.id };
@@ -76,6 +83,7 @@ export async function loadSession(token: string): Promise<SessionCtx | null> {
     .select({
       sessionId: schema.sessions.id,
       totpVerified: schema.sessions.totpVerified,
+      lastSeenAt: schema.sessions.lastSeenAt,
       userId: schema.users.id,
       discordId: schema.users.discordId,
       blocked: schema.users.blocked,
@@ -86,8 +94,20 @@ export async function loadSession(token: string): Promise<SessionCtx | null> {
     .from(schema.sessions)
     .innerJoin(schema.users, eq(schema.users.id, schema.sessions.userId))
     .leftJoin(schema.adminDiscordIds, eq(schema.adminDiscordIds.discordId, schema.users.discordId))
-    .where(and(eq(schema.sessions.tokenHash, sha256(token)), gt(schema.sessions.expiresAt, new Date())));
+    .where(
+      and(
+        eq(schema.sessions.tokenHash, sha256(token)),
+        gt(schema.sessions.expiresAt, new Date()),
+        gt(schema.sessions.lastSeenAt, new Date(Date.now() - sessionIdleMs())),
+      ),
+    );
   if (!row) return null;
+  if (Date.now() - row.lastSeenAt.getTime() > TOUCH_INTERVAL_MS) {
+    await db
+      .update(schema.sessions)
+      .set({ lastSeenAt: new Date() })
+      .where(eq(schema.sessions.id, row.sessionId));
+  }
   const owner = getEnv().OWNER_DISCORD_ID;
   return {
     sessionId: row.sessionId,
@@ -105,4 +125,33 @@ export async function loadSession(token: string): Promise<SessionCtx | null> {
 
 export async function deleteSession(sessionId: string): Promise<void> {
   await getDb().delete(schema.sessions).where(eq(schema.sessions.id, sessionId));
+}
+
+/**
+ * Geeft de sessie een nieuw token (bij een rechtenwijziging, zoals na TOTP-verificatie) zodat een
+ * eerder gelekt of vastgezet token niets meer waard is. Geeft de Set-Cookie-waarde terug.
+ */
+export async function rotateSession(sessionId: string, secure: boolean): Promise<string> {
+  const token = randomToken(32);
+  await getDb().update(schema.sessions).set({ tokenHash: sha256(token), lastSeenAt: new Date() }).where(eq(schema.sessions.id, sessionId));
+  return sessionCookie(token, secure);
+}
+
+/** Beëindigt alle sessies van een gebruiker (optioneel behalve één); geeft het aantal. */
+export async function deleteUserSessions(userId: number, exceptSessionId?: string): Promise<number> {
+  const rows = await getDb()
+    .delete(schema.sessions)
+    .where(and(eq(schema.sessions.userId, userId), exceptSessionId ? ne(schema.sessions.id, exceptSessionId) : undefined))
+    .returning({ id: schema.sessions.id });
+  return rows.length;
+}
+
+/** Ruimt verlopen en inactieve sessies op. */
+export async function purgeExpiredSessions(): Promise<void> {
+  await getDb()
+    .delete(schema.sessions)
+    .where(lt(schema.sessions.expiresAt, new Date()));
+  await getDb()
+    .delete(schema.sessions)
+    .where(lt(schema.sessions.lastSeenAt, new Date(Date.now() - sessionIdleMs())));
 }

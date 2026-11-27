@@ -1,3 +1,4 @@
+import { deleteUserSessions } from "../session";
 import { emergencyAlerts } from "../emergency";
 import { randomUUID } from "node:crypto";
 import { FORWARDING_VAR, SECRET_VAR, isProxy, proxyMembers } from "../network";
@@ -638,6 +639,13 @@ export const admin = {
       await logActivity({ action: input.blocked ? "admin.user.block" : "admin.user.unblock", userId: uid(ctx), metadata: { targetUserId: input.id }, ip: ctx.ip, ctx });
       return ok;
     },
+    revokeSessions: async ({ input, ctx }) => {
+      await adminUser(input.id);
+      const revoked = await deleteUserSessions(input.id);
+      await logActivity({ action: "admin.user.revoke_sessions", userId: uid(ctx), metadata: { targetUserId: input.id, revoked }, ip: ctx.ip, ctx });
+      return { revoked };
+    },
+
     resetTotp: async ({ input, ctx }) => {
       await adminUser(input.id);
       await getDb().update(schema.users).set({ totpEnabled: false, totpSecretEnc: null }).where(eq(schema.users.id, input.id));
