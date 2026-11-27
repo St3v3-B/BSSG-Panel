@@ -87,7 +87,7 @@ export const contract = {
     consoleToken: mutation("user", server, s.ConsoleToken),
     /** Eigenaar of admin. */
     rename: mutation("user", server.extend({ name: z.string().min(1).max(100) }), s.Ok),
-    /** Eigenaar of admin; alleen userEditable-variabelen. Effect bij de volgende start. */
+    /** Eigenaar of admin; gebruikers alleen userEditable, admins alle-variabelen. Effect bij de volgende start. */
     updateVariables: mutation("user", server.extend({ variables: z.record(z.string(), z.string()) }), s.Ok),
     /** Eigenaar of admin. Wist de data niet, draait het install-script opnieuw. */
     reinstall: mutation("user", server, s.Ok),

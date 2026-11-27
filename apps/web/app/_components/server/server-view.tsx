@@ -1,5 +1,5 @@
 "use client";
-import { Lock } from "lucide-react";
+import { Lock, Moon, Play } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 import type { ServerDetail } from "@panel/api";
 import { ConsolePanel } from "@/app/_components/console-panel";
@@ -8,6 +8,7 @@ import { LiveStatsPanel } from "@/app/_components/live-stats";
 import { PowerButtons } from "@/app/_components/power-buttons";
 import { StatusBadge } from "@/app/_components/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/app/_components/ui/alert";
+import { Button } from "@/app/_components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/_components/ui/card";
 import { displayName } from "@/app/_components/user-avatar";
 import { useConsole } from "@/app/_hooks/use-console";
@@ -44,6 +45,20 @@ export function ServerView({ server }: { server: ServerDetail }) {
             <AlertTitle>{t.server.powerFailed}</AlertTitle>
             <AlertDescription>{errorText(live.powerError)}</AlertDescription>
           </div>
+        </Alert>
+      )}
+      {status === "sleeping" && (
+        <Alert className="border-indigo-400/40 bg-indigo-500/10 text-indigo-200" data-testid="sleeping-notice">
+          <Moon />
+          <div className="flex-1">
+            <AlertTitle>{t.sleep.sleepingTitle}</AlertTitle>
+            <AlertDescription>{t.sleep.sleepingText}</AlertDescription>
+          </div>
+          {perms.has("power") && (
+            <Button size="sm" onClick={() => void live.power("start").catch(() => {})} disabled={!!live.powerPending}>
+              <Play /> {t.power.start}
+            </Button>
+          )}
         </Alert>
       )}
       {status === "disk_exceeded" && (

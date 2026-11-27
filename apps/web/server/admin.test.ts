@@ -113,6 +113,7 @@ describe("admin.servers", () => {
       config_files: [{ path: "server.properties", format: "properties", set: { "server-port": "{{SERVER_PORT}}" } }],
       start_on_install: true,
       skip_install: false,
+      sleep: null,
     });
     expect(h.daemon.last("POST", "/api/servers")!.auth).toBe(`Bearer ${h.env.NODE_TOKEN}`);
     const log = await admin.api.admin.activity.search({ action: "admin.server.create" });

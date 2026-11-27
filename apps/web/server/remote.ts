@@ -53,7 +53,7 @@ async function body<T extends z.ZodType>(req: Request, s: T): Promise<z.output<T
 }
 
 const Uuid = z.string().uuid();
-const DaemonState = z.enum(["installing", "install_failed", "offline", "starting", "online", "stopping", "disk_exceeded"]);
+const DaemonState = z.enum(["installing", "install_failed", "offline", "starting", "online", "stopping", "disk_exceeded", "sleeping"]);
 
 async function serverOnNode(uuid: string, node: NodeRow) {
   if (!Uuid.safeParse(uuid).success) return null;

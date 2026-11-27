@@ -1,11 +1,13 @@
 "use client";
-import { Gamepad2, Globe } from "lucide-react";
+import { Gamepad2, Globe, Moon, Play } from "lucide-react";
 import Link from "next/link";
 import type { ServerSummary } from "@panel/api";
 import { trpc } from "@/lib/trpc";
 import { CopyButton } from "@/app/_components/copy-button";
 import { StatusBadge } from "@/app/_components/status-badge";
+import { Button } from "@/app/_components/ui/button";
 import { Card } from "@/app/_components/ui/card";
+import { Spinner } from "@/app/_components/ui/spinner";
 import { UsageMeter } from "@/app/_components/usage-meter";
 import { displayName } from "@/app/_components/user-avatar";
 import { formatBytes, formatCpuLimit, formatMb, formatPct, isRunning, usagePct } from "@/app/_lib/format";
@@ -16,6 +18,8 @@ export function ServerCard({ server }: { server: ServerSummary }) {
   const running = isRunning(server.status);
   const stats = trpc.servers.stats.useQuery({ uuid: server.uuid }, { enabled: running, refetchInterval: running ? 10_000 : false, retry: false });
   const s = running ? stats.data : null;
+  const utils = trpc.useUtils();
+  const start = trpc.servers.power.useMutation({ onSettled: () => void utils.servers.list.invalidate() });
   const Icon = server.type === "web" ? Globe : Gamepad2;
   const ramLimit = server.limits.ramMb * 1024 * 1024;
   const diskLimit = server.limits.diskMb * 1024 * 1024;
@@ -72,6 +76,18 @@ export function ServerCard({ server }: { server: ServerSummary }) {
         />
       </div>
       {!running && <p className="sr-only">{t.server.cpuLimitSr(formatCpuLimit(server.limits.cpuPct))}</p>}
+      {server.status === "sleeping" && (
+        <div className="relative z-10 flex items-center justify-between gap-2 rounded-md border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200" data-testid="sleeping-hint">
+          <span className="flex items-center gap-1.5">
+            <Moon className="size-3.5" /> {t.sleep.cardHint}
+          </span>
+          {server.isOwner && (
+            <Button size="sm" variant="secondary" className="h-7" disabled={start.isPending} onClick={() => start.mutate({ uuid: server.uuid, action: "start" })}>
+              {start.isPending ? <Spinner /> : <Play />} {t.power.start}
+            </Button>
+          )}
+        </div>
+      )}
     </Card>
   );
 }

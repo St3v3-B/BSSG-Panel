@@ -1,11 +1,13 @@
 "use client";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Shield } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { trpc } from "@/lib/trpc";
 import { CopyText } from "@/app/_components/copy-button";
 import { QueryError } from "@/app/_components/query-error";
 import { ServerTabs } from "@/app/_components/server/server-tabs";
 import { StatusBadge } from "@/app/_components/status-badge";
+import { Button } from "@/app/_components/ui/button";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { displayName } from "@/app/_components/user-avatar";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
@@ -16,6 +18,7 @@ import { useT } from "@/app/_lib/i18n";
 export default function ServerLayout({ children }: { children: ReactNode }) {
   const server = useServer();
   const t = useT();
+  const me = trpc.auth.me.useQuery(undefined, { staleTime: 30_000 });
   useDocumentTitle(server.data?.name ?? t.docTitle.server);
 
   if (server.error) {
@@ -41,17 +44,26 @@ export default function ServerLayout({ children }: { children: ReactNode }) {
     <div className="space-y-6">
       <div className="space-y-4">
         <BackLink />
-        <div className="min-w-0 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="truncate text-2xl font-semibold tracking-tight">{s.name}</h1>
-            <StatusBadge status={s.status} />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="truncate text-2xl font-semibold tracking-tight">{s.name}</h1>
+              <StatusBadge status={s.status} />
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+              {s.primaryAddress && <CopyText value={s.primaryAddress} className="text-foreground" />}
+              <span>{s.templateName}</span>
+              <span>· {s.node.name}</span>
+              {!s.isOwner && <span>· {t.server.of(displayName(s.owner))}</span>}
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-            {s.primaryAddress && <CopyText value={s.primaryAddress} className="text-foreground" />}
-            <span>{s.templateName}</span>
-            <span>· {s.node.name}</span>
-            {!s.isOwner && <span>· {t.server.of(displayName(s.owner))}</span>}
-          </div>
+          {me.data?.isAdmin && me.data.totpVerified && (
+            <Button asChild variant="outline" size="sm" data-testid="admin-manage">
+              <Link href={`/admin/servers/${s.uuid}`}>
+                <Shield /> {t.adminServer.manage}
+              </Link>
+            </Button>
+          )}
         </div>
         <ServerTabs server={s} />
       </div>
