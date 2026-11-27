@@ -21,9 +21,12 @@ const COLLAPSE_KEY = "panel.sidebar.collapsed";
 export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
+    // Tussen md en lg standaard ingeklapt; een bewuste keuze (opgeslagen) wint altijd.
+    let saved: string | null = null;
     try {
-      setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1");
+      saved = localStorage.getItem(COLLAPSE_KEY);
     } catch {}
+    setCollapsed(saved !== null ? saved === "1" : !window.matchMedia("(min-width: 1024px)").matches);
   }, []);
   const toggle = () =>
     setCollapsed((c) => {
