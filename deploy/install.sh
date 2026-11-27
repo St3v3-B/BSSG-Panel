@@ -431,7 +431,7 @@ main() {
 
 # ---------------------------------------------------------------- node-only
 NODE_KEYS=(PANEL_URL NODE_DOMAIN NODE_TOKEN ACME_EMAIL DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR
-  CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER PANEL_INSTANCE)
+  CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER PANEL_INSTANCE DOCKER_EXTRA_LABELS)
 
 collect_node_values() {
   log "values for the node (panel.env without panel secrets)"
@@ -440,7 +440,7 @@ collect_node_values() {
   ask NODE_TOKEN "Node token (from the panel: Admin > Nodes)" secret
   ask ACME_EMAIL "Email address for Let's Encrypt"
   local key
-  for key in DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER PANEL_INSTANCE; do
+  for key in DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER PANEL_INSTANCE DOCKER_EXTRA_LABELS; do
     keep_or_default "$key"
   done
   [ "${VAL[PANEL_INSTANCE]}" = main ] || warn "PANEL_INSTANCE=${VAL[PANEL_INSTANCE]} (normally main)"

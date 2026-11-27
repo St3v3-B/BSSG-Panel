@@ -2,6 +2,7 @@ packages:
   - apps/*
   - packages/*
   - tests/integration
+  - tests/multinode
 allowBuilds:
   cpu-features: false
   esbuild: true

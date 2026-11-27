@@ -381,6 +381,34 @@ importers:
         specifier: ^5.1.2
         version: 5.1.2(@types/node@26.6.11)(jsdom@31.0.1)(vite@8.3.8(@types/node@26.6.11)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
+  tests/multinode:
+    dependencies:
+      '@panel/api':
+        specifier: workspace:*
+        version: link:../../packages/api
+      '@trpc/client':
+        specifier: ^11.31.3
+        version: 11.31.3(@trpc/server@11.31.3(next@16.4.6(@types/node@26.6.11)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(typescript@5.9.3))(typescript@5.9.3)
+      ssh2:
+        specifier: ^1.17.0
+        version: 1.17.0
+      superjson:
+        specifier: ^2.2.7
+        version: 2.2.7
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.11
+        version: 26.6.11
+      '@types/ssh2':
+        specifier: ^1.15.6
+        version: 1.15.6
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^5.1.2
+        version: 5.1.2(@types/node@26.6.11)(jsdom@31.0.1)(vite@8.3.8(@types/node@26.6.11)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
 packages:
 
   '@alloc/quick-lru@5.3.0':
