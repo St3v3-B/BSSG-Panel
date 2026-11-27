@@ -149,6 +149,22 @@ describe("instellingen", () => {
   });
 });
 
+describe("bewaartermijn activiteitenlog", () => {
+  it("standaard 90; 0 = altijd; ongeldig wordt geweigerd; opslaan stuurt activityRetentionDays", async () => {
+    const { bodies } = renderWithTrpc(<SettingsAdmin />, admin);
+    const days = (await screen.findByLabelText("Keep activity log (days)")) as HTMLInputElement;
+    expect(days.value).toBe("90");
+    fireEvent.change(days, { target: { value: "-3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(input(bodies, "admin.settings.update")).toHaveLength(0);
+    fireEvent.change(days, { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    expect(await screen.findByText("Settings saved.")).toBeTruthy();
+    expect(input(bodies, "admin.settings.update")[0]).toMatchObject({ activityRetentionDays: 0 });
+  });
+});
+
 describe("MOTD van slapende servers", () => {
   it("voorbeeld rendert Minecraft-kleuren en opslaan stuurt sleepMotd", async () => {
     const { bodies } = renderWithTrpc(<SettingsAdmin />, admin);
