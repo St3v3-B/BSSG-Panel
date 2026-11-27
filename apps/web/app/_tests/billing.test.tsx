@@ -57,10 +57,10 @@ describe("pakketten (gebruiker)", () => {
   });
 
   it("pakketten uit of zelf kiezen uit: duidelijke melding, knoppen uit", async () => {
-    renderWithTrpc(<PlanPicker />, { ...user, patch: (m) => void (m.billing.status = () => ({ plansEnabled: false, canSubscribe: false, billingEnabled: false, hasSubscriptions: false })) });
+    renderWithTrpc(<PlanPicker />, { ...user, patch: (m) => void Object.assign(m.billing, { status: () => ({ plansEnabled: false, canSubscribe: false, billingEnabled: false, hasSubscriptions: false }) }) });
     expect(await screen.findByText("Plans aren't available on this panel.")).toBeTruthy();
     cleanup();
-    renderWithTrpc(<PlanPicker />, { ...user, patch: (m) => void (m.billing.status = () => ({ plansEnabled: true, canSubscribe: false, billingEnabled: false, hasSubscriptions: false })) });
+    renderWithTrpc(<PlanPicker />, { ...user, patch: (m) => void Object.assign(m.billing, { status: () => ({ plansEnabled: true, canSubscribe: false, billingEnabled: false, hasSubscriptions: false }) }) });
     expect(await screen.findByText(/can't pick a plan yourself/)).toBeTruthy();
     for (const b of screen.getAllByRole("button", { name: "Choose" })) expect((b as HTMLButtonElement).disabled).toBe(true);
   });
@@ -69,8 +69,10 @@ describe("pakketten (gebruiker)", () => {
     renderWithTrpc(<PlanPicker />, {
       ...user,
       patch: (m) =>
-        void (m.billing.subscribe = () => {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_CAPACITY" });
+        void Object.assign(m.billing, {
+          subscribe: () => {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_CAPACITY" });
+          },
         }),
     });
     fireEvent.click((await screen.findAllByRole("button", { name: "Choose" }))[0]!);
@@ -178,7 +180,7 @@ describe("admin", () => {
   it("instellingen: sleutels alleen als hint; facturatie aan zonder provider geeft een melding", async () => {
     const patch = (m: Implementation) => {
       const orig = m.admin.billing.get;
-      m.admin.billing.get = (o) => ({ ...(orig(o) as Awaited<ReturnType<typeof orig>>), billingEnabled: false, provider: null });
+      Object.assign(m.admin.billing, { get: (o: Parameters<typeof orig>[0]) => ({ ...(orig(o) as Awaited<ReturnType<typeof orig>>), billingEnabled: false, provider: null }) });
     };
     const { bodies } = renderWithTrpc(<BillingSettingsAdmin />, { ...admin, patch });
     const form = await screen.findByTestId("billing-settings");
