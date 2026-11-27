@@ -72,6 +72,7 @@ type Status struct {
 	Current    Commit          `json:"current"`
 	Commits    []Commit        `json:"commits"`
 	FetchError *string         `json:"fetch_error"`
+	Origin     *string         `json:"origin"`
 	Upgrade    json.RawMessage `json:"upgrade"`
 	LogTail    string          `json:"log_tail"`
 }
@@ -149,6 +150,10 @@ func (s *Service) Status(ctx context.Context, fetch bool) (Status, error) {
 			e := err.Error()
 			st.FetchError = &e
 		}
+	}
+	if o, err := s.git(ctx, "remote", "get-url", "origin"); err == nil && strings.TrimSpace(o) != "" {
+		u := strings.TrimSpace(o)
+		st.Origin = &u
 	}
 	out, err := s.git(ctx, "log", "-1", format, "HEAD")
 	if err != nil {

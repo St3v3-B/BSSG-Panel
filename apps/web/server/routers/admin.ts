@@ -17,6 +17,7 @@ import { buildServerSpec, validateVariables } from "../spec";
 import { imagePolicyOf, fetchServerByUuid, fetchServers, limitsOf, sleepOf, autoRestartOf, serverVariables, toDetail, toSummary, liveViews, userPublic, type ServerBundle } from "../servers-data";
 import { adminImageRows, checkAllNodes } from "../image-updates";
 import { getSettings } from "../settings";
+import { setUpdatesEnabled, startUpgrade, updatesStatus } from "../updates";
 import { templateRow } from "../templates";
 import { forgetServer, getNodeLive, isStale } from "../node-cache";
 import type { Ctx } from "@panel/api";
@@ -693,6 +694,16 @@ export const admin = {
       return activityPage(and(...conds), input);
     },
   } satisfies A["activity"],
+
+  updates: {
+    status: async ({ input }) => updatesStatus(input.refresh ?? true),
+    start: async ({ input, ctx }) => startUpgrade(input, { userId: uid(ctx), ip: ctx.ip }),
+    setEnabled: async ({ input, ctx }) => {
+      await setUpdatesEnabled(input.enabled);
+      await logActivity({ action: "admin.updates.setEnabled", userId: uid(ctx), metadata: { enabled: input.enabled }, ip: ctx.ip, ctx });
+      return ok;
+    },
+  } satisfies A["updates"],
 
   settings: {
     get: async () => getSettings(),
