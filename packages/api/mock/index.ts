@@ -502,6 +502,25 @@ export function createMock(): Implementation {
         serverCount: db.servers.length,
         userCount: db.users.length,
       }),
+      updates: {
+        status: () => ({
+          enabled: true,
+          current: { sha: "15efeda0b1c2d3e4f5061728394a5b6c7d8e9f01", date: "2026-11-26T20:00:00+01:00", message: "perf: geen optimistische 'starting' bij start van een server die al draait" },
+          daemonVersion: "0.1.0-dev",
+          daemonCommit: "15efeda0b1c2d3e4f5061728394a5b6c7d8e9f01",
+          available: [
+            { sha: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", date: "2026-11-27T09:00:00+01:00", message: "ui: Updates-pagina", author: "Steve", ci: "success" },
+            { sha: "b2c3d4e5f60718293a4b5c6d7e8f901234567890", date: "2026-11-27T10:00:00+01:00", message: "daemon: panel-upgrade endpoints", author: "Steve", ci: "pending" },
+          ],
+          upgrade: null,
+          logTail: "",
+          canUpgrade: true,
+          error: null,
+          githubRepo: "St3v3-B/BSSG-Panel",
+        }),
+        start: () => ({ unit: "panel-upgrade-20261127T100000Z" }),
+        setEnabled: () => ok,
+      },
       imageUpdates: {
         list: () => db.servers.map((x) => ({ uuid: x.uuid, name: x.name, type: x.type, status: x.status, templateName: x.templateName, nodeName: x.nodeName, image: x.type === "web" ? "serversideup/php:8.3-fpm-nginx-alpine" : "eclipse-temurin:25-jre", imageUpdate: x.imageUpdate })),
         checkNow: () => ok,

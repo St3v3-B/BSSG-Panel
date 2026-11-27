@@ -495,6 +495,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/panel-upgrade/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Versie van de checkout, beschikbare commits en de laatste upgrade (alleen lokale node)
+         * @description Alleen op de lokale node (`PANEL_REPO_DIR` gezet en `deploy/upgrade.sh` aanwezig); elders 404 `not_local`.
+         *     Doet `git fetch origin` (tenzij `fetch=0`; bij een fout staat die in `fetch_error` en blijft de rest bruikbaar)
+         *     en toont `git log HEAD..origin/main`. `upgrade` en `log_tail` komen uit `$DATA_DIR/upgrade/status.json` en het laatste log.
+         */
+        get: operations["getPanelUpgradeStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/panel-upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * deploy/upgrade.sh gedetacheerd starten (systemd-run --unit panel-upgrade-<ts>); alleen lokale node
+         * @description `ref` is `origin/main` (standaard) of een hex-sha van 7-40 tekens; al het andere is 400 `bad_request`.
+         *     Draait al een upgrade (lock of status `running`), dan 409 `conflict`. Het script herstart daemon en panel zelf;
+         *     de eenheid is los van de daemon, dus een herstart doodt hem niet.
+         */
+        post: operations["startPanelUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/db/status": {
         parameters: {
             query?: never;
@@ -709,6 +753,40 @@ export interface components {
             docker_version: string;
             server_count: number;
             caddy_healthy?: boolean;
+            /** @description Git-commit waaruit de daemon gebouwd is (leeg bij een ontwikkelbuild) */
+            commit?: string;
+        };
+        PanelUpgradeStatus: {
+            /** @description HEAD van de checkout */
+            current: {
+                sha: string;
+                date: string | null;
+                message: string;
+            };
+            /** @description HEAD..origin/main, nieuwste eerst, max 50 */
+            commits: {
+                sha: string;
+                date: string | null;
+                message: string;
+                author: string | null;
+            }[];
+            fetch_error?: string | null;
+            /** @description Inhoud van status.json (null als er nog nooit een upgrade was) */
+            upgrade: {
+                /** @enum {string} */
+                state?: "idle" | "running" | "success" | "failed" | "rolled_back";
+                from?: string;
+                to?: string;
+                ref?: string;
+                step?: string;
+                started?: string;
+                finished?: string;
+                error?: string;
+            } | null;
+            /** @description Laatste ~40 regels van het laatste log */
+            log_tail: string;
+            daemon_version: string;
+            daemon_commit?: string;
         };
         Stats: {
             /** @description 100 = één core vol */
@@ -1869,6 +1947,65 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getPanelUpgradeStatus: {
+        parameters: {
+            query?: {
+                fetch?: "0" | "1";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PanelUpgradeStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    startPanelUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description origin/main of hex-sha */
+                    ref?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Gestart */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        unit: string;
+                        /** Format: date-time */
+                        started_at: string;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];

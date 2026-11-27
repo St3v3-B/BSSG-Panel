@@ -692,6 +692,50 @@ export const AdminImageRow = z.object({
 });
 export type AdminImageRow = z.infer<typeof AdminImageRow>;
 
+// ---------- panel updates (Admin > Settings > Updates) ----------
+
+export const UpgradeState = z.enum(["idle", "running", "success", "failed", "rolled_back"]);
+export type UpgradeState = z.infer<typeof UpgradeState>;
+/** CI-status van een commit op GitHub: `none` = geen check-runs, `unknown` = GitHub niet bereikbaar. */
+export const CiStatus = z.enum(["success", "failure", "pending", "none", "unknown"]);
+export type CiStatus = z.infer<typeof CiStatus>;
+
+export const PanelCommit = z.object({ sha: z.string(), date: z.string().nullable(), message: z.string() });
+export type PanelCommit = z.infer<typeof PanelCommit>;
+export const AvailableUpdate = PanelCommit.extend({ author: z.string().nullable(), ci: CiStatus });
+export type AvailableUpdate = z.infer<typeof AvailableUpdate>;
+
+/** Laatste (of lopende) run van deploy/upgrade.sh, uit /var/lib/panel/upgrade/status.json. */
+export const UpgradeRun = z.object({
+  state: UpgradeState,
+  from: z.string(),
+  to: z.string(),
+  step: z.string(),
+  started: z.string().nullable(),
+  finished: z.string().nullable(),
+  error: z.string().nullable(),
+});
+export type UpgradeRun = z.infer<typeof UpgradeRun>;
+
+export const UpdatesStatus = z.object({
+  /** Instelling `updates_enabled`: uit = de knop en `start` zijn geblokkeerd. */
+  enabled: z.boolean(),
+  /** De versie die nu draait (bij het bouwen van de image ingebakken). */
+  current: PanelCommit,
+  daemonVersion: z.string().nullable(),
+  daemonCommit: z.string().nullable(),
+  /** Commits op origin/main die nog niet in de checkout zitten (nieuwste eerst, max 50). */
+  available: z.array(AvailableUpdate),
+  upgrade: UpgradeRun.nullable(),
+  logTail: z.string(),
+  /** De lokale daemon is bereikbaar en heeft een checkout om vanuit te upgraden. */
+  canUpgrade: z.boolean(),
+  /** Reden als er niets te tonen of te doen is (daemon onbereikbaar, git fetch mislukt, ...). */
+  error: z.string().nullable(),
+  githubRepo: z.string().nullable(),
+});
+export type UpdatesStatus = z.infer<typeof UpdatesStatus>;
+
 export const DashboardAlert = z.object({
   kind: z.enum(["emergency_login", "node_offline", "install_failed", "backup_failed", "disk_low"]),
   message: z.string(),
