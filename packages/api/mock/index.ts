@@ -143,7 +143,7 @@ export function createMock(): Implementation {
   const mockJob = (uuid: string, appId: string, adminUser: string | null): s.AppJob => {
     const steps = ["download", "verify", "extract", "database", "configure", "finish"].map((key) => ({ key, status: "done" as const }));
     const job: s.AppJob = {
-      id: id(), serverUuid: uuid, appId, appName: appId, status: "succeeded", steps, errorCode: null, error: null,
+      id: id(), serverUuid: uuid, appId, appName: ({ wordpress: "WordPress", grav: "Grav", nextcloud: "Nextcloud" } as Record<string, string>)[appId] ?? appId, status: "succeeded", steps, errorCode: null, error: null,
       result: { version: "6.8", siteUrl: "https://mock.example.test", adminUrl: "https://mock.example.test/wp-admin/", adminUsername: adminUser, adminPassword: adminUser ? "mock-admin-password" : null, databaseName: "mock_db", notes: [] },
       startedAt: new Date(), finishedAt: new Date(),
     };
