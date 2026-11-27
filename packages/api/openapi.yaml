@@ -347,6 +347,29 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/stats:
+    get:
+      tags: [servers]
+      operationId: listStats
+      summary: Laatste meting van alle draaiende servers in één keer
+      description: |
+        Voor de verbruiksgrafieken: het panel vraagt dit elke minuut per node. Alleen servers met een
+        draaiende container staan erin. Oudere daemons kennen dit pad niet (404); het panel valt dan
+        terug op `GET /api/servers/{uuid}/stats` per draaiende server.
+      responses:
+        "200":
+          description: Metingen per server
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [servers]
+                properties:
+                  servers:
+                    type: array
+                    items: { $ref: "#/components/schemas/ServerStats" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /api/servers/{uuid}/ws:
     parameters: [{ $ref: "#/components/parameters/Uuid" }]
     get:
@@ -1099,6 +1122,14 @@ components:
         disk_bytes: { type: integer, format: int64 }
         disk_limit_bytes: { type: integer, format: int64 }
         uptime_ms: { type: integer, format: int64, description: "0 als de server niet draait" }
+
+    ServerStats:
+      allOf:
+        - $ref: "#/components/schemas/Stats"
+        - type: object
+          required: [uuid]
+          properties:
+            uuid: { type: string, format: uuid }
 
     Limits:
       type: object

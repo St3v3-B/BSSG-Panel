@@ -163,6 +163,13 @@ func (s *Server) Stats() Stats {
 	return s.statsLocked()
 }
 
+// RunningStats geeft de laatste meting en true als de container draait.
+func (s *Server) RunningStats() (Stats, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.statsLocked(), s.run != nil && s.startedAt != nil
+}
+
 func (s *Server) statsLocked() Stats {
 	st := Stats{DiskBytes: s.diskBytes, DiskLimitBytes: int64(s.spec.Limits.DiskMB) * 1024 * 1024}
 	if s.run == nil || s.startedAt == nil {
