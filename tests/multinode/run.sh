@@ -13,6 +13,7 @@
 # reverse tunnel (PANEL_URL=http://127.0.0.1:<poort>), die bij het afsluiten dicht gaat.
 # De echte installatie (panel.instance=main, /etc/panel, de compose-stack) wordt niet geraakt.
 #
+#   Elke node heeft zijn eigen MariaDB (lokaal: container $mdb, remote: via install.sh --node-only met dezelfde naam).
 #   MN_KEEP_REMOTE=1   laat de node na afloop staan (anders: unit, bestanden en containers weg; Docker blijft)
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -32,6 +33,8 @@ instance="multinode-$uniq"
 pg="panel-mn-pg-$uniq"
 redis="panel-mn-redis-$uniq"
 hosts_tag="# panel-multinode-test-$uniq"
+mdb="panel-mariadb-mn-$uniq"   # MariaDB van de lokale testnode; dezelfde containernaam op de remote node (zie hieronder)
+export MN_SITE_DOMAIN=dbsite.mn.test
 panel_pid=""; tunnel_pid=""
 ssh_opts=(-i "$MN_SSH_KEY" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
 rssh() { ssh "${ssh_opts[@]}" "root@$MN_NODE_HOST" "$@"; }
@@ -43,7 +46,7 @@ cleanup() {
   [ -n "$tunnel_pid" ] && kill "$tunnel_pid" 2>/dev/null
   [ -n "$panel_pid" ] && kill "$panel_pid" 2>/dev/null
   pkill -f "next dev -p ${PANEL_PORT:-x}" 2>/dev/null
-  docker rm -f "$pg" "$redis" >/dev/null 2>&1
+  docker rm -f "$pg" "$redis" "$mdb" >/dev/null 2>&1
   ids=$(docker ps -aq --filter label=panel.test=true --filter "label=panel.instance=$instance")
   [ -n "$ids" ] && docker rm -f $ids >/dev/null
   nets=$(docker network ls -q --filter label=panel.test=true --filter "label=panel.instance=$instance")
@@ -77,6 +80,8 @@ pg_port=$(docker port "$pg" 5432/tcp | head -1 | cut -d: -f2)
 redis_port=$(docker port "$redis" 6379/tcp | head -1 | cut -d: -f2)
 for _ in $(seq 1 60); do docker exec "$pg" psql -U postgres -d panel -c 'select 1' >/dev/null 2>&1 && break; sleep 0.5; done
 
+docker run -d --name "$mdb" --label panel.test=true --label "panel.instance=$instance" -e MARIADB_ROOT_PASSWORD="mn-root-$uniq" mariadb:11 --skip-name-resolve >/dev/null
+export MARIADB_CONTAINER="$mdb"   # overal dezelfde naam (panel registreert hem als host van elke node)
 export PANEL_PORT=$(free_port) DAEMON_PORT=$(free_port) SFTP_PORT=$(free_port) IT_GAME_PORT=$(free_port)
 export PANEL_DOMAIN=panel.test NODE_DOMAIN=node1.test ACME_EMAIL=it@panel.test
 export OWNER_DISCORD_ID=200000000000000001 DISCORD_CLIENT_ID=it-client DISCORD_CLIENT_SECRET=it-secret
@@ -91,7 +96,7 @@ export TEMPLATES_DIR="$work/templates" PANEL_INSTANCE="$instance" DOCKER_EXTRA_L
 export NODE_TLS_REJECT_UNAUTHORIZED=0   # alleen test: Caddy van de node gebruikt zijn eigen CA (local_certs)
 
 echo "== /etc/hosts: $MN_NODE_DOMAIN -> $MN_NODE_HOST (tijdelijk)"
-echo "$MN_NODE_HOST $MN_NODE_DOMAIN $hosts_tag" >> /etc/hosts
+echo "$MN_NODE_HOST $MN_NODE_DOMAIN $MN_SITE_DOMAIN $hosts_tag" >> /etc/hosts
 
 echo "== migraties + daemon bouwen + panel starten op :$PANEL_PORT"
 pnpm --filter @panel/db exec tsx migrate.ts >/dev/null
@@ -117,11 +122,16 @@ echo "== node installeren op $MN_NODE_HOST met het gegenereerde installcommando"
 # commando (git clone) slaan we over; de rest is letterlijk het gegenereerde commando.
 git ls-files -z | tar --null -T - -cf - | rssh 'rm -rf /opt/panel-node && mkdir -p /opt/panel-node && tar -xf - -C /opt/panel-node'
 rssh 'cp /opt/panel-node/deploy/caddy/examples/local-certs.caddy /opt/panel-node/deploy/caddy/global.d/local-certs.caddy'
-{ printf 'PANEL_INSTANCE=%q DOCKER_EXTRA_LABELS=panel.test=true ' "$instance"; tail -n +3 "$work/install-command.txt"; } > "$work/remote-install.sh"
+{ printf 'PANEL_INSTANCE=%q DOCKER_EXTRA_LABELS=panel.test=true MARIADB_CONTAINER=%q ' "$instance" "$mdb"; tail -n +3 "$work/install-command.txt"; } > "$work/remote-install.sh"
 echo "--- commando (zonder token):"; sed "s/NODE_TOKEN='[^']*'/NODE_TOKEN='***'/" "$work/remote-install.sh"
 rssh 'bash -s' < "$work/remote-install.sh" 2>&1 | tee "$work/remote-install.log" | tail -25
 rssh 'systemctl is-active panel-daemon; docker ps --format "{{.Names}} {{.Status}}"'
 
+# De lokale testnode heeft zijn eigen MariaDB ($mdb); alleen de lokale daemon (en fase C) krijgt het rootwachtwoord, het
+# panel zelf niet (het beheert alles via de daemon). De remote node genereert zijn eigen wachtwoord.
+export MN_NODE_HOST MN_SSH_KEY
 echo "== fase B: remote node, console, bestanden, SFTP, verplaatsen"
-pnpm --filter @panel/multinode run multinode b-remote
+MARIADB_ROOT_PASSWORD="mn-root-$uniq" pnpm --filter @panel/multinode run multinode b-remote
+echo "== fase C: website met database verhuist naar de remote node en terug"
+MARIADB_ROOT_PASSWORD="mn-root-$uniq" pnpm --filter @panel/multinode run multinode c-database
 echo "== multinode-test geslaagd"
