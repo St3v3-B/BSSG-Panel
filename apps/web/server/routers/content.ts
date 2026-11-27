@@ -57,7 +57,7 @@ async function mcFor(ctx: Ctx, uuid: string, perm: "files.read" | "files.write")
     const v = (vars[profile.versionVar] ?? def).trim();
     gameVersion = v && v !== "latest" ? v : await ext(() => latestGameVersion(slug));
   }
-  return { a, profile, slug, gameVersion, filter: { loaders: profile.loaders, gameVersion, serverSide: profile.kind === "mod" } };
+  return { a, profile, slug, gameVersion, filter: { loaders: profile.loaders, gameVersion, projectType: profile.kind, serverSide: profile.kind === "mod" } };
 }
 
 const toInstalled = (r: Row): InstalledContent => ({ id: r.id, source: r.source as InstalledContent["source"], projectId: r.projectId, name: r.name, versionId: r.versionId, versionNumber: r.versionNumber, filename: r.filename, kind: r.kind as ContentKind, installedAt: r.installedAt });

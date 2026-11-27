@@ -24,6 +24,8 @@ export interface FileTarget {
 export interface Filter {
   loaders: string[];
   gameVersion: string | null;
+  /** Modrinth-projecttype: plugins zijn een eigen type (`plugin`), mods `mod`. */
+  projectType: "plugin" | "mod";
   /** Fabric: alleen mods die aan de serverkant draaien. */
   serverSide: boolean;
 }
@@ -112,7 +114,7 @@ function mrTarget(p: { id: string; title: string }, v: MrVersion): FileTarget {
 
 export const modrinth: SourceClient = {
   async search(f, query, offset, modpacks = false) {
-    const facets: string[][] = [[modpacks ? "project_type:modpack" : "project_type:mod"], f.loaders.map((l) => `categories:${l}`)];
+    const facets: string[][] = [[modpacks ? "project_type:modpack" : `project_type:${f.projectType}`], f.loaders.map((l) => `categories:${l}`)];
     if (f.gameVersion && !modpacks) facets.push([`versions:${f.gameVersion}`]);
     if (f.serverSide && !modpacks) facets.push(["server_side:required", "server_side:optional"]);
     const r = await mr<{ hits: Array<MrProject & { project_id: string; author: string }>; total_hits: number }>(

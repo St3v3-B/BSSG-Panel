@@ -106,12 +106,14 @@ describe("content.info en zoeken", () => {
     const r = await alice.api.content.search({ uuid: paper, source: "modrinth", query: "lucky" });
     expect(r).toEqual({ total: 1, hits: [expect.objectContaining({ source: "modrinth", projectId: "LP", name: "LuckPerms", author: "Luck", downloads: 42, iconUrl: "https://cdn.modrinth.com/i.png" })] });
     const url = decodeURIComponent(searchUrls.at(-1)!);
+    expect(url).toContain("project_type:plugin");
     expect(url).toContain("categories:paper");
     expect(url).toContain("categories:bukkit");
     expect(url).toContain("versions:1.21.5");
     expect(url).not.toContain("server_side");
     await alice.api.content.search({ uuid: fab, source: "modrinth", query: "" });
     expect(decodeURIComponent(searchUrls.at(-1)!)).toContain("server_side:required");
+    expect(decodeURIComponent(searchUrls.at(-1)!)).toContain("project_type:mod]");
     expect(ext.calls.filter((c) => c.url.includes("modrinth")).every((c) => c.headers["user-agent"] === "bssg-panel/1.0")).toBe(true);
     await alice.api.content.search({ uuid: fab, source: "modrinth", query: "pack", modpacks: true });
     const mp = decodeURIComponent(searchUrls.at(-1)!);
