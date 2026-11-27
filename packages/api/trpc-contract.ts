@@ -294,6 +294,10 @@ export const contract = {
     restore: mutation("user", byId, s.Ok), // backup.restore
     delete: mutation("user", byId, s.Ok), // backup.create
     downloadUrl: mutation("user", byId, s.SignedUrl),
+    /** Lopende backup of herstel van de server (null = niets of node onbereikbaar). Recht: backup.create of backup.restore. */
+    progress: query("user", server, s.BackupProgress.nullable()),
+    /** Lopende backup (backup.create) of herstel (backup.restore) afbreken. CONFLICT BACKUP_NOT_RUNNING / BACKUP_NOT_CANCELLABLE. */
+    cancel: mutation("user", byId, s.Ok),
   },
 
   schedules: {

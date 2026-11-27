@@ -44,7 +44,7 @@ info:
     | ← daemon | `daemon_message` | `level` (info/warning/error), `line` | meldingen van de daemon zelf (bv. disk 90%) |
     | ← daemon | `status` | `state` (ServerState) | bij elke statuswijziging |
     | ← daemon | `stats` | Stats-velden | elke 2 s zolang de server draait |
-    | ← daemon | `backup_progress` | `backup_id`, `bytes`, `percent` | tijdens backup/herstel |
+    | ← daemon | `backup_progress` | `backup_id`, `operation` (backup/restore), `phase`, `bytes`, `total_bytes`, `percent`, `eta_seconds` (null = onbekend), `cancellable` | elke seconde tijdens backup/herstel (velden als `BackupProgress`); de laatste heeft `phase` `done`, `failed` of `cancelled` |
     | ← daemon | `error` | `message` | bv. recht ontbreekt; verbinding blijft open |
 
     Sluitcodes: 4001 token verlopen/ongeldig, 4003 geen `console.read`, 4004 server onbekend,
@@ -615,6 +615,51 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/servers/{uuid}/backups/progress:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    get:
+      tags: [backups]
+      operationId: getBackupProgress
+      summary: Voortgang van de lopende backup of het lopende herstel van deze server
+      description: "`progress` is null als er niets loopt (ook direct na een daemon-herstart: lopend werk overleeft die niet)."
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [progress]
+                properties:
+                  progress:
+                    oneOf:
+                      - $ref: "#/components/schemas/BackupProgress"
+                      - type: "null"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/servers/{uuid}/backups/{backup_id}/cancel:
+    parameters:
+      - { $ref: "#/components/parameters/Uuid" }
+      - name: backup_id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      tags: [backups]
+      operationId: cancelBackup
+      summary: Lopende backup of herstel afbreken
+      description: |
+        Een backup kan tot het afronden worden afgebroken (het half geüploade object wordt verwijderd); een herstel alleen
+        tijdens `stopping` en `downloading`, dus voordat de data wordt omgewisseld: de oude data blijft dan heel en een
+        server die draaide start weer. Het resultaat komt zoals altijd via `POST /api/remote/backups/{backup_id}[/restore]`,
+        met `successful: false` en `error: "cancelled"`.
+      responses:
+        "202": { description: Annuleren gestart }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Server onbekend, of `not_running`: deze backup loopt niet", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "`not_cancellable`: het herstel wisselt al om of de backup rondt af", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/servers/{uuid}/backups/{backup_id}/restore:
     parameters:
@@ -1277,6 +1322,26 @@ components:
           description: Dumps komen in het archief onder `_databases/{name}.sql`
           items: { $ref: "#/components/schemas/DatabaseCredentials" }
 
+    BackupProgress:
+      type: object
+      required: [backup_id, operation, phase, bytes, total_bytes, percent, eta_seconds, started_at, cancellable]
+      properties:
+        backup_id: { type: integer }
+        operation: { type: string, enum: [backup, restore] }
+        phase:
+          type: string
+          enum: [preparing, dumping, archiving, stopping, downloading, applying, finishing, done, failed, cancelled]
+          description: |
+            backup: preparing (meten) → dumping (alleen met databases) → archiving (streamen naar S3) → finishing.
+            herstel: stopping → downloading (downloaden + checksum + uitpakken) → applying (omwisselen + databases) → finishing.
+            `done`/`failed`/`cancelled` alleen in het laatste websocket-bericht.
+        bytes: { type: integer, format: int64, description: "verwerkt in deze fase: gelezen brondata (backup) of gedownloade bytes (herstel)" }
+        total_bytes: { type: integer, format: int64, description: "0 = onbekend" }
+        percent: { type: integer, minimum: 0, maximum: 100 }
+        eta_seconds: { type: [integer, "null"], format: int64, description: "geschatte resterende tijd van de fase; null = onbekend" }
+        started_at: { type: string, format: date-time }
+        cancellable: { type: boolean }
+
     RestoreRequest:
       type: object
       required: [s3, key, sha256, databases]
@@ -1360,8 +1425,13 @@ components:
         state: { type: string }
         message: { type: string }
         backup_id: { type: integer }
+        operation: { type: string, enum: [backup, restore] }
+        phase: { type: string }
         bytes: { type: integer, format: int64 }
+        total_bytes: { type: integer, format: int64 }
         percent: { type: number }
+        eta_seconds: { type: [integer, "null"], format: int64 }
+        cancellable: { type: boolean }
         cpu_pct: { type: number }
         memory_bytes: { type: integer, format: int64 }
         memory_limit_bytes: { type: integer, format: int64 }

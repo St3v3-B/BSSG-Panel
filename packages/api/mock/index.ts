@@ -476,6 +476,26 @@ export function createMock(): Implementation {
       restore: () => ok,
       delete: ({ input }) => ((db.backups = db.backups.filter((b) => b.id !== input.id)), ok),
       downloadUrl: ({ input }) => ({ url: `https://s3.test/backups/${input.id}.tar.zst`, expiresAt: new Date(Date.now() + 10 * 60_000) }),
+      // Nep-voortgang: een backup duurt 60 s over 512 MB en is daarna klaar.
+      progress: ({ input }) => {
+        const b = db.backups.find((x) => x.serverUuid === input.uuid && (x.status === "running" || x.status === "pending" || x.status === "restoring"));
+        if (!b) return null;
+        const total = 512 * 1024 * 1024;
+        const elapsed = Date.now() - b.createdAt.getTime();
+        if (elapsed >= 60_000) {
+          Object.assign(b, { status: "completed", sizeBytes: total / 2, sha256: "f".repeat(64), completedAt: new Date() });
+          return null;
+        }
+        const frac = elapsed / 60_000;
+        const restore = b.status === "restoring";
+        return { backupId: b.id, operation: restore ? "restore" : "backup", phase: restore ? "downloading" : "archiving", bytes: Math.round(total * frac), totalBytes: total, percent: Math.min(99, Math.floor(frac * 100)), etaSeconds: elapsed > 1000 ? Math.round((60_000 - elapsed) / 1000) : null, startedAt: b.createdAt, cancellable: true };
+      },
+      cancel: ({ input }) => {
+        const b = db.backups.find((x) => x.id === input.id) ?? notFound("backup");
+        if (b.status === "restoring") b.status = "completed";
+        else Object.assign(b, { status: "failed", error: "cancelled", completedAt: new Date() });
+        return ok;
+      },
     },
     schedules: {
       list: ({ input }) => db.schedules.filter((x) => x.serverUuid === input.uuid),

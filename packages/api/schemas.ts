@@ -475,6 +475,25 @@ export const Backup = z.object({
 });
 export type Backup = z.infer<typeof Backup>;
 
+/** Live voortgang van een lopende backup of herstel (BackupProgress van de daemon). */
+export const BackupPhase = z.enum(["preparing", "dumping", "archiving", "stopping", "downloading", "applying", "finishing", "done", "failed", "cancelled"]);
+export type BackupPhase = z.infer<typeof BackupPhase>;
+export const BackupProgress = z.object({
+  backupId: Id,
+  operation: z.enum(["backup", "restore"]),
+  phase: BackupPhase,
+  /** Verwerkt in deze fase (brondata bij een backup, gedownload bij een herstel). */
+  bytes: z.number(),
+  /** 0 = onbekend */
+  totalBytes: z.number(),
+  percent: z.number().min(0).max(100),
+  /** Geschatte resterende seconden; null = onbekend. */
+  etaSeconds: z.number().nullable(),
+  startedAt: z.date(),
+  cancellable: z.boolean(),
+});
+export type BackupProgress = z.infer<typeof BackupProgress>;
+
 // ---------- schema's ----------
 
 export const ScheduleAction = z.enum(["restart", "command", "backup", "exec"]);
