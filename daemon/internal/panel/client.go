@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"panel/daemon/internal/server"
 )
 
 // JWK is één sleutel uit GET /api/remote/jwt-key.
@@ -148,6 +150,27 @@ func (c *Client) JWKS(ctx context.Context) ([]JWK, error) {
 func (c *Client) Hello(version, diskQuotaMode string) {
 	c.async("hello", func(ctx context.Context) error {
 		return c.do(ctx, http.MethodPost, "/api/remote/node/hello", map[string]string{"version": version, "disk_quota_mode": diskQuotaMode}, nil)
+	})
+}
+
+// ImageSettings haalt de globale instellingen voor image-updates op.
+func (c *Client) ImageSettings(ctx context.Context) (server.ImageSettings, error) {
+	var out server.ImageSettings
+	err := c.do(ctx, http.MethodGet, "/api/remote/settings/image-updates", nil, &out)
+	return out, err
+}
+
+// ReportImages meldt het resultaat van een image-controle (asynchroon met retry).
+func (c *Client) ReportImages(items []server.ImageStatus) {
+	c.async("images", func(ctx context.Context) error {
+		return c.do(ctx, http.MethodPost, "/api/remote/node/images", map[string]any{"servers": items}, nil)
+	})
+}
+
+// ReportImageUpdate meldt dat een image-update is toegepast of mislukt.
+func (c *Client) ReportImageUpdate(uuid string, r server.ImageUpdateResult) {
+	c.async("image-update "+uuid, func(ctx context.Context) error {
+		return c.do(ctx, http.MethodPost, "/api/remote/servers/"+uuid+"/image-update", r, nil)
 	})
 }
 

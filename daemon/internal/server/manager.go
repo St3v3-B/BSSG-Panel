@@ -108,6 +108,7 @@ type Manager struct {
 	servers map[string]*Server
 
 	onState func(uuid, state string)
+	img     *imageUpdater
 }
 
 // OnState registreert een functie die bij elke statuswijziging wordt aangeroepen (onder

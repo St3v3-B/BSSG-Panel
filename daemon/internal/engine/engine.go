@@ -65,6 +65,8 @@ type Container struct {
 	Running   bool
 	StartedAt time.Time
 	ExitCode  int
+	// ImageID is het id van de image waarmee de container gemaakt is.
+	ImageID string
 }
 
 // Attachment is een stdin-verbinding met een container.
@@ -105,4 +107,5 @@ type Engine interface {
 	Stats(ctx context.Context, id string, fn func(StatsSample)) error
 	Update(ctx context.Context, id string, r Resources) error
 	Networks
+	Images
 }

@@ -214,7 +214,7 @@ func (s *Server) launch(sp spec.ServerSpec) error {
 	if err := spec.ApplyConfigFiles(s.m.volume(sp.UUID), sp.ConfigFiles, sp.Vars(), s.m.cfg.UID, s.m.cfg.GID); err != nil {
 		return err
 	}
-	if err := eng.EnsureImage(ctx, sp.Image, func(l string) { s.DaemonMessage("info", l) }); err != nil {
+	if err := s.m.ensureImage(ctx, sp.Image, func(l string) { s.DaemonMessage("info", l) }); err != nil {
 		return fmt.Errorf("image %s: %w", sp.Image, err)
 	}
 	if err := eng.Remove(ctx, ContainerName(sp.UUID)); err != nil && !errors.Is(err, engine.ErrNotFound) {
@@ -472,7 +472,7 @@ func (s *Server) runInstall(ctx context.Context, sp spec.ServerSpec) error {
 	if err := s.ensureVolume(); err != nil {
 		return fmt.Errorf("data-map: %w", err)
 	}
-	if err := eng.EnsureImage(ctx, sp.Install.Image, s.installLine); err != nil {
+	if err := s.m.ensureImage(ctx, sp.Install.Image, s.installLine); err != nil {
 		return fmt.Errorf("image %s: %w", sp.Install.Image, err)
 	}
 	name := installName(sp.UUID)
