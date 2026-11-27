@@ -39,10 +39,13 @@ export const PHASE3 = [
 /** Admin-beheer (opschorten, template wisselen, instellingen). */
 export const ADMIN2 = ["admin.servers.setSuspended", "admin.servers.changeTemplate", "admin.settings.update", "admin.servers.setDomainsAllowed", "admin.templates.create", "admin.templates.update", "admin.templates.delete", "servers.networkCandidates", "servers.updateNetwork"];
 
+/** Minecraft-inhoud: plugins, mods, modpacks, versiekiezer. */
+export const CONTENT = ["content.info", "content.search", "content.resolve", "content.install", "content.list", "content.checkUpdates", "content.update", "content.uninstall", "content.importModpack", "content.versionOptions"];
+
 describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...ADMIN2];
+    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...ADMIN2, ...CONTENT];
     for (const p of all) expect(contract.has(p), p).toBe(true);
     expect(implementedPaths().sort()).toEqual(all.sort());
   });
