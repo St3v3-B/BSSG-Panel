@@ -300,8 +300,12 @@ func (a *API) transferAuth(w http.ResponseWriter, r *http.Request, perm string) 
 }
 
 func (a *API) download(w http.ResponseWriter, r *http.Request) {
-	s, _, ok := a.transferAuth(w, r, "files.read")
+	s, claims, ok := a.transferAuth(w, r, "files.read")
 	if !ok {
+		return
+	}
+	if !claimMatches(claims.Path, r.URL.Query().Get("path")) {
+		writeErr(w, http.StatusForbidden, "forbidden", "token is not valid for this path")
 		return
 	}
 	f, fi, err := s.Root().OpenRead(r.URL.Query().Get("path"))
@@ -317,8 +321,12 @@ func (a *API) download(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) upload(w http.ResponseWriter, r *http.Request) {
-	s, _, ok := a.transferAuth(w, r, "files.write")
+	s, claims, ok := a.transferAuth(w, r, "files.write")
 	if !ok {
+		return
+	}
+	if !claimMatches(claims.Directory, r.URL.Query().Get("directory")) {
+		writeErr(w, http.StatusForbidden, "forbidden", "token is not valid for this directory")
 		return
 	}
 	dir, err := files.Clean(r.URL.Query().Get("directory"))
@@ -400,4 +408,18 @@ func (a *API) saveUpload(s *server.Server, root *files.Root, target string, src 
 	}
 	s.AddDisk(lw.Written)
 	return nil
+}
+
+// claimMatches vergelijkt een pad-claim van een transfertoken met de URL-parameter (beide
+// genormaliseerd). Een ontbrekende claim betekent: niets te vergelijken.
+func claimMatches(claim *string, query string) bool {
+	if claim == nil {
+		return true
+	}
+	c, err1 := files.Clean(*claim)
+	q, err2 := files.Clean(query)
+	if err1 != nil || err2 != nil {
+		return *claim == query
+	}
+	return c == q
 }

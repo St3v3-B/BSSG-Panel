@@ -68,7 +68,7 @@ services:
       POSTGRES_USER: panel
       POSTGRES_DB: panel
       # Geldt alleen bij de eerste start (lege volume); DATABASE_URL moet hetzelfde wachtwoord hebben.
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-panel}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set (install.sh generates it)}
       TZ: Europe/Amsterdam
     volumes:
       - postgres_data:/var/lib/postgresql/data

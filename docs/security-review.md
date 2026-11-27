@@ -26,6 +26,26 @@ not reproduced.
 | 12 | Low | Misc: FIFO in the volume can hang a download goroutine; `NODE_TOKEN` min length 16; default Postgres password fallback; daemon unit has no sandboxing; unauthenticated Minecraft wake-up; no domain ownership verification |
 | 13 | Info | Design mismatch: emergency account (password + TOTP) from `docs/ontwerp.md` is not implemented; API rate limiting absent |
 
+## Status
+
+Updated on branch `agent/security-fixes`.
+
+| # | Status |
+|---|---|
+| 1 | Fixed in 3e02134: only a full admin (session + 2FA) may set `dnsProviderId` (`DNS_PROVIDER_ADMIN_ONLY`); `applyDns` only touches the domain's hostname, `*.hostname` (wildcard) and the Minecraft SRV name, inside a zone that contains the hostname (`nameAllowed`), and refuses hostnames under `PANEL_DOMAIN`/`NODE_DOMAIN` for non-admins. A provider attached by an admin (remove + re-add as admin, as there is no update field for it) can still be applied by the domain's owner. Not done: domain ownership verification (see 12) |
+| 2 | Fixed in 6a1b68c: 5 failures / 10 min per user and per IP on `verifyTotp`, `totpEnable`, `totpDisable` (`TOO_MANY_REQUESTS`), a code is accepted only once. Not done: session deletion after N failures, API-key bearer rate limit |
+| 3 | Fixed in 808f57d: `setSftpPassword` is `NOT_WITH_API_KEY` and blocked for suspended servers for non-admins |
+| 4 | Not fixed (deliberately): needs a per-server game bridge (`panel-game-<uuid>`, role `game-net`) created in `containerConfig`/`ensureGameNetwork`, which interacts with the site network that game servers with an http route already get (`EnsureGameNetwork`), with existing containers (a `NetworkMode` change needs a recreate) and with the parallel `mc-network` work (Velocity backends must stay reachable through the published ip:port, which needs a hairpin test on real Docker). Plan: create the bridge with `enable_icc` default, publish ports as now, migrate on next start, then add DOCKER-USER rules dropping container traffic to the host and private ranges |
+| 5 | Fixed in 355d6c3: `servers.activity` returns `ip: null` and empty `metadata` for subusers; owner and full admin see everything. Console commands are still logged in full for the owner (not truncated) |
+| 6 | Fixed in 8717edf: `safeRedirect` allows only `^/(?![/\\])` paths without control characters or backslashes, also after (repeated) URL-decoding, and the URL must stay on the same origin |
+| 7 | Fixed in 4b42145: `headers()` in `next.config.ts` (CSP with `frame-ancestors 'none'`, jsdelivr for Monaco, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, HSTS). CSP uses `'unsafe-inline'` for scripts (no nonces). Caddy `header` block not added |
+| 8 | Not fixed |
+| 9 | Not fixed |
+| 10 | Partly fixed in 360a16e: the daemon no longer returns `dns_challenge.api_token` from `GET /api/routes[/{host}]` and the PUT response. Token at rest in Caddy config and `routes.json` unchanged |
+| 11 | Fixed in 360a16e: the daemon compares the `path`/`directory` claims of transfer tokens with the URL (403 on mismatch; tokens without the claim, such as console JWTs, are still accepted) |
+| 12 | Partly: `NODE_TOKEN` minimum 32 and compose without a `POSTGRES_PASSWORD` fallback fixed in 4b42145 (`panel.env.example` still has an example value `panel`, which is a contract file). Rest not fixed |
+| 13 | Not fixed (info) |
+
 ## Findings
 
 ### 1. High: any domain manager can drive the admin's Cloudflare token (verified)

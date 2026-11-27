@@ -6,7 +6,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { setCloudflareBase } from "./lib/cloudflare";
 import { setDnsLookup, type DnsLookup } from "./lib/dns";
-import { resetNodeIpCache } from "./routers/domains";
+import { nameAllowed, resetNodeIpCache } from "./routers/domains";
 import { startMariadb, type TestContainer } from "./test/docker";
 import { OWNER, useHarness, type TestUser } from "./test/harness";
 
@@ -200,7 +200,11 @@ describe("Cloudflare: admin.dnsProviders.* en domains.applyDns", () => {
   it("wildcard: route-host *.<naam>, applyDns zet A-records zonder proxy en ruimt CNAME/AAAA op", async () => {
     cfRecords.push({ id: "old1", zone: "z1", type: "CNAME", name: "shop.blokgenoten.test", content: "elders.example", proxied: true });
     cfRecords.push({ id: "old2", zone: "z1", type: "AAAA", name: "shop.blokgenoten.test", content: "2001:db8::1", proxied: false });
-    const d = await player.api.domains.add({ uuid, hostname: "shop.blokgenoten.test", targetPort: null, redirectTo: null, wildcard: true, dnsProviderId: providerId });
+    const wc = { uuid, hostname: "shop.blokgenoten.test", targetPort: null, redirectTo: null, wildcard: true, dnsProviderId: providerId };
+    // Security: de eigenaar mag geen provider koppelen (token van de admin); een admin wel.
+    await expect(player.api.domains.add(wc)).rejects.toMatchObject({ code: "FORBIDDEN", message: "DNS_PROVIDER_ADMIN_ONLY" });
+    await expect(player.api.domains.add({ ...wc, dnsProviderId: null })).rejects.toMatchObject({ message: "WILDCARD_NEEDS_DNS_PROVIDER" });
+    const d = await admin.api.domains.add(wc);
     expect(d).toMatchObject({ hostname: "shop.blokgenoten.test", wildcard: true });
     expect(h.daemon.routes.get("*.shop.blokgenoten.test")).toMatchObject({ host: "*.shop.blokgenoten.test", dns_challenge: { provider: "cloudflare", api_token: CF_TOKEN } });
 
@@ -216,6 +220,15 @@ describe("Cloudflare: admin.dnsProviders.* en domains.applyDns", () => {
     expect(cfRecords.filter((r) => r.zone === "z1")).toHaveLength(2);
     await expect(sub.api.domains.applyDns({ id: d.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
 
+    // Alleen de eigen namen: een bestaand record van een ander (zelfde zone) blijft ongemoeid.
+    cfRecords.push({ id: "other", zone: "z1", type: "A", name: "www.blokgenoten.test", content: "198.51.100.1", proxied: false });
+    await player.api.domains.applyDns({ id: d.id });
+    expect(cfRecords.find((r) => r.id === "other")).toMatchObject({ content: "198.51.100.1" });
+    cfRecords.splice(cfRecords.findIndex((r) => r.id === "other"), 1);
+    expect(nameAllowed("www.blokgenoten.test", d, "blokgenoten.test")).toBe(false);
+    expect(nameAllowed("*.shop.blokgenoten.test", d, "blokgenoten.test")).toBe(true);
+    expect(nameAllowed("shop.blokgenoten.test", d, "anders.test")).toBe(false);
+
     await player.api.domains.remove({ id: d.id });
     expect(h.daemon.routes.has("*.shop.blokgenoten.test")).toBe(false);
   });
@@ -223,7 +236,7 @@ describe("Cloudflare: admin.dnsProviders.* en domains.applyDns", () => {
   it("applyDns zonder provider → PRECONDITION_FAILED; provider weg → domein houdt geen provider", async () => {
     const d = await player.api.domains.add({ uuid, hostname: "los.anders.test", targetPort: null, redirectTo: null, wildcard: false, dnsProviderId: null });
     await expect(player.api.domains.applyDns({ id: d.id })).rejects.toMatchObject({ code: "PRECONDITION_FAILED", message: "NO_DNS_PROVIDER" });
-    await expect(player.api.domains.add({ uuid, hostname: "x.anders.test", targetPort: null, redirectTo: null, wildcard: false, dnsProviderId: 9999 })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(admin.api.domains.add({ uuid, hostname: "x.anders.test", targetPort: null, redirectTo: null, wildcard: false, dnsProviderId: 9999 })).rejects.toMatchObject({ code: "NOT_FOUND" });
     await admin.api.admin.dnsProviders.delete({ id: providerId });
     expect(await admin.api.admin.dnsProviders.list()).toEqual([]);
     await player.api.domains.remove({ id: d.id });

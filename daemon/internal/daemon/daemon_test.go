@@ -529,6 +529,17 @@ func TestRoutes(t *testing.T) {
 	}
 	h.expect("GET", "/api/routes/nope.test", nil, 404)
 
+	// Het DNS-token gaat nooit terug in een antwoord.
+	h.expect("PUT", "/api/routes/%2A.tok.test", map[string]any{"server_uuid": u1, "port": 9000, "dns_challenge": map[string]string{"provider": "cloudflare", "api_token": "GEHEIM-TOKEN"}}, 200).json(t, &rs)
+	h.expect("GET", "/api/routes", nil, 200).json(t, &list)
+	if c, b, _ := h.raw("GET", "/api/routes", nil); c != 200 || strings.Contains(string(b), "GEHEIM-TOKEN") {
+		t.Fatal("token in /api/routes", c)
+	}
+	if c, b, _ := h.raw("GET", "/api/routes/%2A.tok.test", nil); c != 200 || strings.Contains(string(b), "GEHEIM-TOKEN") {
+		t.Fatal("token in /api/routes/{host}", c)
+	}
+	h.expect("DELETE", "/api/routes/%2A.tok.test", nil, 204)
+
 	// herstart: Sync met de opgeslagen routes (ook als Caddy ze kwijt is)
 	_ = router.Sync(context.Background(), nil)
 	h.restart()

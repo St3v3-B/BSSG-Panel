@@ -194,6 +194,10 @@ export const servers: Pick<
 
   activity: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "any");
-    return activityPage(and(eq(schema.activityLog.serverId, a.bundle.server.id)), input);
+    const page = await activityPage(and(eq(schema.activityLog.serverId, a.bundle.server.id)), input);
+    // Eigenaar en admin zien alles; subusers zien alleen wie wat deed, zonder IP-adressen en
+    // metadata (bevat o.a. consolecommando's, bestandspaden en SFTP-gebruikersnamen).
+    if (a.canManage) return page;
+    return { ...page, items: page.items.map((i) => ({ ...i, ip: null, metadata: {} })) };
   },
 };

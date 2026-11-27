@@ -187,6 +187,10 @@ func (r *Routes) RemoveServer(ctx context.Context, uuid string) error {
 }
 
 func (r *Routes) withStatus(ctx context.Context, rt Route) RouteWithStatus {
+	// Het DNS-token gaat nooit terug in een API-antwoord (alleen de provider).
+	if rt.DNSChallenge != nil {
+		rt.DNSChallenge = &DNSChallenge{Provider: rt.DNSChallenge.Provider}
+	}
 	out := RouteWithStatus{Route: rt, SSLStatus: string(proxy.SSLPending)}
 	st, err := r.router.Status(ctx, rt.Host)
 	switch {
