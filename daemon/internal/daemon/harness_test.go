@@ -69,6 +69,10 @@ func newHarnessWith(t *testing.T, eng engine.Engine, router proxy.Router, p *tes
 		NodeToken: nodeToken, NodeDomain: "node1.test", PanelDomain: "panel.test", PanelURL: p.URL,
 		DaemonSocket: filepath.Join(dataDir, "daemon.sock"), DaemonPort: 0, DataDir: dataDir,
 		Instance: instance, ExtraLabels: extra,
+		// Nooit de echte panel-mariadb: een test-daemon met de standaardnaam koppelde de echte
+		// database van de installatie aan zijn testnetwerken. Tests met een eigen nep-MariaDB
+		// overschrijven dit via mutate.
+		MariaDBContainer: "panel-mariadb-test-" + instance,
 	}
 	log := testLogger(t)
 	pc := panel.New(p.URL, nodeToken, log)
