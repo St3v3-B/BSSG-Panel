@@ -169,6 +169,41 @@ func (a *Admin) Drop(ctx context.Context, db, user string) error {
 	return err
 }
 
+var rePmaUser = regexp.MustCompile(`^pma_u[0-9]{1,18}$`)
+
+// systemSchemas krijgen nooit een grant, in welke schrijfwijze ook (MariaDB-schemanamen zijn op Linux hoofdlettergevoelig,
+// maar we weigeren alle varianten).
+var systemSchemas = map[string]bool{"mysql": true, "information_schema": true, "performance_schema": true, "sys": true}
+
+// ValidPmaUser: alleen `pma_u<getal>` (het phpMyAdmin-account van een panelgebruiker).
+func ValidPmaUser(s string) bool { return rePmaUser.MatchString(s) }
+
+// SyncPmaUser zet het phpMyAdmin-account `user` op een nieuw wachtwoord en ALL PRIVILEGES op precies `dbs`
+// (geen GRANT OPTION). Het account wordt vervangen (DROP + CREATE), zodat alle oude rechten vervallen.
+func (a *Admin) SyncPmaUser(ctx context.Context, user, password string, dbs []string) error {
+	if !ValidPmaUser(user) || !ValidPassword(password) {
+		return ErrInvalid
+	}
+	seen := map[string]bool{}
+	var q strings.Builder
+	fmt.Fprintf(&q, "DROP USER IF EXISTS '%s'@'%%';\nCREATE USER '%s'@'%%' IDENTIFIED BY '%s' WITH MAX_USER_CONNECTIONS 25;\n", user, user, password)
+	for _, db := range dbs {
+		if !ValidName(db) || systemSchemas[strings.ToLower(db)] {
+			return ErrInvalid
+		}
+		if seen[db] {
+			continue
+		}
+		seen[db] = true
+		fmt.Fprintf(&q, "GRANT ALL PRIVILEGES ON `%s`.* TO '%s'@'%%';\n", grantPattern(db), user)
+	}
+	if err := a.ready(); err != nil {
+		return err
+	}
+	_, err := a.sql(ctx, q.String())
+	return err
+}
+
 // Exists meldt of de database bestaat.
 func (a *Admin) Exists(ctx context.Context, db string) (bool, error) {
 	if !ValidName(db) {

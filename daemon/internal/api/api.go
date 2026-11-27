@@ -144,6 +144,7 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /api/db/databases", p(a.dbCreate))
 	mux.Handle("DELETE /api/db/databases/{name}", p(a.dbDrop))
 	mux.Handle("PUT /api/db/databases/{name}/password", p(a.dbPassword))
+	mux.Handle("PUT /api/db/pma-users/{username}", p(a.dbPmaUser))
 	mux.Handle("GET /api/db/databases/{name}/dump", p(a.dbDump))
 	mux.Handle("PUT /api/db/databases/{name}/import", p(a.dbImport))
 

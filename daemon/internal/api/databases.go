@@ -18,6 +18,7 @@ type DBAdmin interface {
 	Dump(ctx context.Context, db string, w io.Writer) error
 	Import(ctx context.Context, db string, in io.Reader) error
 	Exists(ctx context.Context, db string) (bool, error)
+	SyncPmaUser(ctx context.Context, user, password string, dbs []string) error
 }
 
 // SetDBAdmin koppelt de databasebeheerder en de naam waaronder sites de database bereiken (zonder: 503).
@@ -87,6 +88,26 @@ func (a *API) dbDrop(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := a.dbadmin.Drop(r.Context(), r.PathValue("name"), r.URL.Query().Get("username")); err != nil {
+		dbErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type pmaSyncReq struct {
+	Password  string   `json:"password"`
+	Databases []string `json:"databases"`
+}
+
+func (a *API) dbPmaUser(w http.ResponseWriter, r *http.Request) {
+	if !a.dbReady(w) {
+		return
+	}
+	var req pmaSyncReq
+	if !decode(w, r, &req) {
+		return
+	}
+	if err := a.dbadmin.SyncPmaUser(r.Context(), r.PathValue("username"), req.Password, req.Databases); err != nil {
 		dbErr(w, err)
 		return
 	}

@@ -237,6 +237,62 @@ func TestRealDockerDBAdmin(t *testing.T) {
 		t.Fatalf("kapotte import: %d %s", c, b)
 	}
 
+	// phpMyAdmin-account: ziet en bewerkt precies de opgegeven databases.
+	pma := func(user, pw string, dbs []string) int {
+		return h.do("PUT", "/api/db/pma-users/"+user, map[string]any{"password": pw, "databases": dbs}).Code
+	}
+	for _, bad := range []struct {
+		user string
+		dbs  []string
+	}{
+		{"root", nil}, {"u1234_a", nil}, {"pma_u1'; DROP USER root; --", nil}, {"pma_u", nil},
+		{"pma_u7", []string{"mysql"}}, {"pma_u7", []string{"Information_Schema"}}, {"pma_u7", []string{"sys"}},
+		{"pma_u7", []string{"performance_schema"}}, {"pma_u7", []string{"a`; GRANT ALL ON *.* TO pma_u7; --"}}, {"pma_u7", []string{"%"}},
+	} {
+		if c := pma(bad.user, "password123", bad.dbs); c != 400 && c != 404 {
+			t.Errorf("pma %q %q: %d, verwacht 400", bad.user, bad.dbs, c)
+		}
+	}
+	if c := pma("pma_u7", "kort", nil); c != 400 {
+		t.Errorf("kort wachtwoord: %d", c)
+	}
+	pmaPw := "Pma-p4ss.word~1"
+	if c := pma("pma_u7", pmaPw, []string{"s1234_site", "s9999_copy"}); c != 204 {
+		t.Fatal("pma sync", c)
+	}
+	if out, code := as("pma_u7", pmaPw, "", "SHOW DATABASES"); code != 0 || out != "information_schema\ns1234_site\ns9999_copy" {
+		t.Fatalf("pma ziet: %d %q", code, out)
+	}
+	if out, code := as("pma_u7", pmaPw, "s1234_site", "INSERT INTO notes VALUES (3,'pma'); SELECT COUNT(*) FROM notes"); code != 0 || out != "3" {
+		t.Fatalf("pma schrijft: %d %q", code, out)
+	}
+	if _, code := as("pma_u7", pmaPw, "s1234xsite", "SELECT 1"); code == 0 {
+		t.Fatal("pma: underscore werkt als jokerteken")
+	}
+	if _, code := as("pma_u7", pmaPw, "mysql", "SELECT 1 FROM user LIMIT 1"); code == 0 {
+		t.Fatal("pma mag mysql lezen")
+	}
+	if out, _ := as("root", rootpw, "", "SHOW GRANTS FOR 'pma_u7'@'%'"); strings.Contains(strings.ToUpper(out), "GRANT OPTION") {
+		t.Fatalf("pma grants: %q", out)
+	}
+	// Tweede sync: nieuw wachtwoord, rechten worden exact vervangen (s9999_copy weg, oud wachtwoord ongeldig).
+	pmaPw2 := "Pma-p4ss.word~2"
+	if c := pma("pma_u7", pmaPw2, []string{"s1234_site"}); c != 204 {
+		t.Fatal("pma sync 2", c)
+	}
+	if _, code := as("pma_u7", pmaPw, "s1234_site", "SELECT 1"); code == 0 {
+		t.Fatal("oud pma-wachtwoord werkt nog")
+	}
+	if out, code := as("pma_u7", pmaPw2, "", "SHOW DATABASES"); code != 0 || out != "information_schema\ns1234_site" {
+		t.Fatalf("pma ziet na sync 2: %d %q", code, out)
+	}
+	if c := pma("pma_u7", pmaPw2, nil); c != 204 {
+		t.Fatal("pma sync leeg", c)
+	}
+	if out, _ := as("pma_u7", pmaPw2, "", "SHOW DATABASES"); out != "information_schema" {
+		t.Fatalf("pma zonder rechten ziet: %q", out)
+	}
+
 	// Verwijderen (twee keer: idempotent).
 	for i := 0; i < 2; i++ {
 		h.expect("DELETE", "/api/db/databases/s1234_site?username=u1234_a", nil, 204)
