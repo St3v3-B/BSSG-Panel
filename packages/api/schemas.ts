@@ -468,10 +468,15 @@ export type Database = z.infer<typeof Database>;
 
 /** Zichtbaarheid en doel van de phpMyAdmin-koppeling (zijbalk en databasescherm). */
 export const PhpMyAdminInfo = z.object({
-  /** Gebruiker heeft databases op de lokale node, of is volledige admin. */
+  /** Gebruiker heeft databases op een node met daemon-beheerde MariaDB (elke node), of is volledige admin. */
   visible: z.boolean(),
-  /** Gebruiker heeft ook databases op andere nodes; die staan (nog) niet in phpMyAdmin. */
+  /**
+   * Gebruiker heeft ook databases op een externe database-host (niet door een daemon beheerd); die staan niet in
+   * phpMyAdmin. Databases op remote nodes staan er wel in (één server per node), dus dit is normaal false.
+   */
   hasRemoteDatabases: z.boolean(),
+  /** Database-hosts (id's, zie `Database.hostId`) waarvan de databases in phpMyAdmin staan. */
+  hostIds: z.array(z.number().int()).default([]),
 });
 export type PhpMyAdminInfo = z.infer<typeof PhpMyAdminInfo>;
 
