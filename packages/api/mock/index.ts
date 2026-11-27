@@ -274,7 +274,7 @@ export function createMock(): Implementation {
       importModpack: () => ({ name: "Mock pack", minecraftVersion: "1.21.5", loaderVersion: "0.16.14", filesInstalled: 12, filesSkipped: 3, overridesApplied: 5, reinstalled: true }),
       versionOptions: () => ({
         variables: { version: "MINECRAFT_VERSION", build: "BUILD", loader: null },
-        versions: [{ id: "1.21.5", stable: true }, { id: "1.21.4", stable: true }, { id: "1.21.4-rc1", stable: false }],
+        versions: [{ id: "1.21.5", stable: true }, { id: "1.21.4", stable: true }, { id: "1.21.3", stable: true }, { id: "1.21.4-rc1", stable: false }],
         builds: ["120", "119"],
         loaderVersions: [],
       }),
