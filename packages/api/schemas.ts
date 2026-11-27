@@ -1077,3 +1077,6 @@ export const OwnLimits = z.object({
   diskMb: z.number().int().min(64),
 });
 export type OwnLimits = z.infer<typeof OwnLimits>;
+
+// ---------- pakketten en facturatie ----------
+export * from "./billing-schemas";

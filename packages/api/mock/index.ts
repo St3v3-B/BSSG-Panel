@@ -13,6 +13,7 @@ import type { Implementation, SessionCtx } from "../trpc-builder";
 import { contentProfile } from "../content";
 import * as data from "./data";
 import { mockHistory, mockSparkline } from "./stats";
+import { createBillingMock } from "./billing";
 
 const MOCK_HITS: s.ContentHit[] = [
   { source: "modrinth", projectId: "fabric-api", name: "Fabric API", description: "Core API for Fabric mods", author: "modmuss50", downloads: 100000000, iconUrl: null, url: "https://modrinth.com/mod/fabric-api" },
@@ -204,6 +205,21 @@ export function createMock(): Implementation {
   ];
   const databases: s.Database[] = [database(1, data.servers[2]!.uuid, "wordpress")];
 
+  const billing = createBillingMock({
+    user,
+    id,
+    templates: () => db.templates,
+    servers: () => db.servers,
+    deleteServer: (uuid) => void (db.servers = db.servers.filter((x) => x.uuid !== uuid)),
+    createServer: (o) => {
+      const t = db.templates.find((x) => x.id === o.templateId) ?? notFound("template");
+      const base = db.servers.find((x) => x.type === t.type) ?? db.servers[0]!;
+      const uuid = crypto.randomUUID();
+      const x = { ...clone(base), uuid, shortId: uuid.slice(0, 8), name: o.name, ownerId: o.ownerId, owner: user(o.ownerId), templateName: t.name, status: "installing" as const, limits: o.limits, suspended: null };
+      db.servers.push(x);
+      return x;
+    },
+  });
   return {
     auth: {
       me: ({ ctx }) => (ctx.session ? me(ctx.session) : null),
@@ -595,7 +611,9 @@ export function createMock(): Implementation {
       },
       remove: ({ input }) => ((db.subusers = db.subusers.filter((x) => !(x.serverUuid === input.uuid && x.userId === input.userId))), ok),
     },
+    billing: billing.user,
     admin: {
+      ...billing.admin,
       dashboard: () => ({
         nodes: db.nodes.map(nodeHealth),
         alerts: [{ kind: "install_failed", message: "Installation of blokgenoten.test is still running", at: new Date(), serverUuid: data.servers[2]!.uuid, nodeId: 1 }],
