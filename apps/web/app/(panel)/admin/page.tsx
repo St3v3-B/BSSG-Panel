@@ -81,9 +81,9 @@ export default function AdminServersPage() {
                   </tr>
                 )}
                 {items.map((s) => (
-                  <tr key={s.uuid} className="hover:bg-muted/30">
+                  <tr key={s.uuid} className="relative hover:bg-muted/30" data-testid="admin-server-row">
                     <td className="px-4 py-3">
-                      <Link href={`/servers/${s.uuid}`} className="font-medium hover:underline">
+                      <Link href={`/admin/servers/${s.uuid}`} className="font-medium after:absolute after:inset-0 hover:underline">
                         {s.name}
                       </Link>
                       <div className="font-mono text-xs text-muted-foreground">{s.shortId}</div>
@@ -100,7 +100,7 @@ export default function AdminServersPage() {
                       {s.primaryAddress ? (
                         <span className="inline-flex items-center gap-1">
                           <code className="font-mono text-xs">{s.primaryAddress}</code>
-                          <CopyButton value={s.primaryAddress} label={t.server.copyAddress} />
+                          <CopyButton value={s.primaryAddress} label={t.server.copyAddress} className="relative z-10" />
                         </span>
                       ) : (
                         <span className="text-muted-foreground">–</span>
