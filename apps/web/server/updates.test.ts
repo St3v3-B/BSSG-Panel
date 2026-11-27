@@ -138,6 +138,7 @@ describe("admin.updates", () => {
 describe("helpers", () => {
   it("githubRepo: uit https/ssh-remote, env wint", () => {
     expect(githubRepo("https://github.com/St3v3-B/BSSG-Panel.git")).toBe("St3v3-B/BSSG-Panel");
+    expect(githubRepo("git@github-bssg-panel:St3v3-B/BSSG-Panel.git")).toBe("St3v3-B/BSSG-Panel");
     expect(githubRepo(ORIGIN)).toBe("St3v3-B/BSSG-Panel");
     expect(githubRepo("https://gitlab.com/a/b")).toBeNull();
     process.env.PANEL_GITHUB_REPO = "foo/bar";

@@ -32,7 +32,7 @@ export async function setUpdatesEnabled(enabled: boolean): Promise<void> {
 export function githubRepo(origin: string | null | undefined): string | null {
   const env = process.env.PANEL_GITHUB_REPO?.trim();
   if (env) return /^[\w.-]+\/[\w.-]+$/.test(env) ? env : null;
-  const m = /github\.com[:/]([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(origin ?? "");
+  const m = /(?:github\.com|@github[\w.-]*)[:/]([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(origin ?? "");
   return m ? `${m[1]}/${m[2]}` : null;
 }
 
