@@ -8,7 +8,8 @@ import { DaemonHttpError, call, daemonFor, toTrpcError } from "../daemon";
 import { getDb, schema } from "../db";
 import { decrypt, encrypt } from "../lib/crypto";
 import { presignGet, s3Credentials, testTarget } from "../lib/s3";
-import { requireServer, type ServerAccess } from "../servers-data";
+import { isFullAdmin, requireServer, type ServerAccess } from "../servers-data";
+import { assertPlanBackupRoom } from "../billing/plans";
 
 const ok = { ok: true as const };
 const uid = (ctx: Ctx) => ctx.session!.userId;
@@ -46,6 +47,7 @@ export const backups: Implementation["backups"] = {
 
   create: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "backup.create");
+    if (!isFullAdmin(ctx)) await assertPlanBackupRoom(a.bundle.server.id);
     const row = await startBackup(a.bundle, { name: input.name, includeDatabases: input.includeDatabases, userId: uid(ctx) });
     return toBackup(row, input.uuid);
   },
