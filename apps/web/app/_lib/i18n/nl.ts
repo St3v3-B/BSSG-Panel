@@ -1407,6 +1407,7 @@ export const nl: Dict = {
     moveButton: "Server verplaatsen",
     moveConfirm: (node) => `Server verplaatsen naar ${node}?`,
     moveDone: "Server verplaatst.",
+    moveBedrockHint: "Bedrock (Geyser) staat aan: hij krijgt een eigen vrije poort op de doelnode (dezelfde poort als die vrij is, anders 19132 of de laagste vrije) en de config wordt bijgewerkt. Bedrock-spelers hebben het nieuwe adres nodig.",
     moveDnsHint: "Heeft deze server domeinen, laat de DNS-records dan naar de nieuwe node wijzen. Een Velocity-proxy is automatisch bijgewerkt en moet herstart worden voor het nieuwe adres.",
     moving: "Bezig met verplaatsen… bij grote servers kan dit even duren.",
     moveNoOther: "Er zijn geen andere nodes.",

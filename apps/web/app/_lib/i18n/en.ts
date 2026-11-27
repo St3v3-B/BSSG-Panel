@@ -1407,6 +1407,7 @@ export const en = {
     moveButton: "Move server",
     moveConfirm: (node: string) => `Move server to ${node}?`,
     moveDone: "Server moved.",
+    moveBedrockHint: "Bedrock (Geyser) is on: it gets its own free port on the target node (the same port if free, otherwise 19132 or the lowest free one) and its config is updated. Bedrock players need the new address.",
     moveDnsHint: "If this server has domains, point their DNS records to the new node. A Velocity proxy was updated automatically and needs a restart to use the new address.",
     moving: "Moving… this can take a while for large servers.",
     moveNoOther: "There are no other nodes.",

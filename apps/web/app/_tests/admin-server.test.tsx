@@ -84,6 +84,17 @@ describe("admin: server beheren", () => {
     expect(inputs(bodies, "admin.servers.transfer")[0]).toEqual({ uuid: GAME, nodeId: Number(sel.value) });
   });
 
+  it("verplaatsen met Bedrock aan: uitleg dat de Bedrock-poort meegaat", async () => {
+    const base = await loadServer();
+    renderWithTrpc(<MoveNodeCard server={base} />, admin);
+    expect(screen.queryByTestId("move-bedrock-hint")).toBeNull();
+    cleanup();
+    const p = base.allocations[0]!;
+    const server = { ...base, allocations: [...base.allocations, { ...p, id: 999, port: 19132, primary: false, role: "bedrock" as const }] };
+    renderWithTrpc(<MoveNodeCard server={server} />, admin);
+    expect(screen.getByTestId("move-bedrock-hint").textContent).toMatch(/Bedrock \(Geyser\) is on/);
+  });
+
   it("variabelen: admin ziet ook niet-aanpasbare", async () => {
     const base = await loadServer();
     const server = { ...base, variables: [...base.variables, { key: "JAVA_FLAGS", name: "Java flags", description: null, value: "-Xmx1G", default: "", userEditable: false, pattern: null }] };
