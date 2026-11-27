@@ -229,6 +229,87 @@ export function PortsCard({ server }: { server: ServerDetail }) {
   );
 }
 
+/** Verplaatsen naar een andere node via admin.servers.transfer (gestopte kopie, bron pas weg na succes). */
+export function MoveNodeCard({ server, onMoved }: { server: ServerDetail; onMoved?: () => void }) {
+  const t = useT();
+  const utils = trpc.useUtils();
+  const nodes = trpc.admin.nodes.list.useQuery();
+  const [nodeId, setNodeId] = useState<number | null>(null);
+  const [allocId, setAllocId] = useState<number | null>(null);
+  const [confirm, setConfirm] = useState(false);
+  const others = (nodes.data ?? []).filter((n) => n.id !== server.node.id);
+  const target = nodeId ?? others[0]?.id ?? null;
+  const allocs = trpc.admin.allocations.list.useQuery({ nodeId: target ?? 0 }, { enabled: target !== null && server.type === "game" });
+  const free = (allocs.data ?? []).filter((a) => a.serverUuid === null);
+  const move = trpc.admin.servers.transfer.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.servers.get.invalidate({ uuid: server.uuid }), utils.admin.servers.list.invalidate(), utils.servers.list.invalidate(), utils.admin.allocations.list.invalidate(), utils.admin.nodes.get.invalidate()]);
+      onMoved?.();
+    },
+  });
+  const targetName = others.find((n) => n.id === target)?.name ?? "";
+  return (
+    <Card data-testid="move-card">
+      <CardHeader>
+        <CardTitle className="text-base">{t.adminServer.moveTitle}</CardTitle>
+        <CardDescription>{t.adminServer.moveText}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {nodes.data && others.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t.adminServer.moveNoOther}</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field id="move-node" label={t.adminServer.moveNode}>
+              <Select id="move-node" value={target ?? ""} onChange={(e) => (setNodeId(Number(e.target.value)), setAllocId(null), setConfirm(false), move.reset())}>
+                {others.map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.name} ({n.fqdn})
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            {server.type === "game" && (
+              <Field id="move-alloc" label={t.adminServer.movePort}>
+                <Select id="move-alloc" value={allocId ?? ""} onChange={(e) => setAllocId(e.target.value ? Number(e.target.value) : null)}>
+                  <option value="">{t.adminServer.moveFirstFree}</option>
+                  {free.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.ip}:{a.port}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+          </div>
+        )}
+        {move.error && <AdminError error={move.error} />}
+        {move.isSuccess && (
+          <p className="text-sm text-success" role="status">
+            {t.adminServer.moveDone}
+          </p>
+        )}
+        {move.isPending && <p className="text-sm text-muted-foreground">{t.adminServer.moving}</p>}
+        {target !== null &&
+          (confirm ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm">{t.adminServer.moveConfirm(targetName)}</span>
+              <Button onClick={() => move.mutate({ uuid: server.uuid, nodeId: target, ...(allocId ? { allocationIds: [allocId] } : {}) })} disabled={move.isPending}>
+                {move.isPending && <Spinner />} {t.adminServer.moveButton}
+              </Button>
+              <Button variant="ghost" onClick={() => setConfirm(false)} disabled={move.isPending}>
+                {t.common.cancel}
+              </Button>
+            </div>
+          ) : (
+            <Button variant="outline" onClick={() => setConfirm(true)}>
+              {t.adminServer.moveButton}
+            </Button>
+          ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 /** Verwijderen via admin.servers.delete; bevestigen door de servernaam in te typen. */
 export function DeleteServerCard({ server, onDeleted }: { server: ServerDetail; onDeleted: () => void }) {
   const t = useT();
