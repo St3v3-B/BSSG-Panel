@@ -3,9 +3,9 @@ SHELL := /bin/bash
 .SHELLFLAGS := -euo pipefail -c
 GO ?= go
 
-.PHONY: check install openapi ts go db-migrate-test upgrade-test dev integration e2e fmt
+.PHONY: check install openapi ts go db-migrate-test upgrade-test uninstall-test dev integration e2e fmt
 
-check: install openapi ts go db-migrate-test upgrade-test
+check: install openapi ts go db-migrate-test upgrade-test uninstall-test
 	@echo "make check: alles groen"
 
 install:
@@ -44,3 +44,6 @@ fmt:
 
 upgrade-test:
 	bash deploy/test-upgrade.sh
+
+uninstall-test:
+	bash deploy/test-uninstall.sh
