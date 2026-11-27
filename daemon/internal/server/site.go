@@ -112,10 +112,16 @@ func (m *Manager) removeSiteNetwork(ctx context.Context, uuid string, web bool) 
 }
 
 // ReconcileNetworks zorgt dat elke website zijn netwerk heeft en dat MariaDB eraan hangt
-// (na een herstart van panel-mariadb is die koppeling weg).
+// (na een herstart van panel-mariadb is die koppeling weg). Draaiende gameservers met een
+// site-netwerk (http-route) worden opnieuw gekoppeld, bijvoorbeeld na een herstart van de daemon.
 func (m *Manager) ReconcileNetworks(ctx context.Context) {
 	for _, s := range m.List() {
 		if !s.IsWeb() {
+			if st := s.State(); st == "online" || st == "starting" {
+				if err := m.connectGameContainer(ctx, s.uuid); err != nil {
+					m.log.Warn("site-netwerk (game)", "uuid", s.uuid, "err", err)
+				}
+			}
 			continue
 		}
 		if err := m.ensureSiteNetwork(ctx, s.uuid); err != nil {

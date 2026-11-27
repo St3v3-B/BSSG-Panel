@@ -3,6 +3,7 @@ import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/re
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ServerDetail } from "@panel/api";
 import { classifyLogLine } from "@/app/_components/log-viewer";
+import { trpc } from "@/lib/trpc";
 import { RenameCard, ReinstallCard, VariablesCard } from "@/app/_components/server/server-settings";
 import { ServerView } from "@/app/_components/server/server-view";
 import { renderWithTrpc, sessionFor } from "./utils";
@@ -72,6 +73,21 @@ describe("serverinstellingen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
     await screen.findByText("Naam opgeslagen.");
     expect(bodies.find((b) => b.path === "servers.rename")?.input).toEqual({ uuid: GAME, name: "SMP 2" });
+  });
+
+  it("bevestiging blijft zichtbaar nadat servers.get opnieuw laadt met de nieuwe naam", async () => {
+    function Harness() {
+      const q = trpc.servers.get.useQuery({ uuid: GAME });
+      return q.data ? <RenameCard server={q.data} /> : null;
+    }
+    renderWithTrpc(<Harness />, { session: sessionFor("admin") });
+    const input = await screen.findByLabelText("Servernaam");
+    fireEvent.change(input, { target: { value: "SMP 2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+    await screen.findByText("Naam opgeslagen.");
+    await waitFor(() => expect((screen.getByLabelText("Servernaam") as HTMLInputElement).value).toBe("SMP 2"));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.getByText("Naam opgeslagen.")).toBeTruthy();
   });
 
   it("variabelen: patroon wordt gecontroleerd, alleen gewijzigde gaan mee", async () => {

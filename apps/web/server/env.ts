@@ -42,6 +42,7 @@ const EnvSchema = z
     PANEL_URL: optional,
     DAEMON_URL: optional,
     TEMPLATES_DIR: optional.transform((v) => v ?? "/app/templates"),
+    DISCORD_BOT_TOKEN: optional,
     PANEL_INSECURE_TEST_LOGIN: optional.transform((v) => v === "1" || v === "true"),
   })
   .transform((e) => ({

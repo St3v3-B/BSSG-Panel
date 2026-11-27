@@ -7,6 +7,7 @@ import { TRPCError } from "@trpc/server";
 import { and, asc, eq } from "drizzle-orm";
 import { logActivity } from "../activity";
 import { call, DaemonHttpError, daemonFor, toTrpcError, type NodeRef } from "../daemon";
+import { notifySslFailed } from "../monitor";
 import { getDb, schema } from "../db";
 import { getEnv } from "../env";
 import { decrypt } from "../lib/crypto";
@@ -104,8 +105,10 @@ export const domains: Implementation["domains"] = {
         for (const d of rows.filter((d) => !isMc(d))) {
           const st = ssl.get(routeHost(d));
           if (st && st !== d.sslStatus) {
+            const was = d.sslStatus;
             d.sslStatus = st;
             await db.update(schema.domains).set({ sslStatus: st }).where(eq(schema.domains.id, d.id));
+            if (st === "failed" && was !== "failed") void notifySslFailed(a.bundle.server.id, d.hostname);
           }
         }
       } catch {

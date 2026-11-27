@@ -29,6 +29,8 @@ export class FakeDaemon {
   /** transfer/export geeft 500. */
   exportFails = false;
   readonly routes = new Map<string, Record<string, unknown>>();
+  /** Antwoord van POST /exec (standaard: geslaagd, geen uitvoer). */
+  execResult: { exit_code: number; output: string; truncated: boolean; timed_out: boolean; duration_ms: number } = { exit_code: 0, output: "", truncated: false, timed_out: false, duration_ms: 5 };
   private server: Server | null = null;
   url = "";
 
@@ -54,6 +56,7 @@ export class FakeDaemon {
     this.routes.clear();
     this.diskFull = false;
     this.exportFails = false;
+    this.execResult = { exit_code: 0, output: "", truncated: false, timed_out: false, duration_ms: 5 };
     this.mode = "ok";
     this.override = null;
   }
@@ -178,6 +181,9 @@ export class FakeDaemon {
       case "POST /commands":
         if (s.state !== "online" && s.state !== "starting") return send(409, { error: "not_running" });
         return send(204);
+      case "POST /exec":
+        if (s.state !== "online" && s.state !== "starting") return send(409, { error: "not_running" });
+        return send(200, this.execResult);
       case "GET /stats":
         return send(200, {
           cpu_pct: 12.5,

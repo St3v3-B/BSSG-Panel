@@ -14,6 +14,7 @@ import (
 	"github.com/docker/docker/client"
 
 	"panel/daemon/internal/engine"
+	"panel/daemon/internal/panel"
 	"panel/daemon/internal/spec"
 )
 
@@ -51,7 +52,7 @@ func TestRealDockerImageCheckNoChange(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	m := NewManager(Config{DataDir: t.TempDir(), Instance: instance, ExtraLabels: map[string]string{"panel.test": "true"}, StopTimeout: 5 * time.Second, DiskInterval: time.Hour, StatsInterval: time.Hour}, eng, nopRep{}, log)
 	t.Cleanup(m.Close)
-	pnl := &fakePanel{settings: ImageSettings{DefaultPolicy: "auto", WindowStart: "00:00", WindowEnd: "00:00", Timezone: spec.Timezone}}
+	pnl := &fakePanel{settings: panel.ImageSettings{DefaultPolicy: "auto", WindowStart: "00:00", WindowEnd: "00:00", Timezone: spec.Timezone}}
 	m.EnableImageUpdates(pnl, ImageConfig{})
 	uuid := "44444444-4444-4444-8444-444444444444"
 	s, _, err := m.Create(spec.ServerSpec{

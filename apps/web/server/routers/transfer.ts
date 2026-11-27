@@ -18,7 +18,8 @@ import { logActivity } from "../activity";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema } from "../db";
 import { buildServerSpec } from "../spec";
-import { fetchServerByUuid, imagePolicyOf, limitsOf, serverVariables, sleepOf } from "../servers-data";
+import { imagePolicyOf, fetchServerByUuid, limitsOf, serverVariables, sleepOf, autoRestartOf } from "../servers-data";
+import { isBackend, syncProxyAddresses } from "../network";
 import { assignAllocations, checkAllocations, nodeById } from "./admin";
 import { isMc, routeFor } from "./domains";
 
@@ -99,8 +100,7 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
       allocations: targetAllocs.map((a, i) => ({ ip: a.ip, port: a.port, isPrimary: i === 0 })),
       skipInstall: true,
       startOnInstall: false,
-      sleep: sleepOf(b.server),
-      imagePolicy: imagePolicyOf(b.server),
+      sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server), imagePolicy: imagePolicyOf(b.server),
     });
     await call(() => dst.createServer(spec));
     targetCreated = true;
@@ -116,7 +116,7 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
       // Oude allocations (andere node) vrijgeven, nieuwe toewijzen.
       await tx.update(schema.allocations).set({ serverId: null, isPrimary: false }).where(eq(schema.allocations.serverId, b.server.id));
       if (allocIds.length) await assignAllocations(tx, b.server.id, allocIds);
-      await tx.update(schema.servers).set({ nodeId: target.id, status: "offline" }).where(eq(schema.servers.id, b.server.id));
+      await tx.update(schema.servers).set({ nodeId: target.id, status: "offline", bedrockAllocationId: null }).where(eq(schema.servers.id, b.server.id));
     });
   } catch (e) {
     // Terugdraaien: niets op de bron is veranderd behalve dat hij gestopt is.
@@ -134,6 +134,15 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
     }
   } catch (e) {
     warnings.push(`start on target failed: ${(e as Error).message}`);
+  }
+  // Backend van een Velocity-proxy: het adres in velocity.toml van de proxy bijwerken.
+  if (isBackend(b)) {
+    try {
+      const proxyUuid = await syncProxyAddresses((await fetchServerByUuid(uuid))!);
+      if (proxyUuid) warnings.push(`velocity.toml of proxy ${proxyUuid} updated (reloaded if running)`);
+    } catch (e) {
+      warnings.push(`updating velocity.toml failed: ${(e as Error).message}`);
+    }
   }
   // Bron opruimen (verwijdert ook de routes daar). Mislukt dit, dan blijft er een stale kopie: waarschuwing.
   try {

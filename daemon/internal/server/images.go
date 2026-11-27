@@ -12,46 +12,19 @@ import (
 	"time"
 
 	"panel/daemon/internal/engine"
+	"panel/daemon/internal/panel"
 	"panel/daemon/internal/spec"
 	"panel/daemon/internal/store"
 )
 
-// ImageSettings zijn de globale instellingen uit het panel (GET /api/remote/settings/image-updates).
-type ImageSettings struct {
-	DefaultPolicy string `json:"default_policy"` // auto | notify | off
-	WindowStart   string `json:"window_start"`   // HH:MM
-	WindowEnd     string `json:"window_end"`     // HH:MM; mag voor WindowStart liggen
-	Timezone      string `json:"timezone"`
-}
-
 // DefaultImageSettings gelden zolang het panel niet bereikbaar is geweest.
-var DefaultImageSettings = ImageSettings{DefaultPolicy: "notify", WindowStart: "04:00", WindowEnd: "05:00", Timezone: spec.Timezone}
-
-// ImageStatus is één server in POST /api/remote/node/images.
-type ImageStatus struct {
-	UUID              string    `json:"uuid"`
-	Image             string    `json:"image"`
-	CurrentImageID    *string   `json:"current_image_id"`
-	LatestImageID     *string   `json:"latest_image_id"`
-	UpdateAvailable   bool      `json:"update_available"`
-	ReinstallRequired bool      `json:"reinstall_required"`
-	CheckedAt         time.Time `json:"checked_at"`
-}
-
-// ImageUpdateResult is POST /api/remote/servers/{uuid}/image-update.
-type ImageUpdateResult struct {
-	Successful bool    `json:"successful"`
-	Mode       string  `json:"mode"` // auto | manual
-	From       *string `json:"from_image_id"`
-	To         *string `json:"to_image_id"`
-	Error      *string `json:"error"`
-}
+var DefaultImageSettings = panel.ImageSettings{DefaultPolicy: "notify", WindowStart: "04:00", WindowEnd: "05:00", Timezone: spec.Timezone}
 
 // ImagePanel is wat de image-updater van het panel nodig heeft (panel.Client implementeert dit).
 type ImagePanel interface {
-	ImageSettings(ctx context.Context) (ImageSettings, error)
-	ReportImages(items []ImageStatus)
-	ReportImageUpdate(uuid string, r ImageUpdateResult)
+	ImageSettings(ctx context.Context) (panel.ImageSettings, error)
+	ReportImages(items []panel.ImageStatus)
+	ReportImageUpdate(uuid string, r panel.ImageUpdateResult)
 }
 
 // ImageConfig stelt de image-updater af.
@@ -81,10 +54,10 @@ type imageUpdater struct {
 	checking sync.Mutex // één controle tegelijk
 
 	mu       sync.Mutex
-	settings ImageSettings
+	settings panel.ImageSettings
 	setAt    time.Time
 	state    imageState
-	status   map[string]ImageStatus
+	status   map[string]panel.ImageStatus
 	due      map[string]time.Time // uuid → moment van de herstart (na de waarschuwing)
 	busy     map[string]bool      // uuid → een update loopt
 }
@@ -103,7 +76,7 @@ func (m *Manager) EnableImageUpdates(p ImagePanel, cfg ImageConfig) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	u := &imageUpdater{m: m, pnl: p, cfg: cfg, settings: DefaultImageSettings, status: map[string]ImageStatus{}, due: map[string]time.Time{}, busy: map[string]bool{}}
+	u := &imageUpdater{m: m, pnl: p, cfg: cfg, settings: DefaultImageSettings, status: map[string]panel.ImageStatus{}, due: map[string]time.Time{}, busy: map[string]bool{}}
 	_ = store.ReadJSON(u.statePath(), &u.state)
 	if u.state.Tracked == nil {
 		u.state.Tracked = map[string]string{}
@@ -119,13 +92,13 @@ func (m *Manager) StartImageUpdates() {
 }
 
 // ImageStatuses geeft de laatste status per server (voor tests).
-func (m *Manager) ImageStatuses() map[string]ImageStatus {
+func (m *Manager) ImageStatuses() map[string]panel.ImageStatus {
 	if m.img == nil {
 		return nil
 	}
 	m.img.mu.Lock()
 	defer m.img.mu.Unlock()
-	out := make(map[string]ImageStatus, len(m.img.status))
+	out := make(map[string]panel.ImageStatus, len(m.img.status))
 	for k, v := range m.img.status {
 		out[k] = v
 	}
@@ -220,7 +193,7 @@ func (u *imageUpdater) loop() {
 	}
 }
 
-func (u *imageUpdater) refreshSettings(ctx context.Context) ImageSettings {
+func (u *imageUpdater) refreshSettings(ctx context.Context) panel.ImageSettings {
 	u.mu.Lock()
 	cur, at := u.settings, u.setAt
 	u.mu.Unlock()
@@ -349,9 +322,9 @@ func (s *Server) runningImageID(ctx context.Context) string {
 	return c.ImageID
 }
 
-func (u *imageUpdater) statusOf(ctx context.Context, s *Server) ImageStatus {
+func (u *imageUpdater) statusOf(ctx context.Context, s *Server) panel.ImageStatus {
 	sp := s.Spec()
-	st := ImageStatus{UUID: sp.UUID, Image: sp.Image, CheckedAt: u.cfg.Now().UTC()}
+	st := panel.ImageStatus{UUID: sp.UUID, Image: sp.Image, CheckedAt: u.cfg.Now().UTC()}
 	cur := s.runningImageID(ctx)
 	latest, err := u.m.eng.ImageID(ctx, sp.Image)
 	if err != nil {
@@ -371,9 +344,9 @@ func (u *imageUpdater) statusOf(ctx context.Context, s *Server) ImageStatus {
 }
 
 func (u *imageUpdater) reportAll(ctx context.Context) {
-	var items []ImageStatus
+	var items []panel.ImageStatus
 	u.mu.Lock()
-	u.status = map[string]ImageStatus{}
+	u.status = map[string]panel.ImageStatus{}
 	u.mu.Unlock()
 	for _, s := range u.m.List() {
 		st := u.statusOf(ctx, s)
@@ -390,7 +363,7 @@ func (u *imageUpdater) reportOne(ctx context.Context, s *Server) {
 	u.mu.Lock()
 	u.status[st.UUID] = st
 	u.mu.Unlock()
-	u.pnl.ReportImages([]ImageStatus{st})
+	u.pnl.ReportImages([]panel.ImageStatus{st})
 }
 
 // cleanup verwijdert images die de daemon ophaalde en die nergens meer voor nodig zijn.
@@ -541,7 +514,7 @@ func (u *imageUpdater) recreate(s *Server, mode string, pull bool) {
 	}
 	u.busy[sp.UUID] = true
 	u.mu.Unlock()
-	res := ImageUpdateResult{Mode: mode}
+	res := panel.ImageUpdateResult{Mode: mode}
 	finish := func(err error) {
 		defer func() {
 			u.mu.Lock()

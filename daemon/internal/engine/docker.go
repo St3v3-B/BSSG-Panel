@@ -173,6 +173,7 @@ func (d *Docker) Inspect(ctx context.Context, id string) (Container, error) {
 	if r.State != nil {
 		c.Running = r.State.Running
 		c.ExitCode = r.State.ExitCode
+		c.OOMKilled = r.State.OOMKilled
 		c.StartedAt, _ = time.Parse(time.RFC3339Nano, r.State.StartedAt)
 	}
 	return c, nil
@@ -304,4 +305,60 @@ func (d *Docker) Update(ctx context.Context, id string, r Resources) error {
 		PidsLimit:  &pids,
 	}})
 	return wrap(err)
+}
+
+// tailBuffer bewaart de laatste max bytes van wat erin geschreven wordt.
+type tailBuffer struct {
+	max       int
+	buf       []byte
+	truncated bool
+}
+
+func (b *tailBuffer) Write(p []byte) (int, error) {
+	n := len(p)
+	b.buf = append(b.buf, p...)
+	if b.max > 0 && len(b.buf) > b.max {
+		b.buf = append([]byte(nil), b.buf[len(b.buf)-b.max:]...)
+		b.truncated = true
+	}
+	return n, nil
+}
+
+func (d *Docker) Exec(ctx context.Context, id string, o ExecOptions) (ExecResult, error) {
+	ex, err := d.cli.ContainerExecCreate(ctx, id, container.ExecOptions{Cmd: o.Cmd, User: o.User, WorkingDir: o.WorkingDir, AttachStdout: true, AttachStderr: true})
+	if err != nil {
+		return ExecResult{}, wrap(err)
+	}
+	att, err := d.cli.ContainerExecAttach(ctx, ex.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return ExecResult{}, wrap(err)
+	}
+	defer att.Close()
+	tb := &tailBuffer{max: o.MaxOutput}
+	copyDone := make(chan error, 1)
+	go func() {
+		_, err := stdcopy.StdCopy(tb, tb, att.Reader)
+		copyDone <- err
+	}()
+	select {
+	case <-copyDone:
+	case <-ctx.Done():
+		att.Close()
+		return ExecResult{}, ctx.Err()
+	}
+	for i := 0; i < 100; i++ {
+		r, err := d.cli.ContainerExecInspect(ctx, ex.ID)
+		if err != nil {
+			return ExecResult{}, wrap(err)
+		}
+		if !r.Running {
+			return ExecResult{ExitCode: r.ExitCode, Output: string(tb.buf), Truncated: tb.truncated}, nil
+		}
+		select {
+		case <-ctx.Done():
+			return ExecResult{}, ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	return ExecResult{}, errors.New("exec did not finish")
 }

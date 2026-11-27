@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"panel/daemon/internal/engine"
+	"panel/daemon/internal/panel"
 	"panel/daemon/internal/spec"
 )
 
@@ -18,25 +19,26 @@ type nopRep struct{}
 
 func (nopRep) ReportStatus(string, string)        {}
 func (nopRep) ReportInstall(string, bool, string) {}
+func (nopRep) ReportEvent(string, panel.Event)    {}
 
 type fakePanel struct {
 	mu       sync.Mutex
-	settings ImageSettings
-	reports  [][]ImageStatus
-	updates  []ImageUpdateResult
+	settings panel.ImageSettings
+	reports  [][]panel.ImageStatus
+	updates  []panel.ImageUpdateResult
 }
 
-func (p *fakePanel) ImageSettings(context.Context) (ImageSettings, error) {
+func (p *fakePanel) ImageSettings(context.Context) (panel.ImageSettings, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.settings, nil
 }
-func (p *fakePanel) ReportImages(items []ImageStatus) {
+func (p *fakePanel) ReportImages(items []panel.ImageStatus) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.reports = append(p.reports, items)
 }
-func (p *fakePanel) ReportImageUpdate(_ string, r ImageUpdateResult) {
+func (p *fakePanel) ReportImageUpdate(_ string, r panel.ImageUpdateResult) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.updates = append(p.updates, r)
@@ -67,7 +69,7 @@ func newEnv(t *testing.T, policy string) *env {
 	m := NewManager(Config{DataDir: t.TempDir(), Instance: "unit", StopTimeout: 2 * time.Second, DiskInterval: time.Hour, StatsInterval: time.Hour}, eng, nopRep{}, log)
 	t.Cleanup(m.Close)
 	// 2026-11-27 is een vrijdag; 12:00 Amsterdam (UTC+1) = 11:00 UTC: buiten het venster.
-	e := &env{t: t, eng: eng, m: m, pnl: &fakePanel{settings: ImageSettings{DefaultPolicy: policy, WindowStart: "04:00", WindowEnd: "05:00", Timezone: "Europe/Amsterdam"}},
+	e := &env{t: t, eng: eng, m: m, pnl: &fakePanel{settings: panel.ImageSettings{DefaultPolicy: policy, WindowStart: "04:00", WindowEnd: "05:00", Timezone: "Europe/Amsterdam"}},
 		now: time.Date(2026, 11, 27, 11, 0, 0, 0, time.UTC)}
 	m.EnableImageUpdates(e.pnl, ImageConfig{Warn: 50 * time.Millisecond, Now: func() time.Time { return e.now }})
 	return e
@@ -112,7 +114,7 @@ func waitUntil(t *testing.T, what string, fn func() bool) {
 	}
 }
 
-func (e *env) status(uuid string) ImageStatus { return e.m.ImageStatuses()[uuid] }
+func (e *env) status(uuid string) panel.ImageStatus { return e.m.ImageStatuses()[uuid] }
 
 func TestDigestChangeDetection(t *testing.T) {
 	e := newEnv(t, "notify")

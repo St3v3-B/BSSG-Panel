@@ -98,15 +98,20 @@ describe("eigen server", () => {
 
 describe("admin", () => {
   it("quota-editor op de gebruikerspagina: instellen en weghalen", async () => {
-    const { bodies } = renderWithTrpc(<UserDetail id={2} />, admin);
+    const { bodies, calls } = renderWithTrpc(<UserDetail id={2} />, admin);
     const ram = (await screen.findByLabelText("Memory (MB)")) as HTMLInputElement;
     expect(ram.value).toBe("4096");
     fireEvent.change(ram, { target: { value: "8192" } });
     fireEvent.click(screen.getByRole("button", { name: "Save quota" }));
     await waitFor(() => expect(input(bodies, "admin.users.setQuota")[0]).toMatchObject({ id: 2, maxRamMb: 8192, maxServers: 3, templateIds: null }));
+    // Na het opslaan laadt getQuota opnieuw en wordt het formulier opnieuw opgebouwd (key); pas
+    // daarna klikken, anders zet die remount het vinkje terug en is de test timing-afhankelijk.
+    await waitFor(() => expect(calls.filter((c) => c.includes("admin.users.getQuota")).length).toBeGreaterThanOrEqual(2), { timeout: 5000 });
+    await waitFor(() => expect((screen.getByLabelText("Memory (MB)") as HTMLInputElement).value).toBe("8192"), { timeout: 5000 });
+    await new Promise((r) => setTimeout(r, 50));
     fireEvent.click(screen.getByLabelText("Allow this user to create servers"));
     fireEvent.click(await screen.findByRole("button", { name: "Remove quota" }));
-    await waitFor(() => expect(input(bodies, "admin.users.clearQuota")[0]).toEqual({ id: 2 }));
+    await waitFor(() => expect(input(bodies, "admin.users.clearQuota")[0]).toEqual({ id: 2 }), { timeout: 5000 });
   });
 
   it("verbruik per gebruiker", async () => {

@@ -1,5 +1,6 @@
 "use client";
 import { PageHeader } from "@/app/_components/page-header";
+import { AdminWebhookCard } from "@/app/_components/notifications/webhook-card";
 import { SettingsAdmin, SettingsTabs } from "@/app/_components/admin/settings";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
 import { useT } from "@/app/_lib/i18n";
@@ -12,6 +13,9 @@ export default function SettingsAdminPage() {
       <PageHeader title={d.title} description={d.description} />
       <SettingsTabs current="general" />
       <SettingsAdmin />
+      <div className="mt-6 max-w-2xl">
+        <AdminWebhookCard />
+      </div>
     </>
   );
 }

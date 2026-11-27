@@ -13,3 +13,10 @@ export function suggestBackendName(serverName: string): string {
   const n = serverName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32).replace(/-+$/, "");
   return n || "server";
 }
+
+/** Platformnaam in de GeyserMC-download-API per template-slug; `null` = geen Bedrock-ondersteuning (Fabric: niet getest). */
+export function bedrockPlatform(slug: string): "spigot" | "velocity" | null {
+  if (slug === "paper" || slug === "folia") return "spigot";
+  if (slug === "velocity") return "velocity";
+  return null;
+}

@@ -14,6 +14,7 @@ import (
 
 	"panel/daemon/internal/engine"
 	"panel/daemon/internal/mcproto"
+	"panel/daemon/internal/panel"
 	"panel/daemon/internal/spec"
 	"panel/daemon/internal/store"
 )
@@ -35,6 +36,7 @@ const (
 type Reporter interface {
 	ReportStatus(uuid, state string)
 	ReportInstall(uuid string, ok bool, errMsg string)
+	ReportEvent(uuid string, ev panel.Event)
 }
 
 // Config van de manager.
@@ -49,6 +51,9 @@ type Config struct {
 	DiskInterval   time.Duration
 	StatsInterval  time.Duration
 	BacklogLines   int
+	// RestartBackoff is de wachttijd vóór de eerste automatische herstart (standaard 5 s;
+	// daarna ×3 per herstart in het venster, max 2 min).
+	RestartBackoff time.Duration
 	// MariaDB is de containernaam van de gedeelde MariaDB (standaard panel-mariadb;
 	// tests gebruiken een eigen naam).
 	MariaDB string

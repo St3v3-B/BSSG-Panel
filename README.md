@@ -399,7 +399,7 @@ Manually stopping a server means *off* — it won't wake up on its own.
 
 ### Heap sizing
 
-Java templates size the heap as the memory limit minus 15% (at least 384 MB headroom), so the
+Java templates size the heap as the memory limit minus max(25%, 512 MB) (heap at least 512 MB; Paper/Folia/Fabric recommend 1.5 GB RAM or more), with direct memory and code cache capped,, so the
 JVM's off-heap memory doesn't get the container killed.
 
 ---

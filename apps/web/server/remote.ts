@@ -7,14 +7,15 @@ import { ALL_PERMISSIONS, type ServerStatus } from "@panel/api";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { logActivity } from "./activity";
-import { pruneBackups } from "./backups";
+import { pruneBackups, thawWorld } from "./backups";
 import { ensureBooted } from "./boot";
 import { getDb, schema } from "./db";
 import { safeEqual, sha256 } from "./lib/crypto";
 import { jwks } from "./lib/jwt";
+import { notify, targetForServer } from "./notify";
 import { getLimiter } from "./lib/ratelimit";
 import { logImageUpdate, remoteImageSettings, storeImageReport } from "./image-updates";
-import { sftpUsername } from "./servers-data";
+import { fetchServerByUuid, sftpUsername } from "./servers-data";
 
 type NodeRow = typeof schema.nodes.$inferSelect;
 
@@ -92,6 +93,7 @@ export const reportInstall = remoteHandler<{ uuid: string }>(async (req, node, {
     serverId: s.id,
     metadata: b.successful ? {} : { error: b.error?.slice(0, 2000) ?? null },
   });
+  if (!b.successful) await notifyServer(s.id, { kind: "install_failed", error: b.error ?? "unknown error" });
   return noContent();
 });
 
@@ -135,6 +137,39 @@ export const reportImageUpdate = remoteHandler<{ uuid: string }>(async (req, nod
   return noContent();
 });
 
+/** Melding voor een server (webhooks van server, eigenaar en admin). Gooit nooit. */
+async function notifyServer(serverId: number, e: Parameters<typeof notify>[0]): Promise<void> {
+  const target = await targetForServer(serverId).catch(() => null);
+  if (target) await notify(e, target);
+}
+
+const Event = z.object({
+  type: z.enum(["crashed", "disk_warning", "disk_exceeded"]),
+  exit_code: z.number().int().nullish(),
+  oom: z.boolean().optional(),
+  log_tail: z.array(z.string().max(2000)).max(30).optional(),
+  crash_report: z.string().max(5000).nullish(),
+  restart: z.enum(["restarted", "gave_up", "disabled"]).optional(),
+  restart_attempt: z.number().int().min(0).optional(),
+  disk_bytes: z.number().int().min(0).optional(),
+  disk_limit_bytes: z.number().int().min(0).optional(),
+});
+
+export const reportEvent = remoteHandler<{ uuid: string }>(async (req, node, { uuid }) => {
+  const b = await body(req, Event);
+  if (!b) return error(400, "bad_request");
+  const s = await serverOnNode(uuid, node);
+  if (!s) return error(404, "not_found");
+  if (b.type === "crashed") {
+    const restart = b.restart ?? "disabled";
+    await logActivity({ action: "server.crashed", serverId: s.id, metadata: { exitCode: b.exit_code ?? null, oom: b.oom ?? false, restart, attempt: b.restart_attempt ?? 0 } });
+    await notifyServer(s.id, { kind: "server_crashed", exitCode: b.exit_code ?? null, oom: b.oom ?? false, logTail: b.log_tail ?? [], crashReport: b.crash_report ?? null, restart, attempt: b.restart_attempt ?? 0 });
+  } else {
+    await notifyServer(s.id, { kind: b.type, usedBytes: b.disk_bytes ?? 0, limitBytes: b.disk_limit_bytes ?? 0 });
+  }
+  return noContent();
+});
+
 // ---------- backups ----------
 
 /** Backup op id, alleen als de server op deze node staat. */
@@ -166,7 +201,10 @@ export const reportBackup = remoteHandler<{ backup_id: string }>(async (req, nod
     serverId: r.s.id,
     metadata: b.successful ? { id: r.b.id, sizeBytes: b.size_bytes ?? null } : { id: r.b.id, error: b.error?.slice(0, 2000) ?? null },
   });
+  const bundle = await fetchServerByUuid(r.s.uuid);
+  if (bundle) await thawWorld(bundle);
   if (b.successful) await pruneBackups(r.s.id);
+  else await notifyServer(r.s.id, { kind: "backup_failed", name: r.b.name, error: b.error ?? "unknown error" });
   return noContent();
 });
 

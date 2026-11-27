@@ -106,6 +106,7 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /api/images/check", p(a.checkImages))
 	mux.Handle("POST /api/servers/{uuid}/power", p(a.withServer(a.power)))
 	mux.Handle("POST /api/servers/{uuid}/commands", p(a.withServer(a.commands)))
+	mux.Handle("POST /api/servers/{uuid}/exec", p(a.withServer(a.exec)))
 	mux.Handle("GET /api/servers/{uuid}/logs", p(a.withServer(a.logs)))
 	mux.Handle("GET /api/servers/{uuid}/stats", p(a.withServer(a.stats)))
 	mux.HandleFunc("GET /api/servers/{uuid}/ws", a.websocket)
@@ -331,6 +332,40 @@ func (a *API) commands(w http.ResponseWriter, r *http.Request, s *server.Server)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) exec(w http.ResponseWriter, r *http.Request, s *server.Server) {
+	var body struct {
+		Command        string `json:"command"`
+		TimeoutSeconds int    `json:"timeout_seconds"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if !s.IsWeb() {
+		writeErr(w, http.StatusBadRequest, "bad_request", "exec is only available for websites")
+		return
+	}
+	if strings.TrimSpace(body.Command) == "" || len(body.Command) > 2000 || strings.ContainsRune(body.Command, 0) {
+		writeErr(w, http.StatusBadRequest, "bad_request", "command is empty, too long or invalid")
+		return
+	}
+	if body.TimeoutSeconds == 0 {
+		body.TimeoutSeconds = 60
+	}
+	if body.TimeoutSeconds < 1 || body.TimeoutSeconds > 600 {
+		writeErr(w, http.StatusBadRequest, "bad_request", "timeout_seconds must be between 1 and 600")
+		return
+	}
+	res, err := s.Exec(r.Context(), body.Command, time.Duration(body.TimeoutSeconds)*time.Second)
+	if err != nil {
+		stateErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"exit_code": res.ExitCode, "output": strings.ToValidUTF8(res.Output, "\uFFFD"), "truncated": res.Truncated,
+		"timed_out": res.TimedOut, "duration_ms": res.Duration.Milliseconds(),
+	})
 }
 
 func (a *API) logs(w http.ResponseWriter, r *http.Request, s *server.Server) {

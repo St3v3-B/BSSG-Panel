@@ -12,8 +12,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"panel/daemon/internal/server"
 )
 
 // JWK is één sleutel uit GET /api/remote/jwt-key.
@@ -154,21 +152,21 @@ func (c *Client) Hello(version, diskQuotaMode string) {
 }
 
 // ImageSettings haalt de globale instellingen voor image-updates op.
-func (c *Client) ImageSettings(ctx context.Context) (server.ImageSettings, error) {
-	var out server.ImageSettings
+func (c *Client) ImageSettings(ctx context.Context) (ImageSettings, error) {
+	var out ImageSettings
 	err := c.do(ctx, http.MethodGet, "/api/remote/settings/image-updates", nil, &out)
 	return out, err
 }
 
 // ReportImages meldt het resultaat van een image-controle (asynchroon met retry).
-func (c *Client) ReportImages(items []server.ImageStatus) {
+func (c *Client) ReportImages(items []ImageStatus) {
 	c.async("images", func(ctx context.Context) error {
 		return c.do(ctx, http.MethodPost, "/api/remote/node/images", map[string]any{"servers": items}, nil)
 	})
 }
 
 // ReportImageUpdate meldt dat een image-update is toegepast of mislukt.
-func (c *Client) ReportImageUpdate(uuid string, r server.ImageUpdateResult) {
+func (c *Client) ReportImageUpdate(uuid string, r ImageUpdateResult) {
 	c.async("image-update "+uuid, func(ctx context.Context) error {
 		return c.do(ctx, http.MethodPost, "/api/remote/servers/"+uuid+"/image-update", r, nil)
 	})
@@ -227,6 +225,26 @@ func (c *Client) ReportStatus(uuid, state string) {
 	}()
 }
 
+// Event is het verzoek van POST /api/remote/servers/{uuid}/event.
+type Event struct {
+	Type           string   `json:"type"` // crashed, disk_warning, disk_exceeded
+	ExitCode       *int     `json:"exit_code,omitempty"`
+	OOM            bool     `json:"oom,omitempty"`
+	LogTail        []string `json:"log_tail,omitempty"`
+	CrashReport    *string  `json:"crash_report,omitempty"`
+	Restart        string   `json:"restart,omitempty"` // restarted, gave_up, disabled
+	RestartAttempt int      `json:"restart_attempt,omitempty"`
+	DiskBytes      int64    `json:"disk_bytes,omitempty"`
+	DiskLimitBytes int64    `json:"disk_limit_bytes,omitempty"`
+}
+
+// ReportEvent meldt een gebeurtenis die een melding kan opleveren (asynchroon met retry).
+func (c *Client) ReportEvent(uuid string, ev Event) {
+	c.async("event "+uuid, func(ctx context.Context) error {
+		return c.do(ctx, http.MethodPost, "/api/remote/servers/"+uuid+"/event", ev, nil)
+	})
+}
+
 func (c *Client) async(what string, fn func(context.Context) error) {
 	c.wg.Add(1)
 	go func() {
@@ -278,4 +296,32 @@ func (c *Client) ReportRestore(id int, ok bool, errMsg string) {
 	c.async(fmt.Sprintf("restore %d", id), func(ctx context.Context) error {
 		return c.do(ctx, http.MethodPost, fmt.Sprintf("/api/remote/backups/%d/restore", id), body, nil)
 	})
+}
+
+// ImageSettings zijn de globale instellingen uit het panel (GET /api/remote/settings/image-updates).
+type ImageSettings struct {
+	DefaultPolicy string `json:"default_policy"` // auto | notify | off
+	WindowStart   string `json:"window_start"`   // HH:MM
+	WindowEnd     string `json:"window_end"`     // HH:MM; mag voor WindowStart liggen
+	Timezone      string `json:"timezone"`
+}
+
+// ImageStatus is één server in POST /api/remote/node/images.
+type ImageStatus struct {
+	UUID              string    `json:"uuid"`
+	Image             string    `json:"image"`
+	CurrentImageID    *string   `json:"current_image_id"`
+	LatestImageID     *string   `json:"latest_image_id"`
+	UpdateAvailable   bool      `json:"update_available"`
+	ReinstallRequired bool      `json:"reinstall_required"`
+	CheckedAt         time.Time `json:"checked_at"`
+}
+
+// ImageUpdateResult is POST /api/remote/servers/{uuid}/image-update.
+type ImageUpdateResult struct {
+	Successful bool    `json:"successful"`
+	Mode       string  `json:"mode"` // auto | manual
+	From       *string `json:"from_image_id"`
+	To         *string `json:"to_image_id"`
+	Error      *string `json:"error"`
 }

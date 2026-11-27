@@ -63,6 +63,11 @@ type Sleep struct {
 	KickMessage string `json:"kick_message,omitempty"`
 }
 
+// AutoRestart: automatisch herstarten na een crash, hooguit MaxPer10Min keer per 10 minuten.
+type AutoRestart struct {
+	MaxPer10Min int `json:"max_per_10min"`
+}
+
 // Standaardteksten van de slaapstand.
 const (
 	DefaultSleepMOTD = "Server is sleeping - join to start it"
@@ -107,6 +112,7 @@ type ServerSpec struct {
 	SkipInstall    bool              `json:"skip_install,omitempty"`
 	Sleep          *Sleep            `json:"sleep,omitempty"`
 	ImageUpdate    *ImageUpdate      `json:"image_update,omitempty"`
+	AutoRestart    *AutoRestart      `json:"auto_restart,omitempty"`
 }
 
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
@@ -199,6 +205,9 @@ func (s *ServerSpec) Validate() error {
 		if len(s.Sleep.MOTD) > 256 || len(s.Sleep.KickMessage) > 256 {
 			add("sleep: motd/kick_message te lang")
 		}
+	}
+	if s.AutoRestart != nil && (s.AutoRestart.MaxPer10Min < 1 || s.AutoRestart.MaxPer10Min > 20) {
+		add("auto_restart.max_per_10min must be between 1 and 20")
 	}
 	if s.Type == "web" && len(s.Allocations) > 0 {
 		add("web has no allocations")

@@ -14,8 +14,9 @@ import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema } from "../db";
 import { applyNetworkToml } from "../lib/velocity-toml";
 import { FORWARDING_VAR, PROXY_SECRET_VAR, SECRET_VAR, allocationAddress, isBackend, isProxy, proxyMembers, suggestNames } from "../network";
+import { syncBedrockBackends } from "../bedrock";
 import { buildServerSpec } from "../spec";
-import { fetchServerByUuid, fetchServers, imagePolicyOf, isFullAdmin, limitsOf, requireServer, serverVariables, sleepOf, type ServerBundle } from "../servers-data";
+import { imagePolicyOf, fetchServerByUuid, fetchServers, isFullAdmin, limitsOf, requireServer, serverVariables, sleepOf, autoRestartOf, type ServerBundle } from "../servers-data";
 
 const TOML_PATH = "/velocity.toml";
 const bad = (message: string, code: "BAD_REQUEST" | "FORBIDDEN" | "CONFLICT" | "NOT_FOUND" | "PRECONDITION_FAILED" = "BAD_REQUEST") => new TRPCError({ code, message });
@@ -23,7 +24,7 @@ const bad = (message: string, code: "BAD_REQUEST" | "FORBIDDEN" | "CONFLICT" | "
 /** Variabelen van een server bijwerken: daemon-spec (zonder install), dan database. Effect bij de volgende start. */
 export async function setVariables(b: ServerBundle, vars: Record<string, string>) {
   const merged = { ...(await serverVariables(b.server.id)), ...vars };
-  const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: merged, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server), imagePolicy: imagePolicyOf(b.server) });
+  const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: merged, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server), imagePolicy: imagePolicyOf(b.server) });
   await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
   await getDb()
     .insert(schema.serverVariables)
@@ -122,8 +123,18 @@ export const network: Pick<Implementation["servers"], "networkCandidates" | "upd
       if (e instanceof DaemonHttpError && e.status === 404) throw bad("PROXY_NOT_INSTALLED: velocity.toml not found, wait for the installation to finish", "PRECONDITION_FAILED");
       throw await call(() => Promise.reject(e));
     }
+    const modernBefore = /^\s*player-info-forwarding-mode\s*=\s*"modern"/m.test(toml);
     await call(() => d.writeFile(proxy.server.uuid, TOML_PATH, applyNetworkToml(toml, members.map((m) => ({ name: m.name, address: m.address })))));
-    for (const m of members) await setVariables(m.b, { [FORWARDING_VAR]: "true", [SECRET_VAR]: secret });
+    // Alleen backends waarvan de forwarding-variabelen echt veranderen worden aangeraakt (en herstart).
+    const changed = new Set<number>();
+    for (const m of members) {
+      const cur = await serverVariables(m.b.server.id);
+      if (cur[FORWARDING_VAR] === "true" && cur[SECRET_VAR] === secret) continue;
+      await setVariables(m.b, { [FORWARDING_VAR]: "true", [SECRET_VAR]: secret });
+      changed.add(m.b.server.id);
+    }
+    // Velocity leest secret en forwarding-modus alleen bij de start; de rest (servers, try) kan live herladen.
+    const proxyNeedsRestart = secret !== stored || !modernBefore;
     for (const b of removed) await setVariables(b, { [FORWARDING_VAR]: "false", [SECRET_VAR]: "" });
 
     await db.transaction(async (tx) => {
@@ -142,6 +153,9 @@ export const network: Pick<Implementation["servers"], "networkCandidates" | "upd
       await logActivity({ action: "server.network.backend", userId: uid, serverId: b.server.id, metadata: { proxy: proxy.server.uuid, inNetwork: members.some((m) => m.b.server.id === b.server.id) }, ip: ctx.ip, ctx });
     }
 
+    // Bedrock (Geyser) aan op de proxy: Floodgate + key.pem naar nieuwe leden, weg bij verwijderde leden.
+    const bedrockErrors = await syncBedrockBackends(proxy, removed);
+
     // ---- herstarten: backends eerst, dan de proxy; alleen servers die draaien (de rest leest het bij de volgende start) ----
     const plan: Array<{ b: ServerBundle; role: NetworkUpdateResult["servers"][number]["role"] }> = [
       ...members.map((m) => ({ b: m.b, role: "backend" as const })),
@@ -151,16 +165,23 @@ export const network: Pick<Implementation["servers"], "networkCandidates" | "upd
     const servers: NetworkUpdateResult["servers"] = [];
     for (const { b, role } of plan) {
       let restarted = false;
+      let reloaded = false;
       let error: string | null = null;
-      if (input.restart && (await isRunning(b))) {
+      const touched = role === "proxy" || role === "removed" || changed.has(b.server.id);
+      if (input.restart && touched && (await isRunning(b))) {
         try {
-          await call(() => daemonFor(b.node).power(b.server.uuid, "restart"));
-          restarted = true;
+          if (role === "proxy" && !proxyNeedsRestart) {
+            await call(() => daemonFor(b.node).sendCommands(b.server.uuid, ["velocity reload"]));
+            reloaded = true;
+          } else {
+            await call(() => daemonFor(b.node).power(b.server.uuid, "restart"));
+            restarted = true;
+          }
         } catch (e) {
           error = e instanceof Error ? e.message : String(e);
         }
       }
-      servers.push({ uuid: b.server.uuid, name: b.server.name, role, restarted, error });
+      servers.push({ uuid: b.server.uuid, name: b.server.name, role, restarted, reloaded, error: error ?? (bedrockErrors.has(b.server.uuid) ? `BEDROCK: ${bedrockErrors.get(b.server.uuid)}` : null) });
     }
     return { servers };
   },

@@ -133,6 +133,8 @@ export const Allocation = z.object({
   port: z.number().int().min(1).max(65535),
   serverUuid: Uuid.nullable(),
   primary: z.boolean(),
+  /** `bedrock` = de UDP-poort van Geyser (zie servers.bedrock); anders gewoon een game-poort. */
+  role: z.enum(["game", "bedrock"]).default("game"),
 });
 export type Allocation = z.infer<typeof Allocation>;
 
@@ -233,11 +235,29 @@ export const NetworkCandidate = z.object({
 });
 export type NetworkCandidate = z.infer<typeof NetworkCandidate>;
 
-/** Uitkomst per betrokken server (proxy en backends) van `updateNetwork`. */
+/** Uitkomst per betrokken server (proxy en backends) van `updateNetwork`. `reloaded`: proxy kreeg `velocity reload` i.p.v. een herstart. */
 export const NetworkUpdateResult = z.object({
-  servers: z.array(z.object({ uuid: Uuid, name: z.string(), role: z.enum(["proxy", "backend", "removed"]), restarted: z.boolean(), error: z.string().nullable() })),
+  servers: z.array(z.object({ uuid: Uuid, name: z.string(), role: z.enum(["proxy", "backend", "removed"]), restarted: z.boolean(), reloaded: z.boolean(), error: z.string().nullable() })),
 });
 export type NetworkUpdateResult = z.infer<typeof NetworkUpdateResult>;
+
+/**
+ * Bedrock-toegang (Geyser + Floodgate) voor Java-servers. `mode`: `standalone` (Paper/Folia), `proxy`
+ * (Velocity: Geyser + Floodgate op de proxy, Floodgate op de backends) of `backend` (hangt achter een
+ * proxy: Bedrock loopt via de proxy, hier niets te schakelen). `supported` = false voor andere templates
+ * en voor backends. `address`/`port` = wat Bedrock-spelers invullen (UDP).
+ */
+export const BedrockStatus = z.object({
+  supported: z.boolean(),
+  mode: z.enum(["standalone", "proxy", "backend"]),
+  enabled: z.boolean(),
+  address: z.string().nullable(),
+  port: z.number().int().nullable(),
+  allocationId: Id.nullable(),
+  /** Vrije allocations op de node (zelfde IP als de primaire poort) die als Bedrock-poort kunnen. */
+  freeAllocations: z.array(z.object({ id: Id, ip: z.ipv4(), port: z.number().int() })),
+});
+export type BedrockStatus = z.infer<typeof BedrockStatus>;
 
 export const ServerDetail = ServerSummary.extend({
   /** Rechten van de ingelogde gebruiker op deze server. */
@@ -424,6 +444,7 @@ export const Backup = z.object({
   sha256: z.string().nullable(),
   status: BackupStatus,
   includesDatabases: z.boolean(),
+  error: z.string().nullable(), // reden bij status failed
   createdAt: z.date(),
   completedAt: z.date().nullable(),
 });
@@ -431,18 +452,20 @@ export type Backup = z.infer<typeof Backup>;
 
 // ---------- schema's ----------
 
-export const ScheduleAction = z.enum(["restart", "command", "backup"]);
+export const ScheduleAction = z.enum(["restart", "command", "backup", "exec"]);
 export const Schedule = z.object({
   id: Id,
   serverUuid: Uuid,
   name: z.string(),
   cron: z.string(), // 5 velden, tijdzone Europe/Amsterdam
   action: ScheduleAction,
-  payload: z.string().nullable(), // commando bij action=command
+  payload: z.string().nullable(), // commando bij action=command of exec
   active: z.boolean(),
   lastRunAt: z.date().nullable(),
   nextRunAt: z.date().nullable(),
   lastResult: z.string().nullable(),
+  /** Laatste 4 KiB uitvoer van de laatste run (alleen action=exec). */
+  lastOutput: z.string().nullable(),
 });
 export type Schedule = z.infer<typeof Schedule>;
 
@@ -453,6 +476,37 @@ export const ScheduleInput = z.object({
   payload: z.string().max(1000).nullable(),
   active: z.boolean(),
 });
+
+// ---------- website-instellingen (PHP) ----------
+
+export const PhpExtension = z.enum(["gd", "intl", "exif", "mysqli"]);
+export const PhpSettings = z.object({
+  /** memory_limit in MB; maximaal het RAM-limiet van de site. */
+  memoryLimitMb: z.number().int().min(32).max(32768),
+  /** upload_max_filesize = post_max_size = nginx client_max_body_size, in MB. */
+  uploadMaxMb: z.number().int().min(1).max(4096),
+  maxExecutionTime: z.number().int().min(1).max(300),
+  maxInputVars: z.number().int().min(100).max(100000),
+  displayErrors: z.boolean(),
+  /** IANA-naam, bv. Europe/Amsterdam. */
+  timezone: z.string().min(1).max(64),
+  opcache: z.boolean(),
+  /** Door de template gebouwde extensies die uit staan. */
+  disabledExtensions: z.array(PhpExtension),
+});
+export type PhpSettings = z.infer<typeof PhpSettings>;
+
+export const PhpSettingsInfo = z.object({
+  /** Effectieve waarden: de beheerde ini, anders de standaardwaarden van de template. */
+  settings: PhpSettings,
+  defaults: PhpSettings,
+  /** Het beheerde bestand (php/00-panel.ini) bestaat. */
+  managed: z.boolean(),
+  /** RAM-limiet van de site (MB): bovengrens voor memory_limit. */
+  ramLimitMb: z.number().int(),
+  extensions: z.array(PhpExtension),
+});
+export type PhpSettingsInfo = z.infer<typeof PhpSettingsInfo>;
 
 // ---------- subusers ----------
 
@@ -596,6 +650,21 @@ export const ImageUpdateSettings = z.object({
   windowEnd: ClockTime,
 });
 export type ImageUpdateSettings = z.infer<typeof ImageUpdateSettings>;
+/** Alleen echte Discord-webhooks (https://discord.com|discordapp.com/api[/vN]/webhooks/<id>/<token>). */
+export const DISCORD_WEBHOOK_RE = /^https:\/\/(?:discord|discordapp)\.com\/api(?:\/v\d+)?\/webhooks\/\d{5,25}\/[A-Za-z0-9_-]{20,200}$/;
+export const WebhookUrl = z.string().trim().max(300).regex(DISCORD_WEBHOOK_RE, "INVALID_WEBHOOK_URL");
+
+/** Nooit de volledige URL teruggeven (het token zit erin): alleen of hij gezet is en een hint. */
+export const WebhookStatus = z.object({ set: z.boolean(), hint: z.string().nullable() });
+export type WebhookStatus = z.infer<typeof WebhookStatus>;
+
+export const ServerNotifications = z.object({
+  webhook: WebhookStatus,
+  autoRestart: z.boolean(),
+  /** Max herstarts per 10 minuten (1-20). */
+  autoRestartMax: z.number().int().min(1).max(20),
+});
+export type ServerNotifications = z.infer<typeof ServerNotifications>;
 
 export const Settings = Branding.extend({
   defaultLimits: Limits,

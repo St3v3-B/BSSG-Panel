@@ -7,7 +7,7 @@ import { vi } from "vitest";
 export type Reply = { status?: number; json?: unknown; body?: Buffer | string; headers?: Record<string, string> };
 export type Handler = (url: URL, init?: RequestInit) => Reply | undefined;
 
-const EXTERNAL = ["api.modrinth.com", "cdn.modrinth.com", "hangar.papermc.io", "hangarcdn.papermc.io", "fill.papermc.io", "meta.fabricmc.net", "github.com", "evil.example", "raw.githubusercontent.com"];
+const EXTERNAL = ["api.modrinth.com", "cdn.modrinth.com", "hangar.papermc.io", "hangarcdn.papermc.io", "fill.papermc.io", "meta.fabricmc.net", "github.com", "evil.example", "raw.githubusercontent.com", "download.geysermc.org"];
 
 export function mockExternal(handler: Handler) {
   const real = globalThis.fetch;

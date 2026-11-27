@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { FORWARDING_VAR, SECRET_VAR, isProxy, proxyMembers } from "../network";
+import { setVariables } from "./network";
 import { ALL_PERMISSIONS, parseTemplate, type Implementation, type NodeHealth, type Node as NodeOut, type AdminUser, type TemplateDetail } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { and, asc, count, eq, gt, ilike, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
@@ -12,7 +14,7 @@ import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema, type Db } from "../db";
 import { getEnv } from "../env";
 import { buildServerSpec, validateVariables } from "../spec";
-import { fetchServerByUuid, fetchServers, imagePolicyOf, limitsOf, sleepOf, serverVariables, toDetail, toSummary, userPublic, type ServerBundle } from "../servers-data";
+import { imagePolicyOf, fetchServerByUuid, fetchServers, limitsOf, sleepOf, autoRestartOf, serverVariables, toDetail, toSummary, userPublic, type ServerBundle } from "../servers-data";
 import { adminImageRows, checkAllNodes } from "../image-updates";
 import { getSettings } from "../settings";
 import { templateRow } from "../templates";
@@ -136,6 +138,16 @@ export async function assignAllocations(tx: Tx, serverId: number, ids: number[])
 
 /** Verwijdert een server bij de daemon, de routes, de databases en uit de database; `log` draait vlak voor het DB-delete. */
 export async function deleteServerFully(b: ServerBundle, log: (dbFailed: string[]) => Promise<void>): Promise<void> {
+  // Een Velocity-proxy die verdwijnt: de backends terug naar niet-forwarding, anders zijn ze niet meer direct bereikbaar.
+  if (isProxy(b)) {
+    for (const { b: backend } of await proxyMembers(b.server.id)) {
+      try {
+        await setVariables(backend, { [FORWARDING_VAR]: "false", [SECRET_VAR]: "" });
+      } catch {
+        // backend of node onbereikbaar: de proxy-verwijdering gaat door
+      }
+    }
+  }
   try {
     await daemonFor(b.node).deleteServer(b.server.uuid);
   } catch (e) {
@@ -292,12 +304,12 @@ export const admin = {
     list: async ({ input }) => {
       await nodeById(input.nodeId);
       const rows = await getDb()
-        .select({ a: schema.allocations, uuid: schema.servers.uuid })
+        .select({ a: schema.allocations, uuid: schema.servers.uuid, bedrockId: schema.servers.bedrockAllocationId })
         .from(schema.allocations)
         .leftJoin(schema.servers, eq(schema.servers.id, schema.allocations.serverId))
         .where(eq(schema.allocations.nodeId, input.nodeId))
         .orderBy(asc(schema.allocations.ip), asc(schema.allocations.port));
-      return rows.map(({ a, uuid }) => ({ id: a.id, nodeId: a.nodeId, ip: a.ip, port: a.port, serverUuid: uuid, primary: a.isPrimary }));
+      return rows.map(({ a, uuid, bedrockId }) => ({ id: a.id, nodeId: a.nodeId, ip: a.ip, port: a.port, serverUuid: uuid, primary: a.isPrimary, role: uuid && bedrockId === a.id ? ("bedrock" as const) : ("game" as const) }));
     },
     create: async ({ input, ctx }) => {
       await nodeById(input.nodeId);
@@ -408,7 +420,7 @@ export const admin = {
 
     updateLimits: async ({ input, ctx }) => {
       const b = await mustServer(input.uuid);
-      const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: await serverVariables(b.server.id), limits: input.limits, allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server), imagePolicy: imagePolicyOf(b.server) });
+      const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: await serverVariables(b.server.id), limits: input.limits, allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server), imagePolicy: imagePolicyOf(b.server) });
       await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
       await getDb()
         .update(schema.servers)
@@ -435,9 +447,12 @@ export const admin = {
       if (b.server.type === "game" && input.allocationIds.length === 0) throw bad("ALLOCATION_REQUIRED");
       if (b.server.type === "web" && input.allocationIds.length > 0) throw bad("WEB_HAS_NO_ALLOCATIONS");
       const vars = await serverVariables(b.server.id);
+      // De Bedrock-poort (Geyser) blijft bij de server; die schakelt de eigenaar via servers.setBedrock.
+      const bedrockId = b.allocations.find((a) => a.id === b.server.bedrockAllocationId)?.id;
+      const allocationIds = bedrockId !== undefined && !input.allocationIds.includes(bedrockId) ? [...input.allocationIds, bedrockId] : input.allocationIds;
       await getDb().transaction(async (tx) => {
-        const allocs = await checkAllocations(tx, input.allocationIds, b.node.id, b.server.id);
-        await assignAllocations(tx, b.server.id, input.allocationIds);
+        const allocs = await checkAllocations(tx, allocationIds, b.node.id, b.server.id);
+        await assignAllocations(tx, b.server.id, allocationIds);
         const spec = buildServerSpec({
           uuid: b.server.uuid,
           template: b.template,
@@ -445,8 +460,7 @@ export const admin = {
           limits: limitsOf(b.server),
           allocations: allocs.map((a, i) => ({ ip: a.ip, port: a.port, isPrimary: i === 0 })),
           skipInstall: true,
-          sleep: sleepOf(b.server),
-          imagePolicy: imagePolicyOf(b.server),
+          sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server), imagePolicy: imagePolicyOf(b.server),
         });
         // Binnen de transactie: faalt de daemon, dan blijft de database ongewijzigd.
         await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
@@ -513,7 +527,7 @@ export const admin = {
         if (validateVariables([v], { [v.key]: old[v.key]! }, { onlyUserEditable: false }).length) dropped.push(v.key);
         else keep[v.key] = old[v.key]!;
       }
-      const spec = buildServerSpec({ uuid: b.server.uuid, template: tpl, variables: keep, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: !input.reinstall });
+      const spec = buildServerSpec({ uuid: b.server.uuid, template: tpl, variables: keep, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: !input.reinstall, sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server) });
       await getDb().transaction(async (tx) => {
         await tx.update(schema.servers).set({ templateId: tpl.id, ...(input.reinstall ? { status: "installing" as const } : {}) }).where(eq(schema.servers.id, b.server.id));
         await tx.delete(schema.serverVariables).where(eq(schema.serverVariables.serverId, b.server.id));

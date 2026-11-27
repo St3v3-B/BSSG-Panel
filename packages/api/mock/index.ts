@@ -7,7 +7,7 @@
  */
 import { TRPCError } from "@trpc/server";
 import { ALL_PERMISSIONS } from "../schemas";
-import { suggestBackendName } from "../network";
+import { bedrockPlatform, suggestBackendName } from "../network";
 import type * as s from "../schemas";
 import type { Implementation, SessionCtx } from "../trpc-builder";
 import { contentProfile } from "../content";
@@ -61,18 +61,37 @@ export function createMock(): Implementation {
     content: [] as Array<s.InstalledContent & { serverUuid: string }>,
     subusers: [] as Array<{ serverUuid: string; userId: number; permissions: s.Permission[]; createdAt: Date }>,
     apiKeys: [] as s.ApiKey[],
+    phpSettings: new Map<string, s.PhpSettings>(),
     admins: ["100000000000000001"],
     settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 }, imageUpdates: { defaultPolicy: "notify", windowStart: "04:00", windowEnd: "05:00" } } as s.Settings,
     totpEnabled: new Map<number, boolean>([[1, true]]),
     quotas: new Map<number, s.QuotaInput>([[2, { maxRamMb: 4096, maxDiskMb: 50_000, maxCpuPct: 300, maxServers: 3, maxDatabases: 2, templateIds: null, nodeIds: null, maxPortsPerServer: 2 }]]),
+    webhooks: new Map<string, s.WebhookStatus>(),
+    notif: new Map<string, s.ServerNotifications>(),
     nextId: 1000,
   };
+  const hookStatus = (url: string | null | undefined): s.WebhookStatus => (url ? { set: true, hint: `…${url.slice(-4)}` } : { set: false, hint: null });
   const id = () => ++db.nextId;
   const user = (uid: number) => db.users.find((u) => u.id === uid) ?? notFound("user");
   const srv = (uuid: string) => db.servers.find((x) => x.uuid === uuid) ?? notFound("server");
   const summary = (x: (typeof db.servers)[number], uid: number): s.ServerSummary => {
     const { permissions: _p, allocations: _a, variables: _v, node: _n, sftp: _s, installedAt: _i, createdAt: _c, ownerId, ...rest } = x;
     return { ...rest, isOwner: ownerId === uid };
+  };
+  const mockBedrock = (uuid: string) => {
+    const x = srv(uuid);
+    const slug = x.templateName.toLowerCase();
+    const mode = slug === "velocity" ? ("proxy" as const) : ("standalone" as const);
+    const a = db.allocations.find((a) => a.serverUuid === uuid && a.role === "bedrock");
+    return {
+      supported: !!bedrockPlatform(slug),
+      mode,
+      enabled: !!a,
+      address: a ? a.ip : null,
+      port: a?.port ?? null,
+      allocationId: a?.id ?? null,
+      freeAllocations: db.allocations.filter((f) => f.serverUuid === null).map((f) => ({ id: f.id, ip: f.ip, port: f.port })),
+    };
   };
   const isMcProxy = (x: (typeof db.servers)[number]) => x.templateName === "Velocity";
   const network = (x: (typeof db.servers)[number]): s.ServerNetwork => {
@@ -204,6 +223,13 @@ export function createMock(): Implementation {
       },
       revokeApiKey: ({ input }) => ((db.apiKeys = db.apiKeys.filter((k) => k.id !== input.id)), ok),
       setSftpPassword: () => ok,
+      webhook: () => db.webhooks.get("user") ?? { set: false, hint: null },
+      setWebhook: ({ input }) => {
+        const w = hookStatus(input.url);
+        db.webhooks.set("user", w);
+        return w;
+      },
+      testWebhook: () => ok,
       quota: ({ ctx }) => overview(uid(ctx)),
     },
     servers: {
@@ -253,6 +279,14 @@ export function createMock(): Implementation {
         return ok;
       },
       reinstall: ({ input }) => ((srv(input.uuid).status = "installing"), ok),
+      notifications: ({ input }) => db.notif.get(input.uuid) ?? { webhook: { set: false, hint: null }, autoRestart: false, autoRestartMax: 3 },
+      updateNotifications: ({ input }) => {
+        const prev = db.notif.get(input.uuid) ?? { webhook: { set: false, hint: null }, autoRestart: false, autoRestartMax: 3 };
+        const n = { webhook: input.webhookUrl === undefined ? prev.webhook : hookStatus(input.webhookUrl), autoRestart: input.autoRestart, autoRestartMax: input.autoRestartMax };
+        db.notif.set(input.uuid, n);
+        return n;
+      },
+      testWebhook: () => ok,
       updateSleep: ({ input }) => ((srv(input.uuid).sleep = { ...srv(input.uuid).sleep, enabled: input.enabled, idleMinutes: input.idleMinutes }), ok),
       updateImagePolicy: ({ input }) => {
         const iu = srv(input.uuid).imageUpdate;
@@ -261,6 +295,20 @@ export function createMock(): Implementation {
       },
       updateImageNow: ({ input }) => ((srv(input.uuid).imageUpdate = { ...srv(input.uuid).imageUpdate, available: false, reinstallRequired: false }), ok),
       activity: ({ input }) => pageOf(db.activity.filter((a) => a.serverUuid === input.uuid), input.limit),
+      bedrock: ({ input }) => mockBedrock(input.uuid),
+      setBedrock: ({ input }) => {
+        const x = srv(input.uuid);
+        if (!bedrockPlatform(x.templateName.toLowerCase())) throw new TRPCError({ code: "BAD_REQUEST", message: "BEDROCK_NOT_SUPPORTED" });
+        if (!input.enabled) {
+          const a = db.allocations.find((a) => a.serverUuid === x.uuid && a.role === "bedrock");
+          if (a) Object.assign(a, { serverUuid: null, role: "game" });
+          return mockBedrock(input.uuid);
+        }
+        const free = db.allocations.find((a) => a.serverUuid === null && (input.allocationId ? a.id === input.allocationId : true));
+        if (!free) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_FREE_ALLOCATIONS" });
+        Object.assign(free, { serverUuid: x.uuid, role: "bedrock" });
+        return mockBedrock(input.uuid);
+      },
       networkCandidates: ({ input }) => {
         if (!isMcProxy(srv(input.uuid))) throw new TRPCError({ code: "BAD_REQUEST", message: "NOT_A_PROXY" });
         return db.servers
@@ -279,9 +327,9 @@ export function createMock(): Implementation {
         const removed = before.filter((m) => !sorted.some((n) => n.serverUuid === m.serverUuid));
         return {
           servers: [
-            { uuid: p.uuid, name: p.name, role: "proxy" as const, restarted: input.restart, error: null },
-            ...sorted.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "backend" as const, restarted: input.restart, error: null })),
-            ...removed.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "removed" as const, restarted: input.restart, error: null })),
+            { uuid: p.uuid, name: p.name, role: "proxy" as const, restarted: false, reloaded: input.restart, error: null },
+            ...sorted.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "backend" as const, restarted: input.restart, reloaded: false, error: null })),
+            ...removed.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "removed" as const, restarted: input.restart, reloaded: false, error: null })),
           ],
         };
       },
@@ -394,7 +442,7 @@ export function createMock(): Implementation {
     backups: {
       list: ({ input }) => db.backups.filter((b) => b.serverUuid === input.uuid),
       create: ({ input }) => {
-        const b: s.Backup = { id: id(), serverUuid: input.uuid, name: input.name ?? `backup ${new Date().toISOString().slice(0, 10)}`, sizeBytes: null, sha256: null, status: "running", includesDatabases: input.includeDatabases, createdAt: new Date(), completedAt: null };
+        const b: s.Backup = { id: id(), serverUuid: input.uuid, name: input.name ?? `backup ${new Date().toISOString().slice(0, 10)}`, sizeBytes: null, sha256: null, status: "running", includesDatabases: input.includeDatabases, error: null, createdAt: new Date(), completedAt: null };
         db.backups.push(b);
         return b;
       },
@@ -406,7 +454,7 @@ export function createMock(): Implementation {
       list: ({ input }) => db.schedules.filter((x) => x.serverUuid === input.uuid),
       create: ({ input }) => {
         const { uuid, ...rest } = input;
-        const x: s.Schedule = { id: id(), serverUuid: uuid, ...rest, lastRunAt: null, nextRunAt: new Date(Date.now() + 86_400_000), lastResult: null };
+        const x: s.Schedule = { id: id(), serverUuid: uuid, ...rest, lastRunAt: null, nextRunAt: new Date(Date.now() + 86_400_000), lastResult: null, lastOutput: null };
         db.schedules.push(x);
         return x;
       },
@@ -418,6 +466,14 @@ export function createMock(): Implementation {
       },
       delete: ({ input }) => ((db.schedules = db.schedules.filter((x) => x.id !== input.id)), ok),
       runNow: () => ok,
+    },
+    siteSettings: {
+      php: ({ input }) => {
+        srv(input.uuid);
+        const defaults: s.PhpSettings = { memoryLimitMb: 256, uploadMaxMb: 64, maxExecutionTime: 120, maxInputVars: 3000, displayErrors: false, timezone: "Europe/Amsterdam", opcache: true, disabledExtensions: [] };
+        return { settings: db.phpSettings.get(input.uuid) ?? defaults, defaults, managed: db.phpSettings.has(input.uuid), ramLimitMb: 1024, extensions: ["gd", "intl", "exif", "mysqli"] };
+      },
+      updatePhp: ({ input }) => (db.phpSettings.set(input.uuid, input.settings), ok),
     },
     subusers: {
       list: ({ input }) => db.subusers.filter((x) => x.serverUuid === input.uuid).map((x) => ({ user: user(x.userId), permissions: x.permissions, createdAt: x.createdAt })),
@@ -476,7 +532,7 @@ export function createMock(): Implementation {
           for (const part of input.ports.split(",")) {
             const [a, b] = part.split("-").map((p) => Number(p.trim()));
             for (let p = a!; p <= (b ?? a!); p++) {
-              db.allocations.push({ id: id(), nodeId: input.nodeId, ip: input.ip, port: p, serverUuid: null, primary: false });
+              db.allocations.push({ id: id(), nodeId: input.nodeId, ip: input.ip, port: p, serverUuid: null, primary: false, role: "game" });
               created++;
             }
           }
@@ -602,6 +658,15 @@ export function createMock(): Implementation {
       activity: {
         search: ({ input }) =>
           pageOf(db.activity.filter((a) => (!input.userId || a.user?.id === input.userId) && (!input.serverUuid || a.serverUuid === input.serverUuid) && (!input.action || a.action.startsWith(input.action))), input.limit),
+      },
+      notifications: {
+        get: () => db.webhooks.get("admin") ?? { set: false, hint: null },
+        set: ({ input }) => {
+          const w = hookStatus(input.url);
+          db.webhooks.set("admin", w);
+          return w;
+        },
+        test: () => ok,
       },
       settings: {
         get: () => db.settings,

@@ -73,6 +73,12 @@ export const contract = {
     setSftpPassword: mutation("user", server.extend({ password: z.string().min(12).max(200) }), s.Ok),
     /** Eigen quotum met verbruik en keuzelijsten; null = geen quotum (kan zelf geen servers maken). */
     quota: query("user", none, s.QuotaOverview.nullable()),
+    /** Eigen Discord-webhook voor meldingen (nooit de volledige URL terug). */
+    webhook: query("user", none, s.WebhookStatus),
+    /** `url: null` verwijdert de webhook. Ongeldige URL → BAD_REQUEST. */
+    setWebhook: mutation("user", z.object({ url: s.WebhookUrl.nullable() }), s.WebhookStatus),
+    /** Stuurt een testbericht; mislukt het, dan BAD_REQUEST met message `WEBHOOK_FAILED`. */
+    testWebhook: mutation("user", none, s.Ok),
   },
 
   servers: {
@@ -116,6 +122,15 @@ export const contract = {
     /** Eigenaar of admin. Wist de data niet, draait het install-script opnieuw. */
     reinstall: mutation("user", server, s.Ok),
     /** Eigenaar of admin. Slaapstand: stoppen na idleMinutes zonder spelers, starten bij een verbindingspoging. */
+    /** Webhook en auto-restart van een server. Alleen eigenaar (of volledige admin). */
+    notifications: query("user", server, s.ServerNotifications),
+    /** `webhookUrl`: weggelaten = ongewijzigd, `null` = verwijderen. */
+    updateNotifications: mutation(
+      "user",
+      server.extend({ webhookUrl: s.WebhookUrl.nullable().optional(), autoRestart: z.boolean(), autoRestartMax: z.number().int().min(1).max(20) }),
+      s.ServerNotifications,
+    ),
+    testWebhook: mutation("user", server, s.Ok),
     updateSleep: mutation("user", server.extend({ enabled: z.boolean(), idleMinutes: z.number().int().min(1).max(1440) }), s.Ok),
     /**
      * Eigenaar of admin: beleid voor image-updates. `auto` = de daemon maakt de container op een rustig
@@ -127,6 +142,15 @@ export const contract = {
     /** Eigenaar of admin: haalt de image nu op en maakt de container opnieuw aan (herstart een draaiende server). */
     updateImageNow: mutation("user", server, s.Ok),
     activity: query("user", server.extend(s.PageInput.shape), s.page(s.ActivityEntry)),
+    /** Bedrock (Geyser): huidige stand en vrije poorten. Paper/Folia/Velocity; leesbaar voor wie de server mag zien. */
+    bedrock: query("user", server, s.BedrockStatus),
+    /**
+     * Eigenaar of admin. Aan: installeert Geyser + Floodgate (officiële GeyserMC-download-API, sha256 gecontroleerd),
+     * koppelt een UDP-allocation (`allocationId`, anders 19132 of de eerste vrije op het IP van de primaire poort)
+     * en schrijft de Geyser-config; op een Velocity-netwerk ook Floodgate + key.pem op de backends.
+     * Uit: verwijdert de plugins en geeft de poort vrij. `restart` herstart de betrokken servers die draaien.
+     */
+    setBedrock: mutation("user", server.extend({ enabled: z.boolean(), allocationId: s.Id.optional(), restart: z.boolean().default(false) }), s.BedrockStatus),
     /** Proxy-server (Velocity), eigenaar of admin: eigen game-servers (admin: alle) op dezelfde node die als backend kunnen. */
     networkCandidates: query("user", server, z.array(s.NetworkCandidate)),
     /**
@@ -258,6 +282,13 @@ export const contract = {
     update: mutation("user", byId.extend(s.ScheduleInput.shape), s.Schedule),
     delete: mutation("user", byId, s.Ok),
     runNow: mutation("user", byId, s.Ok),
+  },
+
+  /** Alleen PHP-websites (templates php-8-*). Eigenaar of admin; opgeschort → FORBIDDEN `SUSPENDED` voor niet-admins. */
+  siteSettings: {
+    php: query("user", server, s.PhpSettingsInfo),
+    /** Schrijft php/00-panel.ini en nginx/00-panel.conf via de daemon en herstart de site als hij draait. */
+    updatePhp: mutation("user", server.extend({ settings: s.PhpSettings }), s.Ok),
   },
 
   subusers: {
@@ -408,6 +439,13 @@ export const contract = {
       list: query("admin", none, z.array(s.AdminImageRow)),
       /** Vraagt alle nodes nu te controleren op nieuwe images. */
       checkNow: mutation("admin", none, s.Ok),
+    },
+
+    /** Admin-brede Discord-webhook (alle crashes, node offline, SSL-fouten, ...). */
+    notifications: {
+      get: query("admin", none, s.WebhookStatus),
+      set: mutation("admin", z.object({ url: s.WebhookUrl.nullable() }), s.WebhookStatus),
+      test: mutation("admin", none, s.Ok),
     },
 
     settings: {

@@ -3,6 +3,7 @@ import type { Backup } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { and, asc, count, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { logActivity } from "./activity";
+import { notify, targetForServer } from "./notify";
 import { getDb, schema } from "./db";
 import { call, daemonFor } from "./daemon";
 import { decrypt } from "./lib/crypto";
@@ -24,6 +25,7 @@ export const toBackup = (b: BackupRow, serverUuid: string): Backup => ({
   sha256: b.sha256,
   status: b.status,
   includesDatabases: b.includesDatabases,
+  error: b.error,
   createdAt: b.createdAt,
   completedAt: b.completedAt,
 });
@@ -59,6 +61,40 @@ export async function databaseCredentials(serverId: number) {
   return rows.map((r) => ({ name: r.d.name, host: r.h.host, port: r.h.port, username: r.d.username, password: decrypt(r.d.passwordEnc) }));
 }
 
+/** Minecraft-templates waarvan de wereld voor een backup bevroren wordt (save-off + save-all flush). */
+const MINECRAFT_SLUGS = new Set(["paper", "folia", "fabric"]);
+const FLUSH_WAIT_MS = 1500;
+
+async function isOnline(b: ServerBundle): Promise<boolean> {
+  try {
+    return (await daemonFor(b.node).getServer(b.server.uuid, 2000)).state === "online";
+  } catch {
+    return false;
+  }
+}
+
+/** Zet autosave uit en schrijft alles weg, zodat de backup een consistente wereld ziet. Doet niets als de server uit staat. */
+async function freezeWorld(b: ServerBundle): Promise<boolean> {
+  if (b.server.type !== "game" || !MINECRAFT_SLUGS.has(b.template.slug) || !(await isOnline(b))) return false;
+  try {
+    await daemonFor(b.node).sendCommands(b.server.uuid, ["save-off", "save-all flush"]);
+  } catch {
+    return false;
+  }
+  await new Promise((r) => setTimeout(r, FLUSH_WAIT_MS));
+  return true;
+}
+
+/** `save-on` na een backup (of een mislukte start ervan); alleen als de server nog draait. */
+export async function thawWorld(b: ServerBundle): Promise<void> {
+  if (b.server.type !== "game" || !MINECRAFT_SLUGS.has(b.template.slug) || !(await isOnline(b))) return;
+  try {
+    await daemonFor(b.node).sendCommands(b.server.uuid, ["save-on"]);
+  } catch (e) {
+    console.error(`[backups] save-on for ${b.server.uuid} failed:`, e);
+  }
+}
+
 const backupKey = (uuid: string, id: number) => `servers/${uuid}/${id}.tar.zst`;
 const stamp = (d = new Date()) => d.toISOString().slice(0, 16).replace("T", " ");
 
@@ -80,10 +116,17 @@ export async function startBackup(b: ServerBundle, o: StartBackupOptions): Promi
     .returning();
   const key = backupKey(b.server.uuid, row!.id);
   await db.update(schema.backups).set({ s3Key: key }).where(eq(schema.backups.id, row!.id));
+  const frozen = await freezeWorld(b);
   try {
     await call(() => daemonFor(b.node).createBackup(b.server.uuid, { backup_id: row!.id, s3: s3Credentials(target), key, ignore: [], databases }));
   } catch (e) {
     await db.update(schema.backups).set({ status: "failed", error: errText(e), completedAt: new Date() }).where(eq(schema.backups.id, row!.id));
+    if (frozen) await thawWorld(b);
+    // Een schema draait zonder dat iemand meekijkt: dan melden (bij een handmatige backup ziet de gebruiker de fout).
+    if (o.scheduleId) {
+      const target = await targetForServer(b.server.id).catch(() => null);
+      if (target) await notify({ kind: "backup_failed", name: row!.name, error: errText(e) }, target);
+    }
     throw e;
   }
   const [running] = await db.update(schema.backups).set({ status: "running" }).where(and(eq(schema.backups.id, row!.id), eq(schema.backups.status, "pending"))).returning();
@@ -135,10 +178,15 @@ export async function pruneBackups(serverId: number): Promise<number> {
 export async function failStaleBackups(now = new Date()): Promise<void> {
   const cutoff = new Date(now.getTime() - STALE_AFTER_MS);
   const db = getDb();
-  await db
+  const stale = await db
     .update(schema.backups)
     .set({ status: "failed", error: "no report from the node", completedAt: now })
-    .where(and(inArray(schema.backups.status, ["pending", "running"]), lt(schema.backups.createdAt, cutoff)));
+    .where(and(inArray(schema.backups.status, ["pending", "running"]), lt(schema.backups.createdAt, cutoff)))
+    .returning({ serverId: schema.backups.serverId, name: schema.backups.name });
+  for (const r of stale) {
+    const target = await targetForServer(r.serverId).catch(() => null);
+    if (target) await notify({ kind: "backup_failed", name: r.name, error: "no report from the node" }, target);
+  }
   // Een herstel dat nooit rapporteerde: de backup zelf is nog goed.
   await db.update(schema.backups).set({ status: "completed" }).where(and(eq(schema.backups.status, "restoring"), lt(schema.backups.createdAt, cutoff)));
 }

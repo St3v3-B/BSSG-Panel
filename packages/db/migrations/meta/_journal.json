@@ -68,8 +68,29 @@
     {
       "idx": 9,
       "version": "7",
-      "when": 1795776422838,
-      "tag": "0009_zippy_stature",
+      "when": 1795776393240,
+      "tag": "0009_mature_jane_foster",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795777942180,
+      "tag": "0010_lethal_blindfold",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795779289740,
+      "tag": "0011_redundant_wrecker",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795779943841,
+      "tag": "0012_needy_scorpion",
       "breakpoints": true
     }
   ]

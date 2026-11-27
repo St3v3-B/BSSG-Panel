@@ -31,10 +31,10 @@ export const templates: s.TemplateDetail[] = [
 ];
 
 export const allocations: s.Allocation[] = [
-  { id: 1, nodeId: 1, ip: "203.0.113.10", port: 25565, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", primary: true },
-  { id: 2, nodeId: 1, ip: "203.0.113.10", port: 25566, serverUuid: "3a1d9b7c-5e6f-4a8b-9c0d-112233445566", primary: true },
-  { id: 3, nodeId: 1, ip: "203.0.113.10", port: 25567, serverUuid: null, primary: false },
-  { id: 4, nodeId: 1, ip: "203.0.113.10", port: 25568, serverUuid: null, primary: false },
+  { id: 1, nodeId: 1, ip: "203.0.113.10", port: 25565, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", primary: true, role: "game" },
+  { id: 2, nodeId: 1, ip: "203.0.113.10", port: 25566, serverUuid: "3a1d9b7c-5e6f-4a8b-9c0d-112233445566", primary: true, role: "game" },
+  { id: 3, nodeId: 1, ip: "203.0.113.10", port: 25567, serverUuid: null, primary: false, role: "game" },
+  { id: 4, nodeId: 1, ip: "203.0.113.10", port: 25568, serverUuid: null, primary: false, role: "game" },
 ];
 
 const limits = { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 };
@@ -137,11 +137,11 @@ export const fileContents: Record<string, string> = {
 };
 
 export const backups: s.Backup[] = [
-  { id: 1, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", name: "daily 2026-11-26", sizeBytes: 812_000_000, sha256: "a".repeat(64), status: "completed", includesDatabases: false, createdAt: d("2026-11-26T03:00:00Z"), completedAt: d("2026-11-26T03:04:10Z") },
+  { id: 1, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", name: "daily 2026-11-26", sizeBytes: 812_000_000, sha256: "a".repeat(64), status: "completed", includesDatabases: false, error: null, createdAt: d("2026-11-26T03:00:00Z"), completedAt: d("2026-11-26T03:04:10Z") },
 ];
 
 export const schedules: s.Schedule[] = [
-  { id: 1, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", name: "Daily restart", cron: "0 5 * * *", action: "restart", payload: null, active: true, lastRunAt: d("2026-11-26T04:00:00Z"), nextRunAt: d("2026-11-27T04:00:00Z"), lastResult: "ok" },
+  { id: 1, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", name: "Daily restart", cron: "0 5 * * *", action: "restart", payload: null, active: true, lastRunAt: d("2026-11-26T04:00:00Z"), nextRunAt: d("2026-11-27T04:00:00Z"), lastResult: "ok", lastOutput: null },
 ];
 
 export const activity: s.ActivityEntry[] = [

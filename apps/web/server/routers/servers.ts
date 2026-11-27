@@ -10,7 +10,7 @@ import { signBrowserJwt } from "../lib/jwt";
 import { buildServerSpec, templateSleepCapable, validateVariables } from "../spec";
 import { serverNetwork } from "../network";
 import { forbidApiKey } from "../apikey";
-import { fetchServers, imagePolicyOf, limitsOf, sleepOf, requireServer, isSuspendedFor, serverVariables, toDetail, toSummary, type ServerBundle } from "../servers-data";
+import { imagePolicyOf, fetchServers, limitsOf, sleepOf, autoRestartOf, requireServer, isSuspendedFor, serverVariables, toDetail, toSummary, type ServerBundle } from "../servers-data";
 
 const ok = { ok: true as const };
 const LIVE_TIMEOUT_MS = 1500;
@@ -23,8 +23,7 @@ export async function currentSpec(b: ServerBundle, opts: { startOnInstall?: bool
     variables: await serverVariables(b.server.id),
     limits: limitsOf(b.server),
     allocations: b.allocations,
-    sleep: sleepOf(b.server),
-    imagePolicy: imagePolicyOf(b.server),
+    sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server), imagePolicy: imagePolicyOf(b.server),
     ...opts,
   });
 }
@@ -160,7 +159,7 @@ export const servers: Pick<
     const errors = validateVariables(b.template.variables, input.variables, { onlyUserEditable: !ctx.session!.isAdmin });
     if (errors.length) throw new TRPCError({ code: "BAD_REQUEST", message: `INVALID_VARIABLES: ${errors.join("; ")}` });
     const merged = { ...(await serverVariables(b.server.id)), ...input.variables };
-    const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: merged, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server) });
+    const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: merged, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server) });
     await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
     const entries = Object.entries(input.variables);
     if (entries.length) {

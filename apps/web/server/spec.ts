@@ -26,6 +26,8 @@ export interface SpecInput {
   sleep?: { enabled: boolean; idleMinutes: number };
   /** Beleid voor image-updates: null = globale standaard; weggelaten = de daemon houdt de bestaande keuze. */
   imagePolicy?: "auto" | "notify" | "off" | null;
+  /** Automatisch herstarten na een crash (servers.auto_restart / auto_restart_max). */
+  autoRestart?: { enabled: boolean; max: number };
 }
 
 const sleepCache = new Map<string, boolean>();
@@ -128,5 +130,6 @@ export function buildServerSpec(i: SpecInput): DaemonServerSpec {
     skip_install: i.skipInstall ?? false,
     sleep: sleepSpec(t, i.sleep),
     image_update: imageUpdateSpec(t, i.imagePolicy),
+    auto_restart: i.autoRestart?.enabled ? { max_per_10min: i.autoRestart.max } : null,
   };
 }

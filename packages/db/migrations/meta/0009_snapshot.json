@@ -1,5 +1,5 @@
 {
-  "id": "cee8e6b8-9bdb-4954-92a6-2d609245cd5e",
+  "id": "d4d6ba75-5f86-4f45-8fe9-4953ab727169",
   "prevId": "8ad9fa40-ed5a-48a6-a8be-e442f7c27d4e",
   "version": "7",
   "dialect": "postgresql",
@@ -1897,32 +1897,6 @@
           "notNull": true,
           "default": 10
         },
-        "image_update_policy": {
-          "name": "image_update_policy",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "image_update_available": {
-          "name": "image_update_available",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "image_reinstall_required": {
-          "name": "image_reinstall_required",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "image_checked_at": {
-          "name": "image_checked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
         "suspended_at": {
           "name": "suspended_at",
           "type": "timestamp with time zone",
@@ -1953,6 +1927,26 @@
         "installed_at": {
           "name": "installed_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "auto_restart": {
+          "name": "auto_restart",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "auto_restart_max": {
+          "name": "auto_restart_max",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 3
+        },
+        "discord_webhook_enc": {
+          "name": "discord_webhook_enc",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -2647,6 +2641,12 @@
         "last_login_at": {
           "name": "last_login_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "discord_webhook_enc": {
+          "name": "discord_webhook_enc",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
