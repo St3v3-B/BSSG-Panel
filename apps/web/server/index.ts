@@ -4,6 +4,8 @@
  */
 import { notImplemented, type Implementation } from "@panel/api";
 import { admin } from "./routers/admin";
+import { backups, s3Targets } from "./routers/backups";
+import { schedules } from "./routers/schedules";
 import { account, auth } from "./routers/auth";
 import { credentials } from "./routers/credentials";
 import { databaseHosts, databases } from "./routers/databases";
@@ -28,7 +30,7 @@ function merge(base: Tree, over: Tree): Tree {
   return out;
 }
 
-const phase1 = { auth, account: { ...account, ...credentials }, servers: { ...servers, ...network }, files, subusers, domains, databases, admin: { ...admin, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders } };
+const phase1 = { auth, backups, schedules, account: { ...account, ...credentials }, servers: { ...servers, ...network }, files, subusers, domains, databases, admin: { ...admin, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders, s3Targets } };
 
 /** Paden die echt geïmplementeerd zijn (de rest is NOT_IMPLEMENTED). */
 export function implementedPaths(tree: Tree = phase1 as unknown as Tree, prefix = ""): string[] {

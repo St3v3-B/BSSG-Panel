@@ -2,7 +2,10 @@
  * Client voor de node-daemon (packages/api/openapi.yaml). Eén instantie per node.
  * Netwerkfout of timeout → DaemonUnreachableError; HTTP-fout → DaemonHttpError.
  */
-import type { DaemonFileEntry, DaemonRoute, DaemonRouteWithStatus, DaemonServerSpec, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
+import type { DaemonFileEntry, DaemonSchemas, DaemonRoute, DaemonRouteWithStatus, DaemonServerSpec, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
+
+type DaemonBackupRequest = DaemonSchemas["BackupRequest"];
+type DaemonRestoreRequest = DaemonSchemas["RestoreRequest"];
 
 export class DaemonUnreachableError extends Error {
   constructor(readonly nodeId: number, cause: unknown) {
@@ -144,6 +147,14 @@ export class DaemonClient {
   }
   decompress(uuid: string, path: string) {
     return this.request<void>("POST", `/api/servers/${uuid}/files/decompress`, { path }, 300_000);
+  }
+
+  // ---------- backups ----------
+  createBackup(uuid: string, body: DaemonBackupRequest) {
+    return this.request<void>("POST", `/api/servers/${uuid}/backups`, body, 30_000);
+  }
+  restoreBackup(uuid: string, backupId: number, body: DaemonRestoreRequest) {
+    return this.request<void>("POST", `/api/servers/${uuid}/backups/${backupId}/restore`, body, 30_000);
   }
 
   // ---------- routes (web) ----------
