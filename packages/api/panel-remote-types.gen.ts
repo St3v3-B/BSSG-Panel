@@ -38,6 +38,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/remote/acme/dns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * DNS-01-challenge voor het node-domein (nodes zonder Caddy op 443)
+         * @description De daemon zet bij nodes met `supports_domains = false` zelf een Let's Encrypt-certificaat voor `$NODE_DOMAIN` op
+         *     `DAEMON_TLS_PORT` (public_port). De DNS-01-challenge doet het panel: het zet/verwijdert via Cloudflare het TXT-record
+         *     `_acme-challenge.<fqdn>` van **de eigen node** (geen ander domein). Het Cloudflare-token verlaat het panel nooit.
+         */
+        post: operations["acmeDns"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/join/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join-code inruilen voor token en configuratie (publiek; de code is de authenticatie)
+         * @description Eenmalig, ≤ 1 uur na het aanmaken. Het panel zet (indien Cloudflare de zone dekt) het A-record naar `ip`.
+         *     Ongeldige, verlopen of gebruikte codes geven 404 `invalid_code`. Ratelimit per IP.
+         */
+        post: operations["joinExchange"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/join/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Voortgang van het join-script (Bearer node-token) */
+        post: operations["joinProgress"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/remote/settings/image-updates": {
         parameters: {
             query?: never;
@@ -296,6 +356,121 @@ export interface operations {
                      *     daemon-beheerde `database_hosts`-rij voor de node. De daemon meldt zich opnieuw (hello) als dit verandert.
                      */
                     has_mariadb?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    acmeDns: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    action: "present" | "cleanup";
+                    /** @description De TXT-waarde (base64url sha256 van de key authorization) */
+                    value: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Geen Cloudflare-koppeling voor deze zone */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    joinExchange: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    code: string;
+                    /** @description IPv4 */
+                    ip: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        node_token: string;
+                        panel_url: string;
+                        node_domain: string;
+                        acme_email: string;
+                        daemon_port: number;
+                        sftp_port: number;
+                        supports_domains: boolean;
+                        public_port: number;
+                        /** @enum {string} */
+                        dns_mode: "cloudflare" | "manual";
+                    };
+                };
+            };
+            /** @description invalid_code */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Te veel pogingen */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    joinProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    state: "docker" | "download" | "dns" | "daemon" | "certificate" | "ready" | "failed";
+                    message?: string;
                 };
             };
         };

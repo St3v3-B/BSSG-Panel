@@ -151,6 +151,11 @@ func (c *Client) Hello(version, diskQuotaMode string, hasMariaDB bool) {
 	})
 }
 
+// HelloNow meldt de daemon synchroon (zonder retry); de fout is die van het panel of het netwerk.
+func (c *Client) HelloNow(ctx context.Context, version, diskQuotaMode string, hasMariaDB bool) error {
+	return c.do(ctx, http.MethodPost, "/api/remote/node/hello", map[string]any{"version": version, "disk_quota_mode": diskQuotaMode, "has_mariadb": hasMariaDB}, nil)
+}
+
 // ImageSettings haalt de globale instellingen voor image-updates op.
 func (c *Client) ImageSettings(ctx context.Context) (ImageSettings, error) {
 	var out ImageSettings
@@ -324,4 +329,9 @@ type ImageUpdateResult struct {
 	From       *string `json:"from_image_id"`
 	To         *string `json:"to_image_id"`
 	Error      *string `json:"error"`
+}
+
+// ACMEDNS zet ("present") of verwijdert ("cleanup") het TXT-record _acme-challenge.<node-domein> via het panel.
+func (c *Client) ACMEDNS(ctx context.Context, action, value string) error {
+	return c.do(ctx, http.MethodPost, "/api/remote/acme/dns", map[string]string{"action": action, "value": value}, nil)
 }

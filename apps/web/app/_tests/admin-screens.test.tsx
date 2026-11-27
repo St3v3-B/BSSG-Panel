@@ -18,33 +18,43 @@ const admin = { session: sessionFor("admin"), locale: "en" as const };
 const input = (bodies: Array<{ path: string; input: unknown }>, p: string) => bodies.filter((b) => b.path === p).map((b) => b.input);
 
 describe("nodes", () => {
-  const fill = () => {
+  const fill = (supports = true) => {
     fireEvent.click(screen.getByRole("button", { name: /Add node/ }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "node2" } });
-    fireEvent.change(screen.getByLabelText("Domain (FQDN)"), { target: { value: "node2.test" } });
-    fireEvent.change(screen.getByLabelText("Max. memory (MB)"), { target: { value: "8192" } });
-    fireEvent.click(screen.getByRole("button", { name: /Create node/ }));
+    if (!supports) fireEvent.click(screen.getByTestId("node-supports-domains"));
+    fireEvent.click(screen.getByRole("button", { name: /^Add node$/ }));
   };
 
-  it("aanmaken toont token en installcommando één keer", async () => {
+  it("aanmaken toont één join-regel met code (geen token) en de voortgangsstappen", async () => {
     const { bodies } = renderWithTrpc(<NodesAdmin />, admin);
     await screen.findAllByTestId("node-card");
     fill();
-    const box = await screen.findByTestId("node-token");
-    expect(box.textContent).toContain("mock-node-token");
-    expect(box.textContent).toContain("install-node.sh");
-    expect(input(bodies, "admin.nodes.create")[0]).toMatchObject({ name: "node2", fqdn: "node2.test", daemonPort: 8080, sftpPort: 2022, maxRamMb: 8192 });
+    const cmd = await screen.findByTestId("join-command");
+    expect(cmd.textContent).toBe("curl -fsSL https://panel.test/join | sudo bash -s -- mock-join-code");
+    expect(screen.queryByTestId("node-token")).toBeNull();
+    expect(input(bodies, "admin.nodes.createJoin")[0]).toMatchObject({ name: "node2", supportsDomains: true, allocationPorts: "25565-25600", daemonPort: 8080, sftpPort: 2022 });
+    const steps = await screen.findByTestId("join-steps");
+    expect(within(steps).getByText("Waiting for the node")).toBeTruthy();
+    expect(within(steps).getByText("Certificate OK")).toBeTruthy();
     await waitFor(() => expect(screen.getAllByTestId("node-card")).toHaveLength(2));
-    fireEvent.click(within(box).getByRole("button", { name: "Done" }));
-    await waitFor(() => expect(screen.queryByTestId("node-token")).toBeNull());
+    // DNS: het exacte record wordt getoond zolang het niet wijst.
+    expect((await screen.findByTestId("join-dns")).textContent).toContain("node2.panel.test A");
+  });
+
+  it("zonder domeinondersteuning: publieke poort wordt meegestuurd", async () => {
+    const { bodies } = renderWithTrpc(<NodesAdmin />, admin);
+    await screen.findAllByTestId("node-card");
+    fill(false);
+    await screen.findByTestId("join-command");
+    expect(input(bodies, "admin.nodes.createJoin")[0]).toMatchObject({ supportsDomains: false, publicPort: 8443 });
   });
 
   it("NOT_IMPLEMENTED van de backend wordt netjes getoond", async () => {
     renderWithTrpc(<NodesAdmin />, {
       ...admin,
       patch: (m) => {
-        (m.admin.nodes as Mutable<typeof m.admin.nodes>).create = () => {
-          throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "NOT_IMPLEMENTED: admin.nodes.create" });
+        (m.admin.nodes as Mutable<typeof m.admin.nodes>).createJoin = () => {
+          throw new TRPCError({ code: "NOT_IMPLEMENTED", message: "NOT_IMPLEMENTED: admin.nodes.createJoin" });
         };
       },
     });

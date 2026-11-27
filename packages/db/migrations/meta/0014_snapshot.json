@@ -1,5 +1,5 @@
 {
-  "id": "eb22e671-c3b1-40c6-909f-d83685291f1d",
+  "id": "f431067d-1c98-4699-893e-842c2a16b44e",
   "prevId": "c640ddf8-4092-4413-98df-5653f3719bdf",
   "version": "7",
   "dialect": "postgresql",
@@ -280,6 +280,21 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "allocations_server_idx": {
+          "name": "allocations_server_idx",
+          "columns": [
+            {
+              "expression": "server_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -880,6 +895,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "databases_server_idx": {
+          "name": "databases_server_idx",
+          "columns": [
+            {
+              "expression": "server_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -1080,7 +1110,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "domains_server_idx": {
+          "name": "domains_server_idx",
+          "columns": [
+            {
+              "expression": "server_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "domains_server_id_servers_id_fk": {
           "name": "domains_server_id_servers_id_fk",
@@ -1419,91 +1465,6 @@
           ]
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.recovery_codes": {
-      "name": "recovery_codes",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "identity": {
-            "type": "always",
-            "name": "recovery_codes_id_seq",
-            "schema": "public",
-            "increment": "1",
-            "startWith": "1",
-            "minValue": "1",
-            "maxValue": "2147483647",
-            "cache": "1",
-            "cycle": false
-          }
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "code_hash": {
-          "name": "code_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "used_at": {
-          "name": "used_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "recovery_codes_user_idx": {
-          "name": "recovery_codes_user_idx",
-          "columns": [
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "recovery_codes_user_id_users_id_fk": {
-          "name": "recovery_codes_user_id_users_id_fk",
-          "tableFrom": "recovery_codes",
-          "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -2118,6 +2079,21 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "servers_status_idx": {
+          "name": "servers_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -2219,13 +2195,6 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "last_seen_at": {
-          "name": "last_seen_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
@@ -2420,7 +2389,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "subusers_user_idx": {
+          "name": "subusers_user_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "subusers_server_id_servers_id_fk": {
           "name": "subusers_server_id_servers_id_fk",

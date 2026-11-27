@@ -149,7 +149,7 @@ export function createMock(): Implementation {
       quota: q,
       usage: usageOf(uid),
       templates: db.templates.filter((t) => !q.templateIds || q.templateIds.includes(t.id)).map((t) => ({ id: t.id, name: t.name, type: t.type })),
-      nodes: db.nodes.filter((n) => !q.nodeIds || q.nodeIds.includes(n.id)).map((n) => ({ id: n.id, name: n.name })),
+      nodes: db.nodes.filter((n) => !q.nodeIds || q.nodeIds.includes(n.id)).map((n) => ({ id: n.id, name: n.name, supportsDomains: n.supportsDomains })),
     };
   };
   const nodeHealth = (n: s.Node): s.NodeHealth => ({
@@ -534,7 +534,7 @@ export function createMock(): Implementation {
           return { ...n, health: nodeHealth(n) };
         },
         create: ({ input }) => {
-          const n: s.Node = { id: id(), ...input, diskQuotaMode: null, isLocal: false };
+          const n: s.Node = { id: id(), ...input, diskQuotaMode: null, isLocal: false, publicIp: null, joinState: null };
           db.nodes.push(n);
           return { node: n, token: "mock-node-token", installCommand: `curl -fsSL https://panel.test/install-node.sh | bash -s -- --panel https://panel.test --token mock-node-token` };
         },
@@ -545,6 +545,25 @@ export function createMock(): Implementation {
         },
         delete: ({ input }) => ((db.nodes = db.nodes.filter((x) => x.id !== input.id)), ok),
         regenerateToken: () => ({ token: "mock-node-token-2", installCommand: "curl -fsSL https://panel.test/install-node.sh | bash" }),
+        createJoin: ({ input }) => {
+          const n: s.Node = {
+            id: id(), name: input.name, fqdn: input.fqdn ?? `${input.name}.panel.test`, daemonPort: input.daemonPort, sftpPort: input.sftpPort, maxRamMb: input.maxRamMb, maxDiskMb: input.maxDiskMb,
+            s3TargetId: input.s3TargetId, diskQuotaMode: null, isLocal: false, supportsDomains: input.supportsDomains, publicPort: input.publicPort ?? (input.supportsDomains ? 443 : 8443), publicIp: null, joinState: "waiting",
+          };
+          db.nodes.push(n);
+          return { node: n, joinCommand: "curl -fsSL https://panel.test/join | sudo bash -s -- mock-join-code", expiresAt: new Date(Date.now() + 3_600_000) };
+        },
+        joinCommand: () => ({ joinCommand: "curl -fsSL https://panel.test/join | sudo bash -s -- mock-join-code-2", expiresAt: new Date(Date.now() + 3_600_000) }),
+        joinStatus: ({ input }) => {
+          const n = db.nodes.find((x) => x.id === input.id) ?? notFound("node");
+          return {
+            state: n.joinState, message: null, ip: n.publicIp,
+            dns: { mode: "manual" as const, record: { type: "A" as const, name: n.fqdn, value: n.publicIp }, resolvedIp: null, ok: false },
+            daemonConnected: false, certificateOk: false, allocationsCreated: 0, codeExpiresAt: new Date(Date.now() + 3_600_000), codeUsed: false,
+          };
+        },
+        updateDaemon: () => ok,
+        uninstallCommand: () => ({ command: "curl -fsSL https://panel.test/join | sudo bash -s -- --uninstall" }),
       },
       allocations: {
         list: ({ input }) => db.allocations.filter((a) => a.nodeId === input.nodeId),
@@ -574,7 +593,7 @@ export function createMock(): Implementation {
             primaryAddress: allocs[0] ? `${allocs[0].ip}:${allocs[0].port}` : null, limits: input.limits, isOwner: false, owner, ownerId: owner.id,
             permissions: [], allocations: allocs,
             variables: t.variables.map((v) => ({ ...v, value: input.variables[v.key] ?? v.default })),
-            node: { id: 1, name: "node1", fqdn: "node1.test" }, sftp: { host: "node1.test", port: 2022, username: `${owner.name ?? owner.discordId}.${uuid.slice(0, 8)}` },
+            node: { id: 1, name: "node1", fqdn: "node1.test", supportsDomains: true }, sftp: { host: "node1.test", port: 2022, username: `${owner.name ?? owner.discordId}.${uuid.slice(0, 8)}` },
             suspended: null, network: { role: "none" as const, members: [], proxy: null, connectAddress: null },
             domainsAllowed: t.type === "web",
             sleep: { supported: t.type === "game", enabled: false, idleMinutes: 10 },

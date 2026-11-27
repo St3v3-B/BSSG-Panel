@@ -196,6 +196,8 @@ export const ServerSummary = z.object({
   /** Opgeschort door een admin: gestopt, en de eigenaar/subusers mogen niet starten of schrijven. */
   suspended: z.object({ reason: z.string().nullable(), at: z.date() }).nullable().default(null),
   imageUpdate: ImageUpdateInfo.default({ policy: null, effectivePolicy: "notify", available: false, reinstallRequired: false, checkedAt: null }),
+  /** Wanneer de node de status voor het laatst bevestigde (achtergrondmonitor). null = onbekend/nooit. */
+  lastSeenAt: z.date().nullable().optional(),
 });
 export type ServerSummary = z.infer<typeof ServerSummary>;
 
@@ -278,7 +280,7 @@ export const ServerDetail = ServerSummary.extend({
   permissions: z.array(Permission),
   allocations: z.array(Allocation),
   variables: z.array(ServerVariable),
-  node: z.object({ id: Id, name: z.string(), fqdn: z.string() }),
+  node: z.object({ id: Id, name: z.string(), fqdn: z.string(), supportsDomains: z.boolean() }),
   sftp: z.object({ host: z.string(), port: z.number().int(), username: z.string() }),
   /** Slaapstand (alleen templates met sleep_capable). */
   /** Door een admin aangezet: deze game-server mag domeinen koppelen (web: altijd). */
@@ -558,8 +560,53 @@ export const Node = z.object({
   s3TargetId: Id.nullable(),
   diskQuotaMode: DiskQuotaMode.nullable(), // null = nog nooit verbonden
   isLocal: z.boolean(), // de node uit NODE_DOMAIN
+  /** Websites en domeinen voor gameservers toegestaan op deze node. */
+  supportsDomains: z.boolean(),
+  /** Poort van https://<fqdn> (console/uploads); 443 als supportsDomains. */
+  publicPort: z.number().int(),
+  publicIp: z.string().nullable(),
+  joinState: z.lazy(() => NodeJoinState).nullable(),
 });
 export type Node = z.infer<typeof Node>;
+
+export const NodeJoinState = z.enum(["waiting", "docker", "download", "dns", "daemon", "certificate", "ready", "failed"]);
+export type NodeJoinState = z.infer<typeof NodeJoinState>;
+
+/** Een node toevoegen met het join-commando. Zonder fqdn: <naam>.<basisdomein van PANEL_DOMAIN>. */
+export const NodeJoinInput = z.object({
+  name: z.string().min(1).max(100),
+  fqdn: z.string().max(253).optional(),
+  /** Uit: geen websites/domeinen; de node-domeinnaam draait op publicPort met een DNS-01-certificaat (via het panel + Cloudflare). */
+  supportsDomains: z.boolean().default(true),
+  /** Standaard 443 (supportsDomains) of 8443. */
+  publicPort: z.number().int().min(1).max(65535).optional(),
+  daemonPort: z.number().int().default(8080),
+  sftpPort: z.number().int().default(2022),
+  maxRamMb: z.number().int().min(0).default(0),
+  maxDiskMb: z.number().int().min(0).default(0),
+  s3TargetId: Id.nullable().default(null),
+  /** Standaard allocatiebereik op het publieke IP van de node, bijv. "25565-25600"; leeg = geen. */
+  allocationPorts: z.string().max(100).default("25565-25600"),
+});
+
+export const NodeJoinStatus = z.object({
+  state: NodeJoinState.nullable(),
+  message: z.string().nullable(),
+  ip: z.string().nullable(),
+  dns: z.object({
+    mode: z.enum(["cloudflare", "manual"]),
+    /** Het record dat moet bestaan; value is null zolang het IP nog niet bekend is. */
+    record: z.object({ type: z.literal("A"), name: z.string(), value: z.string().nullable() }),
+    resolvedIp: z.string().nullable(),
+    ok: z.boolean(),
+  }),
+  daemonConnected: z.boolean(),
+  certificateOk: z.boolean(),
+  allocationsCreated: z.number().int(),
+  codeExpiresAt: z.date().nullable(),
+  codeUsed: z.boolean(),
+});
+export type NodeJoinStatus = z.infer<typeof NodeJoinStatus>;
 
 export const NodeInput = z.object({
   name: z.string().min(1).max(100),
@@ -569,6 +616,9 @@ export const NodeInput = z.object({
   maxRamMb: z.number().int().min(0),
   maxDiskMb: z.number().int().min(0),
   s3TargetId: Id.nullable().default(null),
+  /** Alleen te zetten van aan naar uit als er geen websites/domeinen op de node staan (NODE_HAS_DOMAINS). */
+  supportsDomains: z.boolean().default(true),
+  publicPort: z.number().int().min(1).max(65535).default(443),
 });
 
 export const NodeHealth = z.object({
@@ -583,6 +633,8 @@ export const NodeHealth = z.object({
   diskFreeBytes: z.number().nullable(),
   serverCount: z.number().int(),
   error: z.string().nullable(),
+  /** Laatste keer dat de node antwoordde (uit de monitor-cache); null = nog nooit. */
+  lastSeenAt: z.date().nullable().optional(),
 });
 export type NodeHealth = z.infer<typeof NodeHealth>;
 
@@ -849,7 +901,7 @@ export const QuotaOverview = z.object({
   usage: QuotaUsage,
   /** Templates en nodes waaruit de gebruiker mag kiezen (al gefilterd op het quotum). */
   templates: z.array(z.object({ id: Id, name: z.string(), type: ServerType })),
-  nodes: z.array(z.object({ id: Id, name: z.string() })),
+  nodes: z.array(z.object({ id: Id, name: z.string(), supportsDomains: z.boolean() })),
 });
 export type QuotaOverview = z.infer<typeof QuotaOverview>;
 

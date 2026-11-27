@@ -77,7 +77,13 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
   // standaard: de lokale (of eerste) node, de eerste template, limieten uit de instellingen
   useEffect(() => {
     if (nodeId == null && nodes.data?.length) setNodeId((nodes.data.find((n) => n.isLocal) ?? nodes.data[0])!.id);
-  }, [nodes.data, nodeId]);
+    // Websites alleen op nodes met domeinondersteuning.
+    const cur = nodes.data?.find((n) => n.id === nodeId);
+    if (kind === "web" && cur && !cur.supportsDomains) {
+      const ok = nodes.data?.find((n) => n.supportsDomains);
+      if (ok) setNodeId(ok.id);
+    }
+  }, [nodes.data, nodeId, kind]);
   const kindTemplates = useMemo(() => (templates.data ?? []).filter((t) => t.type === kind), [templates.data, kind]);
   useEffect(() => {
     // bij wisselen tussen game-server en website: eerste template van dat soort
@@ -286,8 +292,8 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
             <Select id="server-node" value={nodeId ?? ""} onChange={(e) => setNodeId(e.target.value ? Number(e.target.value) : null)}>
               {nodes.data?.length === 0 && <option value="">{f.noNodes}</option>}
               {nodes.data?.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {n.name} ({n.fqdn})
+                <option key={n.id} value={n.id} disabled={kind === "web" && !n.supportsDomains}>
+                  {n.name} ({n.fqdn}){kind === "web" && !n.supportsDomains ? ` - ${i18n.admin.nodes.join.noDomains}` : ""}
                 </option>
               ))}
             </Select>

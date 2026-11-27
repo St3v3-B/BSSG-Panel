@@ -3,7 +3,7 @@ import type { DaemonFileEntry, FileEntry, Implementation } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { logActivity } from "../activity";
-import { call, daemonFor } from "../daemon";
+import { call, daemonFor, nodeHost } from "../daemon";
 import { getDb, schema } from "../db";
 import { getEnv } from "../env";
 import { signBrowserJwt } from "../lib/jwt";
@@ -38,7 +38,7 @@ async function signedUrl(ctx: Parameters<Implementation["files"]["uploadUrl"]>[0
     extra: query,
   });
   const qs = new URLSearchParams({ ...query, token });
-  return { a, url: `https://${a.bundle.node.fqdn}/api/servers/${uuid}/files/${kind}?${qs}`, expiresAt: new Date(claims.exp * 1000) };
+  return { a, url: `https://${nodeHost(a.bundle.node)}/api/servers/${uuid}/files/${kind}?${qs}`, expiresAt: new Date(claims.exp * 1000) };
 }
 
 export const files: Implementation["files"] = {

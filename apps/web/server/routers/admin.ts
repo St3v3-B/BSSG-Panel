@@ -16,10 +16,11 @@ import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema, type Db } from "../db";
 import { getEnv } from "../env";
 import { buildServerSpec, validateVariables } from "../spec";
-import { imagePolicyOf, fetchServerByUuid, fetchServers, limitsOf, sleepOf, autoRestartOf, serverVariables, toDetail, toSummary, userPublic, type ServerBundle } from "../servers-data";
+import { imagePolicyOf, fetchServerByUuid, fetchServers, limitsOf, sleepOf, autoRestartOf, serverVariables, toDetail, toSummary, liveViews, userPublic, type ServerBundle } from "../servers-data";
 import { adminImageRows, checkAllNodes } from "../image-updates";
 import { getSettings } from "../settings";
 import { templateRow } from "../templates";
+import { forgetServer, getNodeLive, isStale } from "../node-cache";
 import type { Ctx } from "@panel/api";
 
 const ok = { ok: true as const };
@@ -42,6 +43,10 @@ export function nodeOut(n: NodeRow): NodeOut {
     s3TargetId: n.s3TargetId,
     diskQuotaMode: n.diskQuotaMode,
     isLocal: n.isLocal,
+    supportsDomains: n.supportsDomains,
+    publicPort: n.publicPort,
+    publicIp: n.publicIp,
+    joinState: (n.joinState as NodeOut["joinState"]) ?? null,
   };
 }
 
@@ -63,26 +68,27 @@ export async function nodeHealth(n: NodeRow, serverCount: number): Promise<NodeH
     diskFreeBytes: null,
     serverCount,
     error: null,
+    lastSeenAt: null,
   };
-  try {
-    const s = await daemonFor(n).system(2500);
-    if (s.disk_quota_mode !== n.diskQuotaMode || s.version !== n.daemonVersion) {
-      await getDb().update(schema.nodes).set({ diskQuotaMode: s.disk_quota_mode, daemonVersion: s.version, lastSeenAt: new Date() }).where(eq(schema.nodes.id, n.id));
-    }
-    return {
-      ...base,
-      online: true,
-      version: s.version,
-      diskQuotaMode: s.disk_quota_mode,
-      cpuCount: s.cpu_count,
-      memoryTotalBytes: s.memory_total_bytes,
-      memoryUsedBytes: s.memory_used_bytes,
-      diskTotalBytes: s.disk_total_bytes,
-      diskFreeBytes: s.disk_free_bytes,
-    };
-  } catch (e) {
-    return { ...base, error: (e as Error).message };
-  }
+  // Altijd uit de cache van de node-monitor; hier wacht niets op een daemon.
+  const live = await getNodeLive(n.id);
+  if (!live) return base;
+  const lastSeenAt = live.lastSeenAt === null ? null : new Date(live.lastSeenAt);
+  const s = live.system;
+  const online = live.online && !isStale(live);
+  return {
+    ...base,
+    online,
+    lastSeenAt,
+    version: s?.version ?? base.version,
+    diskQuotaMode: s?.disk_quota_mode ?? base.diskQuotaMode,
+    cpuCount: s?.cpu_count ?? null,
+    memoryTotalBytes: s?.memory_total_bytes ?? null,
+    memoryUsedBytes: s?.memory_used_bytes ?? null,
+    diskTotalBytes: s?.disk_total_bytes ?? null,
+    diskFreeBytes: s?.disk_free_bytes ?? null,
+    error: online ? null : (live.error ?? "no response"),
+  };
 }
 
 export async function nodeById(id: number): Promise<NodeRow> {
@@ -162,6 +168,7 @@ export async function deleteServerFully(b: ServerBundle, log: (dbFailed: string[
     await tx.update(schema.allocations).set({ serverId: null, isPrimary: false }).where(eq(schema.allocations.serverId, b.server.id));
     await tx.delete(schema.servers).where(eq(schema.servers.id, b.server.id));
   });
+  await forgetServer(b.node.id, b.server.uuid);
 }
 
 // ---------- gebruikers ----------
@@ -350,7 +357,8 @@ export const admin = {
       );
       const rows = await fetchServers(where, { orderBy: "id_desc", limit: input.limit + 1 });
       const page = rows.slice(0, input.limit);
-      return { items: page.map((b) => toSummary(b, uid(ctx))), nextCursor: rows.length > input.limit ? String(page[page.length - 1]!.server.id) : null };
+      const live = await liveViews(page);
+      return { items: page.map((b) => toSummary(b, uid(ctx), live.get(b.server.uuid)?.status, live.get(b.server.uuid)?.lastSeenAt)), nextCursor: rows.length > input.limit ? String(page[page.length - 1]!.server.id) : null };
     },
 
     create: async ({ input, ctx }) => {
@@ -364,6 +372,7 @@ export const admin = {
       if (!template) throw bad("TEMPLATE_NOT_FOUND");
       if (template.type === "game" && input.allocationIds.length === 0) throw bad("ALLOCATION_REQUIRED");
       if (template.type === "web" && input.allocationIds.length > 0) throw bad("WEB_HAS_NO_ALLOCATIONS");
+      if (template.type === "web" && !node.supportsDomains) throw bad("NODE_HAS_NO_DOMAINS: this node does not support websites");
       const allocs = await checkAllocations(db, input.allocationIds, node.id, null);
       const errors = validateVariables(template.variables, input.variables, { onlyUserEditable: false });
       if (errors.length) throw bad(`INVALID_VARIABLES: ${errors.join("; ")}`);
@@ -483,6 +492,7 @@ export const admin = {
     setDomainsAllowed: async ({ input, ctx }) => {
       const b = await mustServer(input.uuid);
       if (b.server.type === "web") throw bad("NOT_A_GAME_SERVER");
+      if (input.allowed && !b.node.supportsDomains) throw bad("NODE_HAS_NO_DOMAINS: this node does not support domains");
       const db = getDb();
       if (!input.allowed) {
         // Uitzetten: bestaande domeinen en hun routes verdwijnen.
@@ -521,6 +531,7 @@ export const admin = {
       if (!tpl) throw bad("TEMPLATE_NOT_FOUND");
       if (tpl.id === b.template.id) throw bad("SAME_TEMPLATE");
       if (tpl.type !== b.server.type) throw bad("TEMPLATE_TYPE_MISMATCH");
+      if (tpl.type === "web" && !b.node.supportsDomains) throw bad("NODE_HAS_NO_DOMAINS: this node does not support websites");
       // Variabelen met dezelfde key blijven (mits ze nog aan het patroon voldoen); de rest valt terug op de default.
       const old = await serverVariables(b.server.id);
       const keep: Record<string, string> = {};

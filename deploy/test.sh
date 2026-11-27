@@ -44,7 +44,7 @@ for f in "$REPO"/templates/game/*.yaml; do
 done
 docker run --rm "${LABELS[@]}" \
   -v "$DEPLOY:/deploy:ro" -v "$WORK/sc:/templates:ro" \
-  koalaman/shellcheck:stable -x /deploy/install.sh /deploy/test.sh \
+  koalaman/shellcheck:stable -x /deploy/install.sh /deploy/test.sh /deploy/join/join.sh \
   || fail "shellcheck deploy/*.sh"
 pass "deploy/install.sh, deploy/test.sh"
 sc_files=()
@@ -146,6 +146,8 @@ diff <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$DEPLOY/panel.env.example") <(s
 [ -x "$ROOT/usr/local/bin/panel-daemon" ] && pass "daemon installed (stub)" || fail "daemon"
 cmp -s "$UNIT" "$ROOT/etc/systemd/system/panel-daemon.service" && pass "unit installed" || fail "unit"
 grep -q '^\[dry-run\] systemctl restart panel-daemon.service$' "$WORK/install1.log" && pass "systemctl only printed" || fail "systemctl"
+c_up=$(grep -n "docker compose .* up -d --build" "$WORK/install1.log" | head -1 | cut -d: -f1); d_rs=$(grep -n "systemctl restart panel-daemon.service" "$WORK/install1.log" | head -1 | cut -d: -f1)
+[ -n "$c_up" ] && [ -n "$d_rs" ] && [ "$c_up" -lt "$d_rs" ] && grep -q "wait until panel-web is healthy" "$WORK/install1.log" && pass "compose up (and healthy) before the daemon restart" || fail "order compose/daemon"
 [ "$(getv PANEL_URL)" = "http://127.0.0.1:3000" ] && pass "PANEL_URL standaard http://127.0.0.1:3000" || fail "PANEL_URL"
 [ "$(getv CADDY_ADMIN_URL)" = "$(sed -n 's/^CADDY_ADMIN_URL=//p' "$DEPLOY/panel.env.example")" ] \
   && [ "$(getv CADDY_TLS_ADDR)" = "$(sed -n 's/^CADDY_TLS_ADDR=//p' "$DEPLOY/panel.env.example")" ] \

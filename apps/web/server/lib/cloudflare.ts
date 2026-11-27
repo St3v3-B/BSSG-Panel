@@ -120,3 +120,33 @@ export async function setSrvRecord(token: string, zoneId: string, name: string, 
   }
   return stats;
 }
+
+/** Zorgt dat er een TXT-record `name` met precies deze waarde bestaat (andere TXT-records op de naam blijven staan). */
+export async function addTxtRecord(token: string, zoneId: string, name: string, value: string): Promise<boolean> {
+  const r = await cf<CfRecord[]>(token, "GET", `/zones/${zoneId}/dns_records?per_page=100&type=TXT&name=${encodeURIComponent(name)}`);
+  if (r.result.some((x) => x.name === name && x.content.replace(/^"|"$/g, "") === value)) return false;
+  await cf(token, "POST", `/zones/${zoneId}/dns_records`, { type: "TXT", name, content: value, ttl: 60 });
+  return true;
+}
+
+/** Verwijdert TXT-records `name` met deze waarde. */
+export async function removeTxtRecord(token: string, zoneId: string, name: string, value: string): Promise<number> {
+  const r = await cf<CfRecord[]>(token, "GET", `/zones/${zoneId}/dns_records?per_page=100&type=TXT&name=${encodeURIComponent(name)}`);
+  let n = 0;
+  for (const x of r.result.filter((x) => x.name === name && x.content.replace(/^"|"$/g, "") === value)) {
+    await cf(token, "DELETE", `/zones/${zoneId}/dns_records/${x.id}`);
+    n++;
+  }
+  return n;
+}
+
+/** Verwijdert alle A-records op `name` (bij het afmelden van een node). */
+export async function removeARecord(token: string, zoneId: string, name: string): Promise<number> {
+  const r = await cf<CfRecord[]>(token, "GET", `/zones/${zoneId}/dns_records?per_page=100&type=A&name=${encodeURIComponent(name)}`);
+  let n = 0;
+  for (const x of r.result.filter((x) => x.name === name)) {
+    await cf(token, "DELETE", `/zones/${zoneId}/dns_records/${x.id}`);
+    n++;
+  }
+  return n;
+}

@@ -18,7 +18,7 @@
  */
 import type { Implementation } from "@panel/api";
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, count, eq, isNull } from "drizzle-orm";
 import { logActivity } from "../activity";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema } from "../db";
@@ -54,6 +54,10 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
   if (target.id === b.node.id) throw new TRPCError({ code: "BAD_REQUEST", message: "SAME_NODE" });
   if (inProgress.has(b.server.uuid)) throw new TRPCError({ code: "CONFLICT", message: "TRANSFER_IN_PROGRESS" });
   const db = getDb();
+  if (!target.supportsDomains) {
+    const [dom] = await db.select({ n: count() }).from(schema.domains).where(eq(schema.domains.serverId, b.server.id));
+    if (b.server.type === "web" || (dom?.n ?? 0) > 0) throw precondition("NODE_HAS_NO_DOMAINS: the target node does not support websites or domains");
+  }
   // Databases op de daemon-beheerde MariaDB van de bronnode gaan mee naar die van het doel. Databases op
   // andere hosts (externe hosts) blijven staan: die zijn vanaf elke node bereikbaar.
   const dbRows = await db
@@ -146,7 +150,7 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
       // Oude allocations (andere node) vrijgeven, nieuwe toewijzen.
       await tx.update(schema.allocations).set({ serverId: null, isPrimary: false }).where(eq(schema.allocations.serverId, b.server.id));
       if (allocIds.length) await assignAllocations(tx, b.server.id, allocIds);
-      await tx.update(schema.servers).set({ nodeId: target.id, status: "offline", bedrockAllocationId: null }).where(eq(schema.servers.id, b.server.id));
+      await tx.update(schema.servers).set({ nodeId: target.id, status: "offline", bedrockAllocationId: null, ...(target.supportsDomains ? {} : { domainsAllowed: false }) }).where(eq(schema.servers.id, b.server.id));
       for (const r of movable) await tx.update(schema.databases).set({ hostId: targetHost!.id }).where(eq(schema.databases.id, r.d.id));
     });
   } catch (e) {

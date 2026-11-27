@@ -10,7 +10,7 @@ export const users: s.UserPublic[] = [
 ];
 
 export const nodes: s.Node[] = [
-  { id: 1, name: "node1", fqdn: "node1.test", daemonPort: 8080, sftpPort: 2022, maxRamMb: 6144, maxDiskMb: 200_000, s3TargetId: 1, diskQuotaMode: "soft", isLocal: true },
+  { id: 1, name: "node1", fqdn: "node1.test", daemonPort: 8080, sftpPort: 2022, maxRamMb: 6144, maxDiskMb: 200_000, s3TargetId: 1, diskQuotaMode: "soft", isLocal: true, supportsDomains: true, publicPort: 443, publicIp: null, joinState: null },
 ];
 
 export const templates: s.TemplateDetail[] = [
@@ -56,7 +56,7 @@ export const servers: (s.ServerDetail & { ownerId: number })[] = [
     permissions: [],
     allocations: [allocations[0]!],
     variables: [{ key: "MINECRAFT_VERSION", name: "Minecraft version", description: null, value: "1.21.4", default: "latest", userEditable: true, pattern: null }],
-    node: { id: 1, name: "node1", fqdn: "node1.test" },
+    node: { id: 1, name: "node1", fqdn: "node1.test", supportsDomains: true },
     sftp: { host: "node1.test", port: 2022, username: "steve.8f6c1a2e" },
     suspended: null,
     network: { role: "none", members: [], proxy: null, connectAddress: null },
@@ -82,7 +82,7 @@ export const servers: (s.ServerDetail & { ownerId: number })[] = [
     permissions: [],
     allocations: [allocations[1]!],
     variables: [],
-    node: { id: 1, name: "node1", fqdn: "node1.test" },
+    node: { id: 1, name: "node1", fqdn: "node1.test", supportsDomains: true },
     sftp: { host: "node1.test", port: 2022, username: "steve.3a1d9b7c" },
     suspended: null,
     network: { role: "none", members: [], proxy: null, connectAddress: null },
@@ -108,7 +108,7 @@ export const servers: (s.ServerDetail & { ownerId: number })[] = [
     permissions: [],
     allocations: [],
     variables: [],
-    node: { id: 1, name: "node1", fqdn: "node1.test" },
+    node: { id: 1, name: "node1", fqdn: "node1.test", supportsDomains: true },
     sftp: { host: "node1.test", port: 2022, username: "steve.c0ffee00" },
     suspended: null,
     network: { role: "none", members: [], proxy: null, connectAddress: null },

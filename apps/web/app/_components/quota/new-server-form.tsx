@@ -51,7 +51,9 @@ export function NewServerForm() {
   const left = { ram: Math.max(0, o.quota.maxRamMb - o.usage.ramMb), disk: Math.max(0, o.quota.maxDiskMb - o.usage.diskMb), cpu: Math.max(0, o.quota.maxCpuPct - o.usage.cpuPct) };
   const tplId = templateId ?? o.templates[0]?.id ?? null;
   const tpl = o.templates.find((x) => x.id === tplId);
-  const node = nodeId ?? o.nodes[0]?.id ?? null;
+  // Websites alleen op nodes met domeinondersteuning.
+  const eligible = o.nodes.filter((x) => tpl?.type !== "web" || x.supportsDomains);
+  const node = nodeId != null && eligible.some((x) => x.id === nodeId) ? nodeId : (eligible[0]?.id ?? null);
   const ramV = ram ?? Math.min(1024, left.ram);
   const diskV = disk ?? Math.min(2048, left.disk);
   const cpuV = cpu ?? Math.min(100, left.cpu);
@@ -102,8 +104,8 @@ export function NewServerForm() {
               <div className="space-y-1.5">
                 <Label htmlFor="own-node">{t.node}</Label>
                 <Select id="own-node" value={node ?? ""} onChange={(e) => setNodeId(Number(e.target.value))}>
-                  {o.nodes.length === 0 && <option value="">{t.noNodes}</option>}
-                  {o.nodes.map((x) => (
+                  {eligible.length === 0 && <option value="">{t.noNodes}</option>}
+                  {eligible.map((x) => (
                     <option key={x.id} value={x.id}>
                       {x.name}
                     </option>
