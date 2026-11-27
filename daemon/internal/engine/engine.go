@@ -65,6 +65,8 @@ type Container struct {
 	Running   bool
 	StartedAt time.Time
 	ExitCode  int
+	// OOMKilled: de kernel doodde de container wegens geheugengebrek.
+	OOMKilled bool
 }
 
 // Attachment is een stdin-verbinding met een container.

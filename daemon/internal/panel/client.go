@@ -204,6 +204,26 @@ func (c *Client) ReportStatus(uuid, state string) {
 	}()
 }
 
+// Event is het verzoek van POST /api/remote/servers/{uuid}/event.
+type Event struct {
+	Type           string   `json:"type"` // crashed, disk_warning, disk_exceeded
+	ExitCode       *int     `json:"exit_code,omitempty"`
+	OOM            bool     `json:"oom,omitempty"`
+	LogTail        []string `json:"log_tail,omitempty"`
+	CrashReport    *string  `json:"crash_report,omitempty"`
+	Restart        string   `json:"restart,omitempty"` // restarted, gave_up, disabled
+	RestartAttempt int      `json:"restart_attempt,omitempty"`
+	DiskBytes      int64    `json:"disk_bytes,omitempty"`
+	DiskLimitBytes int64    `json:"disk_limit_bytes,omitempty"`
+}
+
+// ReportEvent meldt een gebeurtenis die een melding kan opleveren (asynchroon met retry).
+func (c *Client) ReportEvent(uuid string, ev Event) {
+	c.async("event "+uuid, func(ctx context.Context) error {
+		return c.do(ctx, http.MethodPost, "/api/remote/servers/"+uuid+"/event", ev, nil)
+	})
+}
+
 func (c *Client) async(what string, fn func(context.Context) error) {
 	c.wg.Add(1)
 	go func() {

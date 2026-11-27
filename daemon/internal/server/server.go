@@ -122,7 +122,9 @@ type Server struct {
 	sleepL        *mcproto.Listener
 	sleepPending  bool // stop wegens slaapstand loopt: exit → sleeping
 	idleSince     time.Time
-	wasSleeping   bool // uit de opgeslagen staat (Recover)
+	wasSleeping   bool        // uit de opgeslagen staat (Recover)
+	restarts      []time.Time // automatische herstarts in het laatste venster
+	restartCancel context.CancelFunc
 }
 
 func (s *Server) UUID() string { return s.uuid }
