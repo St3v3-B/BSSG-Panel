@@ -13,8 +13,6 @@ export interface NavItem {
   current: boolean;
   icon: LucideIcon;
   children?: NavItem[];
-  /** Geen pagina maar een actie die in een nieuw tabblad opent (phpMyAdmin). */
-  action?: { run: () => void; pending: boolean; error: unknown; hint: string | null };
 }
 
 export interface NavSection {
@@ -44,10 +42,7 @@ export function useNav(isAdmin: boolean) {
   const pma = usePhpMyAdmin();
   const panelItems: NavItem[] = [{ ...mk("/", t.nav.myServers, Server, pathname === "/" || under("/servers")), current: pathname === "/" }];
   if (pma.info?.visible) {
-    panelItems.push({
-      ...mk("#phpmyadmin", t.phpmyadmin.nav, Database, false),
-      action: { run: () => void pma.open(), pending: pma.pending, error: pma.error, hint: pma.info.hasRemoteDatabases ? t.phpmyadmin.navRemote : null },
-    });
+    panelItems.push(mk("/databases", t.phpmyadmin.nav, Database, under("/databases")));
   }
   const sections: NavSection[] = [{ id: "panel", title: t.nav.panelSection, items: panelItems }];
   if (isAdmin) {

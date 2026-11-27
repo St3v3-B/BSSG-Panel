@@ -25,9 +25,9 @@ $cfg['Servers'][1] = [
     'compress' => false,
     'auth_type' => 'signon',
     'SignonSession' => 'PanelPmaSignon',
-    // Niet (meer) ingelogd: terug naar het panel, dat opnieuw een token geeft.
-    'SignonURL' => '/',
-    'LogoutURL' => '/',
+    // Niet (meer) ingelogd: terug naar het panel, dat opnieuw een token geeft (zie panel-return.js; werkt ook ingebed).
+    'SignonURL' => '/phpmyadmin/panel-return.html',
+    'LogoutURL' => '/phpmyadmin/panel-return.html?logout=1',
     'AllowRoot' => false,
     'AllowNoPassword' => false,
     'hide_db' => '^(information_schema|performance_schema|mysql|sys)$',
@@ -52,3 +52,9 @@ $cfg['PmaNoRelation_DisableWarning'] = true; // geen phpMyAdmin-opslagdatabase (
 $cfg['ShowPhpInfo'] = false;
 $cfg['ShowServerInfo'] = false;
 $cfg['NavigationLinkWithMainPanel'] = true;
+// Het panel toont phpMyAdmin ingebed op /databases (zelfde domein); andere sites mogen dat niet.
+$cfg['AllowThirdPartyFraming'] = 'sameorigin';
+$cfg['TitleDefault'] = 'phpMyAdmin';
+$cfg['TitleServer'] = 'phpMyAdmin';
+$cfg['TitleDatabase'] = '@DATABASE@ · phpMyAdmin';
+$cfg['TitleTable'] = '@TABLE@ · @DATABASE@ · phpMyAdmin';

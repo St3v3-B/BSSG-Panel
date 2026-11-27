@@ -3,8 +3,8 @@
    BSSG Panel: thema bovenop het Bootstrap-thema van phpMyAdmin 5.2.
    Dit bestand wordt bij het bouwen van de image achter theme.css geplakt
    (zie deploy/phpmyadmin/Dockerfile). Kleuren komen uit de tokens van het
-   panel (apps/web/app/globals.css): donker is standaard, licht volgt
-   prefers-color-scheme: light.
+   panel (apps/web/app/globals.css): donker is standaard, licht als het
+   panel op licht staat (html.panel-light, gezet door panel-theme.js).
    ========================================================================== */
 
 :root {
@@ -33,31 +33,29 @@
   --bs-light-rgb: 17, 19, 30;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color-scheme: light;
-    --pb-bg: #f5f6fb;
-    --pb-card: #ffffff;
-    --pb-pop: #ffffff;
-    --pb-muted: #edeff6;
-    --pb-accent: #e8ebf5;
-    --pb-fg: #121524;
-    --pb-mfg: #585d6f;
-    --pb-primary: #6c50e9;
-    --pb-primary-hover: #5f3ed8;
-    --pb-primary-rgb: 108, 80, 233;
-    --pb-on-primary: #fafafa;
-    --pb-border: rgba(30, 30, 80, 0.13);
-    --pb-input: rgba(30, 30, 80, 0.2);
-    --pb-destructive: #d40924;
-    --pb-success: #008140;
-    --pb-warning: #ae6800;
-    --pb-info: #006dbd;
-    --pb-icon-filter: none;
-    --pb-glow: rgba(108, 80, 233, 0.1);
-    --pb-card-rgb: 255, 255, 255;
-    --bs-light-rgb: 255, 255, 255;
-  }
+html.panel-light {
+  color-scheme: light;
+  --pb-bg: #f5f6fb;
+  --pb-card: #ffffff;
+  --pb-pop: #ffffff;
+  --pb-muted: #edeff6;
+  --pb-accent: #e8ebf5;
+  --pb-fg: #121524;
+  --pb-mfg: #585d6f;
+  --pb-primary: #6c50e9;
+  --pb-primary-hover: #5f3ed8;
+  --pb-primary-rgb: 108, 80, 233;
+  --pb-on-primary: #fafafa;
+  --pb-border: rgba(30, 30, 80, 0.13);
+  --pb-input: rgba(30, 30, 80, 0.2);
+  --pb-destructive: #d40924;
+  --pb-success: #008140;
+  --pb-warning: #ae6800;
+  --pb-info: #006dbd;
+  --pb-icon-filter: none;
+  --pb-glow: rgba(108, 80, 233, 0.1);
+  --pb-card-rgb: 255, 255, 255;
+  --bs-light-rgb: 255, 255, 255;
 }
 
 :root {
@@ -361,3 +359,13 @@ fieldset legend, legend { border: 0 !important; }
 #pma_navigation_tree li.activePointer li.selected > a { color: var(--pb-primary) !important; }
 #selflink, #pma_footer, .clearfloat + #selflink { border-color: var(--pb-border) !important; }
 #selflink a { background: transparent; }
+
+/* ---- ingebed in het panel (/databases): het panel levert logo, zijbalk en uitloggen ---- */
+html.panel-embed #pma_navigation #pmalogo { display: none; }
+html.panel-embed #navipanellinks a.logout,
+html.panel-embed #navipanellinks a[href*="route=/logout"],
+html.panel-embed #navipanellinks a[href*="/logout"] { display: none; }
+html.panel-embed #pma_navigation { background: var(--pb-card); }
+html.panel-embed body { font-size: 0.875rem; }
+html.panel-embed #serverinfo { padding-left: 0.75rem; }
+html.panel-embed #pma_navigation_tree { padding-top: 0.25rem; }

@@ -1,6 +1,7 @@
 "use client";
-import { Check, ChevronRight, ExternalLink, Languages, LogOut, Menu, PanelLeftClose, PanelLeftOpen, User, X } from "lucide-react";
+import { Check, ChevronRight, Languages, LogOut, Menu, PanelLeftClose, PanelLeftOpen, User, X } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import type { Me } from "@panel/api";
 import { trpc } from "@/lib/trpc";
@@ -13,7 +14,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { displayName, UserAvatar } from "@/app/_components/user-avatar";
 import { LOCALE_NAME, LocaleSwitcher } from "@/app/_components/locale-switcher";
 import { useNav, type NavItem, type NavSection } from "@/app/_components/nav-items";
-import { errorText } from "@/app/_lib/errors";
 import { LOCALES, useLocale, useT } from "@/app/_lib/i18n";
 
 const COLLAPSE_KEY = "panel.sidebar.collapsed";
@@ -21,6 +21,9 @@ const COLLAPSE_KEY = "panel.sidebar.collapsed";
 /** Paginakader: persistente zijbalk (md en breder), smalle balk bovenaan en uitschuifbare lade op mobiel. */
 export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
+  // Pagina's die het hele vlak naast de zijbalk vullen (phpMyAdmin ingebed).
+  const pathname = usePathname() ?? "/";
+  const fullBleed = pathname === "/databases" || pathname.startsWith("/databases/");
   useEffect(() => {
     // Tussen md en lg standaard ingeklapt; een bewuste keuze (opgeslagen) wint altijd.
     let saved: string | null = null;
@@ -37,7 +40,7 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
       return !c;
     });
   return (
-    <div className="flex min-h-dvh">
+    <div className={cn("flex", fullBleed ? "h-dvh overflow-hidden" : "min-h-dvh")}>
       <aside
         className={cn(
           "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-border bg-card/40 transition-[width] duration-200 motion-reduce:transition-none md:flex",
@@ -50,7 +53,14 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar me={me} collapsed={collapsed} onToggle={toggle} />
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-8">{children}</main>
+        <main
+          className={cn(
+            "w-full flex-1",
+            fullBleed ? "flex min-h-0 flex-col p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-3" : "mx-auto max-w-7xl px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-8",
+          )}
+        >
+          {children}
+        </main>
       </div>
     </div>
   );
@@ -165,40 +175,6 @@ function Section({ section, first, collapsed, touch }: { section: NavSection; fi
 
 function NavRow({ item, collapsed, touch }: { item: NavItem; collapsed: boolean; touch: boolean }) {
   const Icon = item.icon;
-  const t = useT();
-  if (item.action) {
-    const a = item.action;
-    return (
-      <li>
-        <button
-          type="button"
-          onClick={a.run}
-          disabled={a.pending}
-          aria-label={collapsed ? item.label : undefined}
-          title={collapsed ? item.label : (a.hint ?? t.phpmyadmin.newTab)}
-          data-testid="nav-phpmyadmin"
-          className={cn(
-            "flex w-full items-center gap-3 rounded-xl px-3 text-sm font-medium text-foreground/80 outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 motion-reduce:transition-none",
-            touch ? "min-h-11" : "min-h-9",
-            collapsed && "justify-center px-0",
-          )}
-        >
-          <Icon className={cn("size-4.5 shrink-0", a.error != null && "text-destructive")} aria-hidden />
-          {!collapsed && (
-            <>
-              <span className="truncate">{a.pending ? t.phpmyadmin.opening : item.label}</span>
-              <ExternalLink className="ml-auto size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-            </>
-          )}
-        </button>
-        {a.error != null && (
-          <p role="alert" className={cn("px-3 pt-1 text-xs text-destructive", collapsed && "sr-only")}>
-            {errorText(a.error)}
-          </p>
-        )}
-      </li>
-    );
-  }
   return (
     <li>
       <Link

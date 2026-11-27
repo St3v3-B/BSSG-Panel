@@ -5,8 +5,8 @@ naar `themes/bssg` en plakt `css/overrides.css` achter `theme.css` en `theme.rtl
 komen eroverheen. Zo hoeft er geen 400 kB gecompileerde css in de repo en volgt het thema de pinning van de image.
 
 - Kleuren: de tokens uit `apps/web/app/globals.css` (paars accent, donker standaard).
-  `@media (prefers-color-scheme: light)` zet de lichte variant. phpMyAdmin kent de themakeuze van het panel niet,
-  dus het volgt de voorkeur van het systeem.
+  De lichte variant volgt de themakeuze van het panel: `panel-theme.js` (in elke `<head>`) leest `panel_theme` uit
+  localStorage (zelfde domein) en wisselt live mee. Ingebed op `/databases` krijgt de pagina `panel-embed`.
 - Logo: `img/logo_left.png` (navigatiepaneel) en `img/logo_right.png` (inlogscherm) zijn het merkteken uit
   `apps/web/public/brand/logo-mark.svg`; de woordmerktekst "phpMyAdmin" komt uit css.
 - Pictogrammen van phpMyAdmin zijn donkere PNG's; in het donkere thema worden ze met een filter omgekeerd.

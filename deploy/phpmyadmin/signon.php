@@ -14,7 +14,7 @@ const SESSION_TTL = 3600; // gelijk aan LoginCookieValidity
 
 header('Cache-Control: no-store');
 header('Referrer-Policy: no-referrer');
-header('X-Frame-Options: DENY');
+header('X-Frame-Options: SAMEORIGIN'); // ingebed in het panel (zelfde domein)
 
 function fail(int $status, string $title, string $text): never
 {
@@ -23,12 +23,12 @@ function fail(int $status, string $title, string $text): never
     $t = htmlspecialchars($title, ENT_QUOTES);
     $m = htmlspecialchars($text, ENT_QUOTES);
     echo '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-        . '<title>phpMyAdmin</title><style>'
+        . '<title>phpMyAdmin</title><script src="panel-theme.js"></script><style>'
         . ':root{color-scheme:dark light}body{margin:0;min-height:100vh;display:grid;place-items:center;font:16px/1.5 system-ui,sans-serif;'
-        . 'background:#0b0b14;color:#f1f0fa}@media(prefers-color-scheme:light){body{background:#f6f5fb;color:#1a1830}}'
+        . 'background:#0b0b14;color:#f1f0fa}html.panel-light body{background:#f6f5fb;color:#1a1830}'
         . 'main{max-width:26rem;padding:2rem;text-align:center}h1{font-size:1.25rem;margin:0 0 .5rem}p{margin:.5rem 0 1.25rem;opacity:.8}'
         . 'a{display:inline-block;padding:.55rem 1.1rem;border-radius:.75rem;background:#8b5cf6;color:#fff;text-decoration:none;font-weight:600}'
-        . '</style><main><h1>' . $t . '</h1><p>' . $m . '</p><a href="/">Back to the panel</a></main></html>';
+        . '</style><main><h1>' . $t . '</h1><p>' . $m . '</p><a href="/" target="_top">Back to the panel</a></main></html>';
     exit;
 }
 
@@ -94,4 +94,7 @@ $_SESSION = [
 ];
 session_write_close();
 
-header('Location: index.php', true, 303);
+// Optioneel meteen naar een database (vanaf de databasepagina van een server).
+$db = $_GET['db'] ?? '';
+$target = is_string($db) && preg_match('/^[A-Za-z0-9_]{1,64}$/', $db) ? 'index.php?route=/database/structure&db=' . $db : 'index.php';
+header('Location: ' . $target, true, 303);

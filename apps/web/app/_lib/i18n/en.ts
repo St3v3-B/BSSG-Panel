@@ -607,6 +607,11 @@ export const en = {
     newTab: "Opens in a new tab",
     noDb: "You don't have any database yet.",
     disabled: "phpMyAdmin isn't set up on this panel.",
+    loading: "Signing in to phpMyAdmin…",
+    reload: "Reload",
+    openTab: "Open in new tab",
+    frameTitle: "phpMyAdmin",
+    openDb: "Open in phpMyAdmin",
   },
   databases: {
     noAccess: "You don't have permission to manage this server's databases.",

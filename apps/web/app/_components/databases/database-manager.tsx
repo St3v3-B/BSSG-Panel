@@ -1,5 +1,6 @@
 "use client";
 import { Database as DbIcon, Eye, EyeOff, ExternalLink, KeyRound, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import type { Database } from "@panel/api";
 import { trpc } from "@/lib/trpc";
@@ -11,7 +12,7 @@ import { Input } from "@/app/_components/ui/input";
 import { Label } from "@/app/_components/ui/label";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
-import { usePhpMyAdmin } from "@/app/_hooks/use-phpmyadmin";
+import { PMA_DB_RE, usePhpMyAdmin } from "@/app/_hooks/use-phpmyadmin";
 import { errorText } from "@/app/_lib/errors";
 import { useT } from "@/app/_lib/i18n";
 
@@ -37,7 +38,7 @@ export function DatabaseManager({ uuid }: { uuid: string }) {
   );
 }
 
-/** Knop "Open in phpMyAdmin": single sign-on in een nieuw tabblad. */
+/** Knop "Open in phpMyAdmin": naar de ingebedde phpMyAdmin van het panel (single sign-on). */
 function PhpMyAdminCard() {
   const t = useT();
   const pma = usePhpMyAdmin();
@@ -48,14 +49,11 @@ function PhpMyAdminCard() {
         <div className="min-w-0 space-y-1">
           <p className="text-sm text-muted-foreground">{t.phpmyadmin.text}</p>
           {pma.info.hasRemoteDatabases && <p className="text-xs text-warning">{t.phpmyadmin.remote}</p>}
-          {pma.error != null && (
-            <p role="alert" className="text-sm text-destructive">
-              {errorText(pma.error)}
-            </p>
-          )}
         </div>
-        <Button variant="outline" onClick={() => void pma.open()} disabled={pma.pending} data-testid="open-phpmyadmin">
-          {pma.pending ? <Spinner /> : <ExternalLink />} {t.phpmyadmin.open}
+        <Button asChild variant="outline" data-testid="open-phpmyadmin">
+          <Link href="/databases">
+            <DbIcon /> {t.phpmyadmin.open}
+          </Link>
         </Button>
       </CardContent>
     </Card>
@@ -139,6 +137,9 @@ function DatabaseCard({ uuid, db }: { uuid: string; db: Database }) {
     },
   });
   const del = trpc.databases.delete.useMutation({ onSuccess: () => void utils.databases.list.invalidate({ uuid }) });
+  const pma = usePhpMyAdmin();
+  // Alleen databases op deze machine staan in phpMyAdmin.
+  const inPma = !!pma.info?.visible && PMA_DB_RE.test(db.name) && (db.hostName === "local" || !pma.info.hasRemoteDatabases);
   return (
     <Card data-testid="database-card">
       <CardHeader>
@@ -146,13 +147,22 @@ function DatabaseCard({ uuid, db }: { uuid: string; db: Database }) {
           <CardTitle className="flex items-center gap-2 text-base">
             <DbIcon className="size-4 text-muted-foreground" /> {db.name}
           </CardTitle>
-          {db.adminerUrl && (
-            <Button asChild size="sm" variant="outline">
-              <a href={db.adminerUrl} target="_blank" rel="noreferrer">
-                <ExternalLink /> Adminer
-              </a>
-            </Button>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {inPma && (
+              <Button asChild size="sm" variant="outline" data-testid="open-db-phpmyadmin">
+                <Link href={`/databases?db=${encodeURIComponent(db.name)}`}>
+                  <DbIcon /> {t.phpmyadmin.openDb}
+                </Link>
+              </Button>
+            )}
+            {db.adminerUrl && (
+              <Button asChild size="sm" variant="outline">
+                <a href={db.adminerUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink /> Adminer
+                </a>
+              </Button>
+            )}
+          </div>
         </div>
         <CardDescription>{t.databases.on(db.hostName)}</CardDescription>
       </CardHeader>

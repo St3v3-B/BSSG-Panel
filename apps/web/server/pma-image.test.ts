@@ -27,6 +27,7 @@ const PMA_PW = "Pw-" + randomBytes(10).toString("hex");
 const FAKE_PANEL = `
 const http = require("http");
 let used = false;
+let usedDb = false;
 http.createServer((req, res) => {
   let b = "";
   req.on("data", (c) => (b += c));
@@ -36,6 +37,7 @@ http.createServer((req, res) => {
     if (req.headers.authorization !== "Bearer " + process.env.SHARED) return send(401, { error: "unauthorized" });
     let t; try { t = JSON.parse(b).token; } catch {}
     if (t === process.env.TOKEN && !used) { used = true; return send(200, { user: "pma_u1", password: process.env.PMA_PW }); }
+    if (t === "dbtk" + process.env.TOKEN.slice(4) && !usedDb) { usedDb = true; return send(200, { user: "pma_u1", password: process.env.PMA_PW }); }
     if (t === "nodb" + process.env.TOKEN.slice(4)) return send(403, { error: "no_databases" });
     send(401, { error: "invalid_token" });
   });
@@ -135,6 +137,8 @@ describe("phpMyAdmin-image met single sign-on", () => {
     const r = await get("/signon.php?token=" + TOKEN);
     expect(r.status).toBe(303);
     expect(r.headers.get("location")).toBe("index.php");
+    // Inbedden in het panel (zelfde domein) mag, andere sites niet.
+    expect(r.headers.get("x-frame-options")).toBe("SAMEORIGIN");
     // session_regenerate_id geeft twee Set-Cookie-headers; de laatste geldt.
     const sc = r.headers.getSetCookie().filter((c) => c.startsWith("PanelPmaSignon=")).pop() ?? "";
     expect(sc).toMatch(/^PanelPmaSignon=[^;]+/);
@@ -153,6 +157,12 @@ describe("phpMyAdmin-image met single sign-on", () => {
     expect(html).not.toContain("s2_other");
     expect(html).not.toMatch(/mysql<|information_schema</);
     expect(html).toContain("themes/bssg");
+    expect(home.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+    // Het thema-script staat vóór de stylesheets in de <head> (geen flits bij licht thema).
+    const head = html.slice(0, html.indexOf("</head>"));
+    expect(head).toMatch(/<head>\s*<script src="[^"]*panel-theme\.js/);
+    expect(html).not.toContain("cross_framing_protection");
+    expect(html).not.toContain('id="cfs-style"');
     // En echt bewerken: de tabel lezen via de databasepagina's (token van phpMyAdmin uit de pagina).
     const tok = /name="token" value="([a-f0-9]+)"/.exec(html)?.[1] ?? /token=([a-f0-9]{32})/.exec(html)?.[1];
     expect(tok).toBeTruthy();
@@ -164,10 +174,31 @@ describe("phpMyAdmin-image met single sign-on", () => {
     expect(other).toMatch(/denied|Access|#1044|error/i);
   });
 
+  it("signon.php met ?db= springt naar die database; rare namen niet", async () => {
+    const r = await get("/signon.php?db=s1_site&token=dbtk" + TOKEN.slice(4));
+    expect(r.status).toBe(303);
+    expect(r.headers.get("location")).toBe("index.php?route=/database/structure&db=s1_site");
+    const bad = await get("/signon.php?db=" + encodeURIComponent("x&route=/server") + "&token=dbtk" + TOKEN.slice(4));
+    expect(bad.headers.get("location") ?? "").not.toContain("route=/server");
+  });
+
+  it("panel-koppeling: thema-script en terugkeerpagina worden geserveerd", async () => {
+    const js = await get("/panel-theme.js");
+    expect(js.status).toBe(200);
+    const src = await js.text();
+    expect(src).toContain("panel_theme");
+    expect(src).toContain("panel-embed");
+    const ret = await get("/panel-return.html");
+    expect(ret.status).toBe(200);
+    expect(await ret.text()).toContain("panel-return.js");
+    expect(await (await get("/panel-return.js")).text()).toContain("postMessage");
+  });
+
   it("het thema bssg wordt geserveerd met het panellogo", async () => {
     const css = await (await get("/themes/bssg/css/theme.css")).text();
     expect(css).toContain("--pb-primary");
-    expect(css).toContain("prefers-color-scheme: light");
+    expect(css).toContain("html.panel-light");
+    expect(css).toContain("html.panel-embed");
     for (const img of ["logo_left.png", "logo_right.png"]) {
       const r = await get("/themes/bssg/img/" + img);
       expect(r.status).toBe(200);

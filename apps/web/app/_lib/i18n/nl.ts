@@ -606,6 +606,11 @@ export const nl: Dict = {
     newTab: "Opent in een nieuw tabblad",
     noDb: "Je hebt nog geen database.",
     disabled: "phpMyAdmin is niet ingesteld op dit panel.",
+    loading: "Inloggen bij phpMyAdmin…",
+    reload: "Herladen",
+    openTab: "Openen in nieuw tabblad",
+    frameTitle: "phpMyAdmin",
+    openDb: "Openen in phpMyAdmin",
   },
   databases: {
     noAccess: "Je hebt geen recht om de databases van deze server te beheren.",
