@@ -9,13 +9,15 @@
  */
 import { randomBytes } from "node:crypto";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
-import { ensureBooted } from "./boot";
 import { daemonFor, DaemonUnreachableError } from "./daemon";
 import { getDb, schema } from "./db";
 import { getEnv } from "./env";
 import { safeEqual, sha256 } from "./lib/crypto";
 import { getLimiter, getRedis } from "./lib/ratelimit";
-import { error, json } from "./remote";
+
+// Lokale helpers: ./remote importeert (indirect) de routers en geeft een importcirkel met server/index.ts.
+const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+const error = (status: number, code: string) => json(status, { error: code });
 
 const TOKEN_TTL_S = 60;
 /** Permissie van een subuser die databases beheert (zie packages/api/schemas.ts Permission). */
@@ -121,9 +123,9 @@ function serialized<T>(userId: number, fn: () => Promise<T>): Promise<T> {
 const clientIp = (req: Request) => (req.headers.get("x-forwarded-for")?.split(",")[0] ?? req.headers.get("x-real-ip") ?? "unknown").trim();
 
 /** POST /api/pma/exchange {token} met Bearer PMA_SHARED_SECRET -> {user, password}. */
-export async function pmaExchange(req: Request): Promise<Response> {
+/** Zonder ensureBooted (zie pma-route.ts): dit bestand wordt door de routers geimporteerd. */
+export async function pmaExchangeUnbooted(req: Request): Promise<Response> {
   try {
-    await ensureBooted();
     const secret = getEnv().PMA_SHARED_SECRET;
     if (!secret) return error(404, "not_found");
     const m = /^Bearer\s+(\S+)$/i.exec(req.headers.get("authorization") ?? "");

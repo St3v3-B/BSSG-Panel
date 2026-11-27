@@ -5,7 +5,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { getDb, schema } from "./db";
 import { resetEnv } from "./env";
 import { encrypt } from "./lib/crypto";
-import { issueToken, pmaAccess, pmaExchange, takeToken } from "./pma";
+import { issueToken, pmaAccess, takeToken } from "./pma";
+import { pmaExchange } from "./pma-route";
 import { startMariadb, type TestContainer } from "./test/docker";
 import { OWNER, useHarness, type TestUser } from "./test/harness";
 
