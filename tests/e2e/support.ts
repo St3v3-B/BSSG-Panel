@@ -30,7 +30,7 @@ export async function routeDaemon(page: Page) {
     const res = await fetch(req.url().replace(/^https?:\/\/[^/]+/, DAEMON_HTTP()), {
       method: req.method(),
       headers: Object.fromEntries(Object.entries(req.headers()).filter(([k]) => !["host", "origin", "referer", "content-length"].includes(k))),
-      body: req.postDataBuffer() ?? undefined,
+      body: req.postDataBuffer() ? new Uint8Array(req.postDataBuffer()!) : undefined,
     });
     const headers: Record<string, string> = { ...cors };
     res.headers.forEach((v, k) => { if (!["content-encoding", "transfer-encoding", "content-length"].includes(k)) headers[k] = v; });

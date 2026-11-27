@@ -26,7 +26,7 @@ test("admin creates a game server for the user through /admin", async ({ page, c
 
   await page.goto("/admin/servers/new");
   await page.getByLabel("Name", { exact: true }).fill("E2E sleeper");
-  await page.getByLabel("Search by name or paste a Discord ID").fill(USER.name);
+  await page.getByPlaceholder("Search by name or paste a Discord ID").fill(USER.name);
   await page.getByRole("listbox", { name: "Users" }).getByRole("option", { name: new RegExp(USER.name) }).click();
   await page.getByRole("button", { name: "Game server" }).click();
   await page.getByLabel("Template").selectOption({ label: "IT sleeper (alleen integratietest)" });
@@ -42,7 +42,7 @@ test("admin creates a PHP 8.3 website for the user", async ({ page, context }) =
   await asAdmin(context);
   await page.goto("/admin/servers/new");
   await page.getByLabel("Name", { exact: true }).fill("E2E site");
-  await page.getByLabel("Search by name or paste a Discord ID").fill(USER.name);
+  await page.getByPlaceholder("Search by name or paste a Discord ID").fill(USER.name);
   await page.getByRole("listbox", { name: "Users" }).getByRole("option", { name: new RegExp(USER.name) }).click();
   await page.getByRole("button", { name: "Website" }).click();
   await page.getByRole("radiogroup", { name: "Choose a web template" }).getByRole("radio", { name: /PHP 8\.3/ }).click();

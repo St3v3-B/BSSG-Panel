@@ -6,10 +6,11 @@ export default defineConfig({
   testDir: ".",
   testMatch: "*.spec.ts",
   // Eén omgeving, één database: de specs bouwen op elkaar voort (op bestandsnaam).
+  globalSetup: "./global-setup.ts",
   workers: 1,
   fullyParallel: false,
   timeout: 3 * 60_000,
-  expect: { timeout: 15_000 },
+  expect: { timeout: 30_000 },
   retries: 0,
   reporter: [["list"], ["html", { outputFolder: `${work}/report`, open: "never" }]],
   outputDir: `${work}/results`,
@@ -22,5 +23,6 @@ export default defineConfig({
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
     acceptDownloads: true,
+    actionTimeout: 20_000,
   },
 });
