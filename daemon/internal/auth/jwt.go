@@ -30,6 +30,10 @@ type Claims struct {
 	jwt.RegisteredClaims
 	ServerUUID  string   `json:"server_uuid"`
 	Permissions []string `json:"permissions"`
+	// Path en Directory staan alleen in up-/downloadtokens: de URL-parameters waarvoor het
+	// token is afgegeven. Ontbreken ze (console-JWT), dan is er niets te vergelijken.
+	Path      *string `json:"path,omitempty"`
+	Directory *string `json:"directory,omitempty"`
 }
 
 // Has geeft aan of de claims een recht bevatten.

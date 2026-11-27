@@ -148,6 +148,8 @@ type TokenOpts struct {
 	Audience    string
 	Kid         string
 	Key         ed25519.PrivateKey
+	Path        string // claim "path" (downloadtoken)
+	Directory   string // claim "directory" (uploadtoken)
 }
 
 // Sign maakt een browser-JWT.
@@ -180,6 +182,12 @@ func (p *Panel) Sign(o TokenOpts) string {
 		"jti":         base64.RawURLEncoding.EncodeToString([]byte(now.String())),
 		"iat":         now.Unix(),
 		"exp":         now.Add(o.TTL).Unix(),
+	}
+	if o.Path != "" {
+		claims["path"] = o.Path
+	}
+	if o.Directory != "" {
+		claims["directory"] = o.Directory
 	}
 	t := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
 	t.Header["kid"] = kid
