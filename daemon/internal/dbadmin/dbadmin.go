@@ -50,6 +50,8 @@ type Admin struct {
 	Eng          engine.Engine
 	Container    string // containernaam van de MariaDB (MARIADB_CONTAINER)
 	RootPassword string // MARIADB_ROOT_PASSWORD
+	// Port van MariaDB in de container voor Dial (0 = 3306; alleen tests wijken af).
+	Port int
 }
 
 // Error draagt de (afgekapte) uitvoer van de client.

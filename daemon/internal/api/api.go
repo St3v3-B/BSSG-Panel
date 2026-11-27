@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"panel/daemon/internal/auth"
@@ -64,6 +65,8 @@ type API struct {
 	log      *slog.Logger
 
 	jti jtiStore
+	// tunnels: open databasetunnels (GET /api/db/tunnel).
+	tunnels atomic.Int32
 
 	wsMu   sync.Mutex
 	wsConn map[*session]struct{}
@@ -154,6 +157,7 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("DELETE /api/db/databases/{name}", p(a.dbDrop))
 	mux.Handle("PUT /api/db/databases/{name}/password", p(a.dbPassword))
 	mux.Handle("PUT /api/db/pma-users/{username}", p(a.dbPmaUser))
+	mux.Handle("GET /api/db/tunnel", p(a.dbTunnel))
 	mux.Handle("GET /api/db/databases/{name}/dump", p(a.dbDump))
 	mux.Handle("PUT /api/db/databases/{name}/import", p(a.dbImport))
 

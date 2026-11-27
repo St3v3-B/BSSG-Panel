@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/netip"
 	"strings"
 	"sync"
@@ -238,6 +239,8 @@ type FakeContainer struct {
 	ID      string
 	ImageID string
 	Config  ContainerConfig
+	// IPs: netwerknaam -> IPv4, zoals Inspect die teruggeeft (tests zetten dit zelf).
+	IPs map[string]string
 
 	f       *Fake
 	mu      sync.Mutex
@@ -457,7 +460,7 @@ func (f *Fake) Inspect(_ context.Context, id string) (Container, error) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return Container{ID: c.ID, Name: c.Config.Name, Labels: c.Config.Labels, Running: c.running, StartedAt: c.started, ExitCode: c.exit, OOMKilled: c.oom, ImageID: c.ImageID}, nil
+	return Container{ID: c.ID, Name: c.Config.Name, Labels: c.Config.Labels, Running: c.running, StartedAt: c.started, ExitCode: c.exit, OOMKilled: c.oom, ImageID: c.ImageID, Networks: maps.Clone(c.IPs)}, nil
 }
 
 func (f *Fake) List(_ context.Context, labels map[string]string) ([]Container, error) {

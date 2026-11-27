@@ -69,6 +69,8 @@ type Container struct {
 	ImageID string
 	// OOMKilled: de kernel doodde de container wegens geheugengebrek.
 	OOMKilled bool
+	// Networks: netwerknaam -> IPv4-adres van de container (alleen gevuld door Inspect).
+	Networks map[string]string
 }
 
 // Attachment is een stdin-verbinding met een container.

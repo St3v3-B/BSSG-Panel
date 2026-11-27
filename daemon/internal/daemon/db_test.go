@@ -1,11 +1,13 @@
 package daemon
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -90,7 +92,12 @@ func TestRealDockerDBAdmin(t *testing.T) {
 		}
 	})
 	dbName := "panel-mariadb-" + instance
-	hc := &container.HostConfig{ReadonlyRootfs: true, Tmpfs: map[string]string{"/tmp": "uid=999,gid=999", "/run/mysqld": "uid=999,gid=999"}, CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"}}
+	// Zoals in compose: alleen op een intern netwerk, geen gepubliceerde poorten (de tunnel moet er toch bij kunnen).
+	dbNet := "panel-db-" + instance
+	if _, err := cli.NetworkCreate(ctx, dbNet, network.CreateOptions{Driver: "bridge", Internal: true, Labels: labels}); err != nil {
+		t.Fatal(err)
+	}
+	hc := &container.HostConfig{NetworkMode: container.NetworkMode(dbNet), ReadonlyRootfs: true, Tmpfs: map[string]string{"/tmp": "uid=999,gid=999", "/run/mysqld": "uid=999,gid=999"}, CapDrop: []string{"ALL"}, SecurityOpt: []string{"no-new-privileges:true"}}
 	if _, err := cli.ContainerCreate(ctx, &container.Config{Image: "mariadb:11", User: "999:999", Env: []string{"MARIADB_ROOT_PASSWORD=rootpw-" + instance}, Labels: labels, Cmd: []string{"--skip-name-resolve"}}, hc, nil, nil, dbName); err != nil {
 		t.Fatal(err)
 	}
@@ -141,6 +148,9 @@ func TestRealDockerDBAdmin(t *testing.T) {
 	if st["host"] != dbName {
 		t.Fatal(st)
 	}
+
+	// Databasetunnel (phpMyAdmin voor remote nodes): na 101 spreekt de echte MariaDB (begroetingspakket met versie).
+	tunnelGreeting(t, h.base)
 
 	create := func(name, user, pw string) int {
 		return h.do("POST", "/api/db/databases", map[string]string{"name": name, "username": user, "password": pw}).Code
@@ -302,5 +312,39 @@ func TestRealDockerDBAdmin(t *testing.T) {
 	}
 	if out, _ := as("root", rootpw, "", "SHOW DATABASES LIKE 's1234\\_site'"); out != "" {
 		t.Fatalf("database niet weg: %q", out)
+	}
+}
+
+// tunnelGreeting opent GET /api/db/tunnel en controleert dat het eerste pakket de MariaDB-begroeting is.
+func tunnelGreeting(t *testing.T, base string) {
+	t.Helper()
+	c, err := net.Dial("tcp", strings.TrimPrefix(base, "http://"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	fmt.Fprintf(c, "GET /api/db/tunnel HTTP/1.1\r\nHost: node1.test\r\nAuthorization: Bearer %s\r\nConnection: Upgrade\r\nUpgrade: panel-mariadb\r\n\r\n", nodeToken)
+	_ = c.SetReadDeadline(time.Now().Add(15 * time.Second))
+	r := bufio.NewReader(c)
+	res, err := http.ReadResponse(r, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.StatusCode != 101 {
+		b, _ := io.ReadAll(res.Body)
+		t.Fatalf("tunnel: %d %s", res.StatusCode, b)
+	}
+	hdr := make([]byte, 4)
+	if _, err := io.ReadFull(r, hdr); err != nil {
+		t.Fatal(err)
+	}
+	n := int(hdr[0]) | int(hdr[1])<<8 | int(hdr[2])<<16
+	body := make([]byte, n)
+	if _, err := io.ReadFull(r, body); err != nil {
+		t.Fatal(err)
+	}
+	// Protocolversie 10, gevolgd door de serverversie (bv. "11.8.3-MariaDB-...").
+	if body[0] != 10 || !bytes.Contains(body, []byte("MariaDB")) {
+		t.Fatalf("geen MariaDB-begroeting: %q", body)
 	}
 }
