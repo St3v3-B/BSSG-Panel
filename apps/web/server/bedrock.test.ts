@@ -56,6 +56,7 @@ describe("Bedrock (Geyser)", () => {
     expect(c).toContain("port: 19132");
     expect(c).toContain("address: 0.0.0.0");
     expect(c).toContain("auth-type: floodgate");
+    expect(c).toContain("transport: both");
     expect(c).toContain("port: 25565");
   });
 

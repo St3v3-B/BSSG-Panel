@@ -7,7 +7,7 @@ import { ExternalError, fetchBytes, fetchJson } from "./http";
 
 export const GEYSER_API = "https://download.geysermc.org/v2/projects";
 export const GEYSER_HOSTS = ["download.geysermc.org"] as const;
-export const GEYSER_MAX_BYTES = 40 * 1024 * 1024;
+export const GEYSER_MAX_BYTES = 50 * 1024 * 1024; // = schrijflimiet van de daemon (Geyser-Spigot is nu ~49,8 MiB; groeit hij erboven, dan faalt aanzetten met een duidelijke fout)
 export const DEFAULT_BEDROCK_PORT = 19132;
 
 export type GeyserProject = "geyser" | "floodgate";
@@ -47,7 +47,7 @@ export const FLOODGATE_KEY_PATH = "/plugins/floodgate/key.pem";
 /**
  * config.yml voor Geyser: Bedrock luistert op UDP `port` (alle interfaces in de container), Java-kant is de
  * server zelf (`127.0.0.1:<javaPort>`), authenticatie via Floodgate (Bedrock-spelers hebben geen Java-account nodig).
- * Geyser 2.9+ leest dit formaat; oudere configs migreert Geyser zelf.
+ * Geyser 2.9+ leest dit formaat (echt getest met 2.12.1: start, RakNet-ping op de UDP-poort beantwoord, key.pem blijft behouden).
  */
 export function geyserConfig(o: { port: number; javaPort: number }): string {
   return `# Written by the panel (Bedrock toggle). Changes to these keys are overwritten when Bedrock is switched on again.
@@ -55,6 +55,9 @@ bedrock:
   address: 0.0.0.0
   port: ${o.port}
   clone-remote-port: false
+  # Geyser 2.12 defaults to NetherNet (signaling over TCP + its own UDP port). "both" also answers classic RakNet
+  # on UDP \`port\`, which is the one port the panel opens. NetherNet then logs a harmless warning (it needs a second UDP port).
+  transport: both
 java:
   auth-type: floodgate
   address: 127.0.0.1
