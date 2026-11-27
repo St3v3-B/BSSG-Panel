@@ -36,6 +36,27 @@ describe("slaapstand", () => {
     expect(h.daemon.servers.get(mc)!.spec.sleep).toBeNull();
   });
 
+  it("nieuwe Minecraft-server vraagt server_icon bssg, andere templates niet", async () => {
+    const icon = (u: string) => (h.daemon.servers.get(u)!.spec as unknown as { server_icon?: string }).server_icon;
+    expect(icon(mc)).toBe("bssg");
+    expect(icon(plain)).toBe("none");
+  });
+
+  it("MOTD-instellingen: standaard, opslaan, in spec (naam, promo, favicon_mode, server_icon)", async () => {
+    expect((await admin.api.admin.settings.get()).sleepMotd).toMatchObject({ showLogoIcon: true, seedLogoIcon: true, promo: expect.stringContaining("BSSG Panel") });
+    await admin.api.admin.settings.update({ sleepMotd: { promo: "&aHoi", showLogoIcon: false, seedLogoIcon: false } });
+    expect((await admin.api.admin.settings.get()).sleepMotd).toEqual({ promo: "&aHoi", showLogoIcon: false, seedLogoIcon: false });
+    await expect(admin.api.admin.settings.update({ sleepMotd: { promo: "x".repeat(121), showLogoIcon: true, seedLogoIcon: true } })).rejects.toBeTruthy();
+    await player.api.servers.updateSleep({ uuid: mc, enabled: true, idleMinutes: 15 });
+    const put = h.daemon.last("PUT", `/api/servers/${mc}`)!.body as { sleep: unknown; server_icon: string };
+    expect(put.sleep).toMatchObject({ server_name: expect.any(String), promo: "&aHoi", favicon_mode: "server_only" });
+    expect(put.server_icon).toBe("none");
+    await admin.api.admin.settings.update({ sleepMotd: { promo: "", showLogoIcon: true, seedLogoIcon: true } });
+    await player.api.servers.updateSleep({ uuid: mc, enabled: true, idleMinutes: 15 });
+    expect((h.daemon.last("PUT", `/api/servers/${mc}`)!.body as { sleep: unknown }).sleep).toMatchObject({ favicon_mode: "server_or_logo" });
+    await player.api.servers.updateSleep({ uuid: mc, enabled: false, idleMinutes: 15 });
+  });
+
   it("updateSleep: PUT met sleep in de spec, DB bijgewerkt, activiteit; uit → sleep null", async () => {
     await player.api.servers.updateSleep({ uuid: mc, enabled: true, idleMinutes: 15 });
     const put = h.daemon.last("PUT", `/api/servers/${mc}`)!.body as { sleep: unknown; skip_install: boolean };

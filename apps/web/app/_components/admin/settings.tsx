@@ -14,6 +14,7 @@ import { Select } from "@/app/_components/ui/select";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { useT } from "@/app/_lib/i18n";
+import { parseMcCodes } from "@/app/_lib/mc-motd";
 import { cn } from "@/lib/utils";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -23,11 +24,11 @@ export function SettingsAdmin() {
   const s = t.admin2.settings;
   const utils = trpc.useUtils();
   const q = trpc.admin.settings.get.useQuery();
-  const [form, setForm] = useState<null | { panelName: string; logoUrl: string; accentColor: string; cpuPct: string; ramMb: string; swapMb: string; diskMb: string }>(null);
+  const [form, setForm] = useState<null | { panelName: string; logoUrl: string; accentColor: string; cpuPct: string; ramMb: string; swapMb: string; diskMb: string; promo: string; showLogoIcon: boolean; seedLogoIcon: boolean }>(null);
   useEffect(() => {
     if (q.data && !form) {
       const d = q.data;
-      setForm({ panelName: d.panelName, logoUrl: d.logoUrl ?? "", accentColor: d.accentColor, cpuPct: String(d.defaultLimits.cpuPct), ramMb: String(d.defaultLimits.ramMb), swapMb: String(d.defaultLimits.swapMb), diskMb: String(d.defaultLimits.diskMb) });
+      setForm({ panelName: d.panelName, logoUrl: d.logoUrl ?? "", accentColor: d.accentColor, cpuPct: String(d.defaultLimits.cpuPct), ramMb: String(d.defaultLimits.ramMb), swapMb: String(d.defaultLimits.swapMb), diskMb: String(d.defaultLimits.diskMb), promo: d.sleepMotd.promo, showLogoIcon: d.sleepMotd.showLogoIcon, seedLogoIcon: d.sleepMotd.seedLogoIcon });
     }
   }, [q.data, form]);
   const save = trpc.admin.settings.update.useMutation({
@@ -39,10 +40,10 @@ export function SettingsAdmin() {
   const [touched, setTouched] = useState(false);
   if (q.error) return <QueryError error={q.error} />;
   if (!form) return <Skeleton className="h-64 rounded-xl" />;
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => (save.reset(), setForm({ ...form, [k]: e.target.value }));
+  const set = (k: "panelName" | "logoUrl" | "accentColor" | "cpuPct" | "ramMb" | "swapMb" | "diskMb" | "promo") => (e: React.ChangeEvent<HTMLInputElement>) => (save.reset(), setForm({ ...form, [k]: e.target.value }));
   const int = (v: string) => Math.trunc(Number(v));
   const limits = { cpuPct: int(form.cpuPct), ramMb: int(form.ramMb), swapMb: int(form.swapMb), diskMb: int(form.diskMb) };
-  const invalid = !form.panelName.trim() || !HEX.test(form.accentColor) || Object.values(limits).some((v) => !Number.isFinite(v)) || limits.cpuPct < 0 || limits.ramMb < 64 || limits.swapMb < -1 || limits.diskMb < 0;
+  const invalid = !form.panelName.trim() || !HEX.test(form.accentColor) || Object.values(limits).some((v) => !Number.isFinite(v)) || limits.cpuPct < 0 || limits.ramMb < 64 || limits.swapMb < -1 || limits.diskMb < 0 || form.promo.length > 120;
 
   return (
     <form
@@ -52,7 +53,7 @@ export function SettingsAdmin() {
         e.preventDefault();
         setTouched(true);
         if (invalid) return;
-        save.mutate({ panelName: form.panelName.trim(), logoUrl: form.logoUrl.trim() || null, accentColor: form.accentColor, defaultLimits: limits });
+        save.mutate({ panelName: form.panelName.trim(), logoUrl: form.logoUrl.trim() || null, accentColor: form.accentColor, defaultLimits: limits, sleepMotd: { promo: form.promo.trim(), showLogoIcon: form.showLogoIcon, seedLogoIcon: form.seedLogoIcon } });
       }}
     >
       <Card>
@@ -106,6 +107,26 @@ export function SettingsAdmin() {
           </Field>
         </CardContent>
       </Card>
+      <Card data-testid="motd-card">
+        <CardHeader>
+          <CardTitle className="text-base">{s.motdTitle}</CardTitle>
+          <CardDescription>{s.motdHint}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Field id="set-promo" label={s.promo} hint={s.promoHint}>
+            <Input id="set-promo" value={form.promo} maxLength={120} onChange={set("promo")} />
+          </Field>
+          <MotdPreview promo={form.promo} title={s.motdPreview} sleeping={s.motdSleeping} />
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={form.showLogoIcon} onChange={(e) => (save.reset(), setForm({ ...form, showLogoIcon: e.target.checked }))} />
+            {s.showLogoIcon}
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={form.seedLogoIcon} onChange={(e) => (save.reset(), setForm({ ...form, seedLogoIcon: e.target.checked }))} />
+            {s.seedLogoIcon}
+          </label>
+        </CardContent>
+      </Card>
       {touched && invalid && (
         <p className="text-sm text-destructive" role="alert">
           {s.invalid}
@@ -121,6 +142,34 @@ export function SettingsAdmin() {
         {save.isPending && <Spinner />} {s.save}
       </Button>
     </form>
+  );
+}
+
+/** Voorbeeld van de serverlijst-regel van een slapende server, met Minecraft-kleuren. */
+export function MotdPreview({ promo, title, sleeping }: { promo: string; title: string; sleeping: string }) {
+  const spans = parseMcCodes(promo.trim() || "&e⚡ &fJoin to wake it up &8• &7Hosted on &b&lBSSG Panel");
+  return (
+    <div className="space-y-1.5" data-testid="motd-preview">
+      <div className="text-sm font-medium">{title}</div>
+      <div className="flex items-center gap-3 rounded-lg bg-[#1a1a1a] p-3 font-mono text-sm leading-snug">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/brand/icon-192.png" alt="" className="size-16 shrink-0 [image-rendering:pixelated]" />
+        <div className="min-w-0">
+          <div>
+            <span style={{ color: "#a99bff" }}>☾ </span>
+            <span className="font-bold" style={{ color: "#a99bff" }}>Survival</span>
+            <span style={{ color: "#aaaaaa" }}> {sleeping}</span>
+          </div>
+          <div data-testid="motd-line2">
+            {spans.map((p, i) => (
+              <span key={i} style={{ color: p.color, fontWeight: p.bold ? 700 : 400 }}>
+                {p.text}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

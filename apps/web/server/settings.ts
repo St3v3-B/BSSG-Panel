@@ -2,6 +2,7 @@
 import type { ImagePolicy, ImageUpdateSettings, Limits, Settings } from "@panel/api";
 import { inArray } from "drizzle-orm";
 import { getDb, schema } from "./db";
+import { DEFAULT_PROMO, setSleepMotdConfig, type SleepMotdConfig } from "./sleep-motd";
 
 export const SETTING_DEFAULTS = {
   panel_name: "Panel",
@@ -10,7 +11,27 @@ export const SETTING_DEFAULTS = {
   default_limits: { cpuPct: 200, ramMb: 2048, swapMb: 0, diskMb: 10_240 } satisfies Limits,
   image_update_default_policy: "notify" as ImagePolicy,
   image_update_window: { start: "04:00", end: "05:00" },
+  sleep_motd_promo: DEFAULT_PROMO,
+  sleep_motd_show_logo: true,
+  sleep_motd_seed_logo: true,
 };
+
+/** MOTD-instellingen uit de DB; ververst ook de cache die buildServerSpec gebruikt. */
+export async function getSleepMotdSettings(): Promise<SleepMotdConfig> {
+  const rows = await getDb()
+    .select()
+    .from(schema.settings)
+    .where(inArray(schema.settings.key, ["sleep_motd_promo", "sleep_motd_show_logo", "sleep_motd_seed_logo"]));
+  const m = new Map(rows.map((r) => [r.key, r.value]));
+  const promo = m.get("sleep_motd_promo");
+  const c: SleepMotdConfig = {
+    promo: typeof promo === "string" ? promo : SETTING_DEFAULTS.sleep_motd_promo,
+    showLogoIcon: typeof m.get("sleep_motd_show_logo") === "boolean" ? (m.get("sleep_motd_show_logo") as boolean) : true,
+    seedLogoIcon: typeof m.get("sleep_motd_seed_logo") === "boolean" ? (m.get("sleep_motd_seed_logo") as boolean) : true,
+  };
+  setSleepMotdConfig(c);
+  return c;
+}
 
 const POLICIES: readonly string[] = ["auto", "notify", "off"];
 
@@ -36,6 +57,7 @@ export async function ensureSettingDefaults(): Promise<void> {
     .insert(schema.settings)
     .values(Object.entries(SETTING_DEFAULTS).map(([key, value]) => ({ key, value: value as unknown })))
     .onConflictDoNothing();
+  await getSleepMotdSettings();
 }
 
 export async function getSettings(): Promise<Settings> {
@@ -54,5 +76,6 @@ export async function getSettings(): Promise<Settings> {
     accentColor: /^#[0-9a-fA-F]{6}$/.test(accent) ? accent : SETTING_DEFAULTS.accent_color,
     defaultLimits: { ...SETTING_DEFAULTS.default_limits, ...(limits ?? {}) },
     imageUpdates: await getImageUpdateSettings(),
+    sleepMotd: await getSleepMotdSettings(),
   };
 }

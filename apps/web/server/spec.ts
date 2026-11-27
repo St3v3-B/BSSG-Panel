@@ -4,6 +4,7 @@
  */
 import { parseTemplate, type DaemonServerSpec, type Limits } from "@panel/api";
 import type { schema } from "./db";
+import { getSleepMotdConfig } from "./sleep-motd";
 
 type TemplateRow = typeof schema.templates.$inferSelect;
 type TemplateVar = TemplateRow["variables"][number];
@@ -23,7 +24,7 @@ export interface SpecInput {
   startOnInstall?: boolean;
   skipInstall?: boolean;
   /** Slaapstand van de server (servers.sleep_enabled / sleep_idle_minutes). */
-  sleep?: { enabled: boolean; idleMinutes: number };
+  sleep?: { enabled: boolean; idleMinutes: number; /** servernaam voor de MOTD */ name?: string };
   /** Beleid voor image-updates: null = globale standaard; weggelaten = de daemon houdt de bestaande keuze. */
   imagePolicy?: "auto" | "notify" | "off" | null;
   /** Automatisch herstarten na een crash (servers.auto_restart / auto_restart_max). */
@@ -73,7 +74,13 @@ export const SLEEP_KICK = "The server is starting, please reconnect in a minute.
 /** Spec-veld `sleep`: alleen als aan én de template het ondersteunt. */
 export function sleepSpec(t: Parameters<typeof templateSleepCapable>[0], sleep?: SpecInput["sleep"]): DaemonServerSpec["sleep"] {
   if (!sleep?.enabled || !templateSleepCapable(t)) return null;
-  return { idle_minutes: sleep.idleMinutes, motd: SLEEP_MOTD, kick_message: SLEEP_KICK };
+  const c = getSleepMotdConfig();
+  return {
+    idle_minutes: sleep.idleMinutes,
+    motd: SLEEP_MOTD,
+    kick_message: SLEEP_KICK,
+    ...(sleep.name ? { server_name: sleep.name.slice(0, 100), promo: c.promo, favicon_mode: c.showLogoIcon ? "server_or_logo" : "server_only" } : {}),
+  } as NonNullable<DaemonServerSpec["sleep"]>;
 }
 
 /** Waarden per variabele: opgeslagen waarde, anders de default uit de template. */
@@ -128,6 +135,7 @@ export function buildServerSpec(i: SpecInput): DaemonServerSpec {
     config_files: t.configFiles.map((c) => ({ path: c.path, format: c.format, set: { ...c.set } })),
     start_on_install: i.startOnInstall ?? false,
     skip_install: i.skipInstall ?? false,
+    server_icon: !i.skipInstall && getSleepMotdConfig().seedLogoIcon && t.type === "game" && templateSleepCapable(t) ? "bssg" : "none",
     sleep: sleepSpec(t, i.sleep),
     image_update: imageUpdateSpec(t, i.imagePolicy),
     auto_restart: i.autoRestart?.enabled ? { max_per_10min: i.autoRestart.max } : null,
