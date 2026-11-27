@@ -108,10 +108,14 @@ func (s *Server) startSleepListener() {
 		return
 	}
 	motd, kick := sp.Sleep.Texts()
+	var style *mcproto.Style
+	if sp.Sleep.ServerName != "" {
+		style = mcproto.NewStyle(mcproto.StyleOpts{Name: sp.Sleep.ServerName, Promo: sp.Sleep.Promo, Dir: s.m.volume(s.uuid), LogoFallback: sp.Sleep.FaviconMode != "server_only"})
+	}
 	addr := net.JoinHostPort(a.IP, strconv.Itoa(a.Port))
 	var lastErr error
 	for i := 0; i < 10; i++ {
-		l, err := mcproto.Listen(addr, &mcproto.Responder{MOTD: motd, Kick: kick, Wake: s.wake})
+		l, err := mcproto.Listen(addr, &mcproto.Responder{MOTD: motd, Kick: kick, Style: style, Wake: s.wake})
 		if err == nil {
 			s.mu.Lock()
 			if s.state != StateSleeping || s.deleted {

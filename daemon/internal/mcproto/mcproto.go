@@ -149,10 +149,18 @@ type Status struct {
 		Protocol int32  `json:"protocol"`
 	} `json:"version"`
 	Players struct {
-		Max    int `json:"max"`
-		Online int `json:"online"`
+		Max    int      `json:"max"`
+		Online int      `json:"online"`
+		Sample []Sample `json:"sample,omitempty"`
 	} `json:"players"`
-	Description any `json:"description"`
+	Description any    `json:"description"`
+	Favicon     string `json:"favicon,omitempty"`
+}
+
+// Sample is een regel in de spelerslijst die de client toont bij hover.
+type Sample struct {
+	Name string `json:"name"`
+	ID   string `json:"id"`
 }
 
 func textJSON(s string) string {
@@ -163,6 +171,8 @@ func textJSON(s string) string {
 // Responder beantwoordt verbindingen van slapende servers.
 type Responder struct {
 	MOTD, Kick string
+	// Style (optioneel) vervangt MOTD en Kick door een opgemaakt antwoord.
+	Style *Style
 	// Wake wordt aangeroepen bij een login- of transferpoging.
 	Wake    func()
 	Timeout time.Duration
@@ -199,6 +209,9 @@ func (rs *Responder) Serve(c net.Conn) error {
 		st.Version.Name = "Sleeping"
 		st.Version.Protocol = h.Protocol
 		st.Description = map[string]string{"text": rs.MOTD}
+		if rs.Style != nil {
+			rs.Style.apply(&st)
+		}
 		js, _ := json.Marshal(st)
 		if err := WritePacket(c, 0, AppendString(nil, string(js))); err != nil {
 			return err
@@ -216,7 +229,11 @@ func (rs *Responder) Serve(c net.Conn) error {
 	if rs.Wake != nil {
 		rs.Wake()
 	}
-	return WritePacket(c, 0, AppendString(nil, textJSON(rs.Kick)))
+	kick := textJSON(rs.Kick)
+	if rs.Style != nil && rs.Style.Kick != nil {
+		kick = string(rs.Style.Kick)
+	}
+	return WritePacket(c, 0, AppendString(nil, kick))
 }
 
 // Ping doet een server-list-ping en geeft het aantal spelers online.
