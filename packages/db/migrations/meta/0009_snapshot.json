@@ -1,5 +1,5 @@
 {
-  "id": "4f438494-dc09-4d12-830c-bf647a033676",
+  "id": "d4d6ba75-5f86-4f45-8fe9-4953ab727169",
   "prevId": "8ad9fa40-ed5a-48a6-a8be-e442f7c27d4e",
   "version": "7",
   "dialect": "postgresql",
@@ -1574,12 +1574,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "last_output": {
-          "name": "last_output",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1933,6 +1927,26 @@
         "installed_at": {
           "name": "installed_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "auto_restart": {
+          "name": "auto_restart",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "auto_restart_max": {
+          "name": "auto_restart_max",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 3
+        },
+        "discord_webhook_enc": {
+          "name": "discord_webhook_enc",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -2629,6 +2643,12 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
+        },
+        "discord_webhook_enc": {
+          "name": "discord_webhook_enc",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -2707,8 +2727,7 @@
       "values": [
         "restart",
         "command",
-        "backup",
-        "exec"
+        "backup"
       ]
     },
     "public.server_status": {

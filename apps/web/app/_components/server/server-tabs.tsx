@@ -2,7 +2,8 @@
 import { Archive, CalendarClock, Database, FolderOpen, Globe, Network, PackagePlus, Puzzle, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ALL_PERMISSIONS, type ContentKind, type Permission, type ServerDetail } from "@panel/api";
+import type { ContentKind, Permission, ServerDetail } from "@panel/api";
+import { ALL_PERMISSIONS } from "@panel/api/schemas";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { getT, useT } from "@/app/_lib/i18n";

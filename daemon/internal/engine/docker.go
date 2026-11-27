@@ -173,6 +173,7 @@ func (d *Docker) Inspect(ctx context.Context, id string) (Container, error) {
 	if r.State != nil {
 		c.Running = r.State.Running
 		c.ExitCode = r.State.ExitCode
+		c.OOMKilled = r.State.OOMKilled
 		c.StartedAt, _ = time.Parse(time.RFC3339Nano, r.State.StartedAt)
 	}
 	return c, nil

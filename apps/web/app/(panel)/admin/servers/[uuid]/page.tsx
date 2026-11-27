@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { DeleteServerCard, DomainsAllowedSection, LimitsCard, MoveNodeCard, OwnerCard, PortsCard, SuspendSection, TemplateSection } from "@/app/_components/admin/server-manage";
 import { QueryError } from "@/app/_components/query-error";
+import { ServerNotificationsCard } from "@/app/_components/notifications/webhook-card";
 import { RenameCard, ReinstallCard, SleepCard, VariablesCard } from "@/app/_components/server/server-settings";
 import { StatusBadge } from "@/app/_components/status-badge";
 import { Badge } from "@/app/_components/ui/badge";
@@ -57,6 +58,7 @@ export default function AdminServerPage() {
           <MoveNodeCard key={`m-${s.node.id}`} server={s} />
           <VariablesCard server={s} all />
           <SleepCard key={`s-${s.sleep.enabled}-${s.sleep.idleMinutes}`} server={s} />
+          <ServerNotificationsCard uuid={s.uuid} />
           <RenameCard key={`n-${s.name}`} server={s} />
           <ReinstallCard server={s} />
           <DeleteServerCard server={s} onDeleted={() => router.push("/admin/servers")} />
