@@ -56,7 +56,7 @@ export function createMock(): Implementation {
     admins: ["100000000000000001"],
     settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 } } as s.Settings,
     totpEnabled: new Map<number, boolean>([[1, true]]),
-    quotas: new Map<number, s.QuotaInput>([[2, { maxRamMb: 4096, maxDiskMb: 20_000, maxCpuPct: 300, maxServers: 3, maxDatabases: 2, templateIds: null, nodeIds: null, maxPortsPerServer: 2 }]]),
+    quotas: new Map<number, s.QuotaInput>([[2, { maxRamMb: 4096, maxDiskMb: 50_000, maxCpuPct: 300, maxServers: 3, maxDatabases: 2, templateIds: null, nodeIds: null, maxPortsPerServer: 2 }]]),
     nextId: 1000,
   };
   const id = () => ++db.nextId;
