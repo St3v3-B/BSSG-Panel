@@ -182,6 +182,8 @@ export const ServerSummary = z.object({
   /** Opgeschort door een admin: gestopt, en de eigenaar/subusers mogen niet starten of schrijven. */
   suspended: z.object({ reason: z.string().nullable(), at: z.date() }).nullable().default(null),
   imageUpdate: ImageUpdateInfo.default({ policy: null, effectivePolicy: "notify", available: false, reinstallRequired: false, checkedAt: null }),
+  /** Wanneer de node de status voor het laatst bevestigde (achtergrondmonitor). null = onbekend/nooit. */
+  lastSeenAt: z.date().nullable().optional(),
 });
 export type ServerSummary = z.infer<typeof ServerSummary>;
 
@@ -569,6 +571,8 @@ export const NodeHealth = z.object({
   diskFreeBytes: z.number().nullable(),
   serverCount: z.number().int(),
   error: z.string().nullable(),
+  /** Laatste keer dat de node antwoordde (uit de monitor-cache); null = nog nooit. */
+  lastSeenAt: z.date().nullable().optional(),
 });
 export type NodeHealth = z.infer<typeof NodeHealth>;
 
