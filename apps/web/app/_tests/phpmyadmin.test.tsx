@@ -36,7 +36,7 @@ function fakeWindow() {
   return w;
 }
 
-const visible = (m: Implementation) => (writable(m).phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: false }));
+const visible = (m: Implementation) => (writable(m).phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: false, hostIds: [1] }));
 
 describe("phpMyAdmin in de zijbalk", () => {
   it("is een gewone panelpagina (/databases), actief op die pagina", async () => {
@@ -52,7 +52,7 @@ describe("phpMyAdmin in de zijbalk", () => {
 
   it("verbergt het item zonder databases", async () => {
     localStorage.setItem("panel.sidebar.collapsed", "0");
-    const { calls } = renderWithTrpc(<AppShell me={me}>x</AppShell>, { session: sessionFor("user"), patch: (m) => (writable(m).phpMyAdminInfo = () => ({ visible: false, hasRemoteDatabases: false })) });
+    const { calls } = renderWithTrpc(<AppShell me={me}>x</AppShell>, { session: sessionFor("user"), patch: (m) => (writable(m).phpMyAdminInfo = () => ({ visible: false, hasRemoteDatabases: false, hostIds: [] })) });
     await waitFor(() => expect(calls.some((c) => c.includes("databases.phpMyAdminInfo"))).toBe(true));
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByRole("link", { name: "phpMyAdmin" })).toBeNull();
@@ -165,14 +165,22 @@ describe("Open in phpMyAdmin op het databasescherm", () => {
     expect(per[0]!.getAttribute("href")).toMatch(/^\/databases\?db=s\d+_\w+$/);
   });
 
-  it("meldt dat databases op andere nodes er niet in staan", async () => {
-    renderWithTrpc(<DatabaseManager uuid={SITE} />, { session: sessionFor("user"), locale: "en", patch: (m) => (writable(m).phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: true })) });
+  it("meldt dat databases op een externe host er niet in staan; die krijgen geen eigen knop", async () => {
+    renderWithTrpc(<DatabaseManager uuid={SITE} />, { session: sessionFor("user"), locale: "en", patch: (m) => (writable(m).phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: true, hostIds: [7] })) });
     await screen.findByTestId("open-phpmyadmin");
-    expect(screen.getByTestId("phpmyadmin-card").textContent).toContain("other nodes");
+    expect(screen.getByTestId("phpmyadmin-card").textContent).toContain("external database host");
+    await screen.findAllByTestId("database-card");
+    expect(screen.queryByTestId("open-db-phpmyadmin")).toBeNull();
+  });
+
+  it("databases op remote nodes staan er gewoon in: geen melding, wel de knop per database", async () => {
+    renderWithTrpc(<DatabaseManager uuid={SITE} />, { session: sessionFor("user"), locale: "en", patch: (m) => (writable(m).phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: false, hostIds: [1, 7] })) });
+    await screen.findAllByTestId("open-db-phpmyadmin");
+    expect(screen.getByTestId("phpmyadmin-card").textContent).not.toContain("external");
   });
 
   it("geen knoppen als phpMyAdmin uit staat", async () => {
-    renderWithTrpc(<DatabaseManager uuid={SITE} />, { session: sessionFor("user"), patch: (m) => (writable(m).phpMyAdminInfo = () => ({ visible: false, hasRemoteDatabases: false })) });
+    renderWithTrpc(<DatabaseManager uuid={SITE} />, { session: sessionFor("user"), patch: (m) => (writable(m).phpMyAdminInfo = () => ({ visible: false, hasRemoteDatabases: false, hostIds: [] })) });
     await screen.findAllByTestId("database-card");
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByTestId("open-phpmyadmin")).toBeNull();

@@ -138,8 +138,8 @@ function DatabaseCard({ uuid, db }: { uuid: string; db: Database }) {
   });
   const del = trpc.databases.delete.useMutation({ onSuccess: () => void utils.databases.list.invalidate({ uuid }) });
   const pma = usePhpMyAdmin();
-  // Alleen databases op deze machine staan in phpMyAdmin.
-  const inPma = !!pma.info?.visible && PMA_DB_RE.test(db.name) && (db.hostName === "local" || !pma.info.hasRemoteDatabases);
+  // Databases op daemon-beheerde hosts (elke node) staan in phpMyAdmin; externe hosts niet.
+  const inPma = !!pma.info?.visible && PMA_DB_RE.test(db.name) && (pma.info.hostIds ?? []).includes(db.hostId);
   return (
     <Card data-testid="database-card">
       <CardHeader>
