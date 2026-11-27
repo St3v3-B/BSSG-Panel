@@ -341,7 +341,7 @@ func TestSFTP(t *testing.T) {
 
 func TestWebSiteNetwork(t *testing.T) {
 	eng := engine.NewFake()
-	if _, err := eng.Create(context.Background(), engine.ContainerConfig{Name: "panel-mariadb", Labels: map[string]string{"panel.role": "infra"}}); err != nil {
+	if _, err := eng.Create(context.Background(), engine.ContainerConfig{Name: "panel-mariadb-test-unit", Labels: map[string]string{"panel.role": "infra"}}); err != nil {
 		t.Fatal(err)
 	}
 	router := proxy.NewFake()
@@ -356,7 +356,7 @@ func TestWebSiteNetwork(t *testing.T) {
 	h.waitState(u1, "offline", 5*time.Second)
 	net := "panel-site-" + u1
 	n := eng.Network(net)
-	if n == nil || n.Internal || n.Labels["panel.role"] != "site" || n.Labels["panel.managed"] != "true" || n.Labels["panel.instance"] != "unit" || !n.Connected["panel-mariadb"] {
+	if n == nil || n.Internal || n.Labels["panel.role"] != "site" || n.Labels["panel.managed"] != "true" || n.Labels["panel.instance"] != "unit" || !n.Connected["panel-mariadb-test-unit"] {
 		t.Fatalf("netwerk: %+v", n)
 	}
 	h.expect("POST", "/api/servers/"+u1+"/power", map[string]string{"action": "start"}, 202)
@@ -371,16 +371,16 @@ func TestWebSiteNetwork(t *testing.T) {
 		t.Fatalf("%+v", rs)
 	}
 	// MariaDB herstart (koppeling weg): periodiek herstel.
-	_ = eng.DisconnectNetwork(context.Background(), net, "panel-mariadb")
+	_ = eng.DisconnectNetwork(context.Background(), net, "panel-mariadb-test-unit")
 	h.d.Manager().ReconcileNetworks(context.Background())
-	if !eng.Network(net).Connected["panel-mariadb"] {
+	if !eng.Network(net).Connected["panel-mariadb-test-unit"] {
 		t.Fatal("MariaDB niet opnieuw gekoppeld")
 	}
 	h.expect("DELETE", "/api/servers/"+u1, nil, 204)
 	if eng.Network(net) != nil || len(router.Routes()) != 0 {
 		t.Fatal("netwerk of route niet opgeruimd")
 	}
-	if eng.Container("panel-mariadb") == nil {
+	if eng.Container("panel-mariadb-test-unit") == nil {
 		t.Fatal("MariaDB aangeraakt")
 	}
 
