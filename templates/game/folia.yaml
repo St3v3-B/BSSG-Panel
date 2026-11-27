@@ -8,7 +8,7 @@ description: >-
   haalt de jar via de PaperMC-API en controleert de SHA-256. Java 25, heap = RAM-limiet min
   15% (minstens 384 MB). Achter Velocity: zoals bij Paper (`VELOCITY_FORWARDING` + `VELOCITY_SECRET`).
 type: game
-version: 1
+version: 2
 image: eclipse-temurin:25-jre
 # Heap: SERVER_MEMORY min 15% (minstens 384 MB) voor metaspace, threads, netty-buffers en
 # /tmp (tmpfs, telt mee); met 80% werd Paper 1.21.x bij 1280 MB door de cgroup OOM-killed.
@@ -37,6 +37,7 @@ stop:
   type: command
   value: stop
 # Folia logt (zoals Paper): [12:00:00 INFO]: Done (12.345s)! For help, type "help"
+sleep_capable: true
 ready_pattern: "Done \\([0-9.,]+s\\)!"
 variables:
   - key: MINECRAFT_VERSION

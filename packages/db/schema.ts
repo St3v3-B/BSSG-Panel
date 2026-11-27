@@ -36,6 +36,7 @@ export const serverStatus = pgEnum("server_status", [
   "online",
   "stopping",
   "disk_exceeded",
+  "sleeping",
   "unknown",
 ]);
 export const diskQuotaMode = pgEnum("disk_quota_mode", ["soft", "xfs"]);
@@ -167,6 +168,8 @@ export const servers = pgTable("servers", {
   ramMb: integer("ram_mb").notNull(),
   swapMb: integer("swap_mb").notNull().default(0),
   diskMb: integer("disk_mb").notNull(),
+  sleepEnabled: boolean("sleep_enabled").notNull().default(false),
+  sleepIdleMinutes: integer("sleep_idle_minutes").notNull().default(10),
   status: serverStatus("status").notNull().default("installing"),
   installedAt: ts("installed_at"),
   createdAt: createdAt(),

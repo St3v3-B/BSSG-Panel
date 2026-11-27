@@ -95,7 +95,7 @@ paths:
               type: object
               required: [state]
               properties:
-                state: { type: string, enum: [installing, install_failed, offline, starting, online, stopping, disk_exceeded] }
+                state: { type: string, enum: [installing, install_failed, offline, starting, online, stopping, disk_exceeded, sleeping] }
       responses:
         "204": { description: OK }
         "401": { $ref: "#/components/responses/Unauthorized" }

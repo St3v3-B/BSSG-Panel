@@ -91,6 +91,8 @@ export const contract = {
     updateVariables: mutation("user", server.extend({ variables: z.record(z.string(), z.string()) }), s.Ok),
     /** Eigenaar of admin. Wist de data niet, draait het install-script opnieuw. */
     reinstall: mutation("user", server, s.Ok),
+    /** Eigenaar of admin. Slaapstand: stoppen na idleMinutes zonder spelers, starten bij een verbindingspoging. */
+    updateSleep: mutation("user", server.extend({ enabled: z.boolean(), idleMinutes: z.number().int().min(1).max(1440) }), s.Ok),
     activity: query("user", server.extend(s.PageInput.shape), s.page(s.ActivityEntry)),
   },
 

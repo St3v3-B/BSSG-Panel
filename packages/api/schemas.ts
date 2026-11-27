@@ -107,6 +107,8 @@ export const ServerStatus = z.enum([
   "online",
   "stopping",
   "disk_exceeded",
+  /** Gestopt door slaapstand; de daemon luistert op de poort en start bij een verbindingspoging. */
+  "sleeping",
   "unknown",
 ]);
 export type ServerStatus = z.infer<typeof ServerStatus>;
@@ -179,6 +181,8 @@ export const ServerDetail = ServerSummary.extend({
   variables: z.array(ServerVariable),
   node: z.object({ id: Id, name: z.string(), fqdn: z.string() }),
   sftp: z.object({ host: z.string(), port: z.number().int(), username: z.string() }),
+  /** Slaapstand (alleen templates met sleep_capable). */
+  sleep: z.object({ supported: z.boolean(), enabled: z.boolean(), idleMinutes: z.number().int() }).default({ supported: false, enabled: false, idleMinutes: 10 }),
   installedAt: z.date().nullable(),
   createdAt: z.date(),
 });

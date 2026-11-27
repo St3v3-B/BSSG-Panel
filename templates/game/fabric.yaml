@@ -9,7 +9,7 @@ description: >-
   de servermap (eenmalig, daarom duurt de eerste start langer). Java 25 (Minecraft 1.20.5 en
   nieuwer), heap = RAM-limiet min 15% (minstens 384 MB).
 type: game
-version: 1
+version: 2
 image: eclipse-temurin:25-jre
 startup: >-
   HEADROOM=$(( {{SERVER_MEMORY}} * 15 / 100 > 384 ? {{SERVER_MEMORY}} * 15 / 100 : 384 )) &&
@@ -28,6 +28,7 @@ stop:
   type: command
   value: stop
 # Vanilla/Fabric logt: [12:00:00] [Server thread/INFO]: Done (12.345s)! For help, type "help"
+sleep_capable: true
 ready_pattern: "Done \\([0-9.,]+s\\)!"
 variables:
   - key: MINECRAFT_VERSION
