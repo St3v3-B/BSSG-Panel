@@ -11,7 +11,7 @@ import { signBrowserJwt } from "../lib/jwt";
 import { buildServerSpec, templateSleepCapable, validateVariables } from "../spec";
 import { serverNetwork } from "../network";
 import { forbidApiKey } from "../apikey";
-import { imagePolicyOf, fetchServers, limitsOf, sleepOf, autoRestartOf, requireServer, isSuspendedFor, serverVariables, toDetail, toSummary, liveViews, type ServerBundle } from "../servers-data";
+import { imagePolicyOf, isFullAdmin, fetchServers, limitsOf, sleepOf, autoRestartOf, requireServer, isSuspendedFor, serverVariables, toDetail, toSummary, liveViews, type ServerBundle } from "../servers-data";
 
 const ok = { ok: true as const };
 const POWER_STATE: Record<"start" | "stop" | "restart" | "kill", ServerStatus> = { start: "starting", stop: "stopping", restart: "stopping", kill: "offline" };
@@ -33,10 +33,17 @@ export const servers: Pick<
   Implementation["servers"],
   "list" | "get" | "stats" | "power" | "sendCommand" | "consoleToken" | "rename" | "updateVariables" | "reinstall" | "activity" | "updateSleep" | "updateImagePolicy" | "updateImageNow"
 > = {
-  list: async ({ ctx }) => {
+  list: async ({ input, ctx }) => {
     const uid = ctx.session!.userId;
-    const subOf = getDb().select({ id: schema.subusers.serverId }).from(schema.subusers).where(eq(schema.subusers.userId, uid));
-    const rows = await fetchServers(or(eq(schema.servers.ownerId, uid), inArray(schema.servers.id, subOf)));
+    let rows;
+    if (input?.all) {
+      forbidApiKey(ctx);
+      if (!isFullAdmin(ctx)) throw new TRPCError({ code: "FORBIDDEN", message: "NOT_ADMIN" });
+      rows = await fetchServers(undefined);
+    } else {
+      const subOf = getDb().select({ id: schema.subusers.serverId }).from(schema.subusers).where(eq(schema.subusers.userId, uid));
+      rows = await fetchServers(or(eq(schema.servers.ownerId, uid), inArray(schema.servers.id, subOf)));
+    }
     const live = await liveViews(rows);
     return rows.map((b) => {
       const l = live.get(b.server.uuid);

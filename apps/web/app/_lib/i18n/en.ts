@@ -104,6 +104,9 @@ export const en = {
     fallback: "Your game servers and websites",
     emptyTitle: "You don't have any servers yet",
     emptyText: "Servers and websites are created by an administrator. As soon as one is ready for you, it shows up here.",
+    scopeLabel: "Show servers",
+    scopeMine: "Mine",
+    scopeAll: "All servers",
   },
   server: {
     of: (owner: string) => `owned by ${owner}`,

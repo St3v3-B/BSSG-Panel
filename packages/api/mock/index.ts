@@ -272,9 +272,13 @@ export function createMock(): Implementation {
         db.servers = db.servers.filter((y) => y !== x);
         return ok;
       },
-      list: ({ ctx }) => {
+      list: ({ input, ctx }) => {
         const u = uid(ctx);
-        return db.servers.filter((x) => x.ownerId === u || u === 1 || db.subusers.some((su) => su.serverUuid === x.uuid && su.userId === u)).map((x) => summary(x, u));
+        if (input?.all) {
+          if (u !== 1) throw new TRPCError({ code: "FORBIDDEN", message: "NOT_ADMIN" });
+          return db.servers.map((x) => summary(x, u));
+        }
+        return db.servers.filter((x) => x.ownerId === u || db.subusers.some((su) => su.serverUuid === x.uuid && su.userId === u)).map((x) => summary(x, u));
       },
       get: ({ input, ctx }) => {
         const x = srv(input.uuid);

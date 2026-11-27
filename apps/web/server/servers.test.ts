@@ -50,6 +50,16 @@ describe("servers.list / get", () => {
     expect((await sub.api.servers.list())[0]!.isOwner).toBe(false);
   });
 
+  it("all: true geeft een volledige admin alle servers in de gebruikersweergave; anderen FORBIDDEN", async () => {
+    const all = await admin.api.servers.list({ all: true });
+    expect(all.map((s) => s.uuid)).toContain(uuid);
+    expect(all.find((s) => s.uuid === uuid)).toMatchObject({ isOwner: false, owner: expect.objectContaining({ name: "Speler" }) });
+    for (const u of [player, sub, stranger]) {
+      await expect(u.api.servers.list({ all: true })).rejects.toMatchObject({ code: "FORBIDDEN", message: "NOT_ADMIN" });
+    }
+    expect((await player.api.servers.list({ all: false })).map((s) => s.uuid)).toEqual([uuid]);
+  });
+
   it("get: live status van de daemon en terugschrijven naar de database", async () => {
     setState("online");
     await pollAllNow();

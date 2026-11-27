@@ -12,11 +12,25 @@ import { Card } from "@/app/_components/ui/card";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
 import { useT } from "@/app/_lib/i18n";
+import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
+
+const SCOPE_KEY = "panel_servers_scope";
 
 export default function OverviewPage() {
   const t = useT();
   useDocumentTitle(t.overview.title);
-  const servers = trpc.servers.list.useQuery(undefined, { refetchInterval: 10_000 });
+  const me = trpc.auth.me.useQuery(undefined, { staleTime: 30_000 });
+  const fullAdmin = !!me.data?.isAdmin && !!me.data.totpVerified;
+  // Admins kunnen hier alle servers in de gebruikersweergave zien (onthouden per browser).
+  const [all, setAll] = useState(false);
+  useEffect(() => setAll(localStorage.getItem(SCOPE_KEY) === "all"), []);
+  const showAll = fullAdmin && all;
+  const pick = (v: boolean) => {
+    setAll(v);
+    localStorage.setItem(SCOPE_KEY, v ? "all" : "mine");
+  };
+  const servers = trpc.servers.list.useQuery(showAll ? { all: true } : undefined, { refetchInterval: 10_000, placeholderData: (prev) => prev });
   const quota = trpc.account.quota.useQuery(undefined, { retry: false });
   const list = servers.data ?? [];
   const online = list.filter((s) => s.status === "online").length;
@@ -24,15 +38,34 @@ export default function OverviewPage() {
   return (
     <>
       <PageHeader
-        title={t.overview.title}
+        title={showAll ? t.overview.scopeAll : t.overview.title}
         description={servers.data ? t.overview.summary(list.length, online) : t.overview.fallback}
         actions={
-          quota.data ? (
-            <Button asChild>
-              <Link href="/servers/new">
-                <Plus /> {t.quota.newServer}
-              </Link>
-            </Button>
+          fullAdmin || quota.data ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {fullAdmin && (
+                <div role="group" aria-label={t.overview.scopeLabel} className="inline-flex rounded-lg border border-input bg-card/40 p-0.5" data-testid="server-scope">
+                  {([false, true] as const).map((v) => (
+                    <button
+                      key={String(v)}
+                      type="button"
+                      aria-pressed={showAll === v}
+                      onClick={() => pick(v)}
+                      className={cn("h-10 rounded-md px-3 text-sm font-medium transition-colors md:h-8", showAll === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                    >
+                      {v ? t.overview.scopeAll : t.overview.scopeMine}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {quota.data && (
+                <Button asChild>
+                  <Link href="/servers/new">
+                    <Plus /> {t.quota.newServer}
+                  </Link>
+                </Button>
+              )}
+            </div>
           ) : undefined
         }
       />

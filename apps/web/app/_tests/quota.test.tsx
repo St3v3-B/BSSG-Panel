@@ -35,6 +35,25 @@ describe("overzicht", () => {
   });
 });
 
+describe("overzicht: alle servers voor admins", () => {
+  afterEach(() => localStorage.clear());
+  it("admin wisselt naar alle servers (onthouden), gebruiker ziet de schakelaar niet", async () => {
+    renderWithTrpc(<OverviewPage />, admin);
+    const mineCount = (await screen.findByTestId("server-list")).children.length;
+    const allBtn = await screen.findByRole("button", { name: "All servers" });
+    expect(screen.getByRole("button", { name: "Mine" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(allBtn);
+    await waitFor(() => expect(screen.getByTestId("server-list").children.length).toBeGreaterThan(mineCount));
+    expect(allBtn.getAttribute("aria-pressed")).toBe("true");
+    expect(await screen.findByRole("heading", { name: "All servers" })).toBeTruthy();
+    expect(localStorage.getItem("panel_servers_scope")).toBe("all");
+    cleanup();
+    renderWithTrpc(<OverviewPage />, user);
+    await screen.findByTestId("quota-card");
+    expect(screen.queryByTestId("server-scope")).toBeNull();
+  });
+});
+
 describe("nieuwe server", () => {
   it("toont restruimte, blokkeert boven het quotum en stuurt de limieten mee", async () => {
     const { bodies } = renderWithTrpc(<NewServerForm />, user);

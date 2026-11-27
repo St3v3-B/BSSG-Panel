@@ -91,8 +91,11 @@ export const contract = {
   },
 
   servers: {
-    /** Eigen servers plus servers waar je subuser bent. Admins zien hier ook alleen die van henzelf. */
-    list: query("user", none, z.array(s.ServerSummary)),
+    /**
+     * Eigen servers plus servers waar je subuser bent. Met `all: true` geeft het voor een volledige
+     * admin (TOTP geverifieerd, geen API-sleutel) alle servers in de gebruikersweergave; anders FORBIDDEN NOT_ADMIN.
+     */
+    list: query("user", z.object({ all: z.boolean().optional() }).optional(), z.array(s.ServerSummary)),
     get: query("user", server, s.ServerDetail),
     /** Momentopname; live stats gaan via de websocket. Vereist console.read. */
     stats: query("user", server, s.Stats.nullable()),

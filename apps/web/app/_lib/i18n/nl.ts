@@ -103,6 +103,9 @@ export const nl: Dict = {
     fallback: "Je game-servers en websites",
     emptyTitle: "Je hebt nog geen servers",
     emptyText: "Servers en websites worden aangemaakt door een beheerder. Zodra er een voor je klaarstaat, zie je hem hier.",
+    scopeLabel: "Servers tonen",
+    scopeMine: "Mijn",
+    scopeAll: "Alle servers",
   },
   server: {
     of: (owner) => `van ${owner}`,
