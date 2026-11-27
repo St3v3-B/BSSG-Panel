@@ -751,6 +751,7 @@ export const admin = {
         const m = input.sleepMotd;
         pairs.push(["sleep_motd_promo", m.promo.trim()], ["sleep_motd_show_logo", m.showLogoIcon], ["sleep_motd_seed_logo", m.seedLogoIcon]);
       }
+      if (input.activityRetentionDays !== undefined) pairs.push(["activity_retention_days", input.activityRetentionDays]);
       for (const [key, value] of pairs) {
         await getDb().insert(schema.settings).values({ key, value }).onConflictDoUpdate({ target: schema.settings.key, set: { value } });
       }
