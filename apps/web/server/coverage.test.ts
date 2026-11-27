@@ -36,10 +36,13 @@ export const PHASE3 = [
   "admin.databaseHosts.list", "admin.databaseHosts.create", "admin.databaseHosts.update", "admin.databaseHosts.delete", "admin.databaseHosts.test",
 ];
 
+/** Admin-beheer (opschorten, template wisselen, instellingen). */
+export const ADMIN2 = ["admin.servers.setSuspended", "admin.servers.changeTemplate", "admin.settings.update"];
+
 describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    const all = [...PHASE1, ...PHASE2, ...PHASE3];
+    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...ADMIN2];
     for (const p of all) expect(contract.has(p), p).toBe(true);
     expect(implementedPaths().sort()).toEqual(all.sort());
   });
