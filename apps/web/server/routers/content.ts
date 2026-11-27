@@ -109,7 +109,8 @@ export const content: Implementation["content"] = {
   search: async ({ input, ctx }) => {
     const m = await mcFor(ctx, input.uuid, "files.read");
     if (!m.profile.sources.includes(input.source)) throw bad("SOURCE_NOT_SUPPORTED");
-    return ext(() => sourceClient(input.source).search(m.filter, input.query.trim(), input.offset));
+    if (input.modpacks && (!m.profile.modpacks || input.source !== "modrinth")) throw bad("MODPACK_NOT_SUPPORTED");
+    return ext(() => sourceClient(input.source).search(m.filter, input.query.trim(), input.offset, input.modpacks));
   },
 
   resolve: async ({ input, ctx }) => {

@@ -29,7 +29,7 @@ export interface Filter {
 }
 
 export interface SourceClient {
-  search(f: Filter, query: string, offset: number): Promise<{ hits: ContentHit[]; total: number }>;
+  search(f: Filter, query: string, offset: number, modpacks?: boolean): Promise<{ hits: ContentHit[]; total: number }>;
   hit(projectId: string): Promise<ContentHit>;
   /** Nieuwste compatibele versie, of de opgegeven versie (die compatibel moet zijn). */
   target(projectId: string, f: Filter, versionId?: string): Promise<FileTarget>;
@@ -111,10 +111,10 @@ function mrTarget(p: { id: string; title: string }, v: MrVersion): FileTarget {
 }
 
 export const modrinth: SourceClient = {
-  async search(f, query, offset) {
-    const facets: string[][] = [["project_type:mod"], f.loaders.map((l) => `categories:${l}`)];
-    if (f.gameVersion) facets.push([`versions:${f.gameVersion}`]);
-    if (f.serverSide) facets.push(["server_side:required", "server_side:optional"]);
+  async search(f, query, offset, modpacks = false) {
+    const facets: string[][] = [[modpacks ? "project_type:modpack" : "project_type:mod"], f.loaders.map((l) => `categories:${l}`)];
+    if (f.gameVersion && !modpacks) facets.push([`versions:${f.gameVersion}`]);
+    if (f.serverSide && !modpacks) facets.push(["server_side:required", "server_side:optional"]);
     const r = await mr<{ hits: Array<MrProject & { project_id: string; author: string }>; total_hits: number }>(
       `/search?query=${encodeURIComponent(query)}&facets=${enc(facets)}&limit=${PAGE}&offset=${offset}&index=${query ? "relevance" : "downloads"}`,
     );
