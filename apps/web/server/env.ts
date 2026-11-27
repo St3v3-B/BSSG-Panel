@@ -29,7 +29,7 @@ const EnvSchema = z
     DISCORD_CLIENT_ID: required,
     DISCORD_CLIENT_SECRET: required,
     PANEL_ENCRYPTION_KEY: required.refine((k) => Buffer.from(k, "base64").length === 32, "must be 32 bytes of base64"),
-    NODE_TOKEN: required.min(16, "te kort"),
+    NODE_TOKEN: required.min(32, "te kort (minimaal 32 tekens)"),
     NODE_PUBLIC_IP: optional,
     MARIADB_ROOT_PASSWORD: optional,
     MARIADB_CONTAINER: optional.transform((v) => v ?? "panel-mariadb"),

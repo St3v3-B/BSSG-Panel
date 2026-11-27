@@ -145,3 +145,18 @@ describe("echte templates uit de repo", () => {
     expect(Object.keys(spec.environment)).toEqual(r.spec.variables.map((v) => v.key));
   });
 });
+
+describe("beveiligingsheaders en omgeving", () => {
+  it("CSP en vaste headers", async () => {
+    const { contentSecurityPolicy, securityHeaders } = await import("../next.config");
+    expect(contentSecurityPolicy).toContain("frame-ancestors 'none'");
+    expect(contentSecurityPolicy).toContain("https://cdn.jsdelivr.net");
+    expect(securityHeaders.map((x) => x.key)).toEqual(expect.arrayContaining(["X-Content-Type-Options", "Strict-Transport-Security", "Content-Security-Policy"]));
+  });
+  it("NODE_TOKEN: minimaal 32 tekens", async () => {
+    const { parseEnv } = await import("./env");
+    const { baseEnv } = await import("./test/harness");
+    expect(() => parseEnv({ ...baseEnv(), NODE_TOKEN: "x".repeat(31) })).toThrow(/NODE_TOKEN/);
+    expect(() => parseEnv({ ...baseEnv(), NODE_TOKEN: "x".repeat(32) })).not.toThrow();
+  });
+});
