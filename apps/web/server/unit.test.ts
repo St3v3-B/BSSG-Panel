@@ -116,6 +116,8 @@ describe("kleine hulpjes", () => {
   it("safeRedirect laat alleen eigen paden toe", () => {
     expect(safeRedirect("/admin")).toBe("/admin");
     expect(safeRedirect("//evil")).toBe("/");
+    for (const bad of ["/%09/evil.test", "/\t/evil.test", "/\\evil.test", "/%5Cevil.test", "/%2F/evil.test", "/%2Fevil.test", "/a\nb", "/%0d%0a/x", "/%252F/evil", "///evil", "evil.test", "/%zz"]) expect(safeRedirect(bad), bad).toBe("/");
+    expect(safeRedirect("/servers/abc?tab=files#x")).toBe("/servers/abc?tab=files#x");
     expect(safeRedirect("https://evil")).toBe("/");
     expect(safeRedirect("/\\evil")).toBe("/");
     expect(safeRedirect(null)).toBe("/");
