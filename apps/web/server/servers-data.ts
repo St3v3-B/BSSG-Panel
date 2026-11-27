@@ -5,6 +5,7 @@ import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { apiKeyOf } from "./apikey";
 import { getDb, schema } from "./db";
+import { templateSleepCapable } from "./spec";
 
 type UserRow = typeof schema.users.$inferSelect;
 
@@ -47,6 +48,8 @@ export async function fetchServerByUuid(uuid: string): Promise<ServerBundle | nu
   const [b] = await fetchServers(eq(schema.servers.uuid, uuid));
   return b ?? null;
 }
+
+export const sleepOf = (s: ServerBundle["server"]) => ({ enabled: s.sleepEnabled, idleMinutes: s.sleepIdleMinutes });
 
 export function limitsOf(s: ServerBundle["server"]) {
   return { cpuPct: s.cpuPct, ramMb: s.ramMb, swapMb: s.swapMb, diskMb: s.diskMb };
@@ -97,6 +100,7 @@ export function toDetail(
     })),
     node: { id: b.node.id, name: b.node.name, fqdn: b.node.fqdn },
     sftp: { host: b.node.fqdn, port: b.node.sftpPort, username: sftpUsername(viewer.name, viewer.discordId, b.server.uuid) },
+    sleep: { supported: templateSleepCapable(b.template), enabled: b.server.sleepEnabled, idleMinutes: b.server.sleepIdleMinutes },
     installedAt: live?.installedAt !== undefined ? live.installedAt : b.server.installedAt,
     createdAt: b.server.createdAt,
   };

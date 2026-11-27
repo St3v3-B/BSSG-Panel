@@ -2,7 +2,7 @@
  * Template + servervariabelen + limieten + allocations → ServerSpec voor de daemon.
  * `{{VAR}}` laat het panel staan; de daemon vervangt die (startup en config_files).
  */
-import type { DaemonServerSpec, Limits } from "@panel/api";
+import { parseTemplate, type DaemonServerSpec, type Limits } from "@panel/api";
 import type { schema } from "./db";
 
 type TemplateRow = typeof schema.templates.$inferSelect;
@@ -22,6 +22,34 @@ export interface SpecInput {
   allocations: SpecAllocation[];
   startOnInstall?: boolean;
   skipInstall?: boolean;
+  /** Slaapstand van de server (servers.sleep_enabled / sleep_idle_minutes). */
+  sleep?: { enabled: boolean; idleMinutes: number };
+}
+
+const sleepCache = new Map<string, boolean>();
+/**
+ * sleep_capable uit de template. De templates-tabel heeft er (nog) geen kolom voor, dus uit de
+ * opgeslagen YAML (gecachet per template-id + versie).
+ */
+export function templateSleepCapable(t: Pick<TemplateRow, "id" | "version" | "sourceYaml" | "type">): boolean {
+  if (t.type !== "game") return false;
+  const k = `${t.id}:${t.version}`;
+  let v = sleepCache.get(k);
+  if (v === undefined) {
+    const r = parseTemplate(t.sourceYaml);
+    v = r.ok && r.spec.sleep_capable === true;
+    sleepCache.set(k, v);
+  }
+  return v;
+}
+
+export const SLEEP_MOTD = "Server slaapt - verbind om hem te starten";
+export const SLEEP_KICK = "De server wordt gestart, verbind over een minuut opnieuw.";
+
+/** Spec-veld `sleep`: alleen als aan én de template het ondersteunt. */
+export function sleepSpec(t: Parameters<typeof templateSleepCapable>[0], sleep?: SpecInput["sleep"]): DaemonServerSpec["sleep"] {
+  if (!sleep?.enabled || !templateSleepCapable(t)) return null;
+  return { idle_minutes: sleep.idleMinutes, motd: SLEEP_MOTD, kick_message: SLEEP_KICK };
 }
 
 /** Waarden per variabele: opgeslagen waarde, anders de default uit de template. */
@@ -76,5 +104,6 @@ export function buildServerSpec(i: SpecInput): DaemonServerSpec {
     config_files: t.configFiles.map((c) => ({ path: c.path, format: c.format, set: { ...c.set } })),
     start_on_install: i.startOnInstall ?? false,
     skip_install: i.skipInstall ?? false,
+    sleep: sleepSpec(t, i.sleep),
   };
 }
