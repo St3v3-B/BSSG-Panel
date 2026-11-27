@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-label="BSSG Panel: one self-hosted control panel for Minecraft servers and websites">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b0f1e"/><stop offset=".55" stop-color="#17123a"/><stop offset="1" stop-color="#0a2f3f"/></linearGradient>
+<radialGradient id="glow1" cx=".18" cy=".2" r=".6"><stop offset="0" stop-color="#7c5cff" stop-opacity=".55"/><stop offset="1" stop-color="#7c5cff" stop-opacity="0"/></radialGradient>
+<radialGradient id="glow2" cx=".92" cy=".95" r=".55"><stop offset="0" stop-color="#22d3ee" stop-opacity=".40"/><stop offset="1" stop-color="#22d3ee" stop-opacity="0"/></radialGradient>
+<linearGradient id="g" x1="12" y1="8" x2="52" y2="28" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#a99bff"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
+<linearGradient id="t" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#c9c0ff"/></linearGradient>
+<pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#ffffff" stroke-opacity=".045"/></pattern>
+</defs>
+<style>text{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif}</style>
+<rect width="1280" height="320" fill="url(#bg)"/><rect width="1280" height="320" fill="url(#grid)"/><rect width="1280" height="320" fill="url(#glow1)"/><rect width="1280" height="320" fill="url(#glow2)"/>
+<g transform="translate(70,70) scale(2.9)">
+  <path d="M12 49v-7l20-10 20 10v7L32 59z" fill="none"/>
+  <path d="M12 42l20 10v7L12 49z" fill="#6a4de8" stroke="#6a4de8" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M52 42L32 52v7l20-10z" fill="#5238c4" stroke="#5238c4" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M32 32l20 10-20 10-20-10z" fill="#8f7bff" stroke="#8f7bff" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M12 37v-7l20-10 20 10v7L32 47z" fill="none"/>
+  <path d="M12 30l20 10v7L12 37z" fill="#7c5cff" stroke="#7c5cff" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M52 30L32 40v7l20-10z" fill="#5f43d8" stroke="#5f43d8" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M32 20l20 10-20 10-20-10z" fill="#a496ff" stroke="#a496ff" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M12 25v-7l20-10 20 10v7L32 35z" fill="none"/>
+  <path d="M12 18l20 10v7L12 25z" fill="#7c5cff" stroke="#7c5cff" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M52 18L32 28v7l20-10z" fill="#5a3fd0" stroke="#5a3fd0" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M32 8l20 10-20 10-20-10z" fill="url(#g)" stroke="url(#g)" stroke-width="2" stroke-linejoin="round"/></g>
+<text x="290" y="160" font-size="86" font-weight="800" letter-spacing="-2" fill="url(#t)">BSSG <tspan fill="#a496ff" font-weight="500">Panel</tspan></text>
+<text x="290" y="205" font-size="26" fill="#b9bfd6">One self-hosted control panel for Minecraft servers <tspan fill="#22d3ee" font-weight="600">and</tspan> websites.</text>
+<g transform="translate(290,245)"><rect width="119" height="34" rx="17" fill="#ffffff" fill-opacity=".07" stroke="#ffffff" stroke-opacity=".16"/><text x="59" y="22.5" text-anchor="middle" font-size="15" font-weight="600" fill="#d9d4ff">Minecraft</text></g><g transform="translate(421,245)"><rect width="109" height="34" rx="17" fill="#ffffff" fill-opacity=".07" stroke="#ffffff" stroke-opacity=".16"/><text x="55" y="22.5" text-anchor="middle" font-size="15" font-weight="600" fill="#d9d4ff">Websites</text></g><g transform="translate(542,245)"><rect width="203" height="34" rx="17" fill="#ffffff" fill-opacity=".07" stroke="#ffffff" stroke-opacity=".16"/><text x="102" y="22.5" text-anchor="middle" font-size="15" font-weight="600" fill="#d9d4ff">Velocity + Bedrock</text></g><g transform="translate(757,245)"><rect width="128" height="34" rx="17" fill="#ffffff" fill-opacity=".07" stroke="#ffffff" stroke-opacity=".16"/><text x="64" y="22.5" text-anchor="middle" font-size="15" font-weight="600" fill="#d9d4ff">S3 backups</text></g><g transform="translate(897,245)"><rect width="128" height="34" rx="17" fill="#ffffff" fill-opacity=".07" stroke="#ffffff" stroke-opacity=".16"/><text x="64" y="22.5" text-anchor="middle" font-size="15" font-weight="600" fill="#d9d4ff">Multi-node</text></g><g transform="translate(1037,245)"><rect width="156" height="34" rx="17" fill="#ffffff" fill-opacity=".07" stroke="#ffffff" stroke-opacity=".16"/><text x="78" y="22.5" text-anchor="middle" font-size="15" font-weight="600" fill="#d9d4ff">Discord + 2FA</text></g>
+</svg>
