@@ -94,6 +94,22 @@ export const contract = {
     /** Eigenaar of admin. Slaapstand: stoppen na idleMinutes zonder spelers, starten bij een verbindingspoging. */
     updateSleep: mutation("user", server.extend({ enabled: z.boolean(), idleMinutes: z.number().int().min(1).max(1440) }), s.Ok),
     activity: query("user", server.extend(s.PageInput.shape), s.page(s.ActivityEntry)),
+    /** Proxy-server (Velocity), eigenaar of admin: eigen game-servers (admin: alle) op dezelfde node die als backend kunnen. */
+    networkCandidates: query("user", server, z.array(s.NetworkCandidate)),
+    /**
+     * Proxy-server, eigenaar of admin. Zet het netwerk in één keer goed: forwarding-secret, velocity.toml
+     * (`[servers]`, `try`, modern forwarding) en VELOCITY_FORWARDING/VELOCITY_SECRET op de backends
+     * (verwijderde leden worden teruggezet), en herstart de betrokken servers als `restart`. `members`
+     * op volgorde van `try`; precies één `isDefault` (komt vooraan), leeg = netwerk leegmaken.
+     */
+    updateNetwork: mutation(
+      "user",
+      server.extend({
+        members: z.array(z.object({ serverUuid: s.Uuid, name: s.NetworkName, isDefault: z.boolean() })).max(50),
+        restart: z.boolean().default(true),
+      }),
+      s.NetworkUpdateResult,
+    ),
   },
 
   files: {

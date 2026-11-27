@@ -1,0 +1,79 @@
+/** Minecraft-netwerk: proxy (Velocity) met backends. Zie routers/network.ts voor de procedures. */
+import { isBackendTemplate, isProxyTemplate, suggestBackendName, type NetworkMember, type ServerNetwork } from "@panel/api";
+import { and, asc, eq, inArray } from "drizzle-orm";
+import { getDb, schema } from "./db";
+import { nodeIp } from "./routers/domains";
+import { fetchServers, type ServerBundle } from "./servers-data";
+
+export const FORWARDING_VAR = "VELOCITY_FORWARDING";
+export const SECRET_VAR = "VELOCITY_SECRET";
+export const PROXY_SECRET_VAR = "VELOCITY_FORWARDING_SECRET";
+
+export const isProxy = (b: ServerBundle) => b.server.type === "game" && isProxyTemplate(b.template.slug);
+/** Backend = game-server met een bekende backend-template die de forwarding-variabelen kent. */
+export const isBackend = (b: ServerBundle) =>
+  b.server.type === "game" && isBackendTemplate(b.template.slug) && [FORWARDING_VAR, SECRET_VAR].every((k) => b.template.variables.some((v) => v.key === k));
+
+/** Primaire allocation als "ip:poort"; 0.0.0.0 wordt het publieke IP van de node (null als dat onbekend is). */
+export async function allocationAddress(b: ServerBundle): Promise<string | null> {
+  const a = b.allocations[0];
+  if (!a) return null;
+  if (a.ip !== "0.0.0.0") return `${a.ip}:${a.port}`;
+  try {
+    return `${await nodeIp(b.node)}:${a.port}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Unieke, geldige netwerknaam per server uit de servernaam. */
+export function suggestNames(servers: Array<{ uuid: string; name: string }>): Map<string, string> {
+  const used = new Set<string>();
+  const out = new Map<string, string>();
+  for (const s of servers) {
+    const base = suggestBackendName(s.name).slice(0, 28);
+    let n = base;
+    for (let i = 2; used.has(n); i++) n = `${base}-${i}`;
+    used.add(n);
+    out.set(s.uuid, n);
+  }
+  return out;
+}
+
+const NONE: ServerNetwork = { role: "none", members: [], proxy: null, connectAddress: null };
+
+/** Adres voor spelers: het minecraft-domein van de proxy, anders de allocation. */
+async function connectAddress(b: ServerBundle): Promise<string | null> {
+  const [d] = await getDb()
+    .select({ hostname: schema.domains.hostname })
+    .from(schema.domains)
+    .where(and(eq(schema.domains.serverId, b.server.id), eq(schema.domains.protocol, "minecraft")))
+    .orderBy(asc(schema.domains.id));
+  return d?.hostname ?? (await allocationAddress(b));
+}
+
+/** Leden van een proxy, op volgorde van `try`, met hun bundels. */
+export async function proxyMembers(proxyId: number) {
+  const rows = await getDb().select().from(schema.networkMembers).where(eq(schema.networkMembers.proxyServerId, proxyId)).orderBy(asc(schema.networkMembers.position));
+  const bundles = rows.length ? await fetchServers(inArray(schema.servers.id, rows.map((r) => r.backendServerId))) : [];
+  return rows.flatMap((m) => {
+    const b = bundles.find((x) => x.server.id === m.backendServerId);
+    return b ? [{ m, b }] : [];
+  });
+}
+
+export async function serverNetwork(b: ServerBundle): Promise<ServerNetwork> {
+  if (isProxy(b)) {
+    const members: NetworkMember[] = [];
+    for (const { m, b: bb } of await proxyMembers(b.server.id)) {
+      members.push({ serverUuid: bb.server.uuid, serverName: bb.server.name, name: m.name, isDefault: m.position === 0, address: await allocationAddress(bb) });
+    }
+    return { role: "proxy", members, proxy: null, connectAddress: await connectAddress(b) };
+  }
+  const [p] = await getDb()
+    .select({ uuid: schema.servers.uuid, name: schema.servers.name })
+    .from(schema.networkMembers)
+    .innerJoin(schema.servers, eq(schema.servers.id, schema.networkMembers.proxyServerId))
+    .where(eq(schema.networkMembers.backendServerId, b.server.id));
+  return p ? { role: "backend", members: [], proxy: p, connectAddress: null } : NONE;
+}

@@ -1,5 +1,5 @@
 /** Servers ophalen met alles wat ServerSummary/ServerDetail nodig heeft, plus rechten. */
-import { ALL_PERMISSIONS, type Ctx, type Permission, type ServerDetail, type ServerStatus, type ServerSummary, type UserPublic } from "@panel/api";
+import { ALL_PERMISSIONS, type Ctx, type Permission, type ServerDetail, type ServerNetwork, type ServerStatus, type ServerSummary, type UserPublic } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -85,6 +85,7 @@ export function toDetail(
   permissions: Permission[],
   storedVariables: Record<string, string>,
   live?: { status?: ServerStatus; installedAt?: Date | null },
+  network?: ServerNetwork,
 ): ServerDetail {
   return {
     ...toSummary(b, viewer.id, live?.status),
@@ -103,6 +104,7 @@ export function toDetail(
     sftp: { host: b.node.fqdn, port: b.node.sftpPort, username: sftpUsername(viewer.name, viewer.discordId, b.server.uuid) },
     domainsAllowed: b.server.type === "web" || b.server.domainsAllowed,
     sleep: { supported: templateSleepCapable(b.template), enabled: b.server.sleepEnabled, idleMinutes: b.server.sleepIdleMinutes },
+    network: network ?? { role: "none", members: [], proxy: null, connectAddress: null },
     installedAt: live?.installedAt !== undefined ? live.installedAt : b.server.installedAt,
     createdAt: b.server.createdAt,
   };

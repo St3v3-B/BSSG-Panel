@@ -8,6 +8,7 @@ import { getDb, schema } from "../db";
 import { getEnv } from "../env";
 import { signBrowserJwt } from "../lib/jwt";
 import { buildServerSpec, templateSleepCapable, validateVariables } from "../spec";
+import { serverNetwork } from "../network";
 import { forbidApiKey } from "../apikey";
 import { fetchServers, limitsOf, sleepOf, requireServer, isSuspendedFor, serverVariables, toDetail, toSummary, type ServerBundle } from "../servers-data";
 
@@ -85,12 +86,13 @@ export const servers: Pick<
 
   get: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "any");
-    const [live, vars, [viewer]] = await Promise.all([
+    const [live, vars, [viewer], net] = await Promise.all([
       liveState(a.bundle),
       serverVariables(a.bundle.server.id),
       getDb().select().from(schema.users).where(eq(schema.users.id, ctx.session!.userId)),
+      serverNetwork(a.bundle),
     ]);
-    return toDetail(a.bundle, { id: viewer!.id, name: viewer!.name, discordId: viewer!.discordId }, a.permissions, vars, live);
+    return toDetail(a.bundle, { id: viewer!.id, name: viewer!.name, discordId: viewer!.discordId }, a.permissions, vars, live, net);
   },
 
   stats: async ({ input, ctx }) => {
