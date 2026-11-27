@@ -9,7 +9,7 @@ import { mockExternal, type Handler } from "./test/external-fake";
 import { OWNER, useHarness, type TestUser } from "./test/harness";
 
 const tpl = (n: string) => readFileSync(join(__dirname, "../../../templates/game", n), "utf8");
-const h = useHarness({ env: { NODE_PUBLIC_IP: "203.0.113.10" }, templates: { "game/paper.yaml": tpl("paper.yaml"), "game/velocity.yaml": tpl("velocity.yaml"), "game/fabric.yaml": tpl("fabric.yaml") } });
+const h = useHarness({ env: { NODE_PUBLIC_IP: "203.0.113.10" }, templates: { "game/paper.yaml": tpl("paper.yaml"), "game/velocity.yaml": tpl("velocity.yaml"), "game/fabric.yaml": tpl("fabric.yaml"), "game/java-generic.yaml": tpl("java-generic.yaml") } });
 const limits = { cpuPct: 100, ramMb: 1024, swapMb: 0, diskMb: 1024 };
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
@@ -28,7 +28,7 @@ const world: Handler = (url) => {
 };
 let ext: ReturnType<typeof mockExternal>;
 let admin: TestUser, alice: TestUser, bob: TestUser;
-let paper = "", proxy = "", backend = "", fab = "";
+let paper = "", proxy = "", backend = "", fab = "", generic = "";
 const files = (u: string) => h.daemon.fs(u).files;
 const create = async (name: string, owner: TestUser, slug: string, port: number, extra: number[] = []) => {
   const a = await h.allocation(port);
@@ -45,6 +45,7 @@ beforeAll(async () => {
   proxy = await create("Proxy", alice, "velocity", 36200);
   backend = await create("Backend", alice, "paper", 36202);
   fab = await create("Fab", alice, "fabric", 36203);
+  generic = await create("Generic", alice, "java-generic", 36204);
   await h.allocation(19132);
   await h.allocation(36210);
 });
@@ -60,9 +61,9 @@ describe("Bedrock (Geyser)", () => {
     expect(c).toContain("port: 25565");
   });
 
-  it("niet ondersteund (Fabric) en geen toegang voor vreemden", async () => {
-    expect(await alice.api.servers.bedrock({ uuid: fab })).toMatchObject({ supported: false, enabled: false });
-    await expect(alice.api.servers.setBedrock({ uuid: fab, enabled: true })).rejects.toThrow(/BEDROCK_NOT_SUPPORTED/);
+  it("niet ondersteund (generiek Java) en geen toegang voor vreemden", async () => {
+    expect(await alice.api.servers.bedrock({ uuid: generic })).toMatchObject({ supported: false, enabled: false });
+    await expect(alice.api.servers.setBedrock({ uuid: generic, enabled: true })).rejects.toThrow(/BEDROCK_NOT_SUPPORTED/);
     await expect(bob.api.servers.setBedrock({ uuid: paper, enabled: true })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 

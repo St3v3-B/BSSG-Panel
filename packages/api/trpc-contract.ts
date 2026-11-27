@@ -180,11 +180,14 @@ export const contract = {
      * (`[servers]`, `try`, modern forwarding) en VELOCITY_FORWARDING/VELOCITY_SECRET op de backends
      * (verwijderde leden worden teruggezet), en herstart de betrokken servers als `restart`. `members`
      * op volgorde van `try`; precies één `isDefault` (komt vooraan), leeg = netwerk leegmaken.
+     * `forcedHosts`: `[forced-hosts]` in velocity.toml (uniek, alleen leden als backend; `try` blijft de standaard).
+     * Weggelaten = de bestaande houden (behalve die van verwijderde leden).
      */
     updateNetwork: mutation(
       "user",
       server.extend({
         members: z.array(z.object({ serverUuid: s.Uuid, name: s.NetworkName, isDefault: z.boolean() })).max(50),
+        forcedHosts: z.array(s.ForcedHost).max(100).optional(),
         restart: z.boolean().default(true),
       }),
       s.NetworkUpdateResult,

@@ -36,8 +36,9 @@ describe("transfer van een Velocity-backend", () => {
     const proxy = await mk("Proxy", "velocity", 34600);
     const lobby = await mk("Lobby", "paper", 34601);
     h.daemon.fs(proxy).files.set("/velocity.toml", TOML);
-    await alice.api.servers.updateNetwork({ uuid: proxy, members: [{ serverUuid: lobby, name: "lobby", isDefault: true }], restart: false });
+    await alice.api.servers.updateNetwork({ uuid: proxy, members: [{ serverUuid: lobby, name: "lobby", isDefault: true }], forcedHosts: [{ hostname: "lobby.mc.test", serverUuid: lobby }], restart: false });
     expect(h.daemon.fs(proxy).files.get("/velocity.toml")).toContain(`lobby = "panel-${lobby}:34601"`);
+    expect(h.daemon.fs(proxy).files.get("/velocity.toml")).toContain('[forced-hosts]\n"lobby.mc.test" = ["lobby"]');
     expect(h.daemon.proxyNetworks.get(proxy)).toEqual([lobby]);
 
     h.daemon.servers.get(lobby)!.state = "offline";
@@ -45,6 +46,9 @@ describe("transfer van een Velocity-backend", () => {
     await admin.api.admin.servers.transfer({ uuid: lobby, nodeId: node2 });
     const toml = h.daemon.fs(proxy).files.get("/velocity.toml")!;
     expect(toml).toContain('lobby = "10.9.8.7:35001"');
+    // forced host blijft naar dezelfde backend wijzen
+    expect(toml).toContain('[forced-hosts]\n"lobby.mc.test" = ["lobby"]');
+    expect((await alice.api.servers.get({ uuid: proxy })).network.forcedHosts).toEqual([{ hostname: "lobby.mc.test", serverUuid: lobby }]);
     expect(toml).not.toContain(`panel-${lobby}`);
     // niet meer op deze node: van het gedeelde netwerk af (adres via de host op de nieuwe node)
     expect(h.daemon.proxyNetworks.get(proxy)).toBeUndefined();

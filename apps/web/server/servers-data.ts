@@ -126,7 +126,7 @@ export function toDetail(
     sftp: { host: b.node.fqdn, port: b.node.sftpPort, username: sftpUsername(viewer.name, viewer.discordId, b.server.uuid) },
     domainsAllowed: b.server.type === "web" || (b.server.domainsAllowed && b.node.supportsDomains),
     sleep: { supported: templateSleepCapable(b.template), enabled: b.server.sleepEnabled, idleMinutes: b.server.sleepIdleMinutes },
-    network: network ?? { role: "none", members: [], proxy: null, connectAddress: null },
+    network: network ?? { role: "none", members: [], proxy: null, connectAddress: null, forcedHosts: [], forcedHostSuggestions: [] },
     installedAt: live?.installedAt !== undefined ? live.installedAt : b.server.installedAt,
     createdAt: b.server.createdAt,
   };

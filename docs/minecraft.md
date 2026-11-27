@@ -44,13 +44,20 @@ backends. When you add them the panel sets everything up in one go:
 Removing a backend from the network switches its forwarding off again. Fabric backends use FabricProxy-Lite. Players connect to the proxy's address.
 When a server moves to another node, the proxy's config is updated, and the proxy needs a restart.
 
+**Forced hosts**: in the same tab you can send players to a specific backend based on the address they type, for example
+`survival.example.com` to the survival server (written to `[forced-hosts]` in `velocity.toml`; everyone else follows `try`). Minecraft
+domains attached to the proxy or its backends are offered as suggestions. Point each of these domains at the proxy (A record to the node,
+SRV to the proxy port); for a domain attached to a backend the panel's SRV check uses the proxy port automatically. The panel owns
+`[forced-hosts]`: entries you add there by hand are replaced when you save the network.
+
 Manual setup, if you prefer: set `VELOCITY_FORWARDING=true` and `VELOCITY_SECRET=<secret>` on each Paper server and add the backends to
 `velocity.toml` yourself. See also [`deploy/README.md`](../deploy/README.md).
 
 ## Bedrock players (Geyser and Floodgate)
 
-The **Bedrock** tab on Paper, Folia and Velocity servers lets Bedrock Edition players join. The panel installs Geyser, writes its config and, on a Velocity
-network, installs Floodgate and distributes its key to the backends. Bedrock uses a UDP port, so you need a free allocation for it.
+The **Bedrock** tab on Paper, Folia, Fabric and Velocity servers lets Bedrock Edition players join. The panel installs Geyser, writes its config and, on a Velocity
+network, installs Floodgate and distributes its key to the backends. On Fabric it installs Geyser-Fabric and Floodgate-Fabric from Modrinth for the
+server's Minecraft version (plus Fabric API when it is missing; it stays when you turn Bedrock off); Fabric backends behind a proxy get Floodgate-Fabric. Bedrock uses a UDP port, so you need a free allocation for it.
 Geyser can share the UDP port of the Java port (RakNet) or use its own, depending on the transport you choose.
 
 ## Domains for game servers

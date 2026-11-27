@@ -2,6 +2,7 @@
 import { TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import type { ServerDetail } from "@panel/api";
+import { bedrockPlatform } from "@panel/api/network";
 import { trpc } from "@/lib/trpc";
 import { CopyButton } from "@/app/_components/copy-button";
 import { QueryError } from "@/app/_components/query-error";
@@ -54,7 +55,7 @@ export function BedrockManager({ server }: { server: ServerDetail }) {
               <CardTitle className="text-base">{b.title}</CardTitle>
               <Badge variant={s.enabled ? "default" : "outline"} data-testid="bedrock-state">{s.enabled ? b.on : b.off}</Badge>
             </div>
-            <CardDescription>{b.what}</CardDescription>
+            <CardDescription>{bedrockPlatform(server.templateName.toLowerCase()) === "fabric" ? b.whatFabric : b.what}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {s.enabled && address && (

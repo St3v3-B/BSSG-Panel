@@ -4,7 +4,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import { nodeIp } from "./routers/domains";
 import { DaemonHttpError, call, daemonFor } from "./daemon";
-import { applyNetworkToml } from "./lib/velocity-toml";
+import { applyNetworkToml, type TomlForcedHost } from "./lib/velocity-toml";
 import { fetchServers, type ServerBundle } from "./servers-data";
 
 export const FORWARDING_VAR = "VELOCITY_FORWARDING";
@@ -42,7 +42,7 @@ export function suggestNames(servers: Array<{ uuid: string; name: string }>): Ma
   return out;
 }
 
-const NONE: ServerNetwork = { role: "none", members: [], proxy: null, connectAddress: null };
+const NONE: ServerNetwork = { role: "none", members: [], proxy: null, connectAddress: null, forcedHosts: [], forcedHostSuggestions: [] };
 
 /** Adres voor spelers: het minecraft-domein van de proxy, anders de allocation. */
 async function connectAddress(b: ServerBundle): Promise<string | null> {
@@ -64,20 +64,52 @@ export async function proxyMembers(proxyId: number) {
   });
 }
 
+/** Forced hosts van een proxy (op hostnaam), met de uuid van de backend. */
+export async function forcedHostsOf(proxyId: number): Promise<Array<{ hostname: string; serverUuid: string; backendId: number }>> {
+  return getDb()
+    .select({ hostname: schema.networkForcedHosts.hostname, serverUuid: schema.servers.uuid, backendId: schema.networkForcedHosts.backendServerId })
+    .from(schema.networkForcedHosts)
+    .innerJoin(schema.servers, eq(schema.servers.id, schema.networkForcedHosts.backendServerId))
+    .where(eq(schema.networkForcedHosts.proxyServerId, proxyId))
+    .orderBy(asc(schema.networkForcedHosts.hostname));
+}
+
+/** `[forced-hosts]` voor velocity.toml: hostnaam → netwerknaam van de backend (alleen huidige leden). */
+export function tomlForcedHosts(rows: Array<{ hostname: string; backendId: number }>, members: Array<{ backendId: number; name: string }>): TomlForcedHost[] {
+  return rows.flatMap((r) => {
+    const m = members.find((x) => x.backendId === r.backendId);
+    return m ? [{ hostname: r.hostname, servers: [m.name] }] : [];
+  });
+}
+
+/** Minecraft-domeinen van de proxy en zijn leden: suggesties voor forced hosts. */
+async function forcedHostSuggestions(proxy: ServerBundle, members: ServerBundle[]) {
+  const ids = [proxy.server.id, ...members.map((b) => b.server.id)];
+  const rows = await getDb()
+    .select({ hostname: schema.domains.hostname, serverId: schema.domains.serverId })
+    .from(schema.domains)
+    .where(and(inArray(schema.domains.serverId, ids), eq(schema.domains.protocol, "minecraft")))
+    .orderBy(asc(schema.domains.hostname));
+  const uuidOf = new Map([proxy, ...members].map((b) => [b.server.id, b.server.uuid]));
+  return rows.map((r) => ({ hostname: r.hostname, serverUuid: uuidOf.get(r.serverId)! }));
+}
+
 export async function serverNetwork(b: ServerBundle): Promise<ServerNetwork> {
   if (isProxy(b)) {
     const members: NetworkMember[] = [];
-    for (const { m, b: bb } of await proxyMembers(b.server.id)) {
+    const list = await proxyMembers(b.server.id);
+    for (const { m, b: bb } of list) {
       members.push({ serverUuid: bb.server.uuid, serverName: bb.server.name, name: m.name, isDefault: m.position === 0, address: await allocationAddress(bb) });
     }
-    return { role: "proxy", members, proxy: null, connectAddress: await connectAddress(b) };
+    const forcedHosts = (await forcedHostsOf(b.server.id)).map(({ hostname, serverUuid }) => ({ hostname, serverUuid }));
+    return { role: "proxy", members, proxy: null, connectAddress: await connectAddress(b), forcedHosts, forcedHostSuggestions: await forcedHostSuggestions(b, list.map((x) => x.b)) };
   }
   const [p] = await getDb()
     .select({ uuid: schema.servers.uuid, name: schema.servers.name })
     .from(schema.networkMembers)
     .innerJoin(schema.servers, eq(schema.servers.id, schema.networkMembers.proxyServerId))
     .where(eq(schema.networkMembers.backendServerId, b.server.id));
-  return p ? { role: "backend", members: [], proxy: p, connectAddress: null } : NONE;
+  return p ? { role: "backend", members: [], proxy: p, connectAddress: null, forcedHosts: [], forcedHostSuggestions: [] } : NONE;
 }
 
 /** Adres van een backend op het gedeelde Docker-netwerk van de proxy (containernaam + primaire poort). */
@@ -111,6 +143,7 @@ export async function memberAddresses(proxy: ServerBundle, members: ServerBundle
  */
 export async function rewriteProxyToml(proxy: ServerBundle): Promise<boolean> {
   const members = await proxyMembers(proxy.server.id);
+  const forced = tomlForcedHosts(await forcedHostsOf(proxy.server.id), members.map((x) => ({ backendId: x.b.server.id, name: x.m.name })));
   const addrs = await memberAddresses(proxy, members.map((x) => x.b));
   const list: Array<{ name: string; address: string }> = [];
   for (const { m, b } of members) {
@@ -126,7 +159,7 @@ export async function rewriteProxyToml(proxy: ServerBundle): Promise<boolean> {
     if (e instanceof DaemonHttpError && e.status === 404) return false;
     throw e;
   }
-  await call(() => d.writeFile(proxy.server.uuid, "/velocity.toml", applyNetworkToml(toml, list)));
+  await call(() => d.writeFile(proxy.server.uuid, "/velocity.toml", applyNetworkToml(toml, list, forced)));
   // Draait de proxy, dan live herladen (geen herstart: spelers op andere servers blijven verbonden).
   try {
     if ((await d.getServer(proxy.server.uuid, 2000)).state === "online") await d.sendCommands(proxy.server.uuid, ["velocity reload"]);
