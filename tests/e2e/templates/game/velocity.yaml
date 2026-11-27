@@ -1,0 +1,36 @@
+schema: 1
+slug: velocity
+name: Velocity
+description: Alpine-nep met slug velocity (Network-tab). Alleen e2e.
+type: game
+version: 1
+image: alpine:3.20
+startup: 'echo ready; while read -r c; do [ "$c" = stop ] && exit 0; sh -c "$c"; done'
+stop:
+  type: command
+  value: stop
+ready_pattern: "^ready$"
+variables:
+  - key: VELOCITY_FORWARDING_SECRET
+    name: Forwarding secret
+    description: e2e
+    default: ""
+    user_editable: true
+    pattern: "^([A-Za-z0-9_-]{12,128})?$"
+install:
+  image: alpine:3.20
+  script: |
+    #!/bin/sh
+    cat > /home/container/velocity.toml <<'EOT'
+    config-version = "2.7"
+    bind = "0.0.0.0:25577"
+    player-info-forwarding-mode = "none"
+
+    [servers]
+    lobby = "127.0.0.1:25566"
+    try = ["lobby"]
+
+    [forced-hosts]
+    EOT
+    echo s3cretsecretsecret > /home/container/forwarding.secret
+config_files: []

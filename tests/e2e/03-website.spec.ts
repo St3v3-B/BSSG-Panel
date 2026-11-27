@@ -27,7 +27,7 @@ test("Files: create, edit and save a file; upload a file", async ({ page, contex
   await expect(editor).toBeVisible();
   await expect(editor.locator(".monaco-editor")).toBeVisible({ timeout: 60_000 });
   await editor.locator(".monaco-editor").click();
-  await page.keyboard.type("<?php echo 'e2e-ok';");
+  await page.keyboard.type("<?php echo 'e2e-ok';", { delay: 30 });
   await expect(editor.getByText("unsaved")).toBeVisible();
   await page.getByTestId("file-save").click();
   await expect(editor.getByText("saved", { exact: true })).toBeVisible();

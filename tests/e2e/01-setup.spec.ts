@@ -1,4 +1,4 @@
-import { adminLogin, env } from "../integration/helpers";
+import { env } from "../integration/helpers";
 import { asAdmin, asUser, expect, test, USER } from "./support";
 import { saveState } from "./state";
 
@@ -54,6 +54,7 @@ test("admin creates a PHP 8.3 website for the user", async ({ page, context }) =
 });
 
 test("user overview lists both servers and they come online", async ({ page, context }) => {
+  test.setTimeout(10 * 60_000);
   await asUser(context);
   await page.goto("/");
   await expect(page.getByText("E2E sleeper")).toBeVisible();

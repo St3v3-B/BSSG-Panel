@@ -23,7 +23,7 @@ export default async function globalSetup() {
     await ctx.close();
   };
   await visit(async () => {}, ["/login"]);
-  await visit((c) => asUser(c), ["/", `/servers/${id}`, `/servers/${id}/files`, `/servers/${id}/domains`, `/servers/${id}/databases`, `/servers/${id}/settings`]);
-  await visit((c) => asAdmin(c), ["/admin", "/admin/servers", "/admin/servers/new", `/admin/servers/${id}`, "/admin/users", "/admin/settings"]);
+  await visit((c) => asUser(c), ["/", `/servers/${id}`, `/servers/${id}/files`, `/servers/${id}/domains`, `/servers/${id}/databases`, `/servers/${id}/settings`, `/servers/${id}/backups`, `/servers/${id}/schedules`, `/servers/${id}/content`, `/servers/${id}/network`, `/servers/${id}/bedrock`, `/servers/${id}/apps`, `/servers/${id}/users`, "/account", "/servers/new"]);
+  await visit((c) => asAdmin(c), ["/admin", "/admin/servers", "/admin/servers/new", `/admin/servers/${id}`, "/admin/users", "/admin/settings", "/admin/nodes", "/admin/templates", "/admin/activity", "/admin/settings/database-hosts", "/admin/settings/dns-providers", "/admin/settings/backup-storage", "/admin/settings/image-updates"]);
   await browser.close();
 }
