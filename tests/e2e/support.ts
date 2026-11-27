@@ -20,7 +20,9 @@ export async function routeDaemon(page: Page) {
     const queue: Array<string | Buffer> = [];
     up.addEventListener("open", () => queue.splice(0).forEach((m) => up.send(m)));
     up.addEventListener("message", (e) => ws.send(typeof e.data === "string" ? e.data : Buffer.from(e.data as ArrayBuffer)));
-    up.addEventListener("close", (e) => ws.close({ code: e.code === 1005 ? 1000 : e.code, reason: e.reason }));
+    // Daemon onbereikbaar (bv. herstart): een mislukte handshake geeft alleen "error"; de pagina moet dan een close zien.
+    up.addEventListener("error", () => ws.close({ code: 1011, reason: "upstream unreachable" }));
+    up.addEventListener("close", (e) => ws.close({ code: e.code === 1005 ? 1000 : [1000, 1001, 1002, 1003, 1007, 1008, 1009, 1010, 1011].includes(e.code) || (e.code >= 3000 && e.code <= 4999) ? e.code : 1011, reason: e.reason }));
     ws.onMessage((m) => (up.readyState === WebSocket.OPEN ? up.send(m) : queue.push(m)));
     ws.onClose(() => up.close());
   });

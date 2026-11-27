@@ -7,7 +7,6 @@ import { login, waitFor } from "../integration/helpers";
 import { adminSession, asAdmin, asUser, expect, freePorts, startS3, test, USER } from "./support";
 import { need, readState, saveState } from "./state";
 
-test.describe.configure({ mode: "serial" });
 
 const QUOTA_USER = { id: "200000000000000020", name: "kwotum" };
 type Admin = Awaited<ReturnType<typeof adminSession>>;
@@ -22,7 +21,7 @@ async function mkServer(admin: Admin, name: string, templateName: RegExp, ownerI
     const a = (await admin.api.admin.allocations.list.query({ nodeId: node.id })).find((x) => x.port === port)!;
     allocationIds = [a.id];
   }
-  const s = await admin.api.admin.servers.create.mutate({ name, ownerId, nodeId: node.id, templateId: tpl.id, limits: { ramMb: 256, diskMb: 1024, cpuPct: 100 } as never, allocationIds, variables: {}, startOnInstall: true });
+  const s = await admin.api.admin.servers.create.mutate({ name, ownerId, nodeId: node.id, templateId: tpl.id, limits: { ramMb: 256, diskMb: 1024, cpuPct: 100, swapMb: 0 }, allocationIds, variables: {}, startOnInstall: true });
   return s.uuid;
 }
 
@@ -33,8 +32,8 @@ test.beforeAll(async () => {
   const me = (await login(USER.id, USER.name)).api;
   const userId = (await me.auth.me.query())!.user.id;
   const [p1, p2, p3] = await freePorts(3);
-  const paper = await mkServer(admin, "E2E paper", /^Paper \(e2e/, userId, p1);
-  const velocity = await mkServer(admin, "E2E velocity", /^Velocity \(e2e/, userId, p2);
+  const paper = await mkServer(admin, "E2E paper", /^Paper$/, userId, p1);
+  const velocity = await mkServer(admin, "E2E velocity", /^Velocity$/, userId, p2);
   // extra vrije poort (UDP voor Bedrock) op de node
   const node = (await admin.api.admin.nodes.list.query()).find((n) => n.isLocal)!;
   await admin.api.admin.allocations.create.mutate({ nodeId: node.id, ip: "127.0.0.1", ports: String(p3) });
@@ -61,9 +60,9 @@ test("quota user creates, sees and cannot exceed their own server quota", async 
   await expect(page).toHaveURL(/\/servers\/new/);
   await page.getByLabel("Name", { exact: true }).fill("Own sleeper");
   await page.getByLabel("Template").selectOption({ label: "IT sleeper (alleen integratietest)" });
-  await page.getByLabel("Memory (MB)").fill("256");
-  await page.getByLabel("Disk (MB)").fill("512");
-  await page.getByLabel("CPU (%)").fill("100");
+  await page.locator("#own-ram").fill("256");
+  await page.locator("#own-disk").fill("512");
+  await page.locator("#own-cpu").fill("100");
   await page.getByRole("button", { name: "Create server" }).click();
   await expect(page).toHaveURL(/\/servers\/[0-9a-f-]{36}/, { timeout: 30_000 });
   saveState({ quotaUser: page.url().match(/servers\/([0-9a-f-]{36})/)![1] });
@@ -80,6 +79,24 @@ test("quota user can change limits within quota and sees the settings cards", as
   await page.goto(`/servers/${need("quotaUser")}/settings`);
   await expect(page.getByRole("heading", { name: "Resources" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Delete server" })).toBeVisible();
+  const card = page.getByTestId("own-limits");
+  await card.locator("#limit-ram").fill("600"); // quota is 512
+  await expect(card.getByRole("button", { name: "Save" })).toBeDisabled();
+  await card.locator("#limit-ram").fill("384");
+  await card.getByRole("button", { name: "Save" }).click();
+  await expect(card.getByRole("button", { name: "Save" })).toBeDisabled();
+  await page.reload();
+  await expect(page.getByTestId("own-limits").locator("#limit-ram")).toHaveValue("384");
+});
+
+// BUG (docs/qa-report.md #1): OwnLimitsCard is remounted (key includes the limits) so "Limits saved." vanishes.
+test.fixme("quota user: 'Limits saved.' confirmation is shown after saving limits", async ({ page, context }) => {
+  await asUser(context, QUOTA_USER.id, QUOTA_USER.name);
+  await page.goto(`/servers/${need("quotaUser")}/settings`);
+  const card = page.getByTestId("own-limits");
+  await card.locator("#limit-ram").fill("320");
+  await card.getByRole("button", { name: "Save" }).click();
+  await expect(card.getByText("Limits saved.")).toBeVisible();
 });
 
 // ---------------------------------------------------------------- plugins
@@ -136,6 +153,7 @@ test("schedules: create a command schedule and run it now", async ({ page, conte
   await admin.api.servers.power.mutate({ uuid: need("paper"), action: "start" }).catch(() => {});
   await asUser(context);
   await page.goto(`/servers/${need("paper")}/schedules`);
+  await page.getByRole("button", { name: "Add schedule" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Say hi");
   await page.getByLabel("Action").selectOption({ label: "Send command" });
   await page.getByLabel("Command").fill("echo schedule-marker-7");
@@ -148,6 +166,7 @@ test("schedules: create a command schedule and run it now", async ({ page, conte
   await expect(row.getByText("Done.")).toBeVisible();
   await expect(row.getByText("Succeeded")).toBeVisible({ timeout: 15_000 });
   // invalid cron is refused in the form
+  await page.getByRole("button", { name: "Add schedule" }).click();
   await page.getByLabel("Name", { exact: true }).fill("Bad");
   await page.getByLabel("Time (cron)").fill("61 * * * *");
   await expect(page.getByText("Not a valid cron expression")).toBeVisible();
@@ -173,6 +192,26 @@ test("PHP settings: save, persist after reload, reject out-of-range memory", asy
   const api = (await login(USER.id, USER.name)).api;
   const ini = await api.files.read.query({ uuid: need("site"), path: "/php/00-panel.ini" });
   expect(ini.content).toMatch(/upload_max_filesize\s*=\s*48M/);
+});
+
+// ---------------------------------------------------------------- Bedrock
+
+test("bedrock tab: turn on (real GeyserMC download) and off", async ({ page, context }) => {
+  test.setTimeout(6 * 60_000);
+  await asUser(context);
+  await page.goto(`/servers/${need("paper")}`);
+  await page.getByRole("link", { name: "Bedrock" }).click();
+  await expect(page.getByTestId("bedrock-manager")).toBeVisible();
+  await expect(page.getByTestId("bedrock-state")).toHaveText("Off");
+  await page.getByRole("button", { name: "Turn on Bedrock" }).click();
+  const on = page.getByTestId("bedrock-state").filter({ hasText: "On" });
+  const err = page.getByTestId("bedrock-manager").locator(".text-destructive").first();
+  await expect(on.or(err)).toBeVisible({ timeout: 4 * 60_000 });
+  test.skip(!(await on.isVisible()), `Bedrock could not be turned on (probably no internet to download.geysermc.org): ${await err.textContent().catch(() => "")}`);
+  await expect(page.getByTestId("bedrock-port")).toBeVisible();
+  await expect(page.getByTestId("bedrock-firewall")).toBeVisible();
+  await page.getByRole("button", { name: "Turn off Bedrock" }).click();
+  await expect(page.getByTestId("bedrock-state")).toHaveText("Off", { timeout: 60_000 });
 });
 
 // ---------------------------------------------------------------- Network
@@ -201,26 +240,6 @@ test("network tab on a Velocity server: add Paper backend, save, velocity.toml u
   await expect(page.getByTestId("backend-notice").or(page.getByText(/behind the proxy/)).first()).toBeVisible({ timeout: 30_000 });
 });
 
-// ---------------------------------------------------------------- Bedrock
-
-test("bedrock tab: turn on (real GeyserMC download) and off", async ({ page, context }) => {
-  test.setTimeout(6 * 60_000);
-  await asUser(context);
-  await page.goto(`/servers/${need("paper")}`);
-  await page.getByRole("link", { name: "Bedrock" }).click();
-  await expect(page.getByTestId("bedrock-manager")).toBeVisible();
-  await expect(page.getByTestId("bedrock-state")).toHaveText("Off");
-  await page.getByRole("button", { name: "Turn on Bedrock" }).click();
-  const on = page.getByTestId("bedrock-state").filter({ hasText: "On" });
-  const err = page.getByTestId("bedrock-manager").locator(".text-destructive").first();
-  await expect(on.or(err)).toBeVisible({ timeout: 4 * 60_000 });
-  test.skip(!(await on.isVisible()), `Bedrock could not be turned on (probably no internet to download.geysermc.org): ${await err.textContent().catch(() => "")}`);
-  await expect(page.getByTestId("bedrock-port")).toBeVisible();
-  await expect(page.getByTestId("bedrock-firewall")).toBeVisible();
-  await page.getByRole("button", { name: "Turn off Bedrock" }).click();
-  await expect(page.getByTestId("bedrock-state")).toHaveText("Off", { timeout: 60_000 });
-});
-
 // ---------------------------------------------------------------- image updates
 
 test("image-update policy: change to Notify only, persists; admin page lists servers", async ({ page, context }) => {
@@ -230,7 +249,7 @@ test("image-update policy: change to Notify only, persists; admin page lists ser
   await expect(card).toBeVisible();
   await card.getByLabel("Policy").selectOption({ label: "Notify only" });
   await card.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(card.getByText("Image update settings saved.")).toBeVisible();
+  await expect(card.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
   await page.reload();
   await expect(page.getByTestId("image-update-card").getByLabel("Policy")).toHaveValue("notify");
   const ctx2 = await context.browser()!.newContext();
@@ -240,6 +259,16 @@ test("image-update policy: change to Notify only, persists; admin page lists ser
   await expect(p2.getByTestId("image-updates-admin")).toBeVisible();
   await expect(p2.getByTestId("image-row").filter({ hasText: "E2E paper" })).toContainText("Notify only");
   await ctx2.close();
+});
+
+// BUG (docs/qa-report.md #1): the card is remounted (key includes the policy) so the confirmation vanishes.
+test.fixme("image-update policy: shows 'Image update settings saved.' after saving", async ({ page, context }) => {
+  await asUser(context);
+  await page.goto(`/servers/${need("paper")}/settings`);
+  const card = page.getByTestId("image-update-card");
+  await card.getByLabel("Policy").selectOption({ label: "Off" });
+  await card.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(card.getByText("Image update settings saved.")).toBeVisible();
 });
 
 // ---------------------------------------------------------------- webhooks
@@ -252,7 +281,7 @@ test("account webhook card validates the URL", async ({ page, context }) => {
   await card.getByLabel("Discord webhook URL").fill("https://example.com/not-discord");
   await expect(card.getByText(/Not a Discord webhook URL/)).toBeVisible();
   await expect(card.getByRole("button", { name: "Save" })).toBeDisabled();
-  await card.getByLabel("Discord webhook URL").fill("https://discord.com/api/webhooks/123456789/abcdef_token");
+  await card.getByLabel("Discord webhook URL").fill("https://discord.com/api/webhooks/123456789/abcdefghij_klmnopqrstuvwxyz-0123");
   await expect(card.getByText(/Not a Discord webhook URL/)).toHaveCount(0);
   await card.getByRole("button", { name: "Save" }).click();
   await expect(card.getByText("Saved.")).toBeVisible();
@@ -272,6 +301,19 @@ test("server notifications card: auto-restart max is bounded 1-20", async ({ pag
   await card.getByLabel("Max restarts per 10 minutes").fill("99");
   await expect(card.getByText("Between 1 and 20")).toBeVisible();
   await expect(card.getByRole("button", { name: "Save" })).toBeDisabled();
+});
+
+test("quota user deletes their own server after typing its name; quota is freed", async ({ page, context }) => {
+  await asUser(context, QUOTA_USER.id, QUOTA_USER.name);
+  await page.goto(`/servers/${need("quotaUser")}/settings`);
+  const del = page.getByTestId("delete-own");
+  await expect(del.getByRole("button", { name: "Delete this server" })).toBeDisabled();
+  await del.getByLabel('Type "Own sleeper" to confirm').fill("Own sleeper");
+  await del.getByRole("button", { name: "Delete this server" }).click();
+  await expect(page).toHaveURL(/localhost:\d+\/$/, { timeout: 60_000 });
+  await expect(page.getByText("Own sleeper")).toHaveCount(0);
+  await page.goto("/servers/new");
+  await expect(page.getByText("Your server limit is reached.")).toHaveCount(0);
 });
 
 test.afterAll(async () => {

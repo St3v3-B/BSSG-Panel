@@ -3,7 +3,6 @@ import { waitFor } from "../integration/helpers";
 import { adminSession, asAdmin, asUser, expect, restartDaemon, test } from "./support";
 import { need } from "./state";
 
-test.describe.configure({ mode: "serial" });
 
 const userPages = () => ["/", "/account", "/servers/new", `/servers/${need("game")}`, `/servers/${need("game")}/files`, `/servers/${need("game")}/backups`, `/servers/${need("game")}/schedules`, `/servers/${need("game")}/settings`, `/servers/${need("site")}`, `/servers/${need("site")}/domains`, `/servers/${need("site")}/databases`, `/servers/${need("site")}/settings`];
 const adminPages = ["/admin", "/admin/servers", "/admin/nodes", "/admin/users", "/admin/templates", "/admin/activity", "/admin/settings", "/admin/settings/database-hosts", "/admin/settings/dns-providers", "/admin/settings/backup-storage", "/admin/settings/image-updates"];
@@ -60,7 +59,7 @@ test.describe("mobile 390px", () => {
   test("server tabs scroll horizontally and the active tab is visible", async ({ page, context }) => {
     await asUser(context);
     await page.goto(`/servers/${need("site")}/settings`);
-    const tab = page.getByRole("navigation", { name: "Server tabs" }).getByRole("link", { name: "Settings" });
+    const tab = page.getByRole("navigation", { name: "Server sections" }).getByRole("link", { name: "Settings" });
     await expect(tab).toBeInViewport();
   });
 });
@@ -72,7 +71,7 @@ test("sidebar: keyboard navigation, collapse state persists, aria-current", asyn
   await expect(sb).toBeVisible();
   await expect(sb.getByRole("link", { name: "Dashboard" })).toHaveAttribute("aria-current", "page");
   // Tab reaches the sidebar links in order and Enter follows
-  await sb.getByRole("link", { name: "Servers" }).focus();
+  await sb.getByRole("link", { name: "Servers", exact: true }).focus();
   await page.keyboard.press("Tab");
   await expect(sb.getByRole("link", { name: "Nodes" })).toBeFocused();
   await page.keyboard.press("Tab");
@@ -101,11 +100,14 @@ test("light theme: applies, persists after reload and text is readable", async (
   await expect(page.locator("html")).toHaveClass(/light/);
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/light/);
-  const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-  const fg = await page.evaluate(() => getComputedStyle(document.querySelector("h1")!).color);
-  const lum = (c: string) => { const [r, g, b] = c.match(/\d+(\.\d+)?/g)!.slice(0, 3).map(Number) as [number, number, number]; return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
-  expect(lum(bg)).toBeGreaterThan(180);
-  expect(lum(fg)).toBeLessThan(100);
+  // computed colors can be lab()/oklch(): let a canvas convert them to sRGB
+  const lum = await page.evaluate(() => {
+    const px = (c: string) => { const x = document.createElement("canvas").getContext("2d")!; x.fillStyle = c; x.fillRect(0, 0, 1, 1); const [r, g, b] = x.getImageData(0, 0, 1, 1).data; return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!; };
+    const bgC = [document.body, document.documentElement].map((e) => getComputedStyle(e).backgroundColor).find((c) => !/, 0\)$|transparent/.test(c)) ?? "rgb(0,0,0)";
+    return { bg: px(bgC), fg: px(getComputedStyle(document.body).color) };
+  });
+  expect(lum.bg).toBeGreaterThan(180);
+  expect(lum.fg).toBeLessThan(100);
   await page.screenshot({ path: `test-results/qa-light-home.png` });
   await page.getByTestId("sidebar").getByTestId("theme-toggle").click();
   await expect(page.locator("html")).toHaveClass(/dark/);

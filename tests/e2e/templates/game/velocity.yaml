@@ -1,6 +1,6 @@
 schema: 1
 slug: velocity
-name: Velocity (e2e fake)
+name: Velocity
 description: Alpine-nep met slug velocity (Network-tab). Alleen e2e.
 type: game
 version: 1

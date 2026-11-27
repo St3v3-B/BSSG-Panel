@@ -1,6 +1,6 @@
 schema: 1
 slug: paper
-name: Paper (e2e fake)
+name: Paper
 description: Alpine-nep met slug paper, zodat plugins/Bedrock/Network-tabs verschijnen. Alleen e2e.
 type: game
 version: 1
