@@ -399,6 +399,27 @@ func TestWebSiteNetwork(t *testing.T) {
 	}
 }
 
+func TestReconcileReattachesRunningGame(t *testing.T) {
+	eng := engine.NewFake()
+	h := newHarness(t, eng, proxy.NewFake(), nil, "", nil, "")
+	sp := testSpec(u1)
+	sp["config_files"] = []any{}
+	h.expect("POST", "/api/servers", sp, 202)
+	h.waitState(u1, "offline", 5*time.Second)
+	net := "panel-site-" + u1
+	eng.AddNetwork(net, map[string]string{"panel.managed": "true", "panel.instance": "unit", "panel.role": "site"})
+	h.expect("POST", "/api/servers/"+u1+"/power", map[string]string{"action": "start"}, 202)
+	h.waitState(u1, "online", 5*time.Second)
+	_ = eng.DisconnectNetwork(context.Background(), net, "panel-"+u1) // daemon-herstart: koppeling weg
+	if eng.Network(net).Connected["panel-"+u1] {
+		t.Fatal("testopzet")
+	}
+	h.d.Manager().ReconcileNetworks(context.Background())
+	if !eng.Network(net).Connected["panel-"+u1] {
+		t.Fatal("draaiende gameserver niet gekoppeld aan zijn site-netwerk")
+	}
+}
+
 func TestFreeSpaceWatch(t *testing.T) {
 	var full atomic.Bool
 	h := newHarnessWith(t, engine.NewFake(), nil, nil, "", nil, "", func(_ *config.Config, d *Deps) {

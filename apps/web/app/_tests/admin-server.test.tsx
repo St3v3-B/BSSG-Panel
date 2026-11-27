@@ -80,6 +80,7 @@ describe("admin: server beheren", () => {
     fireEvent.click(screen.getByRole("button", { name: "Move server" }));
     fireEvent.click(await screen.findByRole("button", { name: "Move server" }));
     expect(await screen.findByText("Server moved.")).toBeTruthy();
+    expect(screen.getByText(/needs a restart/)).toBeTruthy();
     expect(inputs(bodies, "admin.servers.transfer")[0]).toEqual({ uuid: GAME, nodeId: Number(sel.value) });
   });
 

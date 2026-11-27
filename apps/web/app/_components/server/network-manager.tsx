@@ -73,9 +73,10 @@ export function NetworkManager({ server }: { server: ServerDetail }) {
   const submit = (restart: boolean) =>
     save.mutate({ uuid: server.uuid, restart, members: selected.map((r) => ({ serverUuid: r.uuid, name: r.name, isDefault: r.isDefault })) });
 
-  // Servers that would be restarted: the proxy, every selected server and every removed member.
+  // Servers that would be restarted: new members and removed members; the proxy itself only reloads.
   const removed = server.network.members.filter((m) => !selected.some((r) => r.uuid === m.serverUuid));
-  const affected = [server.name, ...selected.map((r) => cand(r.uuid).name), ...removed.map((m) => m.serverName)];
+  const added = selected.filter((r) => !server.network.members.some((m) => m.serverUuid === r.uuid));
+  const affected = [...added.map((r) => cand(r.uuid).name), ...removed.map((m) => m.serverName)];
 
   return (
     <div className="max-w-4xl space-y-6" data-testid="network-manager">
@@ -156,7 +157,7 @@ export function NetworkManager({ server }: { server: ServerDetail }) {
                 <AlertTitle>{n.confirmTitle}</AlertTitle>
                 <AlertDescription>
                   <p>{n.confirmText}</p>
-                  <p className="mt-1 font-medium">{affected.join(", ")}</p>
+                  {affected.length > 0 && <p className="mt-1 font-medium">{affected.join(", ")}</p>}
                 </AlertDescription>
                 <div className="flex flex-wrap gap-2">
                   <Button disabled={save.isPending} onClick={() => submit(true)}>
@@ -189,7 +190,7 @@ export function NetworkManager({ server }: { server: ServerDetail }) {
               <div key={s.uuid} className="flex flex-wrap items-center gap-2 text-sm" data-testid="network-result-row">
                 <span className="font-medium">{s.name}</span>
                 <Badge variant="outline">{n.roles[s.role]}</Badge>
-                <span className={s.error ? "text-destructive" : "text-muted-foreground"}>{s.error ? n.restartFailed(s.error) : s.restarted ? n.restarted : n.notRunning}</span>
+                <span className={s.error ? "text-destructive" : "text-muted-foreground"}>{s.error ? n.restartFailed(s.error) : s.restarted ? n.restarted : s.reloaded ? n.reloaded : n.notRunning}</span>
               </div>
             ))}
           </CardContent>

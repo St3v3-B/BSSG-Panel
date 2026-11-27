@@ -140,6 +140,11 @@ function BackupRow({ uuid, backup: b, canCreate, canRestore }: { uuid: string; b
               {t.backups.checksum}: {b.sha256}
             </div>
           )}
+          {b.status === "failed" && b.error && (
+            <div className="break-words text-xs text-destructive" data-testid="backup-error">
+              {t.backups.failedReason}: {b.error}
+            </div>
+          )}
         </div>
         <Badge variant={VARIANT[b.status]}>{t.backups.status[b.status]}</Badge>
         {done && canRestore && (

@@ -33,6 +33,16 @@ describe("BackupManager", () => {
     expect(row.textContent).toContain("a".repeat(64));
   });
 
+  it("toont de reden van een mislukte backup", async () => {
+    renderWithTrpc(<BackupManager uuid={SMP} permissions={[...ALL]} />, {
+      session: sessionFor("admin"),
+      patch: (m) => {
+        (m.backups as Mutable<typeof m.backups>).list = async () => [{ id: 9, serverUuid: SMP, name: "kapot", sizeBytes: null, sha256: null, status: "failed", includesDatabases: false, error: "S3 upload failed: access denied", createdAt: new Date(), completedAt: new Date() }];
+      },
+    });
+    expect((await screen.findByTestId("backup-error")).textContent).toContain("S3 upload failed: access denied");
+  });
+
   it("maakt een backup met naam; lopende backup toont voortgang", async () => {
     const { bodies } = renderWithTrpc(<BackupManager uuid={SMP} permissions={[...ALL]} />, { session: sessionFor("admin") });
     await screen.findByTestId("backup-row");

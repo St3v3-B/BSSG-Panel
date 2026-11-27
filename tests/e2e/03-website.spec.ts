@@ -83,8 +83,7 @@ test("Settings: rename and reinstall dialog", async ({ page, context }) => {
   await expect(dlg).toHaveCount(0);
 });
 
-// BUG: na het opslaan van de naam verschijnt "Name saved." niet (de rename lukt wel: kop en reload tonen de nieuwe naam).
-test.fixme("Settings: renaming shows the 'Name saved.' confirmation", async ({ page, context }) => {
+test("Settings: renaming shows the 'Name saved.' confirmation", async ({ page, context }) => {
   await asUser(context);
   await page.goto(url("/settings"));
   await page.getByLabel("Server name").fill(`E2E rename ${Date.now() % 100000}`);

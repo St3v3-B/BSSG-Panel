@@ -20,7 +20,7 @@ export default function ServerSettingsPage() {
   const manage = s.isOwner || !!me.data?.isAdmin;
   return (
     <div className="max-w-3xl space-y-6">
-      {manage && <RenameCard key={s.name} server={s} />}
+      {manage && <RenameCard server={s} />}
       {manage && s.type === "game" && <VariablesCard server={s} />}
       {manage && s.type === "web" && <PhpSettingsCard uuid={s.uuid} />}
       {manage && <SleepCard key={`s-${s.sleep.enabled}-${s.sleep.idleMinutes}`} server={s} />}

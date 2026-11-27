@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { FORWARDING_VAR, SECRET_VAR, isProxy, proxyMembers } from "../network";
+import { setVariables } from "./network";
 import { ALL_PERMISSIONS, parseTemplate, type Implementation, type NodeHealth, type Node as NodeOut, type AdminUser, type TemplateDetail } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { and, asc, count, eq, gt, ilike, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
@@ -135,6 +137,16 @@ export async function assignAllocations(tx: Tx, serverId: number, ids: number[])
 
 /** Verwijdert een server bij de daemon, de routes, de databases en uit de database; `log` draait vlak voor het DB-delete. */
 export async function deleteServerFully(b: ServerBundle, log: (dbFailed: string[]) => Promise<void>): Promise<void> {
+  // Een Velocity-proxy die verdwijnt: de backends terug naar niet-forwarding, anders zijn ze niet meer direct bereikbaar.
+  if (isProxy(b)) {
+    for (const { b: backend } of await proxyMembers(b.server.id)) {
+      try {
+        await setVariables(backend, { [FORWARDING_VAR]: "false", [SECRET_VAR]: "" });
+      } catch {
+        // backend of node onbereikbaar: de proxy-verwijdering gaat door
+      }
+    }
+  }
   try {
     await daemonFor(b.node).deleteServer(b.server.uuid);
   } catch (e) {

@@ -292,9 +292,9 @@ export function createMock(): Implementation {
         const removed = before.filter((m) => !sorted.some((n) => n.serverUuid === m.serverUuid));
         return {
           servers: [
-            { uuid: p.uuid, name: p.name, role: "proxy" as const, restarted: input.restart, error: null },
-            ...sorted.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "backend" as const, restarted: input.restart, error: null })),
-            ...removed.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "removed" as const, restarted: input.restart, error: null })),
+            { uuid: p.uuid, name: p.name, role: "proxy" as const, restarted: false, reloaded: input.restart, error: null },
+            ...sorted.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "backend" as const, restarted: input.restart, reloaded: false, error: null })),
+            ...removed.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "removed" as const, restarted: input.restart, reloaded: false, error: null })),
           ],
         };
       },
@@ -407,7 +407,7 @@ export function createMock(): Implementation {
     backups: {
       list: ({ input }) => db.backups.filter((b) => b.serverUuid === input.uuid),
       create: ({ input }) => {
-        const b: s.Backup = { id: id(), serverUuid: input.uuid, name: input.name ?? `backup ${new Date().toISOString().slice(0, 10)}`, sizeBytes: null, sha256: null, status: "running", includesDatabases: input.includeDatabases, createdAt: new Date(), completedAt: null };
+        const b: s.Backup = { id: id(), serverUuid: input.uuid, name: input.name ?? `backup ${new Date().toISOString().slice(0, 10)}`, sizeBytes: null, sha256: null, status: "running", includesDatabases: input.includeDatabases, error: null, createdAt: new Date(), completedAt: null };
         db.backups.push(b);
         return b;
       },

@@ -7,14 +7,14 @@ import { ALL_PERMISSIONS, type ServerStatus } from "@panel/api";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { logActivity } from "./activity";
-import { pruneBackups } from "./backups";
+import { pruneBackups, thawWorld } from "./backups";
 import { ensureBooted } from "./boot";
 import { getDb, schema } from "./db";
 import { safeEqual, sha256 } from "./lib/crypto";
 import { jwks } from "./lib/jwt";
 import { notify, targetForServer } from "./notify";
 import { getLimiter } from "./lib/ratelimit";
-import { sftpUsername } from "./servers-data";
+import { fetchServerByUuid, sftpUsername } from "./servers-data";
 
 type NodeRow = typeof schema.nodes.$inferSelect;
 
@@ -169,6 +169,8 @@ export const reportBackup = remoteHandler<{ backup_id: string }>(async (req, nod
     serverId: r.s.id,
     metadata: b.successful ? { id: r.b.id, sizeBytes: b.size_bytes ?? null } : { id: r.b.id, error: b.error?.slice(0, 2000) ?? null },
   });
+  const bundle = await fetchServerByUuid(r.s.uuid);
+  if (bundle) await thawWorld(bundle);
   if (b.successful) await pruneBackups(r.s.id);
   else await notifyServer(r.s.id, { kind: "backup_failed", name: r.b.name, error: b.error ?? "unknown error" });
   return noContent();
