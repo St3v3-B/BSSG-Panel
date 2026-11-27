@@ -14,7 +14,7 @@ On the **Backups** tab of a server:
 - Every backup has a size and SHA-256 checksum. A failed backup shows its reason and triggers a notification.
 - **Restore** needs the `backup.restore` permission. The checksum is recorded when the backup is made and checked again on restore.
 - **Download** a backup through a one-time link.
-- Delete backups you no longer need.
+- When the maximum number of backups is reached, the oldest one is deleted automatically. You can also delete backups by hand.
 
 ## Schedules
 

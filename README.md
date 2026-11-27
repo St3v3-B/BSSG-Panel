@@ -1,231 +1,168 @@
 <div align="center">
 
-<img src="apps/web/public/brand/logo.svg" alt="BSSG Panel" height="72">
+<img src="docs/assets/banner.svg" alt="BSSG Panel: one self-hosted control panel for Minecraft servers and websites" width="100%">
 
-# BSSG Panel
+<br>
 
-**One self-hosted control panel for Minecraft servers *and* websites.**
-
-Game servers from templates, PHP/Node/static sites with automatic HTTPS, MariaDB databases,
-a live console, a file manager and SFTP — on your own machine, behind Discord login and 2FA.
-
-[Features](#-features) ·
-[Architecture](#-architecture) ·
-[Quick start](#-quick-start) ·
-[Configuration](#%EF%B8%8F-configuration) ·
-[Templates](#-templates) ·
-[Security](#-security-model) ·
-[Development](#-development) ·
-[Roadmap](#%EF%B8%8F-roadmap)
-
+[![CI](https://github.com/St3v3-B/BSSG-Panel/actions/workflows/check.yml/badge.svg)](https://github.com/St3v3-B/BSSG-Panel/actions/workflows/check.yml)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
+![Status](https://img.shields.io/badge/status-active%20development-orange)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?logo=typescript&logoColor=white)
-![tRPC](https://img.shields.io/badge/tRPC-11-2596be?logo=trpc&logoColor=white)
 ![Go](https://img.shields.io/badge/Go-1.23%2B-00add8?logo=go&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)
 ![Caddy](https://img.shields.io/badge/Caddy-2-1f88c0?logo=caddy&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-required-2496ed?logo=docker&logoColor=white)
-![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
-![Status](https://img.shields.io/badge/status-active%20development-orange)
 
+**Run Minecraft servers and websites from one panel, on your own hardware.**<br>
+Templates, live console, files and SFTP, automatic HTTPS, S3 backups, multi-node. Discord login with 2FA.
+
+[Quick start](#quick-start) ·
+[Screenshots](#screenshots) ·
+[Features](#feature-tour) ·
+[Documentation](#documentation) ·
+[Compare](#how-it-compares) ·
+[Roadmap](#roadmap) ·
+[Contributing](#contributing)
+
+</div>
+
+---
+
+## Why
+
+Running a few Minecraft servers *and* a few websites for friends or a small community usually means two panels,
+two logins, two update cycles and two sets of quirks. BSSG Panel replaces both:
+
+- **One model for everything.** A game server and a website are both a container from a template, so console,
+  files, SFTP, limits, backups and permissions work the same for both.
+- **Built for trusted communities.** No billing and no public sign-up. Real isolation anyway, so one compromised
+  WordPress plugin cannot reach anything else.
+- **Light to run.** One install script, one env file, one Go daemon per machine. Add a second machine with a single command.
+- **Pleasant to use.** Modern sidebar UI, light and dark themes, English and Dutch, works well on a phone.
+
+## Screenshots
+
+<div align="center">
+  <img src="docs/screenshots/home.d.dark.png" alt="Servers overview, dark theme" width="49%">
+  <img src="docs/screenshots/home.d.light.png" alt="Servers overview, light theme" width="49%">
+  <br>
+  <img src="docs/screenshots/files.d.dark.png" alt="File manager, dark theme" width="49%">
+  <img src="docs/screenshots/website.d.light.png" alt="Website domains and SSL, light theme" width="49%">
+  <br>
+  <img src="docs/screenshots/backups.d.dark.png" alt="Backups, dark theme" width="49%">
+  <img src="docs/screenshots/admin.d.light.png" alt="Admin dashboard, light theme" width="49%">
 </div>
 
 <div align="center">
-  <img src="docs/screenshots/home.d.dark.png" alt="Servers overview (dark)" width="49%">
-  <img src="docs/screenshots/servers-game.d.light.png" alt="Server console (light)" width="49%">
   <br>
-  <img src="docs/screenshots/login.m.dark.png" alt="Sign in (mobile)" width="19%">
-  <img src="docs/screenshots/servers-game.m.dark.png" alt="Console (mobile)" width="19%">
-  <img src="docs/screenshots/drawer.m.dark.png" alt="Navigation drawer (mobile)" width="19%">
-  <img src="docs/screenshots/admin.m.light.png" alt="Admin dashboard (mobile, light)" width="19%">
-  <img src="docs/screenshots/admin-servers.m.dark.png" alt="Admin servers as cards (mobile)" width="19%">
+  <img src="docs/screenshots/home.m.dark.png" alt="Mobile: servers" width="19%">
+  <img src="docs/screenshots/files.m.dark.png" alt="Mobile: files" width="19%">
+  <img src="docs/screenshots/admin.m.dark.png" alt="Mobile: admin" width="19%">
+  <img src="docs/screenshots/home.m.light.png" alt="Mobile: servers, light theme" width="19%">
+  <img src="docs/screenshots/admin.m.light.png" alt="Mobile: admin, light theme" width="19%">
 </div>
 
----
+<sub>Screenshots are taken against the built-in mock with sample data. The name, logo and accent colour are configurable.</sub>
 
-## 📖 Table of contents
+## Feature tour
 
-- [Why this exists](#-why-this-exists)
-- [Features](#-features)
-- [Architecture](#-architecture)
-- [How a request flows](#-how-a-request-flows)
-- [Quick start](#-quick-start)
-- [Configuration](#%EF%B8%8F-configuration)
-- [Templates](#-templates)
-- [Websites, domains and SSL](#-websites-domains-and-ssl)
-- [Minecraft: Velocity, sleep mode and more](#-minecraft-velocity-sleep-mode-and-more)
-- [Users, roles and permissions](#-users-roles-and-permissions)
-- [Security model](#-security-model)
-- [Repository layout](#-repository-layout)
-- [Development](#-development)
-- [Testing](#-testing)
-- [How this was built](#-how-this-was-built)
-- [Roadmap](#%EF%B8%8F-roadmap)
-- [FAQ](#-faq)
-- [Troubleshooting](#-troubleshooting)
-- [Contributing](#-contributing)
-- [License](#-license)
+### Minecraft
 
----
+- **Templates** for Paper, Folia, Fabric, Velocity and any Java JAR (Java 8 to 25), with checksum-verified downloads and a version picker.
+- **Live console** over a websocket straight to the node: 500-line backlog, command history, auto-reconnect.
+- **Sleep mode.** Empty servers stop on their own and wake up when a player connects.
+- **Plugins, mods and modpacks** from Modrinth and Hangar, with update detection.
+- **Crash detection** with exit code, out-of-memory and crash-report capture, and automatic restart with backoff.
+- **Domains for game servers** with SRV records, so players do not type a port.
 
-## 💡 Why this exists
+### Networks and Bedrock
 
-Running a few Minecraft servers *and* a few websites for a group of friends usually means two
-panels (one for games, one for web hosting), two login systems, two update cycles and two
-sets of quirks. BSSG Panel replaces both with one panel that:
+- **Velocity networks in a few clicks.** Pick backends and the panel writes `velocity.toml`, the forwarding secret and the backend settings.
+- **Bedrock support** through Geyser and Floodgate, including the key distribution on a Velocity network.
 
-- treats **game servers and websites as the same thing** — a container from a template —
-  so console, files, SFTP, limits and permissions work identically for both;
-- is built for **trusted users** (friends, a community): no billing, no sign-up flow, but
-  real isolation so one compromised WordPress plugin can't touch the rest;
-- runs on **a single machine** today, while the panel ↔ node split means a second node is
-  just an install away;
-- keeps every install-time decision in **one env file**, never in code or the database.
+### Websites
 
----
+- **Static, PHP 8.2 / 8.3 / 8.4, Node.js and Adminer** templates. Each site is a non-root, read-only container on its own network.
+- **Domains and SSL.** The panel shows the exact DNS records, checks them live and issues Let's Encrypt certificates through Caddy, including wildcards via Cloudflare.
+- **One-click apps**: WordPress, Grav and Nextcloud, with database, config and admin login created for you.
+- **PHP settings** (memory, upload size, timeouts, extensions), **cron** schedules and a log viewer.
+- **MariaDB databases**, one user per database with rights on that database only.
 
-## ✨ Features
+### Operations
 
-### For everyone
+- **Backups to any S3-compatible storage**, with database dumps and checksums, **schedules** and one-click restore.
+- **Quotas** per user (RAM, disk, CPU, servers, databases, allowed templates and nodes) so friends can create their own servers safely.
+- **Automatic image updates** with a policy per server and a maintenance window.
+- **Discord webhooks and bot** for crashes, failed backups, full disks and offline nodes, plus `/start`, `/stop` and `/restart` commands.
+- **File manager** with a Monaco editor, drag and drop upload and zip support, plus built-in **SFTP**.
+- **Activity log** of every action.
 
-| | |
-|---|---|
-| 🎮 **Game servers** | Paper, Folia, Fabric, Velocity, generic Java (8/11/17/21/25) and generic Node.js — from YAML templates |
-| 🌐 **Websites** | Static (nginx), PHP 8.2 / 8.3 / 8.4 (nginx + PHP-FPM, WordPress-ready), Node.js, Adminer |
-| 🖥️ **Live console** | xterm.js over a WebSocket straight to the node, 500-line backlog, command history, auto-reconnect and token refresh |
-| 📜 **Log viewer** | For websites: read-only, filter, pause/follow, colour-coded errors and warnings, download as `.txt` |
-| 📊 **Live stats** | CPU, RAM, disk and network every 2 seconds |
-| 📁 **File manager** | Browse, edit with Monaco (syntax highlighting), upload via drag & drop, download, rename, zip/unzip |
-| 🔐 **SFTP** | Built into the node daemon, authenticated against the panel (password or API key) |
-| 🗄️ **Databases** | MariaDB 11 — one database user per database, rights on that database only |
-| 🔗 **Domains** | Attach any domain, `www` ↔ apex redirects, live DNS checking with provider-specific instructions |
-| 🔒 **Automatic HTTPS** | Let's Encrypt via Caddy, including wildcard certificates through the Cloudflare DNS challenge |
-| 💤 **Sleep mode** | Minecraft servers stop when empty and wake up when someone connects |
-| 👥 **Subusers** | Invite people by Discord ID with fine-grained permissions per server |
-| 🌍 **Two languages** | English by default, Dutch one click away |
-| 🎨 **Beautiful defaults** | New sites get a polished "your website is live" page; offline/installing sites get matching status pages instead of a bare 502 |
+### Multi-node
 
-### For admins
+- **Join a machine with one command** (`install.sh --node-only`). Each node brings its own daemon, Caddy and MariaDB.
+- **Per-node domains** and a background monitor that notices when a node goes offline.
+- **Move servers between nodes**, including their databases.
 
-| | |
-|---|---|
-| 🧭 **Separate admin area** | `/admin`, only reachable for admins with 2FA enabled — enforced on the server, not just hidden in the UI |
-| 🏗️ **Server management** | Create servers for any user, change limits (live), owner, ports, variables, template; reinstall or delete |
-| 🖧 **Nodes & allocations** | Register nodes with a one-time token and install command; manage IP/port ranges |
-| 👤 **Users** | Pre-create accounts by Discord ID, block, reset 2FA, manage admins |
-| 🧩 **Templates** | List and edit templates in a YAML editor with validation |
-| 🗒️ **Activity log** | Every action, searchable by user, server and action |
-| ☁️ **DNS providers** | Connect Cloudflare and set the right records with one click |
+### Security
 
----
+- Discord login, mandatory TOTP for admins, API keys, and per-server permissions for subusers.
+- Hardened containers: non-root, no capabilities, read-only root filesystem, resource limits, one network per site.
+- Short-lived Ed25519 browser tokens, `openat2` path confinement for files, AES-256-GCM for secrets at rest, rate limiting.
+- An emergency account (password and authenticator code) for when Discord is down.
 
-## 🏛️ Architecture
+More detail: [Security model](#security-model).
 
-The panel is the brain and stores everything in PostgreSQL. On each node, a small Go daemon
-does the actual work in Docker. Caddy is the only entry point for HTTP(S).
+## Architecture
+
+The panel stores everything in PostgreSQL. On each node a small Go daemon does the work in Docker. Caddy is the only HTTP(S) entry point.
 
 ```mermaid
 flowchart LR
     B[Browser]
-    subgraph Node["Node (one machine in v1)"]
+    subgraph Node["Node"]
         C["Caddy :80/:443<br/>automatic HTTPS"]
-        P["Panel<br/>Next.js + tRPC"]
         D["Daemon (Go)<br/>unix socket + SFTP :2022"]
-        DB[(PostgreSQL)]
-        R[(Redis)]
         M[(MariaDB)]
         G["Game containers"]
         S["Site containers<br/>own network each"]
     end
+    subgraph Main["Main machine"]
+        P["Panel<br/>Next.js + tRPC"]
+        DB[(PostgreSQL)]
+        R[(Redis)]
+    end
+    N2["More nodes<br/>daemon + Caddy + MariaDB"]
     B -- "HTTPS panel domain" --> C --> P
     B -- "WSS console / file transfer" --> C --> D
     B -- "SFTP" --> D
-    B -- "HTTPS customer domains" --> C --> S
+    B -- "HTTPS site domains" --> C --> S
     P -- "HTTPS + node token" --> D
+    P -- "HTTPS + node token" --> N2
     P --- DB
     P --- R
-    P -- "create DBs & users" --> M
     D -- "Docker API" --> G
     D -- "Docker API" --> S
     D -- "routes via admin socket" --> C
     S -. "own DB only" .-> M
 ```
 
-**Key design decisions**
+**Design decisions**
 
-- **The daemon is never exposed directly.** It listens on a unix socket that Caddy proxies on
-  its own subdomain (`$NODE_DOMAIN`); only SFTP talks to it directly.
-- **The daemon is the source of truth for routes.** It re-applies the full route set on
-  startup, after a Caddy restart (detected via health check) and every 5 minutes.
-- **Caddy's admin API is a unix socket**, never TCP — so no container can reconfigure it.
-- **Every Docker object** the daemon creates is labelled `panel.managed=true` +
-  `panel.instance=…`; it never touches anything else on the machine.
-- **Contracts first.** The tRPC contract (zod), the daemon OpenAPI spec, the Go `Router`
-  interface and the template schema were written before any implementation, so components
-  could be built in parallel and tested against each other.
+- **The daemon is never exposed directly.** It listens on a unix socket that Caddy proxies on the node's own subdomain. Only SFTP talks to it directly.
+- **The daemon owns the routes.** It re-applies all Caddy routes on startup, after a Caddy restart and every five minutes.
+- **Caddy's admin API is a unix socket**, so no container can reconfigure it.
+- **Everything the daemon creates is labelled** `panel.managed=true` and `panel.instance=...`. It never touches other containers on the machine.
+- **Contracts first.** The tRPC contract, daemon OpenAPI, template schema and Caddy interface were written before the implementation.
 
----
-
-## 🔄 How a request flows
-
-<details>
-<summary><b>Opening the console</b></summary>
-
-1. The browser calls `servers.consoleToken` on the panel.
-2. The panel checks the user's permissions on that server and signs a 10-minute **Ed25519
-   JWT** bound to that one server, that one user and their permissions.
-3. The browser opens `wss://$NODE_DOMAIN/api/servers/{uuid}/ws` and sends `{"event":"auth","token":"…"}`.
-4. The daemon verifies the JWT with the panel's public key (fetched once via JWKS), sends the
-   500-line backlog and the current status, then streams `console_output` and `stats`.
-5. One minute before expiry it sends `token_expiring`; the browser fetches a new token and
-   re-authenticates on the same socket.
-
-</details>
-
-<details>
-<summary><b>Creating a website</b></summary>
-
-1. An admin picks a web template (e.g. PHP 8.3) and an owner in `/admin`.
-2. The panel turns template + variables into a complete `ServerSpec` and sends it to the daemon.
-3. The daemon creates a dedicated bridge network `panel-site-<uuid>`, runs the install script,
-   puts a default `index.html` in `public/` and starts the container (non-root, read-only rootfs).
-4. While installing, Caddy shows a "this website is being set up" page.
-5. The owner adds a domain; the panel shows the exact DNS records and checks them live via
-   1.1.1.1 and 8.8.8.8. The daemon pushes the route to Caddy, which obtains the certificate.
-6. Creating a database attaches MariaDB to *that site's* network only — sites never see each other.
-
-</details>
-
-<details>
-<summary><b>Sleep mode</b></summary>
-
-1. Every minute the daemon pings the server with the Minecraft status protocol to count players.
-2. After *N* minutes with nobody online it stops the server cleanly → status `sleeping`.
-3. The daemon then listens on the server's port itself: the server list shows a "sleeping"
-   MOTD, and a login attempt starts the server and politely asks the player to reconnect in a minute.
-
-</details>
-
----
-
-## 🚀 Quick start
+## Quick start
 
 > [!IMPORTANT]
-> The installer is built for a **dedicated Linux machine** (tested on Ubuntu 24.04) with
-> Docker. Ports **80, 443 and 2022** must be free.
+> The installer targets a **dedicated Linux machine** (tested on Ubuntu 24.04) with Docker and systemd. Ports **80, 443 and 2022** must be free.
 
-### 1. Prerequisites
-
-- Linux with systemd, Docker Engine + the Compose plugin
-- Go 1.23+ (to build the daemon) — or pass a prebuilt binary with `--daemon-bin`
-- Two DNS **A records** pointing to the machine, for example:
-  - `panel.example.com` → the panel
-  - `node1.example.com` → the node daemon (console, file transfer)
-- A **Discord application** (https://discord.com/developers/applications) with redirect URI
-  `https://panel.example.com/api/auth/discord/callback`
-- Your own Discord user ID (Settings → Advanced → Developer Mode, then right-click your name)
-
-### 2. Install
+**You need:** Docker with the Compose plugin, Go 1.23+ (or a prebuilt daemon via `--daemon-bin`), two DNS A records
+(for example `panel.example.com` and `node1.example.com`), and a Discord application with the redirect URI
+`https://panel.example.com/api/auth/discord/callback`.
 
 ```bash
 git clone https://github.com/St3v3-B/BSSG-Panel.git
@@ -233,114 +170,58 @@ cd BSSG-Panel
 sudo deploy/install.sh
 ```
 
-The installer asks for the domains, your Discord ID, the Discord client ID/secret and an
-e-mail address for Let's Encrypt. It then:
+The installer asks for your domains, your Discord user ID and the Discord client ID and secret, writes `/etc/panel/panel.env`, builds the daemon and starts the stack.
+Running it again is safe. Then open the panel, sign in with Discord, enable 2FA in **Account** and head to **Admin** to add ports and create your first server.
 
-1. writes `/etc/panel/panel.env` (mode `600`), generating all keys and passwords,
-2. builds and installs the daemon (`/usr/local/bin/panel-daemon`) and its systemd unit,
-3. builds and starts the stack with Docker Compose (panel, PostgreSQL, Redis, MariaDB, Caddy).
+Non-interactive and dry-run modes, prebuilt daemon binary and everything else: [docs/installation.md](docs/installation.md).
 
-Running it again is safe: existing values are kept, nothing is duplicated.
+### Add another machine
 
-Non-interactive (e.g. for automation):
+In **Admin, Nodes** create a node. The panel prints a one-time command like this, which you run as root on the new machine:
 
 ```bash
-sudo PANEL_DOMAIN=panel.example.com NODE_DOMAIN=node1.example.com \
-     ACME_EMAIL=you@example.com OWNER_DISCORD_ID=123456789012345678 \
-     DISCORD_CLIENT_ID=… DISCORD_CLIENT_SECRET=… \
-     deploy/install.sh --non-interactive
+git clone --depth 1 https://github.com/St3v3-B/BSSG-Panel.git /opt/panel-node
+PANEL_URL='https://panel.example.com' NODE_DOMAIN='node2.example.com' NODE_TOKEN='<token>' \
+ACME_EMAIL='you@example.com' /opt/panel-node/deploy/install.sh --node-only --non-interactive
 ```
 
-Dry run that writes everything into a temporary directory instead of the system:
+See [docs/multi-node.md](docs/multi-node.md).
 
-```bash
-deploy/install.sh --dry-run
-```
-
-### 3. First login
-
-1. Open `https://panel.example.com` and log in with Discord.
-2. Go to **Account** and enable 2FA (any TOTP app).
-3. Open **/admin**, add a port allocation to your node, and create your first server or site.
-
-### Updating
+### Update
 
 ```bash
 cd BSSG-Panel && git pull && sudo deploy/install.sh --non-interactive
 ```
 
----
+## Configuration
 
-## ⚙️ Configuration
+All install-specific settings live in one file, `/etc/panel/panel.env`, read by Docker Compose and by the daemon. No domain is hardcoded in the code or database.
+The commented reference is [`deploy/panel.env.example`](deploy/panel.env.example); the main variables are explained in
+[docs/installation.md](docs/installation.md#configuration).
 
-Everything install-specific lives in **`/etc/panel/panel.env`** — read by Docker Compose
-*and* by the daemon's systemd unit. Nothing in the code or database hardcodes a domain.
-The full, commented reference is [`deploy/panel.env.example`](deploy/panel.env.example).
+## Documentation
 
-| Variable | Required | Description |
-|---|:---:|---|
-| `PANEL_DOMAIN` | ✅ | Domain of the panel, e.g. `panel.example.com` |
-| `NODE_DOMAIN` | ✅ | Domain of this node's daemon, e.g. `node1.example.com` |
-| `ACME_EMAIL` | ✅ | E-mail address for Let's Encrypt |
-| `OWNER_DISCORD_ID` | ✅ | Discord ID of the owner — always admin, can never be removed |
-| `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET` | ✅ | Discord OAuth2 application |
-| `PANEL_ENCRYPTION_KEY` | ✅ | 32 bytes, base64 — AES-256-GCM for secrets at rest (generated) |
-| `NODE_TOKEN` | ✅ | Token of the local node (generated) |
-| `NODE_PUBLIC_IP` | | IPv4 shown in DNS instructions; auto-detected when empty |
-| `DATABASE_URL`, `REDIS_URL`, `POSTGRES_PASSWORD` | | Defaults point at the Compose services |
-| `MARIADB_ROOT_PASSWORD` | | Root password of the bundled MariaDB (generated) |
-| `MARIADB_CONTAINER`, `MARIADB_ADMIN_ADDR` | | Name of the MariaDB container and how the panel reaches it |
-| `SFTP_PORT`, `DAEMON_PORT` | | Default `2022` and `8080` |
-| `PANEL_URL`, `DAEMON_URL` | | How the daemon reaches the panel and vice versa |
-| `DAEMON_SOCKET`, `DATA_DIR` | | Default `/run/panel/daemon.sock` and `/var/lib/panel` |
-| `CADDY_ADMIN_URL`, `CADDY_TLS_ADDR`, `CADDY_CONTAINER` | | Caddy admin socket, HTTPS address for SSL checks, container name |
-| `TEMPLATES_DIR` | | Where the panel loads templates from at startup |
-| `PANEL_INSTANCE`, `DOCKER_EXTRA_LABELS` | | Label scoping — lets test runs coexist with a real install |
-| `PANEL_INSECURE_TEST_LOGIN` | | Tests only; refuses to start unless the domain ends in `.test` |
-
-**Changing the domain later:** edit the env file, then
-`systemctl restart panel-daemon && docker compose … up -d`, and update the redirect URI in Discord.
-
-### Where things live
-
-| Path | What |
+| Guide | For |
 |---|---|
-| `/etc/panel/panel.env` | All configuration and secrets |
-| `/var/lib/panel/volumes/<uuid>` | Data of each server (`/home/container` inside the container) |
-| `/var/lib/panel/state` | Daemon state: server specs, routes, SFTP host key |
-| `/run/panel/` | Daemon socket and Caddy admin socket |
-| systemd unit `panel-daemon` | The node daemon |
-| Docker objects labelled `panel.managed=true` | Everything the panel created |
+| [Installation](docs/installation.md) | Install, configure, update |
+| [User guide](docs/user-guide.md) | Using servers, files, SFTP, subusers, notifications |
+| [Admin guide](docs/admin-guide.md) | Users, quotas, nodes, templates, settings |
+| [Multi-node](docs/multi-node.md) | Join machines, transfer servers |
+| [Backups](docs/backups.md) | S3 targets, restores, schedules |
+| [Minecraft](docs/minecraft.md) | Sleep mode, Velocity, Bedrock, plugins and modpacks |
+| [Websites](docs/websites.md) | Domains and SSL, PHP, cron, apps, databases |
+| [Troubleshooting](docs/troubleshooting.md) | Logs and common problems |
+| [Development](docs/development.md) | Monorepo, `make check`, contracts, tests |
+| [Template format](templates/SCHEMA.md) | Write your own templates |
 
----
+## Templates
 
-## 🧩 Templates
+A template is one YAML file, validated by a zod schema so a broken template fails CI instead of production.
 
-A template is a single YAML file. The format is documented in
-[`templates/SCHEMA.md`](templates/SCHEMA.md) and validated by a zod schema, so a broken
-template fails CI instead of production.
-
-### Game templates
-
-| Template | What | Notes |
-|---|---|---|
-| **Paper** | High-performance Minecraft server | PaperMC Fill API v3 with SHA-256 check; Velocity forwarding variables; sleep mode |
-| **Folia** | Paper's regionised multithreading fork | Same variables as Paper; sleep mode |
-| **Fabric** | Modded Minecraft | Fabric meta API; Minecraft and loader version as variables; sleep mode |
-| **Velocity** | Modern Minecraft proxy | Modern forwarding, generated secret, `velocity.toml` managed by the panel |
-| **Generic Java** | Run any JAR | Java 8, 11, 17, 21 or 25 (Temurin, checksum-verified) |
-| **Generic Node.js** | Run any Node app | Node 24, `npm ci` on start, sample `index.js` |
-
-### Web templates
-
-| Template | What | Notes |
-|---|---|---|
-| **Static website** | nginx | Dotfiles blocked, custom `nginx/*.conf` supported |
-| **PHP 8.2 / 8.3 / 8.4** | nginx + PHP-FPM | mysqli, pdo_mysql, gd, intl, zip, exif, curl, mbstring, opcache; 64 MB uploads; WordPress permalinks; `.php` in `uploads/` blocked; CLI works for WP-CLI |
-| **Node.js site** | Node app behind Caddy | Dependencies installed at install time |
-| **Adminer** | Database UI | Pre-filled with the local MariaDB |
-
-### A minimal template
+| Type | Templates |
+|---|---|
+| Game | Paper, Folia, Fabric, Velocity, Generic Java (8, 11, 17, 21, 25), Generic Node.js |
+| Web | Static (nginx), PHP 8.2, PHP 8.3, PHP 8.4 (nginx and PHP-FPM), Node.js, Adminer |
 
 ```yaml
 schema: 1
@@ -351,336 +232,145 @@ version: 1
 image: eclipse-temurin:21-jre
 startup: java -Xms128M -Xmx{{SERVER_MEMORY}}M -jar {{JAR_FILE}}
 stop: { type: command, value: stop }
-ready_pattern: "Done \\("
 variables:
   - key: JAR_FILE
     name: JAR file
     default: server.jar
     user_editable: true
-    pattern: "^[A-Za-z0-9._-]+\\.jar$"
-install:
-  image: alpine:3.20
-  script: |
-    #!/bin/sh
-    echo "Upload $JAR_FILE via SFTP or the file manager." > /home/container/README.txt
 ```
 
-Built-in variables: `SERVER_UUID`, `SERVER_MEMORY`, `SERVER_IP`, `SERVER_PORT`, `TZ`.
-`config_files` can patch `properties`, `yaml`, `json` and `toml` files before every start
-(e.g. `server-port={{SERVER_PORT}}`), keeping comments and formatting.
-
----
-
-## 🌐 Websites, domains and SSL
-
-The domain screen does the DNS homework for you:
-
-1. **Exact records** — e.g. `A @ → <node IP>` and `CNAME www → example.com`, with copy buttons.
-2. **Provider detection** — looks up the nameservers and shows step-by-step instructions for
-   Cloudflare, TransIP, Hostinger, Strato, Versio and others.
-3. **Live checking** — every 30 seconds while the screen is open, via 1.1.1.1 and 8.8.8.8,
-   with a status per record: *missing*, *wrong IP*, *behind Cloudflare proxy*, *ok*.
-4. **Common mistakes caught** — Cloudflare's orange cloud, stale AAAA records (there is no
-   IPv6), a CNAME on the apex.
-5. **SSL status** — `pending`, `issuing`, `active`, `dns_wrong` or `failed` (with the reason).
-
-**Cloudflare integration (optional):** add an API token in `/admin` and the panel sets the
-records with one click. It also enables **wildcard certificates** via the DNS-01 challenge
-(Caddy is built with the `caddy-dns/cloudflare` module).
-
-**Status pages:** while a site installs, is stopped, is out of disk space or can't be reached,
-visitors see a clean, bilingual (EN/NL) status page instead of a raw error.
-
----
-
-## 🎮 Minecraft: Velocity, sleep mode and more
-
-### Velocity with Paper servers
-
-1. Create a **Velocity** server and copy its forwarding secret.
-2. On each **Paper** server set `VELOCITY_FORWARDING=true` and `VELOCITY_SECRET=<secret>` —
-   `online-mode` is switched off automatically while forwarding is on.
-3. Add the backends to `velocity.toml` via the file manager.
-
-The full walk-through, including the two error messages you may hit, is in
-[`deploy/README.md`](deploy/README.md).
-
-### Sleep mode
-
-Enable it per server under **Settings**, choose the idle time (1–1440 minutes), done.
-Manually stopping a server means *off* — it won't wake up on its own.
-
-### Heap sizing
-
-Java templates size the heap as the memory limit minus max(25%, 512 MB) (heap at least 512 MB; Paper/Folia/Fabric recommend 1.5 GB RAM or more), with direct memory and code cache capped,, so the
-JVM's off-heap memory doesn't get the container killed.
-
----
-
-## 👥 Users, roles and permissions
-
-- **Login is Discord OAuth2** — an account is tied to a Discord ID. Admins can pre-create
-  accounts by Discord ID so a server can be assigned before that person ever logs in.
-- **Admins** are whoever is listed in `admin_discord_ids` (the owner is always there).
-  There is no `is_admin` flag to forget to check.
-- **Admins must enable 2FA** before `/admin` opens; every admin procedure re-checks this on the server.
-- **Per-server permissions for subusers:**
-
-| Permission | Allows |
-|---|---|
-| `console.read` | See the console / logs and live stats |
-| `console.write` | Send commands |
-| `power` | Start, stop, restart, kill |
-| `files.read` | Browse and download files, SFTP read-only |
-| `files.write` | Edit, upload, delete, SFTP write |
-| `backup.create` / `backup.restore` | Create / restore backups |
-| `database.manage` | Create databases, reset passwords |
-| `domain.manage` | Add domains, change redirects |
-| `schedule.manage` | Manage scheduled tasks |
-
-The owner of a server has all permissions. API keys can be scoped to a subset and can never
-reach admin procedures.
-
----
-
-## 🛡️ Security model
+## Security model
 
 Even with trusted users, a hacked WordPress or Minecraft plugin must not reach anything else.
 
-**Containers**
-- Run as a non-root user (uid 1000), with an init process as PID 1
-- All Linux capabilities dropped, `no-new-privileges`, PID limit, CPU/RAM/swap limits
-- Read-only root filesystem with a tmpfs for `/tmp`
-- Every website on its **own bridge network**; MariaDB is attached per site, so sites can't see each other or game servers
+- **Containers** run as non-root with an init process, all capabilities dropped, `no-new-privileges`, PID, CPU, RAM and swap limits, and a read-only root filesystem.
+  Every website sits on its own bridge network; MariaDB is attached per site.
+- **Panel and node** use a per-node token and short-lived (10 minute) Ed25519 JWTs bound to one server, one user and explicit permissions. The daemon enforces permissions itself.
+- **Files** are resolved with `openat2(RESOLVE_BENEATH)`, so a server cannot escape its directory, not even through symlinks. Zip-slip is rejected. Soft disk limits warn at 90%.
+- **Secrets** (database passwords, DNS tokens, TOTP secrets, node tokens) are encrypted with AES-256-GCM. Sessions are stored as SHA-256 hashes; SFTP passwords use Argon2id; logins are rate-limited.
+- **Admin access** requires membership in the admin list, TOTP enabled and verified in the current session, checked on the server for every call.
 
-**Panel ↔ node**
-- Per-node token (stored hashed + encrypted), constant-time comparison
-- Browser tokens are short-lived (10 min) Ed25519 JWTs bound to one server, one user and explicit permissions; one-time tokens for uploads/downloads, bound to the exact path
-- The daemon enforces permissions itself — it doesn't trust the browser
+An internal review is in [docs/security-review.md](docs/security-review.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
-**Files**
-- Every path is resolved with `openat2(RESOLVE_BENEATH)` — no escaping the server directory, not even through symlinks; zip-slip rejected
-- Soft disk limits: warning at 90%, writes refused and the server stopped when exceeded; the node also stops the fastest-growing server if the disk drops below 5% free
+## How it compares
 
-**Secrets**
-- Database passwords, DNS tokens, TOTP secrets and node tokens are encrypted with AES-256-GCM
-- Sessions are stored as SHA-256 hashes; cookies are `HttpOnly` and `SameSite=Lax`
-- SFTP passwords are hashed with Argon2id; login and SFTP authentication are rate-limited via Redis
-- Every action ends up in the activity log
+BSSG Panel overlaps with both of these projects but has a different focus. This table is based on their public documentation and may be out of date; corrections are welcome.
 
-> [!NOTE]
-> Found a security issue? Please open a private security advisory on GitHub instead of a public issue.
+| | **BSSG Panel** | **Pelican** | **aaPanel** |
+|---|---|---|---|
+| Main focus | Game servers and websites in one panel | Game server hosting | Web hosting on a Linux server |
+| Game servers | Minecraft-focused templates plus generic Java and Node | Many games through eggs | Not a focus |
+| Websites | Static, PHP, Node with domains, SSL and databases | Not a focus | Core feature |
+| Runs workloads in | Docker containers | Docker containers | Mostly directly on the host |
+| Multi-node | Yes, one-line join | Yes | Not a focus |
+| Account model | Trusted community, Discord login, no billing | Local accounts, multi-user | Local admin account |
+| Licence | AGPL-3.0-or-later | AGPL-3.0 | Free edition, proprietary |
+| Maturity and community | New and small | Large and established | Large and established |
 
----
+Choose Pelican if you host many different games for many people, and aaPanel if you want a classic hosting control panel without containers.
+Choose BSSG Panel if you mostly run Minecraft and a few websites for a community and want one tool for both.
 
-## 🗂️ Repository layout
+## Repository layout
 
+```text
+apps/web/      Next.js panel (UI under app/, tRPC routers and jobs under server/)
+daemon/        Go node daemon (Docker, console, files, SFTP, backups, Caddy integration)
+packages/      Contracts (tRPC, OpenAPI, template schema) and the database schema
+templates/     Game and web templates
+deploy/        Docker Compose, Caddy, systemd unit, install script
+tests/         Integration, multi-node and browser tests
+docs/          Guides and screenshots
 ```
-.
-├── apps/web/                 Next.js panel (App Router, Tailwind, shadcn/ui)
-│   ├── app/                  pages and components (user side + /admin)
-│   └── server/               tRPC routers, auth, daemon client, background jobs
-├── daemon/                   Go node daemon
-│   ├── cmd/panel-daemon/     entry point
-│   ├── internal/             docker engine, servers, console, files, SFTP, auth
-│   └── proxy/                Caddy integration (Router interface + implementation, status pages)
-├── packages/
-│   ├── api/                  contracts: tRPC contract (zod), daemon OpenAPI, mock, template schema
-│   └── db/                   Drizzle schema and migrations (PostgreSQL 16)
-├── templates/
-│   ├── SCHEMA.md             template format
-│   ├── game/                 Minecraft and generic game templates
-│   └── web/                  website templates
-├── deploy/                   docker-compose, Caddy build, systemd unit, install script
-├── tests/integration/        end-to-end tests against real Docker
-└── docs/ontwerp.md           the original design document (Dutch)
-```
-
-### Tech stack
 
 | Part | Choice |
 |---|---|
-| Frontend | Next.js 16 (App Router), TypeScript, Tailwind CSS 4, shadcn/ui, xterm.js, Monaco |
-| Backend | Next.js + tRPC 11, Drizzle ORM, zod 4 |
-| Auth | Discord OAuth2, own sessions in PostgreSQL, TOTP |
-| Database | PostgreSQL 16 (panel), MariaDB 11 (customer databases) |
-| Jobs & rate limiting | Redis |
-| Node daemon | Go, Docker SDK, gorilla/websocket, pkg/sftp |
-| Reverse proxy | Caddy 2 with `caddy-dns/cloudflare`, configured live through its admin API |
+| Frontend | Next.js 16, TypeScript, Tailwind CSS 4, shadcn/ui, xterm.js, Monaco |
+| Backend | Next.js with tRPC 11, Drizzle ORM, zod 4 |
+| Data | PostgreSQL 16 (panel), MariaDB 11 (customer databases), Redis (jobs and rate limits) |
+| Node daemon | Go, Docker SDK, websockets, SFTP |
+| Reverse proxy | Caddy 2, configured live through its admin API |
 
----
-
-## 🧑‍💻 Development
+## Development
 
 ```bash
 pnpm install
-make dev          # panel on :3000 against the in-memory mock (no daemon or DB needed)
-make check        # everything CI runs (see below)
+make dev      # panel on :3000 against an in-memory mock, no daemon or database needed
+make check    # everything CI runs
 ```
 
-`make dev` runs the UI against a complete **mock implementation** of the tRPC contract, so
-you can work on any screen without Docker. Switch roles with
-`MOCK_ROLE=admin|user|pending|anonymous`.
+Details, contracts and test conventions: [docs/development.md](docs/development.md).
 
-**Useful commands**
+### Built with Claude Code
 
-```bash
-pnpm --filter @panel/api gen         # regenerate TS types after changing openapi.yaml
-pnpm --filter @panel/db generate     # new migration after changing schema.ts
-pnpm --filter @panel/web build       # production build
-cd daemon && go test ./...           # daemon tests (some need Docker)
-deploy/test.sh                       # shellcheck, compose validation, template smoke tests
-```
+Most of this project was written by Claude Code agents working in parallel, each in its own git worktree, coordinated by an orchestrating session that
+wrote the contracts first and reviewed and merged the results. The rules they followed are in [`CLAUDE.md`](CLAUDE.md).
 
-**Toolchain:** Node 22, pnpm, Go 1.23+ (module), TypeScript 5.9. Next.js 16 differs from
-older versions (`middleware.ts` is now `proxy.ts`) — see `apps/web/AGENTS.md`.
+## Roadmap
 
----
+Done: contracts, Minecraft end to end, files and SFTP, subusers, websites with domains and SSL, databases, sleep mode, backups and schedules, quotas, multi-node,
+Velocity and Bedrock, plugins and modpacks, one-click apps, image updates, notifications.
 
-## 🧪 Testing
+Ideas:
 
-| Level | What | Command |
-|---|---|---|
-| **Contract** | OpenAPI lint, contract shape, mock output validated against the zod schemas, templates valid, generated types up to date | `make check` |
-| **Unit** | ~200 panel tests (against a real PostgreSQL in Docker), daemon unit tests with fakes, UI tests with Testing Library | `make check` |
-| **Docker** | Daemon against real Docker, Caddy against a real Caddy (`tls internal`), every web template served through Caddy | `make check` |
-| **Templates** | Each game template installed and started as the daemon would, plus Velocity routing a bot between two Paper servers | `deploy/test.sh` |
-| **Integration** | Real panel + real daemon + real Docker: login, 2FA, Paper install, console, `say hallo`, daemon restart, subusers, SFTP, disk limit, PHP site + domain + database isolation | `make integration` |
+- A first tagged release, prebuilt daemon binaries and container images.
+- **Behind Nginx Proxy Manager** mode, for machines where another proxy already owns ports 80 and 443.
+- Game-only nodes without ports 80 and 443.
+- IPv6.
+- More one-click apps and game templates.
 
-Tests never touch a real installation: every Docker object they create carries
-`panel.test=true` plus a unique run label, they use random free ports and temporary
-directories, and they clean up only what they created.
+Out of scope: e-mail hosting, billing and public sign-up, running your own nameservers.
 
----
-
-## 🤖 How this was built
-
-This panel was built by an orchestrating Claude Code session that coordinated several
-specialised agents in parallel, each in its own git worktree and branch:
-
-| Agent | Owned |
-|---|---|
-| `daemon` | the Go daemon (Docker, console, files, SFTP, disk limits, sleep mode) |
-| `panel-api` | tRPC routers, auth, 2FA, permissions, daemon client |
-| `panel-ui` | all screens, console, file manager, i18n |
-| `web-hosting` | Caddy integration, web templates, status pages |
-| `templates-ops` | game templates, Docker Compose, systemd, installer |
-| `admin` | the extended admin area |
-
-The orchestrator wrote the contracts first (phase 0), answered contract questions, reviewed
-and merged green branches and ran the integration tests after every merge. The rules each
-agent followed are in [`CLAUDE.md`](CLAUDE.md); the original plan is in
-[`docs/ontwerp.md`](docs/ontwerp.md).
-
----
-
-## 🗺️ Roadmap
-
-| Phase | Scope | Status |
-|---|---|---|
-| **0** | Contracts and skeleton | ✅ Done |
-| **1** | One Minecraft server end-to-end: Discord login, 2FA, console, stats, restart-safe daemon | ✅ Done |
-| **2** | Files, SFTP, subusers, disk/CPU/RAM limits, more game templates, Velocity | ✅ Done |
-| **3** | Websites, domains, automatic SSL, DNS help, Cloudflare, MariaDB | ✅ Done |
-| — | Sleep mode for Minecraft, extended admin area (suspend, change template, bulk actions, settings) | 🚧 In progress |
-| **4** | Backups to S3 (with database dumps, checksums and safe restore), schedules, emergency account, `uninstall.sh`, docs | 📋 Planned |
-
-**Later / ideas:**
-- **Behind Nginx Proxy Manager mode** — for machines where NPM already owns ports 80/443: the panel
-  manages NPM proxy hosts through its API (NPM handles TLS and certificates), while Caddy keeps routing
-  internally over plain HTTP.
-- Game-only nodes without ports 80/443 (DNS-01 certificates and a custom port for the node domain).
-- IPv6, and bundling Monaco instead of loading it from a CDN.
-
-**Out of scope for v1:** e-mail hosting, billing and sign-up, running your own nameservers.
-
----
-
-## ❓ FAQ
+## FAQ
 
 <details>
 <summary><b>Can I use it without Discord?</b></summary>
 
-Not in v1 — Discord is the login. An emergency account with password + mandatory TOTP is
-planned for phase 4, for when Discord itself is down.
+Login is Discord-based. For emergencies there is a built-in emergency account with a password and a mandatory authenticator code.
 </details>
 
 <details>
 <summary><b>Does it support multiple machines?</b></summary>
 
-The architecture does (panel ↔ daemon over HTTPS with per-node tokens, and nodes can be
-registered in `/admin`), but v1 is developed and tested on a single machine.
+Yes. Add a node in the admin area and run the printed one-line command on the new machine. Servers can be moved between nodes.
 </details>
 
 <details>
-<summary><b>Can it run next to Pterodactyl/Pelican or aaPanel?</b></summary>
+<summary><b>Can it run next to Pelican, Pterodactyl or aaPanel?</b></summary>
 
-Only if they don't use ports 80, 443 and 2022. The panel only ever touches Docker objects
-carrying its own labels, so it won't interfere with other containers.
+Only if they do not use ports 80, 443 and 2022. The panel only touches Docker objects with its own labels, so other containers stay untouched.
 </details>
 
 <details>
 <summary><b>Is there IPv6?</b></summary>
 
-No, not in v1. The DNS check warns about leftover AAAA records for exactly that reason.
+Not yet. The DNS check warns about leftover AAAA records for that reason.
 </details>
 
 <details>
-<summary><b>Where are backups?</b></summary>
+<summary><b>Where are backups stored?</b></summary>
 
-Phase 4. Until then, use SFTP or your own snapshot of `/var/lib/panel`.
+In any S3-compatible bucket you configure (AWS S3, MinIO, Backblaze B2, Cloudflare R2 and others). See [docs/backups.md](docs/backups.md).
 </details>
 
----
+<details>
+<summary><b>Is it production ready?</b></summary>
 
-## 🩺 Troubleshooting
+It is under active development and has no tagged release yet. It is tested on a single machine and in a two-machine setup. Keep your own backups and read the [changelog](CHANGELOG.md).
+</details>
 
-| Symptom | Likely cause / fix |
-|---|---|
-| Certificate stays `issuing` or shows `dns_wrong` | The A record doesn't point at the node, or Cloudflare's proxy (orange cloud) is on — set it to DNS only |
-| Discord login says "invalid redirect" | The redirect URI in the Discord developer portal must be exactly `https://<PANEL_DOMAIN>/api/auth/discord/callback` |
-| `/admin` keeps redirecting to Account | Admins must enable 2FA first |
-| Site shows "this website is being set up" | The install is still running — PHP templates compile extensions on first install (1–2 min) |
-| Upload refused: disk full | The server hit its disk limit; delete files or ask an admin to raise the limit |
-| Console doesn't connect | Check that `NODE_DOMAIN` resolves to the node and `systemctl status panel-daemon` is running |
-| Minecraft server killed right after start | Memory limit too low for the heap; give the server more RAM |
+## Contributing
 
-Logs:
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), run `make check` before opening a PR and keep commits small.
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Security issues go through [SECURITY.md](SECURITY.md).
 
-```bash
-journalctl -u panel-daemon -f          # daemon
-docker logs -f panel-web               # panel
-docker logs -f panel-caddy             # Caddy / certificates
-```
+## License
 
----
-
-## 🤝 Contributing
-
-Issues and pull requests are welcome. Please:
-
-1. run `make check` before opening a PR (and `deploy/test.sh` if you touch `deploy/` or templates),
-2. keep commits small, with the component first (`daemon: …`, `panel-ui: …`),
-3. never hardcode a domain — tests use `panel.test` and `node1.test`,
-4. change the contracts in `packages/api/` deliberately and in their own commit.
-
----
-
-## 📄 License
-
-BSSG Panel is free software, licensed under the **GNU Affero General Public License v3.0 or later**
-([AGPL-3.0-or-later](LICENSE)).
-
-In short: you may use, study, modify and share it. If you modify it and let other people use your
-modified version — **including over a network, e.g. running it as a hosting panel for others** — you
-must make your modified source code available to those users under the same license.
+BSSG Panel is free software under the **GNU Affero General Public License v3.0 or later** ([AGPL-3.0-or-later](LICENSE)).
+You may use, study, modify and share it. If you let other people use a modified version over a network, for example as a hosting panel, you must offer them the modified source under the same license.
 
 Copyright (C) 2026 St3v3-B and contributors.
 
----
-
 <div align="center">
-
-Made for friends who play Minecraft and run websites. ⛏️🌐
-
+<br>
+<sub>Made for friends who play Minecraft and run websites.</sub>
 </div>
