@@ -68,12 +68,12 @@ export default function ServerLayout({ children }: { children: ReactNode }) {
             </span>
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">{s.name}</h1>
+                <h1 className="line-clamp-2 break-words text-2xl font-bold tracking-tight sm:text-3xl">{s.name}</h1>
                 <StatusBadge status={s.status} />
               </div>
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
                 {s.primaryAddress && <CopyText value={s.primaryAddress} className="text-foreground" />}
-                <span className="truncate">
+                <span className="basis-full sm:basis-auto">
                   {s.templateName} · {s.node.name}
                   {!s.isOwner && <> · {t.server.of(displayName(s.owner))}</>}
                 </span>

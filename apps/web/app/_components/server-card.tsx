@@ -46,22 +46,22 @@ export function ServerCard({ server }: { server: ServerSummary }) {
     <Card className="group relative flex flex-col gap-4 overflow-hidden p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-foreground/20 sm:p-5" data-testid="server-card" data-status={server.status} style={{ "--tone": tone } as CSSProperties}>
       <span aria-hidden className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[var(--tone)] to-transparent opacity-80" />
       <span aria-hidden className={cn("pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-[var(--tone)] blur-3xl transition-opacity", running ? "opacity-20 group-hover:opacity-30" : "opacity-[0.07]")} />
-      <div className="relative flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
+      <div className="relative flex flex-wrap items-start justify-between gap-x-3 gap-y-2.5">
+        <div className="flex min-w-0 flex-1 basis-48 items-center gap-3">
           <span className="grid size-11 shrink-0 place-items-center rounded-xl border border-border bg-muted/70 text-[var(--tone)]">
             <Icon className="size-5" />
           </span>
           <div className="min-w-0">
-            <Link href={`/servers/${server.uuid}`} className="block truncate text-base font-semibold after:absolute after:inset-0 after:content-['']">
+            <Link href={`/servers/${server.uuid}`} className="line-clamp-2 break-words text-base font-semibold leading-snug after:absolute after:inset-0 after:content-['']">
               {server.name}
             </Link>
-            <p className="truncate text-xs text-muted-foreground">
+            <p className="line-clamp-2 text-xs text-muted-foreground">
               {server.templateName} · {server.nodeName}
               {!server.isOwner && <> · {t.server.of(displayName(server.owner))}</>}
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5 max-sm:w-full sm:flex-col sm:items-end sm:gap-1">
           <StatusBadge status={server.status} />
           <ImageUpdateBadge info={server.imageUpdate} />
         </div>
