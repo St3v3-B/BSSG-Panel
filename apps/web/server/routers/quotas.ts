@@ -89,7 +89,7 @@ export const quotaAccount: Pick<Implementation["account"], "quota"> = {
     if (!q) return null;
     const [templates, nodes, usage] = await Promise.all([
       db.select({ id: schema.templates.id, name: schema.templates.name, type: schema.templates.type }).from(schema.templates).orderBy(asc(schema.templates.type), asc(schema.templates.name)),
-      db.select({ id: schema.nodes.id, name: schema.nodes.name }).from(schema.nodes).orderBy(asc(schema.nodes.id)),
+      db.select({ id: schema.nodes.id, name: schema.nodes.name, supportsDomains: schema.nodes.supportsDomains }).from(schema.nodes).orderBy(asc(schema.nodes.id)),
       usageFor(db, [uid(ctx)]),
     ]);
     return {

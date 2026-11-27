@@ -120,7 +120,7 @@ export function toDetail(
       userEditable: v.user_editable,
       pattern: v.pattern ?? null,
     })),
-    node: { id: b.node.id, name: b.node.name, fqdn: b.node.fqdn },
+    node: { id: b.node.id, name: b.node.name, fqdn: b.node.fqdn, supportsDomains: b.node.supportsDomains },
     sftp: { host: b.node.fqdn, port: b.node.sftpPort, username: sftpUsername(viewer.name, viewer.discordId, b.server.uuid) },
     domainsAllowed: b.server.type === "web" || b.server.domainsAllowed,
     sleep: { supported: templateSleepCapable(b.template), enabled: b.server.sleepEnabled, idleMinutes: b.server.sleepIdleMinutes },

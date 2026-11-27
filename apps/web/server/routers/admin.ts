@@ -40,6 +40,10 @@ export function nodeOut(n: NodeRow): NodeOut {
     s3TargetId: n.s3TargetId,
     diskQuotaMode: n.diskQuotaMode,
     isLocal: n.isLocal,
+    supportsDomains: n.supportsDomains,
+    publicPort: n.publicPort,
+    publicIp: n.publicIp,
+    joinState: (n.joinState as NodeOut["joinState"]) ?? null,
   };
 }
 
