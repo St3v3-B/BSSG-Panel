@@ -11,3 +11,4 @@
 daemon/**/*_test.go
 docs
 tests/integration/.work
+apps/web/public/monaco

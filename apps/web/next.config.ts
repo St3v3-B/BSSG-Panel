@@ -7,16 +7,16 @@ const here = dirname(fileURLToPath(import.meta.url));
 const dev = process.env.NODE_ENV !== "production";
 
 /**
- * CSP voor Next (inline bootstrap-scripts, dus 'unsafe-inline' zonder nonce) en Monaco (laadt van
- * cdn.jsdelivr.net, workers via blob:). connect-src staat https:/wss: toe omdat up-/downloads en de
+ * CSP voor Next (inline bootstrap-scripts, dus 'unsafe-inline' zonder nonce) en Monaco (meegeleverd onder
+ * /monaco/vs, zie copy-monaco.mjs; workers als module-worker van 'self', blob: voor oudere Monaco-paden). connect-src staat https:/wss: toe omdat up-/downloads en de
  * console-websocket naar de node-FQDN gaan (een ander domein dan het panel).
  */
 export const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""} https://cdn.jsdelivr.net`,
-  "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+  `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ""}`,
+  "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
-  "font-src 'self' data: https://cdn.jsdelivr.net",
+  "font-src 'self' data:",
   `connect-src 'self' https: wss:${dev ? " ws:" : ""}`,
   "worker-src 'self' blob:",
   "frame-ancestors 'none'",

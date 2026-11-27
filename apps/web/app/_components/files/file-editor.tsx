@@ -1,5 +1,4 @@
 "use client";
-import Editor, { type OnMount } from "@monaco-editor/react";
 import { ArrowLeft, Download, Save } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
@@ -7,6 +6,7 @@ import { FileActionError } from "@/app/_components/files/file-action-error";
 import { QueryError } from "@/app/_components/query-error";
 import { Badge } from "@/app/_components/ui/badge";
 import { Button } from "@/app/_components/ui/button";
+import { CodeEditor, type OnMount } from "@/app/_components/code-editor";
 import { Card } from "@/app/_components/ui/card";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
@@ -89,7 +89,7 @@ export function FileEditor({ uuid, path, readOnly, onClose }: { uuid: string; pa
         <Skeleton className="h-[60vh] rounded-xl" />
       ) : (
         <Card className="overflow-hidden p-0">
-          <Editor
+          <CodeEditor
             height="65vh"
             theme="vs-dark"
             path={path}

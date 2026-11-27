@@ -9,6 +9,7 @@ import { UsersAdmin } from "@/app/_components/admin/users";
 import { renderWithTrpc, sessionFor } from "./utils";
 
 vi.mock("@monaco-editor/react", () => ({
+  loader: { config: () => {} },
   default: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => <textarea aria-label="editor" value={value} onChange={(e) => onChange(e.target.value)} />,
 }));
 

@@ -189,9 +189,20 @@ See [docs/multi-node.md](docs/multi-node.md).
 
 ### Update
 
+Use **Admin, Settings, Updates** in the panel, or on the host:
+
 ```bash
-cd BSSG-Panel && git pull && sudo deploy/install.sh --non-interactive
+cd BSSG-Panel && sudo deploy/upgrade.sh     # git pull + install.sh, with health check and automatic rollback
 ```
+
+### Uninstall
+
+```bash
+sudo deploy/uninstall.sh --dry-run          # see what would be removed
+sudo deploy/uninstall.sh --backup           # dump the databases first; add --purge to delete data too
+```
+
+See the [admin guide](docs/admin-guide.md#uninstalling).
 
 ## Configuration
 
@@ -204,8 +215,8 @@ The commented reference is [`deploy/panel.env.example`](deploy/panel.env.example
 | Guide | For |
 |---|---|
 | [Installation](docs/installation.md) | Install, configure, update |
-| [User guide](docs/user-guide.md) | Using servers, files, SFTP, subusers, notifications |
-| [Admin guide](docs/admin-guide.md) | Users, quotas, nodes, templates, settings |
+| [User guide](docs/user-guide.md) | Servers, console, files, SFTP, backups, schedules, domains, databases, subusers, API keys, 2FA, graphs |
+| [Admin guide](docs/admin-guide.md) | Install, nodes (join), templates, settings, updates, backups and S3, network isolation, uninstall, troubleshooting |
 | [Multi-node](docs/multi-node.md) | Join machines, transfer servers |
 | [Backups](docs/backups.md) | S3 targets, restores, schedules |
 | [Minecraft](docs/minecraft.md) | Sleep mode, Velocity, Bedrock, plugins and modpacks |
