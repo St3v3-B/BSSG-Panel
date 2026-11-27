@@ -297,9 +297,39 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
           </div>
         </Alert>
       )}
+      <NodeDatabase nodeId={id} />
       <NodeServers nodeId={id} />
       <AllocationsAdmin nodeId={id} />
     </div>
+  );
+}
+
+/** Databasehost van de node (de node meldt zijn eigen MariaDB aan); de test loopt via de daemon. */
+function NodeDatabase({ nodeId }: { nodeId: number }) {
+  const t = useT();
+  const n = t.admin.nodes;
+  const hosts = trpc.admin.databaseHosts.list.useQuery();
+  const test = trpc.admin.databaseHosts.test.useMutation();
+  const host = hosts.data?.find((x) => x.nodeId === nodeId);
+  return (
+    <Card data-testid="node-database">
+      <CardHeader>
+        <CardTitle className="text-base">{n.dbTitle}</CardTitle>
+        {hosts.data && !host && <CardDescription>{n.dbNone}</CardDescription>}
+      </CardHeader>
+      {host && (
+        <CardContent className="flex flex-wrap items-center gap-3 text-sm">
+          <code className="font-mono">{host.host}:{host.port}</code>
+          <Badge variant="info">{host.daemonManaged ? n.dbManaged : n.dbExternal}</Badge>
+          <span className="text-muted-foreground">{n.dbCount(host.databaseCount)}</span>
+          <Button variant="outline" size="sm" onClick={() => test.mutate({ id: host.id })} disabled={test.isPending}>
+            {test.isPending && <Spinner />} {n.dbTest}
+          </Button>
+          {test.data && <Badge variant={test.data.ok ? "success" : "destructive"}>{test.data.ok ? n.dbOk : n.dbDown}</Badge>}
+          {test.data && !test.data.ok && test.data.error && <span className="text-xs text-destructive">{test.data.error}</span>}
+        </CardContent>
+      )}
+    </Card>
   );
 }
 
