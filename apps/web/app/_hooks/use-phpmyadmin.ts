@@ -14,7 +14,9 @@ export function usePhpMyAdmin() {
     setError(null);
     const win = window.open("about:blank", "_blank");
     try {
-      const { url } = await mutation.mutateAsync();
+      const { url: rel } = await mutation.mutateAsync();
+      // Absoluut maken t.o.v. het panel: het nieuwe tabblad staat nog op about:blank.
+      const url = new URL(rel, window.location.origin).toString();
       if (win && !win.closed) {
         win.opener = null;
         win.location.href = url;

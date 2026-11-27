@@ -163,7 +163,7 @@ export const databases: Implementation["databases"] = {
     if (!admin && (await pmaAccess(userId, false)).local.length === 0) throw new TRPCError({ code: "FORBIDDEN", message: "NO_DATABASES" });
     const token = await issueToken({ userId, admin });
     await logActivity({ action: "account.phpmyadmin.open", userId, metadata: {}, ip: ctx.ip, ctx });
-    return { url: `${getEnv().PANEL_URL}/phpmyadmin/signon.php?token=${encodeURIComponent(token)}` };
+    return { url: `/phpmyadmin/signon.php?token=${encodeURIComponent(token)}` };
   },
 };
 

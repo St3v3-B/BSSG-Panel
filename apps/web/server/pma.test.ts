@@ -19,7 +19,7 @@ let serverA = 0, serverB = 0, serverC = 0, serverR = 0;
 
 const exchange = (token: unknown, secret: string | null = SECRET) =>
   pmaExchange(new Request("http://panel.test/api/pma/exchange", { method: "POST", headers: { "content-type": "application/json", ...(secret ? { authorization: `Bearer ${secret}` } : {}) }, body: JSON.stringify({ token }) }));
-const tokenOf = (url: string) => new URL(url).searchParams.get("token")!;
+const tokenOf = (url: string) => new URL(url, "http://panel.test").searchParams.get("token")!;
 const root = () => createConnection({ host: "127.0.0.1", port: maria.port, user: "root", password: ROOT_PW });
 const asUser = (user: string, password: string) => createConnection({ host: "127.0.0.1", port: maria.port, user, password });
 async function visible(user: string, password: string): Promise<string[]> {
@@ -136,7 +136,7 @@ describe("tRPC databases.phpMyAdminInfo / phpMyAdminUrl", () => {
   });
   it("url: wijst naar /phpmyadmin/signon.php met een token", async () => {
     const { url } = await alice.api.databases.phpMyAdminUrl();
-    expect(url).toMatch(/^http:\/\/127\.0\.0\.1:3999\/phpmyadmin\/signon\.php\?token=[A-Za-z0-9_-]{40,}$/);
+    expect(url).toMatch(/^\/phpmyadmin\/signon\.php\?token=[A-Za-z0-9_-]{40,}$/); // zelfde origin als het panel (PANEL_URL kan intern zijn)
   });
   it("zonder PMA_SHARED_SECRET staat de koppeling uit", async () => {
     const saved = process.env.PMA_SHARED_SECRET;
