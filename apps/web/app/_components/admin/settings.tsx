@@ -30,9 +30,9 @@ export function SettingsTabs({ current }: { current: "general" | "db" | "dns" | 
     { k: "images", href: "/admin/settings/image-updates", label: t.imageUpdates },
   ] as const;
   return (
-    <nav className="mb-6 flex gap-1 border-b border-border text-sm" aria-label="settings">
+    <nav className="scrollbar-none -mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-border px-4 text-sm sm:mx-0 sm:px-0" aria-label="settings">
       {tabs.map((x) => (
-        <Link key={x.k} href={x.href} className={cn("-mb-px border-b-2 px-3 py-2", x.k === current ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}>
+        <Link key={x.k} href={x.href} className={cn("-mb-px whitespace-nowrap border-b-2 px-3 py-2.5", x.k === current ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}>
           {x.label}
         </Link>
       ))}

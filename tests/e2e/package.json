@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:mock": "playwright test -c playwright.mock.config.ts"
   },
   "dependencies": {
     "@playwright/test": "^1.58.0"

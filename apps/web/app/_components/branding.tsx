@@ -67,7 +67,7 @@ export function BrandMark({ className, size = "md", showName = true, stacked = f
       ) : (
         <LogoMark className={cn(box, "drop-shadow-[0_4px_14px_var(--surface-glow)]")} />
       )}
-      <span className={cn("truncate font-semibold tracking-tight", size === "lg" ? "text-3xl" : "text-base", stacked && "brand-text text-4xl font-bold", !showName && "sr-only")} data-testid="panel-name">
+      <span className={cn("truncate font-semibold tracking-tight", size === "lg" ? "text-3xl" : "text-base", stacked && "brand-text text-3xl font-bold sm:text-4xl", !showName && "sr-only")} data-testid="panel-name">
         {name ?? " "}
       </span>
     </span>
