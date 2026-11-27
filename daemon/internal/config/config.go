@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config is de configuratie van de daemon.
@@ -26,6 +27,8 @@ type Config struct {
 	ExtraLabels    map[string]string
 	// MariaDBContainer wordt aan site-netwerken gekoppeld (MARIADB_CONTAINER).
 	MariaDBContainer string
+	// ImageCheckInterval: hoe vaak op nieuwe images gecontroleerd wordt (IMAGE_CHECK_INTERVAL, 0 = uit).
+	ImageCheckInterval time.Duration
 }
 
 // Load leest de configuratie met getenv (os.Getenv in productie).
@@ -66,6 +69,9 @@ func Load(getenv func(string) string) (Config, error) {
 		errs = append(errs, fmt.Errorf("PANEL_URL invalid: %q", c.PanelURL))
 	}
 	var err error
+	if c.ImageCheckInterval, err = time.ParseDuration(get("IMAGE_CHECK_INTERVAL", "24h")); err != nil || c.ImageCheckInterval < 0 {
+		errs = append(errs, fmt.Errorf("IMAGE_CHECK_INTERVAL: invalid duration %q", get("IMAGE_CHECK_INTERVAL", "24h")))
+	}
 	if c.DaemonPort, err = port(get("DAEMON_PORT", "8080")); err != nil {
 		errs = append(errs, fmt.Errorf("DAEMON_PORT: %w", err))
 	}

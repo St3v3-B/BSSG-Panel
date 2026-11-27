@@ -96,6 +96,7 @@ export class FakeDaemon {
 
     const path = r.path.split("?")[0]!;
     const query = new URLSearchParams(r.path.split("?")[1] ?? "");
+    if (r.method === "POST" && path === "/api/images/check") return send(202);
     const fm = /^\/api\/servers\/([0-9a-f-]{36})\/files\/([a-z]+)$/.exec(path);
     if (fm) return this.handleFiles(fm[1]!, fm[2]!, r, query, raw, send);
     const rm = /^\/api\/routes(?:\/(.+))?$/.exec(path);
@@ -131,7 +132,7 @@ export class FakeDaemon {
       for (const d of t.dirs) fs.dirs.add(d);
       return send(204);
     }
-    const m = /^\/api\/servers\/([0-9a-f-]{36})(\/[a-z]+)?$/.exec(path);
+    const m = /^\/api\/servers\/([0-9a-f-]{36})(\/[a-z-]+)?$/.exec(path);
     if (path === "/api/system" && r.method === "GET") {
       return send(200, {
         version: "fake-1.0",
@@ -175,6 +176,8 @@ export class FakeDaemon {
         s.state = action === "start" || action === "restart" ? "starting" : "offline";
         return send(202);
       }
+      case "POST /image-update":
+        return send(202);
       case "POST /commands":
         if (s.state !== "online" && s.state !== "starting") return send(409, { error: "not_running" });
         return send(204);

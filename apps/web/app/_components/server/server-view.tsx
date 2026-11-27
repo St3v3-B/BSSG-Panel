@@ -2,6 +2,8 @@
 import { Lock, Moon, Play } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 import type { ServerDetail } from "@panel/api";
+import { trpc } from "@/lib/trpc";
+import { ImageUpdateNotice } from "@/app/_components/image-updates";
 import { ConsolePanel } from "@/app/_components/console-panel";
 import type { TerminalHandle } from "@/app/_components/console-terminal";
 import { LiveStatsPanel } from "@/app/_components/live-stats";
@@ -31,6 +33,7 @@ export function ServerView({ server }: { server: ServerDetail }) {
   const perms = new Set(server.permissions);
   const canRead = perms.has("console.read");
   const t = useT();
+  const me = trpc.auth.me.useQuery(undefined, { staleTime: 30_000 });
 
   return (
     <div className="space-y-6">
@@ -48,6 +51,7 @@ export function ServerView({ server }: { server: ServerDetail }) {
           </div>
         </Alert>
       )}
+      <ImageUpdateNotice server={server} canManage={server.isOwner || !!me.data?.isAdmin} />
       {status === "sleeping" && (
         <Alert className="border-indigo-400/40 bg-indigo-500/10 text-indigo-200" data-testid="sleeping-notice">
           <Moon />

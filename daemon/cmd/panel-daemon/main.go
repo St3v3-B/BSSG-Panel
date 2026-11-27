@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // Europe/Amsterdam ook in minimale containers
 
 	"panel/daemon/internal/config"
 	"panel/daemon/internal/daemon"

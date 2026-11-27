@@ -16,7 +16,13 @@ type Fake struct {
 	containers map[string]*FakeContainer
 	byName     map[string]string
 	images     map[string]bool
-	seq        int
+	localIDs   map[string]string // ref → lokaal image-id
+	remoteIDs  map[string]string // ref → id dat het "register" nu aanbiedt
+	imageEnvs  map[string][]string
+	imageSet   map[string]bool // aanwezige image-id's
+	// PullLog bevat elke ref die PullImage opgehaald heeft.
+	PullLog []string
+	seq     int
 
 	// Behavior bepaalt wat een container doet; standaard DefaultBehavior.
 	Behavior func(c *FakeContainer)
@@ -24,6 +30,8 @@ type Fake struct {
 	Pulls int
 	// FailCreate, als gezet, laat Create falen.
 	FailCreate error
+	// FailPull, als gezet, laat PullImage falen.
+	FailPull error
 
 	networks map[string]*FakeNetwork
 
@@ -165,13 +173,14 @@ var _ Engine = (*Fake)(nil)
 
 // NewFake maakt een lege fake.
 func NewFake() *Fake {
-	return &Fake{containers: map[string]*FakeContainer{}, byName: map[string]string{}, images: map[string]bool{}}
+	return &Fake{containers: map[string]*FakeContainer{}, byName: map[string]string{}, images: map[string]bool{}, localIDs: map[string]string{}, remoteIDs: map[string]string{}, imageEnvs: map[string][]string{}, imageSet: map[string]bool{}}
 }
 
 // FakeContainer is een container in de fake.
 type FakeContainer struct {
-	ID     string
-	Config ContainerConfig
+	ID      string
+	ImageID string
+	Config  ContainerConfig
 
 	f       *Fake
 	mu      sync.Mutex
@@ -305,6 +314,8 @@ func (f *Fake) EnsureImage(_ context.Context, image string, progress func(string
 	defer f.mu.Unlock()
 	if !f.images[image] {
 		f.images[image] = true
+		f.localIDs[image] = f.remoteIDLocked(image)
+		f.imageSet[f.localIDs[image]] = true
 		f.Pulls++
 		if progress != nil {
 			progress("pulled " + image)
@@ -323,7 +334,8 @@ func (f *Fake) Create(_ context.Context, cfg ContainerConfig) (string, error) {
 		return "", fmt.Errorf("name %s already exists", cfg.Name)
 	}
 	f.seq++
-	c := &FakeContainer{ID: fmt.Sprintf("fake%04d", f.seq), Config: cfg, f: f, exited: make(chan struct{}), stdin: make(chan string, 100)}
+	imgID := f.localIDs[cfg.Image]
+	c := &FakeContainer{ID: fmt.Sprintf("fake%04d", f.seq), ImageID: imgID, Config: cfg, f: f, exited: make(chan struct{}), stdin: make(chan string, 100)}
 	c.cond = sync.NewCond(&c.mu)
 	f.containers[c.ID] = c
 	f.byName[cfg.Name] = c.ID
@@ -388,7 +400,7 @@ func (f *Fake) Inspect(_ context.Context, id string) (Container, error) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return Container{ID: c.ID, Name: c.Config.Name, Labels: c.Config.Labels, Running: c.running, StartedAt: c.started, ExitCode: c.exit, OOMKilled: c.oom}, nil
+	return Container{ID: c.ID, Name: c.Config.Name, Labels: c.Config.Labels, Running: c.running, StartedAt: c.started, ExitCode: c.exit, OOMKilled: c.oom, ImageID: c.ImageID}, nil
 }
 
 func (f *Fake) List(_ context.Context, labels map[string]string) ([]Container, error) {
@@ -402,7 +414,7 @@ func (f *Fake) List(_ context.Context, labels map[string]string) ([]Container, e
 		}
 		if ok {
 			c.mu.Lock()
-			out = append(out, Container{ID: c.ID, Name: c.Config.Name, Labels: c.Config.Labels, Running: c.running, StartedAt: c.started})
+			out = append(out, Container{ID: c.ID, Name: c.Config.Name, Labels: c.Config.Labels, Running: c.running, StartedAt: c.started, ImageID: c.ImageID})
 			c.mu.Unlock()
 		}
 	}

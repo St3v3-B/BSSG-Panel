@@ -102,6 +102,8 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("PUT /api/servers/{uuid}", p(a.withServer(a.updateServer)))
 	mux.Handle("DELETE /api/servers/{uuid}", p(a.withServer(a.deleteServer)))
 	mux.Handle("POST /api/servers/{uuid}/install", p(a.withServer(a.reinstall)))
+	mux.Handle("POST /api/servers/{uuid}/image-update", p(a.withServer(a.updateImage)))
+	mux.Handle("POST /api/images/check", p(a.checkImages))
 	mux.Handle("POST /api/servers/{uuid}/power", p(a.withServer(a.power)))
 	mux.Handle("POST /api/servers/{uuid}/commands", p(a.withServer(a.commands)))
 	mux.Handle("POST /api/servers/{uuid}/exec", p(a.withServer(a.exec)))

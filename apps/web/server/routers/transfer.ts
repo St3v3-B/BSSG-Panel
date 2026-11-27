@@ -18,7 +18,7 @@ import { logActivity } from "../activity";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema } from "../db";
 import { buildServerSpec } from "../spec";
-import { fetchServerByUuid, limitsOf, serverVariables, sleepOf, autoRestartOf } from "../servers-data";
+import { imagePolicyOf, fetchServerByUuid, limitsOf, serverVariables, sleepOf, autoRestartOf } from "../servers-data";
 import { isBackend, syncProxyAddresses } from "../network";
 import { assignAllocations, checkAllocations, nodeById } from "./admin";
 import { isMc, routeFor } from "./domains";
@@ -100,7 +100,7 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
       allocations: targetAllocs.map((a, i) => ({ ip: a.ip, port: a.port, isPrimary: i === 0 })),
       skipInstall: true,
       startOnInstall: false,
-      sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server),
+      sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server), imagePolicy: imagePolicyOf(b.server),
     });
     await call(() => dst.createServer(spec));
     targetCreated = true;

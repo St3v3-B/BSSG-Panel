@@ -215,7 +215,7 @@ func (s *Server) launch(sp spec.ServerSpec) error {
 	if err := spec.ApplyConfigFiles(s.m.volume(sp.UUID), sp.ConfigFiles, sp.Vars(), s.m.cfg.UID, s.m.cfg.GID); err != nil {
 		return err
 	}
-	if err := eng.EnsureImage(ctx, sp.Image, func(l string) { s.DaemonMessage("info", l) }); err != nil {
+	if err := s.m.ensureImage(ctx, sp.Image, func(l string) { s.DaemonMessage("info", l) }); err != nil {
 		return fmt.Errorf("image %s: %w", sp.Image, err)
 	}
 	if err := eng.Remove(ctx, ContainerName(sp.UUID)); err != nil && !errors.Is(err, engine.ErrNotFound) {
@@ -486,7 +486,7 @@ func (s *Server) runInstall(ctx context.Context, sp spec.ServerSpec) error {
 	if err := s.ensureVolume(); err != nil {
 		return fmt.Errorf("data-map: %w", err)
 	}
-	if err := eng.EnsureImage(ctx, sp.Install.Image, s.installLine); err != nil {
+	if err := s.m.ensureImage(ctx, sp.Install.Image, s.installLine); err != nil {
 		return fmt.Errorf("image %s: %w", sp.Install.Image, err)
 	}
 	name := installName(sp.UUID)
@@ -537,6 +537,15 @@ func (s *Server) runInstall(ctx context.Context, sp spec.ServerSpec) error {
 // Update vervangt de spec. Limieten gaan direct in; de rest bij de volgende start.
 func (s *Server) Update(sp spec.ServerSpec) error {
 	s.mu.Lock()
+	// Een spec zonder image_update (of zonder policy) laat de bestaande keuze van de eigenaar staan.
+	if old := s.spec.ImageUpdate; old != nil {
+		if sp.ImageUpdate == nil {
+			iu := *old
+			sp.ImageUpdate = &iu
+		} else if sp.ImageUpdate.Policy == "" {
+			sp.ImageUpdate.Policy = old.Policy
+		}
+	}
 	s.spec = sp
 	s.ready = compileReady(sp.ReadyPattern)
 	r := s.run

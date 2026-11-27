@@ -62,6 +62,77 @@ paths:
         "204": { description: OK }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /api/remote/settings/image-updates:
+    get:
+      operationId: getImageUpdateSettings
+      summary: Globale instellingen voor image-updates (de daemon haalt ze elk uur en bij elke controle op)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [default_policy, window_start, window_end, timezone]
+                properties:
+                  default_policy: { type: string, enum: [auto, notify, off] }
+                  window_start: { type: string, example: "04:00" }
+                  window_end: { type: string, example: "05:00", description: "mag voor window_start liggen (over middernacht)" }
+                  timezone: { type: string, example: Europe/Amsterdam }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/remote/node/images:
+    post:
+      operationId: reportImages
+      summary: Resultaat van een image-controle, per server (vervangt de vorige status)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [servers]
+              properties:
+                servers:
+                  type: array
+                  items:
+                    type: object
+                    required: [uuid, image, update_available, reinstall_required, checked_at]
+                    properties:
+                      uuid: { type: string, format: uuid }
+                      image: { type: string }
+                      current_image_id: { type: [string, "null"], description: "image-id van de draaiende container" }
+                      latest_image_id: { type: [string, "null"] }
+                      update_available: { type: boolean }
+                      reinstall_required: { type: boolean }
+                      checked_at: { type: string, format: date-time }
+      responses:
+        "204": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/remote/servers/{uuid}/image-update:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      operationId: reportImageUpdate
+      summary: Een image-update is toegepast of mislukt (voor het activiteitenlog)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [successful, mode]
+              properties:
+                successful: { type: boolean }
+                mode: { type: string, enum: [auto, manual] }
+                from_image_id: { type: [string, "null"] }
+                to_image_id: { type: [string, "null"] }
+                error: { type: [string, "null"] }
+      responses:
+        "204": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/remote/servers/{uuid}/install:
     parameters: [{ $ref: "#/components/parameters/Uuid" }]
     post:

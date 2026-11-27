@@ -20,13 +20,14 @@ import { cn } from "@/lib/utils";
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
 /** Tabbladen boven de drie instellingenschermen. */
-export function SettingsTabs({ current }: { current: "general" | "db" | "dns" | "s3" }) {
+export function SettingsTabs({ current }: { current: "general" | "db" | "dns" | "s3" | "images" }) {
   const t = useT().admin2.sub;
   const tabs = [
     { k: "general", href: "/admin/settings", label: t.general },
     { k: "db", href: "/admin/settings/database-hosts", label: t.databaseHosts },
     { k: "dns", href: "/admin/settings/dns-providers", label: t.dnsProviders },
     { k: "s3", href: "/admin/settings/backup-storage", label: t.s3Targets },
+    { k: "images", href: "/admin/settings/image-updates", label: t.imageUpdates },
   ] as const;
   return (
     <nav className="mb-6 flex gap-1 border-b border-border text-sm" aria-label="settings">

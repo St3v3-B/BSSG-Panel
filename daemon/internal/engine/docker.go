@@ -166,7 +166,7 @@ func (d *Docker) Inspect(ctx context.Context, id string) (Container, error) {
 	if err != nil {
 		return Container{}, wrap(err)
 	}
-	c := Container{ID: r.ID, Name: strings.TrimPrefix(r.Name, "/")}
+	c := Container{ID: r.ID, Name: strings.TrimPrefix(r.Name, "/"), ImageID: r.Image}
 	if r.Config != nil {
 		c.Labels = r.Config.Labels
 	}
@@ -190,7 +190,7 @@ func (d *Docker) List(ctx context.Context, labels map[string]string) ([]Containe
 	}
 	out := make([]Container, 0, len(list))
 	for _, s := range list {
-		c := Container{ID: s.ID, Labels: s.Labels, Running: s.State == "running"}
+		c := Container{ID: s.ID, Labels: s.Labels, Running: s.State == "running", ImageID: s.ImageID}
 		if len(s.Names) > 0 {
 			c.Name = strings.TrimPrefix(s.Names[0], "/")
 		}

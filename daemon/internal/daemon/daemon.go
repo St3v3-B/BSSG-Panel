@@ -38,6 +38,8 @@ type Deps struct {
 	Version string
 	// Server-opties (tests zetten korte tijden).
 	Server server.Config
+	// Image stelt de image-updater af (Interval komt anders uit IMAGE_CHECK_INTERVAL).
+	Image server.ImageConfig
 	// Panel, als gezet, vervangt de standaard panel-client.
 	Panel *panel.Client
 	// WSAuthTimeout: tijd voor het eerste auth-bericht (standaard 10 s).
@@ -102,6 +104,11 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 		sc.MariaDB = cfg.MariaDBContainer
 	}
 	d.mgr = server.NewManager(sc, deps.Engine, d.panel, deps.Log)
+	ic := deps.Image
+	if ic.Interval == 0 {
+		ic.Interval = cfg.ImageCheckInterval
+	}
+	d.mgr.EnableImageUpdates(d.panel, ic)
 	routes, err := api.NewRoutes(filepath.Join(cfg.DataDir, "state", "routes.json"), deps.Router, d.mgr, deps.Log)
 	if err != nil {
 		return nil, fmt.Errorf("routes.json: %w", err)
@@ -159,6 +166,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 		return fmt.Errorf("staat herstellen: %w", err)
 	}
 	d.mgr.ReconcileNetworks(ctx)
+	d.mgr.StartImageUpdates()
 	if err := d.routes.Sync(ctx); err != nil {
 		d.log.Warn("syncing routes failed", "err", err)
 		d.needSync.Store(true)

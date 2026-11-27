@@ -38,6 +38,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/remote/settings/image-updates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Globale instellingen voor image-updates (de daemon haalt ze elk uur en bij elke controle op) */
+        get: operations["getImageUpdateSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/remote/node/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resultaat van een image-controle, per server (vervangt de vorige status) */
+        post: operations["reportImages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/remote/servers/{uuid}/image-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Een image-update is toegepast of mislukt (voor het activiteitenlog) */
+        post: operations["reportImageUpdate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/remote/servers/{uuid}/install": {
         parameters: {
             query?: never;
@@ -250,6 +303,108 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    getImageUpdateSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        default_policy: "auto" | "notify" | "off";
+                        /** @example 04:00 */
+                        window_start: string;
+                        /**
+                         * @description mag voor window_start liggen (over middernacht)
+                         * @example 05:00
+                         */
+                        window_end: string;
+                        /** @example Europe/Amsterdam */
+                        timezone: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    reportImages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    servers: {
+                        /** Format: uuid */
+                        uuid: string;
+                        image: string;
+                        /** @description image-id van de draaiende container */
+                        current_image_id?: string | null;
+                        latest_image_id?: string | null;
+                        update_available: boolean;
+                        reinstall_required: boolean;
+                        /** Format: date-time */
+                        checked_at: string;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    reportImageUpdate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    successful: boolean;
+                    /** @enum {string} */
+                    mode: "auto" | "manual";
+                    from_image_id?: string | null;
+                    to_image_id?: string | null;
+                    error?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     reportInstall: {

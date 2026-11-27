@@ -86,6 +86,14 @@ func (s *Sleep) Texts() (motd, kick string) {
 	return motd, kick
 }
 
+// ImageUpdate is het beleid voor image-updates van een server (ServerSpec.image_update).
+type ImageUpdate struct {
+	// Policy: default (globale standaard van het panel), auto, notify of off.
+	Policy string `json:"policy,omitempty"`
+	// VersionEnv: env-variabele in de image-config waarvan major.minor gelijk moet blijven.
+	VersionEnv *string `json:"version_env,omitempty"`
+}
+
 // ServerSpec is de volledige spec die het panel stuurt.
 type ServerSpec struct {
 	UUID           string            `json:"uuid"`
@@ -103,6 +111,7 @@ type ServerSpec struct {
 	StartOnInstall bool              `json:"start_on_install,omitempty"`
 	SkipInstall    bool              `json:"skip_install,omitempty"`
 	Sleep          *Sleep            `json:"sleep,omitempty"`
+	ImageUpdate    *ImageUpdate      `json:"image_update,omitempty"`
 	AutoRestart    *AutoRestart      `json:"auto_restart,omitempty"`
 }
 
@@ -218,6 +227,16 @@ func (s *ServerSpec) Validate() error {
 		}
 		if _, err := CleanRel(f.Path); err != nil {
 			add("config_files[%d].path: %v", i, err)
+		}
+	}
+	if iu := s.ImageUpdate; iu != nil {
+		switch iu.Policy {
+		case "", "default", "auto", "notify", "off":
+		default:
+			add("image_update.policy invalid")
+		}
+		if iu.VersionEnv != nil && !envKeyRe.MatchString(*iu.VersionEnv) {
+			add("image_update.version_env invalid")
 		}
 	}
 	if len(errs) > 0 {

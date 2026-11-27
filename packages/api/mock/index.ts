@@ -63,7 +63,7 @@ export function createMock(): Implementation {
     apiKeys: [] as s.ApiKey[],
     phpSettings: new Map<string, s.PhpSettings>(),
     admins: ["100000000000000001"],
-    settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 } } as s.Settings,
+    settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 }, imageUpdates: { defaultPolicy: "notify", windowStart: "04:00", windowEnd: "05:00" } } as s.Settings,
     totpEnabled: new Map<number, boolean>([[1, true]]),
     quotas: new Map<number, s.QuotaInput>([[2, { maxRamMb: 4096, maxDiskMb: 50_000, maxCpuPct: 300, maxServers: 3, maxDatabases: 2, templateIds: null, nodeIds: null, maxPortsPerServer: 2 }]]),
     webhooks: new Map<string, s.WebhookStatus>(),
@@ -288,6 +288,12 @@ export function createMock(): Implementation {
       },
       testWebhook: () => ok,
       updateSleep: ({ input }) => ((srv(input.uuid).sleep = { ...srv(input.uuid).sleep, enabled: input.enabled, idleMinutes: input.idleMinutes }), ok),
+      updateImagePolicy: ({ input }) => {
+        const iu = srv(input.uuid).imageUpdate;
+        srv(input.uuid).imageUpdate = { ...iu, policy: input.policy, effectivePolicy: input.policy ?? db.settings.imageUpdates.defaultPolicy };
+        return ok;
+      },
+      updateImageNow: ({ input }) => ((srv(input.uuid).imageUpdate = { ...srv(input.uuid).imageUpdate, available: false, reinstallRequired: false }), ok),
       activity: ({ input }) => pageOf(db.activity.filter((a) => a.serverUuid === input.uuid), input.limit),
       bedrock: ({ input }) => mockBedrock(input.uuid),
       setBedrock: ({ input }) => {
@@ -496,6 +502,10 @@ export function createMock(): Implementation {
         serverCount: db.servers.length,
         userCount: db.users.length,
       }),
+      imageUpdates: {
+        list: () => db.servers.map((x) => ({ uuid: x.uuid, name: x.name, type: x.type, status: x.status, templateName: x.templateName, nodeName: x.nodeName, image: x.type === "web" ? "serversideup/php:8.3-fpm-nginx-alpine" : "eclipse-temurin:25-jre", imageUpdate: x.imageUpdate })),
+        checkNow: () => ok,
+      },
       nodes: {
         list: () => db.nodes,
         get: ({ input }) => {
@@ -547,6 +557,7 @@ export function createMock(): Implementation {
             suspended: null, network: { role: "none" as const, members: [], proxy: null, connectAddress: null },
             domainsAllowed: t.type === "web",
             sleep: { supported: t.type === "game", enabled: false, idleMinutes: 10 },
+            imageUpdate: { policy: null, effectivePolicy: db.settings.imageUpdates.defaultPolicy, available: false, reinstallRequired: false, checkedAt: null },
             installedAt: null, createdAt: new Date(),
           };
           db.servers.push(x);

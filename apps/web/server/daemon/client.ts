@@ -110,6 +110,12 @@ export class DaemonClient {
   deleteServer(uuid: string) {
     return this.request<void>("DELETE", `/api/servers/${uuid}`, undefined, 60_000);
   }
+  updateServerImage(uuid: string) {
+    return this.request<void>("POST", `/api/servers/${uuid}/image-update`, undefined, 30_000);
+  }
+  checkImages() {
+    return this.request<void>("POST", "/api/images/check", undefined, 15_000);
+  }
   reinstall(uuid: string) {
     return this.request<void>("POST", `/api/servers/${uuid}/install`, undefined, 30_000);
   }

@@ -115,6 +115,7 @@ describe("admin.servers", () => {
       auto_restart: null,
       skip_install: false,
       sleep: null,
+      image_update: { version_env: null },
     });
     expect(h.daemon.last("POST", "/api/servers")!.auth).toBe(`Bearer ${h.env.NODE_TOKEN}`);
     const log = await admin.api.admin.activity.search({ action: "admin.server.create" });

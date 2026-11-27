@@ -9,6 +9,7 @@ description: >-
   other custom PHP settings go in `php/*.ini`, custom nginx rules (inside the server block) in `nginx/*.conf`; restart afterwards.
 type: web
 version: 8
+image_version_env: PHP_VERSION
 # serversideup/php: officiële PHP-build met nginx erbij. We gebruiken alleen de binaries;
 # hun s6-entrypoint niet (dat wil als root schrijven op de rootfs).
 image: serversideup/php:8.2-fpm-nginx-alpine

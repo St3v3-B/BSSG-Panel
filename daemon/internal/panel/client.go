@@ -151,6 +151,27 @@ func (c *Client) Hello(version, diskQuotaMode string) {
 	})
 }
 
+// ImageSettings haalt de globale instellingen voor image-updates op.
+func (c *Client) ImageSettings(ctx context.Context) (ImageSettings, error) {
+	var out ImageSettings
+	err := c.do(ctx, http.MethodGet, "/api/remote/settings/image-updates", nil, &out)
+	return out, err
+}
+
+// ReportImages meldt het resultaat van een image-controle (asynchroon met retry).
+func (c *Client) ReportImages(items []ImageStatus) {
+	c.async("images", func(ctx context.Context) error {
+		return c.do(ctx, http.MethodPost, "/api/remote/node/images", map[string]any{"servers": items}, nil)
+	})
+}
+
+// ReportImageUpdate meldt dat een image-update is toegepast of mislukt.
+func (c *Client) ReportImageUpdate(uuid string, r ImageUpdateResult) {
+	c.async("image-update "+uuid, func(ctx context.Context) error {
+		return c.do(ctx, http.MethodPost, "/api/remote/servers/"+uuid+"/image-update", r, nil)
+	})
+}
+
 // ReportInstall meldt het resultaat van een installatie (asynchroon met retry).
 func (c *Client) ReportInstall(uuid string, ok bool, errMsg string) {
 	body := map[string]any{"successful": ok, "error": nil}
@@ -275,4 +296,32 @@ func (c *Client) ReportRestore(id int, ok bool, errMsg string) {
 	c.async(fmt.Sprintf("restore %d", id), func(ctx context.Context) error {
 		return c.do(ctx, http.MethodPost, fmt.Sprintf("/api/remote/backups/%d/restore", id), body, nil)
 	})
+}
+
+// ImageSettings zijn de globale instellingen uit het panel (GET /api/remote/settings/image-updates).
+type ImageSettings struct {
+	DefaultPolicy string `json:"default_policy"` // auto | notify | off
+	WindowStart   string `json:"window_start"`   // HH:MM
+	WindowEnd     string `json:"window_end"`     // HH:MM; mag voor WindowStart liggen
+	Timezone      string `json:"timezone"`
+}
+
+// ImageStatus is één server in POST /api/remote/node/images.
+type ImageStatus struct {
+	UUID              string    `json:"uuid"`
+	Image             string    `json:"image"`
+	CurrentImageID    *string   `json:"current_image_id"`
+	LatestImageID     *string   `json:"latest_image_id"`
+	UpdateAvailable   bool      `json:"update_available"`
+	ReinstallRequired bool      `json:"reinstall_required"`
+	CheckedAt         time.Time `json:"checked_at"`
+}
+
+// ImageUpdateResult is POST /api/remote/servers/{uuid}/image-update.
+type ImageUpdateResult struct {
+	Successful bool    `json:"successful"`
+	Mode       string  `json:"mode"` // auto | manual
+	From       *string `json:"from_image_id"`
+	To         *string `json:"to_image_id"`
+	Error      *string `json:"error"`
 }

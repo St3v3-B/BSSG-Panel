@@ -24,6 +24,7 @@ stored version. Admins can also import or edit templates in /admin.
 | `http_port` | web only | port in the container where Caddy delivers the traffic |
 | `variables` | no | list of `{key, name, description?, default, user_editable, pattern?}` |
 | `install` | yes | `{image, script}`; the script runs with `/bin/sh` and the same `/home/container` |
+| `image_version_env` | no | name of an env variable in the image config (e.g. `PHP_VERSION`) whose major.minor must stay the same for an automatic image update; if it differs the server needs a reinstall and the daemon only reports it |
 | `config_files` | no | files the daemon updates before every start; `format`: properties, yaml, json or toml (keys with dots are nested) |
 
 ## Variables

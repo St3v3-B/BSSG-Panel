@@ -66,6 +66,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/images/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Nu op nieuwe images controleren (anders elke IMAGE_CHECK_INTERVAL, standaard 24 uur)
+         * @description De daemon haalt (`docker pull`) elke image op die door servers van deze node gebruikt wordt
+         *     (runtime- en install-image; alleen de verwezen tags), vergelijkt het nieuwe image-id met dat van
+         *     de draaiende container en meldt het resultaat aan het panel (`POST /api/remote/node/images`).
+         *     Daarna past hij `auto`-beleid toe (zie `image_update` in ServerSpec). Alleen images die de daemon
+         *     zelf ophaalde en die niet meer gebruikt worden, ruimt hij op; nooit zonder panel-labels.
+         */
+        post: operations["checkImages"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/image-update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Nu bijwerken - image ophalen en de container opnieuw aanmaken (draaiende server wordt herstart) */
+        post: operations["updateServerImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{uuid}/install": {
         parameters: {
             query?: never;
@@ -614,6 +657,22 @@ export interface components {
                     [key: string]: string;
                 };
             }[];
+            /**
+             * @description Beleid voor image-updates van deze server (zie `/api/images/check`). `policy` is
+             *     `default` (globale standaard van het panel, op te halen via
+             *     `GET /api/remote/settings/image-updates`), `auto`, `notify` of `off`. `version_env`:
+             *     naam van een env-variabele in de image-config waarvan major.minor gelijk moet blijven;
+             *     verschilt hij tussen de draaiende en de nieuwe image, dan is `reinstall_required` en past
+             *     de daemon nooit automatisch toe.
+             */
+            image_update?: {
+                /**
+                 * @default default
+                 * @enum {string}
+                 */
+                policy: "default" | "auto" | "notify" | "off";
+                version_env?: string | null;
+            } | null;
             /** @default false */
             start_on_install: boolean;
             /**
@@ -992,6 +1051,48 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    checkImages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Controle gestart (loopt op de achtergrond) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    updateServerImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gestart; het resultaat volgt via POST /api/remote/servers/{uuid}/image-update */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     reinstallServer: {

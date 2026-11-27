@@ -65,6 +65,8 @@ type Container struct {
 	Running   bool
 	StartedAt time.Time
 	ExitCode  int
+	// ImageID is het id van de image waarmee de container gemaakt is.
+	ImageID string
 	// OOMKilled: de kernel doodde de container wegens geheugengebrek.
 	OOMKilled bool
 }
@@ -125,4 +127,5 @@ type Engine interface {
 	// Exec draait een commando in een draaiende container en wacht tot het klaar is of ctx afloopt.
 	Exec(ctx context.Context, id string, o ExecOptions) (ExecResult, error)
 	Networks
+	Images
 }

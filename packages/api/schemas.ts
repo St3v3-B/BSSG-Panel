@@ -150,6 +150,23 @@ export const Stats = z.object({
 });
 export type Stats = z.infer<typeof Stats>;
 
+/** Beleid voor image-updates (zie docs bij `servers.updateImagePolicy`). */
+export const ImagePolicy = z.enum(["auto", "notify", "off"]);
+export type ImagePolicy = z.infer<typeof ImagePolicy>;
+
+export const ImageUpdateInfo = z.object({
+  /** Keuze van de eigenaar; null = het globale standaardbeleid. */
+  policy: ImagePolicy.nullable(),
+  /** Het beleid dat geldt (eigen keuze of globale standaard). */
+  effectivePolicy: ImagePolicy,
+  /** De draaiende container gebruikt een oudere image dan de lokaal opgehaalde. */
+  available: z.boolean(),
+  /** De nieuwe image heeft een andere PHP-minor (of vergelijkbaar): eerst herinstalleren, dus alleen melden. */
+  reinstallRequired: z.boolean(),
+  checkedAt: z.date().nullable(),
+});
+export type ImageUpdateInfo = z.infer<typeof ImageUpdateInfo>;
+
 export const ServerSummary = z.object({
   uuid: Uuid,
   shortId: z.string().length(8), // eerste 8 tekens van de uuid
@@ -164,6 +181,7 @@ export const ServerSummary = z.object({
   owner: UserPublic,
   /** Opgeschort door een admin: gestopt, en de eigenaar/subusers mogen niet starten of schrijven. */
   suspended: z.object({ reason: z.string().nullable(), at: z.date() }).nullable().default(null),
+  imageUpdate: ImageUpdateInfo.default({ policy: null, effectivePolicy: "notify", available: false, reinstallRequired: false, checkedAt: null }),
 });
 export type ServerSummary = z.infer<typeof ServerSummary>;
 
@@ -623,6 +641,15 @@ export const DnsProvider = z.object({
   zones: z.array(z.object({ id: z.string(), name: z.string() })),
 });
 
+const ClockTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+
+/** Globale instellingen voor image-updates; het venster is in Europe/Amsterdam en mag over middernacht lopen. */
+export const ImageUpdateSettings = z.object({
+  defaultPolicy: ImagePolicy,
+  windowStart: ClockTime,
+  windowEnd: ClockTime,
+});
+export type ImageUpdateSettings = z.infer<typeof ImageUpdateSettings>;
 /** Alleen echte Discord-webhooks (https://discord.com|discordapp.com/api[/vN]/webhooks/<id>/<token>). */
 export const DISCORD_WEBHOOK_RE = /^https:\/\/(?:discord|discordapp)\.com\/api(?:\/v\d+)?\/webhooks\/\d{5,25}\/[A-Za-z0-9_-]{20,200}$/;
 export const WebhookUrl = z.string().trim().max(300).regex(DISCORD_WEBHOOK_RE, "INVALID_WEBHOOK_URL");
@@ -641,8 +668,23 @@ export type ServerNotifications = z.infer<typeof ServerNotifications>;
 
 export const Settings = Branding.extend({
   defaultLimits: Limits,
+  imageUpdates: ImageUpdateSettings,
 });
 export type Settings = z.infer<typeof Settings>;
+
+/** Admin-overzicht van de image-status per server. */
+export const AdminImageRow = z.object({
+  uuid: Uuid,
+  name: z.string(),
+  type: ServerType,
+  status: ServerStatus,
+  templateName: z.string(),
+  nodeName: z.string(),
+  /** Image uit de template waarmee de server (opnieuw) wordt aangemaakt. */
+  image: z.string(),
+  imageUpdate: ImageUpdateInfo,
+});
+export type AdminImageRow = z.infer<typeof AdminImageRow>;
 
 export const DashboardAlert = z.object({
   kind: z.enum(["emergency_login", "node_offline", "install_failed", "backup_failed", "disk_low"]),
