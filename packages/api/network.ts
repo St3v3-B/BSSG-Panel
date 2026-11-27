@@ -14,9 +14,13 @@ export function suggestBackendName(serverName: string): string {
   return n || "server";
 }
 
-/** Platformnaam in de GeyserMC-download-API per template-slug; `null` = geen Bedrock-ondersteuning (Fabric: niet getest). */
-export function bedrockPlatform(slug: string): "spigot" | "velocity" | null {
+/**
+ * Bedrock-platform per template-slug (zoals GeyserMC ze noemt); `null` = geen Bedrock-ondersteuning.
+ * `fabric`: Geyser-Fabric + Floodgate-Fabric (+ Fabric API) als mods, bij de Minecraft-versie via Modrinth.
+ */
+export function bedrockPlatform(slug: string): "spigot" | "velocity" | "fabric" | null {
   if (slug === "paper" || slug === "folia") return "spigot";
   if (slug === "velocity") return "velocity";
+  if (slug === "fabric") return "fabric";
   return null;
 }

@@ -422,6 +422,7 @@ export const en = {
     intro: "Let players on phones and consoles (Minecraft Bedrock Edition) join this Java server. The panel installs Geyser and Floodgate for you; Bedrock players don't need a Java account.",
     introProxy: "Let Bedrock players join your network through this proxy. The panel installs Geyser and Floodgate on the proxy and Floodgate (with the same key) on every server behind it.",
     what: "Installs the latest Geyser and Floodgate from the official GeyserMC download service (checksum verified) and sets up a UDP port for Bedrock.",
+    whatFabric: "Installs Geyser and Floodgate for this server's Minecraft version from Modrinth (checksum verified), plus Fabric API if it is missing, and sets up a UDP port for Bedrock. Fabric API stays when you turn Bedrock off.",
     backendTitle: "Bedrock runs through the proxy",
     backendText: "This server sits behind a proxy. Turn Bedrock on at the proxy: it also installs Floodgate here automatically.",
     joinTitle: "Bedrock players join with",

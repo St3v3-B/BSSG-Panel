@@ -421,6 +421,7 @@ export const nl: Dict = {
     intro: "Laat spelers op telefoon en console (Minecraft Bedrock Edition) op deze Java-server meespelen. Het panel installeert Geyser en Floodgate voor je; Bedrock-spelers hebben geen Java-account nodig.",
     introProxy: "Laat Bedrock-spelers via deze proxy je netwerk op. Het panel installeert Geyser en Floodgate op de proxy en Floodgate (met dezelfde sleutel) op elke server erachter.",
     what: "Installeert de nieuwste Geyser en Floodgate van de officiële GeyserMC-downloadservice (checksum gecontroleerd) en regelt een UDP-poort voor Bedrock.",
+    whatFabric: "Installeert Geyser en Floodgate voor de Minecraft-versie van deze server uit Modrinth (checksum gecontroleerd), plus Fabric API als die ontbreekt, en zet een UDP-poort voor Bedrock klaar. Fabric API blijft staan als je Bedrock uitzet.",
     backendTitle: "Bedrock loopt via de proxy",
     backendText: "Deze server hangt achter een proxy. Zet Bedrock aan bij de proxy: die installeert Floodgate hier automatisch.",
     joinTitle: "Bedrock-spelers verbinden met",

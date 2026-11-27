@@ -1,6 +1,8 @@
 /**
- * Bedrock (Geyser + Floodgate) voor Paper/Folia/Velocity: aan- en uitzetten, poorttoewijzing en
+ * Bedrock (Geyser + Floodgate) voor Paper/Folia/Velocity/Fabric: aan- en uitzetten, poorttoewijzing en
  * het Velocity-netwerk (Floodgate + gedeelde key.pem op de backends). Procedures: `servers.bedrock/setBedrock`.
+ * Fabric: Geyser-Fabric + Floodgate-Fabric in `mods/` uit Modrinth bij de Minecraft-versie, plus Fabric API
+ * als die er nog niet is (blijft staan bij uitzetten: andere mods kunnen hem nodig hebben).
  */
 import { bedrockPlatform, type BedrockStatus, type Implementation } from "@panel/api";
 import { TRPCError } from "@trpc/server";
@@ -9,7 +11,8 @@ import { logActivity } from "./activity";
 import { DaemonHttpError, call, daemonFor } from "./daemon";
 import { getDb, schema } from "./db";
 import { ExternalError } from "./lib/http";
-import { DEFAULT_BEDROCK_PORT, FLOODGATE_KEY_PATH, downloadGeyserJar, geyserConfig, geyserConfigPath, jarName, newFloodgateKey, type GeyserJar, type GeyserPlatform } from "./lib/geyser";
+import { DEFAULT_BEDROCK_PORT, FLOODGATE_KEY_PATH, downloadFabricMod, downloadGeyserJar, floodgateKeyPath, geyserConfig, geyserConfigPath, jarPath, newFloodgateKey, type GeyserJar, type GeyserPlatform } from "./lib/geyser";
+import { latestGameVersion } from "./lib/mc-versions";
 import { isBackend, isProxy, proxyMembers } from "./network";
 import { nodeIp } from "./routers/domains";
 import { buildServerSpec } from "./spec";
@@ -66,13 +69,72 @@ async function remove(b: ServerBundle, paths: string[]) {
   });
 }
 
-/** Floodgate op een backend (Paper/Folia achter Velocity): jar + de key.pem van de proxy. */
-async function installFloodgateBackend(b: ServerBundle, jar: GeyserJar, key: Buffer) {
-  const d = daemonFor(b.node);
-  await call(() => d.writeFile(b.server.uuid, `/plugins/${jarName("floodgate", "spigot")}`, jar.data));
-  await call(() => d.writeFile(b.server.uuid, FLOODGATE_KEY_PATH, key));
+// ---------- Fabric ----------
+
+const MC_VERSION = /^[0-9]+(\.[0-9]+){1,2}$/;
+
+/** Minecraft-versie van een Fabric-server: wat de installatie vastlegde (.fabric-install), anders de variabele of de nieuwste. */
+export async function fabricGameVersion(b: ServerBundle): Promise<string> {
+  try {
+    const m = /^minecraft=(\S+)$/m.exec(await daemonFor(b.node).readFile(b.server.uuid, "/.fabric-install"));
+    if (m && MC_VERSION.test(m[1]!)) return m[1]!;
+  } catch {
+    // nog niet geïnstalleerd of daemon weg: variabele
+  }
+  const v = ((await serverVariables(b.server.id)).MINECRAFT_VERSION ?? b.template.variables.find((x) => x.key === "MINECRAFT_VERSION")?.default ?? "latest").trim();
+  if (MC_VERSION.test(v)) return v;
+  const latest = await latestGameVersion("fabric");
+  if (!latest) throw new ExternalError("EXTERNAL_BAD_RESPONSE", "no Minecraft version in the Fabric meta API");
+  return latest;
 }
-const removeFloodgateBackend = (b: ServerBundle) => remove(b, [`/plugins/${jarName("floodgate", "spigot")}`]);
+
+/** Staat er al een Fabric API in `mods/` (via de Mods-tab, een modpack of zelf geüpload)? */
+async function hasFabricApi(b: ServerBundle): Promise<boolean> {
+  try {
+    const list = await daemonFor(b.node).listFiles(b.server.uuid, "/mods");
+    return list.some((f) => /^fabric-api[-_.].*\.jar$/i.test(f.name));
+  } catch {
+    return false;
+  }
+}
+
+/** Zet Fabric API neer en registreert hem als geïnstalleerde mod (zichtbaar en bij te werken in de Mods-tab). */
+async function placeFabricApi(b: ServerBundle, jar: GeyserJar) {
+  await call(() => daemonFor(b.node).writeFile(b.server.uuid, `/mods/${jar.filename}`, jar.data));
+  const values = { serverId: b.server.id, source: "modrinth", projectId: jar.projectId!, name: jar.name ?? "Fabric API", versionId: jar.versionId!, versionNumber: jar.version, filename: jar.filename, kind: "mod" };
+  await getDb()
+    .insert(schema.serverContent)
+    .values(values)
+    .onConflictDoUpdate({ target: [schema.serverContent.serverId, schema.serverContent.source, schema.serverContent.projectId], set: { versionId: values.versionId, versionNumber: values.versionNumber, filename: values.filename, installedAt: new Date() } });
+}
+
+/** Downloads per Minecraft-versie, één keer per aanroep (proxy met meerdere Fabric-backends). */
+function fabricDownloads() {
+  const cache = new Map<string, Promise<GeyserJar>>();
+  return (mod: "geyser" | "floodgate" | "fabric-api", mc: string) => {
+    const k = `${mod}@${mc}`;
+    if (!cache.has(k)) cache.set(k, downloadFabricMod(mod, mc));
+    return cache.get(k)!;
+  };
+}
+
+/** Floodgate op een backend achter Velocity: jar + de key.pem van de proxy (Fabric: ook Fabric API indien nodig). */
+async function installFloodgateBackend(b: ServerBundle, key: Buffer, get: { spigot: () => Promise<GeyserJar>; fabric: ReturnType<typeof fabricDownloads> }) {
+  const p = platformOf(b);
+  const d = daemonFor(b.node);
+  if (p === "fabric") {
+    const mc = await fabricGameVersion(b);
+    const needApi = !(await hasFabricApi(b));
+    const [jar, api] = await Promise.all([get.fabric("floodgate", mc), needApi ? get.fabric("fabric-api", mc) : null]);
+    await call(() => d.writeFile(b.server.uuid, jarPath("floodgate", "fabric"), jar.data));
+    if (api) await placeFabricApi(b, api);
+  } else {
+    const jar = await get.spigot();
+    await call(() => d.writeFile(b.server.uuid, jarPath("floodgate", "spigot"), jar.data));
+  }
+  await call(() => d.writeFile(b.server.uuid, floodgateKeyPath(p ?? "spigot"), key));
+}
+const removeFloodgateBackend = (b: ServerBundle) => remove(b, [jarPath("floodgate", platformOf(b) === "fabric" ? "fabric" : "spigot")]);
 
 /**
  * Houdt de backends van een proxy in lijn met de Bedrock-stand van de proxy: met Bedrock aan krijgen leden
@@ -96,15 +158,15 @@ export async function syncBedrockBackends(proxy: ServerBundle, removed: ServerBu
   }
   if (!members.length) return errors;
   let key: Buffer;
-  let jar: GeyserJar;
   try {
     key = await daemonFor(proxy.node).readFileBytes(proxy.server.uuid, FLOODGATE_KEY_PATH);
-    jar = await downloadGeyserJar("floodgate", "spigot");
   } catch (e) {
     for (const b of members) errors.set(b.server.uuid, e instanceof Error ? e.message : String(e));
     return errors;
   }
-  for (const b of members) await run(b, () => installFloodgateBackend(b, jar, key));
+  let spigot: Promise<GeyserJar> | null = null;
+  const get = { spigot: () => (spigot ??= downloadGeyserJar("floodgate", "spigot")), fabric: fabricDownloads() };
+  for (const b of members) await run(b, () => installFloodgateBackend(b, key, get));
   return errors;
 }
 
@@ -145,7 +207,7 @@ export const bedrock: Pick<Implementation["servers"], "bedrock" | "setBedrock"> 
 
     if (!input.enabled) {
       if (current) {
-        await remove(b, [`/plugins/${jarName("geyser", platform)}`, `/plugins/${jarName("floodgate", platform)}`]);
+        await remove(b, [jarPath("geyser", platform), jarPath("floodgate", platform)]);
         await db.transaction(async (tx) => {
           await tx.update(schema.allocations).set({ serverId: null, isPrimary: false }).where(eq(schema.allocations.id, current.id));
           await tx.update(schema.servers).set({ bedrockAllocationId: null }).where(eq(schema.servers.id, b.server.id));
@@ -163,10 +225,21 @@ export const bedrock: Pick<Implementation["servers"], "bedrock" | "setBedrock"> 
     if (!primary) throw bad("NO_ALLOCATION", "PRECONDITION_FAILED");
     let geyser: GeyserJar;
     let floodgate: GeyserJar;
+    let fabricApi: GeyserJar | null = null;
     try {
-      [geyser, floodgate] = await Promise.all([downloadGeyserJar("geyser", platform), downloadGeyserJar("floodgate", platform)]);
+      if (platform === "fabric") {
+        const mc = await fabricGameVersion(b);
+        const needApi = !(await hasFabricApi(b));
+        [geyser, floodgate, fabricApi] = await Promise.all([downloadFabricMod("geyser", mc), downloadFabricMod("floodgate", mc), needApi ? downloadFabricMod("fabric-api", mc) : null]);
+      } else {
+        [geyser, floodgate] = await Promise.all([downloadGeyserJar("geyser", platform), downloadGeyserJar("floodgate", platform)]);
+      }
     } catch (e) {
-      if (e instanceof ExternalError) throw new TRPCError({ code: e.code === "HASH_MISMATCH" ? "BAD_REQUEST" : "BAD_GATEWAY", message: e.message });
+      if (e instanceof ExternalError) {
+        const nc = /NO_COMPATIBLE_VERSION: (.*)$/.exec(e.message);
+        if (nc) throw bad(`BEDROCK_NO_COMPATIBLE_VERSION: ${nc[1]}`);
+        throw new TRPCError({ code: e.code === "HASH_MISMATCH" ? "BAD_REQUEST" : "BAD_GATEWAY", message: e.message });
+      }
       throw e;
     }
     if (!current || current.id !== target.id) {
@@ -181,8 +254,9 @@ export const bedrock: Pick<Implementation["servers"], "bedrock" | "setBedrock"> 
     }
     const spec = [...b.allocations.filter((a) => a.id !== current?.id), { ip: target.ip, port: target.port, isPrimary: false }];
     await pushSpec(b, spec);
-    await call(() => d.writeFile(b.server.uuid, `/plugins/${jarName("geyser", platform)}`, geyser.data));
-    await call(() => d.writeFile(b.server.uuid, `/plugins/${jarName("floodgate", platform)}`, floodgate.data));
+    await call(() => d.writeFile(b.server.uuid, jarPath("geyser", platform), geyser.data));
+    await call(() => d.writeFile(b.server.uuid, jarPath("floodgate", platform), floodgate.data));
+    if (fabricApi) await placeFabricApi(b, fabricApi);
     await call(() => d.writeFile(b.server.uuid, geyserConfigPath(platform as GeyserPlatform), geyserConfig({ port: target.port, javaPort: primary.port })));
     if (proxy) {
       // Eén sleutel voor proxy en backends; bestaat hij al (opnieuw aanzetten), dan blijft hij.
@@ -195,7 +269,7 @@ export const bedrock: Pick<Implementation["servers"], "bedrock" | "setBedrock"> 
       const targets = [fresh, ...(proxy ? (await proxyMembers(b.server.id)).map((x) => x.b).filter((x) => !errors.has(x.server.uuid)) : [])];
       for (const t of targets) if (await isRunning(t)) await call(() => daemonFor(t.node).power(t.server.uuid, "restart")).catch(() => {});
     }
-    await logActivity({ action: "server.bedrock.enable", userId: uid, serverId: b.server.id, metadata: { port: target.port, geyser: `${geyser.version}-${geyser.build}`, floodgate: `${floodgate.version}-${floodgate.build}`, backendErrors: Object.fromEntries(errors) }, ip: ctx.ip, ctx });
+    await logActivity({ action: "server.bedrock.enable", userId: uid, serverId: b.server.id, metadata: { port: target.port, platform, geyser: geyser.build ? `${geyser.version}-${geyser.build}` : geyser.version, floodgate: floodgate.build ? `${floodgate.version}-${floodgate.build}` : floodgate.version, fabricApi: fabricApi?.version ?? null, backendErrors: Object.fromEntries(errors) }, ip: ctx.ip, ctx });
     return bedrockStatus(fresh);
   },
 };

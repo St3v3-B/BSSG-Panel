@@ -12,7 +12,7 @@ afterEach(cleanup);
 const UUID = "11111111-1111-4111-8111-111111111111";
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 const admin = { session: sessionFor("admin"), locale: "en" as const };
-const server = { uuid: UUID, name: "Paper", permissions: [], isOwner: true } as unknown as ServerDetail;
+const server = { uuid: UUID, name: "Paper", templateName: "Paper", permissions: [], isOwner: true } as unknown as ServerDetail;
 const off: BedrockStatus = { supported: true, mode: "standalone", enabled: false, address: null, port: null, allocationId: null, freeAllocations: [{ id: 7, ip: "203.0.113.10", port: 19132 }, { id: 8, ip: "203.0.113.10", port: 19133 }] };
 const on: BedrockStatus = { ...off, enabled: true, address: "203.0.113.10", port: 19132, allocationId: 7, freeAllocations: [] };
 const inputs = (bodies: Array<{ path: string; input: unknown }>, p: string) => bodies.filter((b) => b.path === p).map((b) => b.input);
@@ -59,5 +59,12 @@ describe("BedrockManager", () => {
     renderWithTrpc(<BedrockManager server={server} />, { ...admin, patch: patch({ ...off, supported: false, mode: "backend" }) });
     expect(await screen.findByText("Bedrock runs through the proxy")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Turn on Bedrock" })).toBeNull();
+  });
+
+  it("Fabric: tab beschikbaar en uitleg over Modrinth en Fabric API", async () => {
+    renderWithTrpc(<BedrockManager server={{ ...server, name: "Modded", templateName: "Fabric" }} />, { ...admin, patch: patch(off) });
+    expect(await screen.findByText(/from Modrinth/)).toBeTruthy();
+    expect(screen.getByText(/plus Fabric API if it is missing/)).toBeTruthy();
+    expect(screen.queryByText(/official GeyserMC download service/)).toBeNull();
   });
 });
