@@ -151,6 +151,8 @@ describe("servers.updateNetwork", () => {
     expect((await alice.api.servers.get({ uuid: proxy })).network.members.map((x) => x.serverUuid)).toEqual([bobs]);
     // proxy verwijderen
     await admin.api.admin.servers.delete({ uuid: proxy });
+    expect((await vars(bobs)).VELOCITY_FORWARDING).toBe("false");
+    expect((await vars(bobs)).VELOCITY_SECRET).toBe("");
     expect(await getDb().select().from(schema.networkMembers)).toEqual([]);
     expect((await bob.api.servers.get({ uuid: bobs })).network.role).toBe("none");
   });
