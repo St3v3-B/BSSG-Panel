@@ -1,8 +1,9 @@
 "use client";
-import { Database, FolderOpen, Globe, Network, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
+import { Database, FolderOpen, Globe, Network, Puzzle, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ALL_PERMISSIONS, type Permission, type ServerDetail } from "@panel/api";
+import { ALL_PERMISSIONS, type ContentKind, type Permission, type ServerDetail } from "@panel/api";
+import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { getT, useT } from "@/app/_lib/i18n";
 
@@ -14,12 +15,13 @@ export interface ServerTab {
 }
 
 /** Welke tabbladen deze gebruiker op deze server ziet (op basis van type en rechten). */
-export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner" | "permissions"> & { domainsAllowed?: boolean; network?: Pick<ServerDetail["network"], "role"> }): ServerTab[] {
+export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner" | "permissions"> & { domainsAllowed?: boolean; network?: Pick<ServerDetail["network"], "role">; content?: ContentKind | null }): ServerTab[] {
   const base = `/servers/${server.uuid}`;
   const has = (p: Permission) => server.permissions.includes(p);
   const l = getT().server.tabs;
   const tabs: ServerTab[] = [server.type === "web" ? { key: "console", href: base, label: l.logs, icon: ScrollText } : { key: "console", href: base, label: l.console, icon: SquareTerminal }];
   if (has("files.read")) tabs.push({ key: "files", href: `${base}/files`, label: l.files, icon: FolderOpen });
+  if (server.content && has("files.read")) tabs.push({ key: "content", href: `${base}/content`, label: server.content === "plugin" ? l.plugins : l.mods, icon: Puzzle });
   if ((server.type === "web" || server.domainsAllowed) && has("domain.manage")) tabs.push({ key: "domains", href: `${base}/domains`, label: l.domains, icon: Globe });
   if (server.network?.role === "proxy" && (server.isOwner || ALL_PERMISSIONS.every(has))) tabs.push({ key: "network", href: `${base}/network`, label: l.network, icon: Network });
   if (has("database.manage")) tabs.push({ key: "databases", href: `${base}/databases`, label: l.databases, icon: Database });
@@ -31,7 +33,9 @@ export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner
 export function ServerTabs({ server }: { server: ServerDetail }) {
   const pathname = usePathname() ?? "";
   const t = useT();
-  const tabs = serverTabs(server);
+  const hasFiles = server.type === "game" && server.permissions.includes("files.read");
+  const info = trpc.content.info.useQuery({ uuid: server.uuid }, { enabled: hasFiles, staleTime: 5 * 60_000, retry: false });
+  const tabs = serverTabs({ ...server, content: info.data?.supported ? info.data.kind : null });
   return (
     <nav className="-mx-1 flex gap-1 overflow-x-auto border-b border-border px-1" aria-label={t.server.tabsLabel}>
       {tabs.map((t) => {

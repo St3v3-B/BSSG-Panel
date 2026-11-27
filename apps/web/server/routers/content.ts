@@ -28,8 +28,9 @@ async function ext<T>(fn: () => Promise<T>): Promise<T> {
     return await fn();
   } catch (e) {
     if (e instanceof ExternalError) {
-      const code = e.code === "EXTERNAL_TOO_LARGE" ? "PAYLOAD_TOO_LARGE" : e.message.includes("NO_COMPATIBLE_VERSION") || e.message.includes("INCOMPATIBLE_VERSION") || e.message.includes("EXTERNAL_DOWNLOAD_ONLY") ? "BAD_REQUEST" : "BAD_GATEWAY";
-      throw new TRPCError({ code, message: e.message });
+      const tag = ["NO_COMPATIBLE_VERSION", "INCOMPATIBLE_VERSION", "EXTERNAL_DOWNLOAD_ONLY"].find((x) => e.message.includes(x));
+      if (tag) throw new TRPCError({ code: "BAD_REQUEST", message: tag });
+      throw new TRPCError({ code: e.code === "EXTERNAL_TOO_LARGE" ? "PAYLOAD_TOO_LARGE" : "BAD_GATEWAY", message: e.message });
     }
     if (e instanceof MrpackError) throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
     throw e;
