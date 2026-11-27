@@ -134,7 +134,7 @@ export const fileContents: Record<string, string> = {
 };
 
 export const backups: s.Backup[] = [
-  { id: 1, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", name: "daily 2026-11-26", sizeBytes: 812_000_000, sha256: "a".repeat(64), status: "completed", includesDatabases: false, createdAt: d("2026-11-26T03:00:00Z"), completedAt: d("2026-11-26T03:04:10Z") },
+  { id: 1, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", name: "daily 2026-11-26", sizeBytes: 812_000_000, sha256: "a".repeat(64), status: "completed", includesDatabases: false, error: null, createdAt: d("2026-11-26T03:00:00Z"), completedAt: d("2026-11-26T03:04:10Z") },
 ];
 
 export const schedules: s.Schedule[] = [

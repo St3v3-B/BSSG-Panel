@@ -406,6 +406,7 @@ export const Backup = z.object({
   sha256: z.string().nullable(),
   status: BackupStatus,
   includesDatabases: z.boolean(),
+  error: z.string().nullable(), // reden bij status failed
   createdAt: z.date(),
   completedAt: z.date().nullable(),
 });

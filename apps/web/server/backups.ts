@@ -24,6 +24,7 @@ export const toBackup = (b: BackupRow, serverUuid: string): Backup => ({
   sha256: b.sha256,
   status: b.status,
   includesDatabases: b.includesDatabases,
+  error: b.error,
   createdAt: b.createdAt,
   completedAt: b.completedAt,
 });

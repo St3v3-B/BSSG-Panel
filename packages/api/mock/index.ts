@@ -388,7 +388,7 @@ export function createMock(): Implementation {
     backups: {
       list: ({ input }) => db.backups.filter((b) => b.serverUuid === input.uuid),
       create: ({ input }) => {
-        const b: s.Backup = { id: id(), serverUuid: input.uuid, name: input.name ?? `backup ${new Date().toISOString().slice(0, 10)}`, sizeBytes: null, sha256: null, status: "running", includesDatabases: input.includeDatabases, createdAt: new Date(), completedAt: null };
+        const b: s.Backup = { id: id(), serverUuid: input.uuid, name: input.name ?? `backup ${new Date().toISOString().slice(0, 10)}`, sizeBytes: null, sha256: null, status: "running", includesDatabases: input.includeDatabases, error: null, createdAt: new Date(), completedAt: null };
         db.backups.push(b);
         return b;
       },
