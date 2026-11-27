@@ -127,6 +127,35 @@ export const contract = {
     sftpDetails: query("user", server, z.object({ host: z.string(), port: z.number().int(), username: z.string() })),
   },
 
+  /**
+   * Minecraft: plugins (Paper/Folia/Velocity) en mods (Fabric) via Modrinth en Hangar, modpacks en versiekiezer.
+   * Lezen vereist files.read, wijzigen files.write. Downloads gebeuren in het panel (hash-controle, host-allowlist);
+   * het bestand gaat via de daemon-bestands-API naar `plugins/` of `mods/`.
+   */
+  content: {
+    info: query("user", server, s.ContentInfo),
+    search: query("user", server.extend({ source: s.ContentSource, query: z.string().max(100).default(""), offset: z.number().int().min(0).max(10000).default(0) }), s.ContentSearchResult),
+    /** Nieuwste compatibele versie van het project (of `versionId`) plus verplichte afhankelijkheden. */
+    resolve: query("user", server.extend({ source: s.ContentSource, projectId: z.string().min(1).max(100), versionId: z.string().min(1).max(100).optional() }), s.ContentResolved),
+    /** Installeert (optioneel met verplichte afhankelijkheden) en geeft alle nieuw geïnstalleerde items terug. */
+    install: mutation(
+      "user",
+      server.extend({ source: s.ContentSource, projectId: z.string().min(1).max(100), versionId: z.string().min(1).max(100).optional(), withDependencies: z.boolean().default(false) }),
+      z.array(s.InstalledContent),
+    ),
+    list: query("user", server, z.array(s.InstalledContent)),
+    /** Zoekt per geïnstalleerd item een nieuwere compatibele versie (netwerk, dus apart van `list`). */
+    checkUpdates: query("user", server, z.array(s.ContentUpdate)),
+    /** Vervangt het bestand door de nieuwste compatibele versie. */
+    update: mutation("user", server.extend({ id: s.Id }), s.InstalledContent),
+    /** Verwijdert het bestand en het record. */
+    uninstall: mutation("user", server.extend({ id: s.Id }), s.Ok),
+    /** Fabric: .mrpack importeren (zie ModpackSource). Zet MINECRAFT_VERSION/LOADER_VERSION; `reinstall` draait het install-script. */
+    importModpack: mutation("user", server.extend({ source: s.ModpackSource, reinstall: z.boolean().default(true) }), s.ModpackResult),
+    /** Versiekiezer; `minecraftVersion` bepaalt de builds (Paper/Folia/Velocity). Eigenaar of admin. */
+    versionOptions: query("user", server.extend({ minecraftVersion: z.string().max(40).optional() }), s.VersionOptions),
+  },
+
   domains: {
     list: query("user", server, z.array(s.Domain)),
     add: mutation(
