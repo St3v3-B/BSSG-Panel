@@ -145,9 +145,9 @@ func (c *Client) JWKS(ctx context.Context) ([]JWK, error) {
 }
 
 // Hello meldt de daemon aan (asynchroon met retry).
-func (c *Client) Hello(version, diskQuotaMode string) {
+func (c *Client) Hello(version, diskQuotaMode string, hasMariaDB bool) {
 	c.async("hello", func(ctx context.Context) error {
-		return c.do(ctx, http.MethodPost, "/api/remote/node/hello", map[string]string{"version": version, "disk_quota_mode": diskQuotaMode}, nil)
+		return c.do(ctx, http.MethodPost, "/api/remote/node/hello", map[string]any{"version": version, "disk_quota_mode": diskQuotaMode, "has_mariadb": hasMariaDB}, nil)
 	})
 }
 

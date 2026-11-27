@@ -362,3 +362,60 @@ func (d *Docker) Exec(ctx context.Context, id string, o ExecOptions) (ExecResult
 	}
 	return ExecResult{}, errors.New("exec did not finish")
 }
+
+// ExecStream: zie Engine. Stdin wordt gekopieerd en daarna gesloten (EOF); stdout gaat naar o.Stdout.
+func (d *Docker) ExecStream(ctx context.Context, id string, o ExecIO) (ExecIOResult, error) {
+	ex, err := d.cli.ContainerExecCreate(ctx, id, container.ExecOptions{Cmd: o.Cmd, Env: o.Env, AttachStdin: true, AttachStdout: true, AttachStderr: true})
+	if err != nil {
+		return ExecIOResult{}, wrap(err)
+	}
+	att, err := d.cli.ContainerExecAttach(ctx, ex.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return ExecIOResult{}, wrap(err)
+	}
+	defer att.Close()
+	go func() {
+		if o.Stdin != nil {
+			_, _ = io.Copy(att.Conn, o.Stdin)
+		}
+		_ = att.CloseWrite()
+	}()
+	max := o.MaxStderr
+	if max <= 0 {
+		max = 4096
+	}
+	errTail := &tailBuffer{max: max}
+	var out io.Writer = io.Discard
+	if o.Stdout != nil {
+		out = o.Stdout
+	}
+	copyDone := make(chan error, 1)
+	go func() {
+		_, err := stdcopy.StdCopy(out, errTail, att.Reader)
+		copyDone <- err
+	}()
+	select {
+	case err := <-copyDone:
+		if err != nil {
+			return ExecIOResult{}, err
+		}
+	case <-ctx.Done():
+		att.Close()
+		return ExecIOResult{}, ctx.Err()
+	}
+	for i := 0; i < 200; i++ {
+		r, err := d.cli.ContainerExecInspect(ctx, ex.ID)
+		if err != nil {
+			return ExecIOResult{}, wrap(err)
+		}
+		if !r.Running {
+			return ExecIOResult{ExitCode: r.ExitCode, Stderr: string(errTail.buf)}, nil
+		}
+		select {
+		case <-ctx.Done():
+			return ExecIOResult{}, ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	return ExecIOResult{}, errors.New("exec did not finish")
+}

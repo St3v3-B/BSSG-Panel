@@ -23,6 +23,7 @@ import (
 	"panel/daemon/internal/auth"
 	"panel/daemon/internal/backup"
 	"panel/daemon/internal/config"
+	"panel/daemon/internal/dbadmin"
 	"panel/daemon/internal/engine"
 	"panel/daemon/internal/panel"
 	"panel/daemon/internal/server"
@@ -54,6 +55,8 @@ type Deps struct {
 	Statfs func(string) (int64, int64, error)
 	// SFTPFailDelay na een mislukte SFTP-login (standaard 1 s).
 	SFTPFailDelay time.Duration
+	// DBWatchInterval: hoe vaak de MariaDB-beschikbaarheid gecontroleerd wordt (standaard 20 s).
+	DBWatchInterval time.Duration
 }
 
 // Daemon is een draaiende daemon.
@@ -66,6 +69,7 @@ type Daemon struct {
 	routes *api.Routes
 	api    *api.API
 	backup *backup.Service
+	dbadm  *dbadmin.Admin
 	sftp   *sftpd.Server
 
 	healthy   atomic.Int32 // 0 onbekend, 1 gezond, 2 ongezond
@@ -125,6 +129,10 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	d.backup = &backup.Service{Mgr: d.mgr, Rep: d.panel, Log: deps.Log}
 	d.api = api.New(api.Options{NodeToken: cfg.NodeToken, AllowedOrigins: cfg.AllowedOrigins(), AuthTimeout: deps.WSAuthTimeout}, d.mgr, routes, verifier, d.systemInfo, deps.Log)
 	d.api.SetBackups(d.backup)
+	if cfg.MariaDBRootPassword != "" {
+		d.dbadm = &dbadmin.Admin{Eng: deps.Engine, Container: cfg.MariaDBContainer, RootPassword: cfg.MariaDBRootPassword}
+		d.api.SetDBAdmin(d.dbadm, cfg.MariaDBContainer)
+	}
 	return d, nil
 }
 
@@ -209,7 +217,12 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 	go d.mgr.FreeWatch(fi, d.deps.Statfs)
 
-	d.panel.Hello(d.deps.Version, DiskQuotaMode)
+	hasDB := d.hasMariaDB()
+	d.panel.Hello(d.deps.Version, DiskQuotaMode, hasDB)
+	if d.dbadm != nil {
+		d.wg.Add(1)
+		go d.mariaDBWatch(hasDB)
+	}
 	d.wg.Add(1)
 	go d.routerLoop()
 	return nil
@@ -362,4 +375,38 @@ func memInfo() (total, used int64) {
 		}
 	}
 	return total, total - avail
+}
+
+// hasMariaDB: de lokale MariaDB bestaat, het rootwachtwoord is bekend en hij antwoordt.
+func (d *Daemon) hasMariaDB() bool {
+	if d.dbadm == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return d.dbadm.Status(ctx) == nil
+}
+
+// mariaDBWatch meldt zich opnieuw bij het panel als de MariaDB (de)bereikbaar wordt, bv. omdat compose
+// hem pas na de daemon startte.
+func (d *Daemon) mariaDBWatch(announced bool) {
+	defer d.wg.Done()
+	iv := d.deps.DBWatchInterval
+	if iv == 0 {
+		iv = 20 * time.Second
+	}
+	t := time.NewTicker(iv)
+	defer t.Stop()
+	for {
+		select {
+		case <-d.stop:
+			return
+		case <-t.C:
+		}
+		if now := d.hasMariaDB(); now != announced {
+			announced = now
+			d.log.Info("mariadb availability changed", "available", now)
+			d.panel.Hello(d.deps.Version, DiskQuotaMode, now)
+		}
+	}
 }

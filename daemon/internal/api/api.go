@@ -52,6 +52,8 @@ type API struct {
 	routes  *Routes
 	jwt     JWTVerifier
 	backups Backups
+	dbadmin DBAdmin
+	dbHost  string
 	system  func(ctx context.Context) SystemInfo
 	log     *slog.Logger
 
@@ -128,6 +130,13 @@ func (a *API) Handler() http.Handler {
 
 	mux.Handle("POST /api/servers/{uuid}/backups", p(a.withServer(a.createBackup)))
 	mux.Handle("POST /api/servers/{uuid}/backups/{backup_id}/restore", p(a.withServer(a.restoreBackup)))
+
+	mux.Handle("GET /api/db/status", p(a.dbStatus))
+	mux.Handle("POST /api/db/databases", p(a.dbCreate))
+	mux.Handle("DELETE /api/db/databases/{name}", p(a.dbDrop))
+	mux.Handle("PUT /api/db/databases/{name}/password", p(a.dbPassword))
+	mux.Handle("GET /api/db/databases/{name}/dump", p(a.dbDump))
+	mux.Handle("PUT /api/db/databases/{name}/import", p(a.dbImport))
 
 	mux.Handle("GET /api/routes", p(a.listRoutes))
 	mux.Handle("GET /api/routes/{host}", p(a.getRoute))

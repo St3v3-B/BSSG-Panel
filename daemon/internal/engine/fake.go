@@ -37,7 +37,9 @@ type Fake struct {
 
 	// ExecHandler beantwoordt Exec; standaard exitcode 0 en lege uitvoer.
 	ExecHandler func(id string, o ExecOptions) (ExecResult, error)
-	execs       []ExecOptions
+	// ExecIOHandler beantwoordt ExecStream; standaard exitcode 0 en lege uitvoer.
+	ExecIOHandler func(id string, o ExecIO) (ExecIOResult, error)
+	execs         []ExecOptions
 }
 
 // Execs geeft de tot nu toe uitgevoerde Exec-aanroepen.
@@ -66,6 +68,20 @@ func (f *Fake) Exec(ctx context.Context, id string, o ExecOptions) (ExecResult, 
 		return h(id, o)
 	}
 	return ExecResult{}, nil
+}
+
+// ExecStream in de fake: ExecIOHandler als die gezet is, anders exitcode 0 zonder uitvoer.
+func (f *Fake) ExecStream(_ context.Context, id string, o ExecIO) (ExecIOResult, error) {
+	if _, err := f.get(id); err != nil {
+		return ExecIOResult{}, err
+	}
+	f.mu.Lock()
+	h := f.ExecIOHandler
+	f.mu.Unlock()
+	if h != nil {
+		return h(id, o)
+	}
+	return ExecIOResult{}, nil
 }
 
 // FakeNetwork is een netwerk in de fake.
