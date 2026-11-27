@@ -127,7 +127,10 @@ describe("opschorting afdwingen", () => {
         }),
         { params: Promise.resolve({}) },
       );
+    await blocked(player.api.account.setSftpPassword({ uuid, password: "geheim-wachtwoord-8" }));
+    await setSuspended(false);
     await player.api.account.setSftpPassword({ uuid, password: "geheim-wachtwoord-9" });
+    await setSuspended(true);
     const { key } = await player.api.account.createApiKey({ name: "sftp", permissions: ["files.read"], expiresAt: null });
     expect((await auth("geheim-wachtwoord-9")).status).toBe(403);
     expect((await auth(key)).status).toBe(403);
@@ -178,5 +181,26 @@ describe("admin.templates create/update/delete", () => {
     await expect(admin.api.admin.templates.delete({ id })).rejects.toMatchObject({ code: "NOT_FOUND" });
     const log = await admin.api.admin.activity.search({ action: "admin.template.delete" });
     expect(log.items.length).toBe(1);
+  });
+});
+
+describe("setSftpPassword en servers.activity: beveiliging", () => {
+  it("setSftpPassword is verboden met een API-sleutel", async () => {
+    const { key } = await player.api.account.createApiKey({ name: "ro", permissions: ["files.read"], expiresAt: null });
+    const api = await withKey(key);
+    await expect(api.account.setSftpPassword({ uuid, password: "lang-genoeg-wachtwoord" })).rejects.toMatchObject({ code: "FORBIDDEN", message: "NOT_WITH_API_KEY" });
+  });
+
+  it("activity: subusers zien geen IP's en metadata (commando's); eigenaar en admin wel", async () => {
+    await player.api.servers.sendCommand({ uuid, command: "op geheim-wachtwoord" }).catch(() => {});
+    await getDb().insert(schema.activityLog).values({ serverId, userId: player.id, action: "server.console.command", metadata: { command: "login hunter2" }, ip: "203.0.113.77" });
+    const own = await player.api.servers.activity({ uuid, limit: 50 });
+    expect(own.items.some((i) => i.ip === "203.0.113.77" && JSON.stringify(i.metadata).includes("hunter2"))).toBe(true);
+    const sub = await helper.api.servers.activity({ uuid, limit: 50 });
+    expect(sub.items.length).toBeGreaterThan(0);
+    expect(sub.items.every((i) => i.ip === null && Object.keys(i.metadata).length === 0)).toBe(true);
+    expect(JSON.stringify(sub)).not.toMatch(/hunter2|203\.0\.113\.77/);
+    const adm = await admin.api.servers.activity({ uuid, limit: 50 });
+    expect(adm.items.some((i) => i.ip === "203.0.113.77")).toBe(true);
   });
 });
