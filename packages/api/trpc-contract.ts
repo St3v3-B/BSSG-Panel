@@ -117,6 +117,15 @@ export const contract = {
     reinstall: mutation("user", server, s.Ok),
     /** Eigenaar of admin. Slaapstand: stoppen na idleMinutes zonder spelers, starten bij een verbindingspoging. */
     updateSleep: mutation("user", server.extend({ enabled: z.boolean(), idleMinutes: z.number().int().min(1).max(1440) }), s.Ok),
+    /**
+     * Eigenaar of admin: beleid voor image-updates. `auto` = de daemon maakt de container op een rustig
+     * moment opnieuw aan (gestopt/slapend: bij de volgende start; draaiend: in het onderhoudsvenster, met
+     * een waarschuwing een minuut ervoor); `notify` = alleen melden + "Nu bijwerken"; `off`; null = globale
+     * standaard. Als de nieuwe image een herinstallatie vereist (andere PHP-minor) wordt altijd alleen gemeld.
+     */
+    updateImagePolicy: mutation("user", server.extend({ policy: s.ImagePolicy.nullable() }), s.Ok),
+    /** Eigenaar of admin: haalt de image nu op en maakt de container opnieuw aan (herstart een draaiende server). */
+    updateImageNow: mutation("user", server, s.Ok),
     activity: query("user", server.extend(s.PageInput.shape), s.page(s.ActivityEntry)),
     /** Proxy-server (Velocity), eigenaar of admin: eigen game-servers (admin: alle) op dezelfde node die als backend kunnen. */
     networkCandidates: query("user", server, z.array(s.NetworkCandidate)),
@@ -393,6 +402,12 @@ export const contract = {
         s.PageInput.extend({ userId: s.Id.optional(), serverUuid: s.Uuid.optional(), action: z.string().optional() }),
         s.page(s.ActivityEntry),
       ),
+    },
+
+    imageUpdates: {
+      list: query("admin", none, z.array(s.AdminImageRow)),
+      /** Vraagt alle nodes nu te controleren op nieuwe images. */
+      checkNow: mutation("admin", none, s.Ok),
     },
 
     settings: {

@@ -33,6 +33,12 @@ export const TemplateSpec = z
     http_port: z.number().int().min(1).max(65535).optional(),
     /** Minecraft Java-server die de daemon kan laten slapen (status-ping + login op de primaire poort). */
     sleep_capable: z.boolean().default(false),
+    /**
+     * Naam van een omgevingsvariabele in de image-config (bv. `PHP_VERSION`) waarvan major.minor gelijk moet
+     * blijven voor een automatische image-update. Verschilt hij tussen oude en nieuwe image, dan is een
+     * herinstallatie nodig (extensies zijn tegen de oude minor gebouwd) en meldt de daemon alleen.
+     */
+    image_version_env: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),
     variables: z
       .array(
         z.object({

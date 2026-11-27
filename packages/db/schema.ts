@@ -170,6 +170,12 @@ export const servers = pgTable("servers", {
   diskMb: integer("disk_mb").notNull(),
   sleepEnabled: boolean("sleep_enabled").notNull().default(false),
   sleepIdleMinutes: integer("sleep_idle_minutes").notNull().default(10),
+  /** Beleid voor image-updates: null = globale standaard, anders auto | notify | off. */
+  imageUpdatePolicy: text("image_update_policy"),
+  /** Laatste melding van de daemon: draaiende container gebruikt een oudere image. */
+  imageUpdateAvailable: boolean("image_update_available").notNull().default(false),
+  imageReinstallRequired: boolean("image_reinstall_required").notNull().default(false),
+  imageCheckedAt: ts("image_checked_at"),
   suspendedAt: ts("suspended_at"),
   suspendedReason: text("suspended_reason"),
   domainsAllowed: boolean("domains_allowed").notNull().default(false),

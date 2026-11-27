@@ -158,6 +158,33 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/images/check:
+    post:
+      tags: [system]
+      operationId: checkImages
+      summary: Nu op nieuwe images controleren (anders elke IMAGE_CHECK_INTERVAL, standaard 24 uur)
+      description: |
+        De daemon haalt (`docker pull`) elke image op die door servers van deze node gebruikt wordt
+        (runtime- en install-image; alleen de verwezen tags), vergelijkt het nieuwe image-id met dat van
+        de draaiende container en meldt het resultaat aan het panel (`POST /api/remote/node/images`).
+        Daarna past hij `auto`-beleid toe (zie `image_update` in ServerSpec). Alleen images die de daemon
+        zelf ophaalde en die niet meer gebruikt worden, ruimt hij op; nooit zonder panel-labels.
+      responses:
+        "202": { description: Controle gestart (loopt op de achtergrond) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/servers/{uuid}/image-update:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [servers]
+      operationId: updateServerImage
+      summary: Nu bijwerken - image ophalen en de container opnieuw aanmaken (draaiende server wordt herstart)
+      responses:
+        "202": { description: "Gestart; het resultaat volgt via POST /api/remote/servers/{uuid}/image-update" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /api/servers/{uuid}/install:
     parameters: [{ $ref: "#/components/parameters/Uuid" }]
     post:
@@ -793,6 +820,18 @@ components:
               path: { type: string }
               format: { type: string, enum: [properties, yaml, json, toml] }
               set: { type: object, additionalProperties: { type: string } }
+        image_update:
+          type: [object, "null"]
+          description: |
+            Beleid voor image-updates van deze server (zie `/api/images/check`). `policy` is
+            `default` (globale standaard van het panel, op te halen via
+            `GET /api/remote/settings/image-updates`), `auto`, `notify` of `off`. `version_env`:
+            naam van een env-variabele in de image-config waarvan major.minor gelijk moet blijven;
+            verschilt hij tussen de draaiende en de nieuwe image, dan is `reinstall_required` en past
+            de daemon nooit automatisch toe.
+          properties:
+            policy: { type: string, enum: [default, auto, notify, off], default: default }
+            version_env: { type: [string, "null"] }
         start_on_install: { type: boolean, default: false }
         sleep:
           type: [object, "null"]
