@@ -192,6 +192,11 @@ export function createMock(): Implementation {
     appJobs.unshift(job);
     return job;
   };
+  const mockRecoveryCodes = () => Array.from({ length: 10 }, (_, i) => `mock${i}-abcde`);
+  let mockSessions: s.SessionInfo[] = [
+    { id: "00000000-0000-4000-8000-000000000001", userAgent: "Mozilla/5.0 (X11; Linux x86_64) Firefox/130.0", ip: "203.0.113.5", createdAt: new Date(Date.now() - 86400_000), lastSeenAt: new Date(), current: true },
+    { id: "00000000-0000-4000-8000-000000000002", userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari/604.1", ip: "198.51.100.7", createdAt: new Date(Date.now() - 5 * 86400_000), lastSeenAt: new Date(Date.now() - 3600_000), current: false },
+  ];
   const databases: s.Database[] = [database(1, data.servers[2]!.uuid, "wordpress")];
 
   return {
@@ -201,7 +206,7 @@ export function createMock(): Implementation {
       discordLoginUrl: () => ({ url: "/?mock-login=1" }),
       verifyTotp: ({ input }) => {
         if (input.code !== "123456") throw new TRPCError({ code: "BAD_REQUEST", message: "INVALID_CODE (mock: use 123456)" });
-        return ok;
+        return { ...ok, recoveryCodesLeft: null };
       },
       emergencyLogin: () => ok,
       logout: () => ok,
@@ -212,7 +217,23 @@ export function createMock(): Implementation {
       totpEnable: ({ input, ctx }) => {
         if (input.code !== "123456") throw new TRPCError({ code: "BAD_REQUEST", message: "INVALID_CODE (mock: use 123456)" });
         db.totpEnabled.set(uid(ctx), true);
+        return { ...ok, recoveryCodes: mockRecoveryCodes() };
+      },
+      recoveryCodesStatus: () => ({ remaining: 10, total: 10 }),
+      regenerateRecoveryCodes: ({ input }) => {
+        if (input.code !== "123456") throw new TRPCError({ code: "BAD_REQUEST", message: "INVALID_CODE (mock: use 123456)" });
+        return { recoveryCodes: mockRecoveryCodes() };
+      },
+      sessions: () => mockSessions.slice(),
+      revokeSession: ({ input }) => {
+        const i = mockSessions.findIndex((x) => x.id === input.id && !x.current);
+        if (i >= 0) mockSessions.splice(i, 1);
         return ok;
+      },
+      revokeOtherSessions: () => {
+        const n = mockSessions.filter((x) => !x.current).length;
+        mockSessions = mockSessions.filter((x) => x.current);
+        return { revoked: n };
       },
       totpDisable: ({ ctx }) => (db.totpEnabled.set(uid(ctx), false), ok),
       apiKeys: () => db.apiKeys,
@@ -607,6 +628,7 @@ export function createMock(): Implementation {
       users: {
         list: ({ input }) => pageOf(db.users.filter((u) => !input.search || (u.name ?? u.discordId).includes(input.search)).map(adminUser), input.limit),
         get: ({ input }) => adminUser(user(input.id)),
+        revokeSessions: () => ({ revoked: 1 }),
         create: ({ input }) => {
           const u = { id: id(), discordId: input.discordId, name: null, avatarUrl: null };
           db.users.push(u);

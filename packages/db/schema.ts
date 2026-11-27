@@ -84,8 +84,20 @@ export const sessions = pgTable("sessions", {
   ip: text("ip"),
   userAgent: text("user_agent"),
   createdAt: createdAt(),
+  /** Laatste gebruik (bijgewerkt hooguit eens per minuut); voor inactiviteits-timeout en de sessielijst */
+  lastSeenAt: ts("last_seen_at").notNull().defaultNow(),
+  /** Absolute levensduur */
   expiresAt: ts("expires_at").notNull(),
 }, (t) => [index("sessions_user_idx").on(t.userId)]);
+
+/** Herstelcodes voor 2FA: alleen SHA-256 van de code; usedAt gevuld = verbruikt. */
+export const recoveryCodes = pgTable("recovery_codes", {
+  id: pk(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  codeHash: text("code_hash").notNull(),
+  usedAt: ts("used_at"),
+  createdAt: createdAt(),
+}, (t) => [index("recovery_codes_user_idx").on(t.userId)]);
 
 export const apiKeys = pgTable("api_keys", {
   id: pk(),
