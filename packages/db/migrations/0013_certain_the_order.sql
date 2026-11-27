@@ -1,0 +1,1 @@
+ALTER TABLE "database_hosts" ADD COLUMN "daemon_managed" boolean DEFAULT false NOT NULL;

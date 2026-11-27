@@ -64,6 +64,8 @@ tags:
   - name: transfer
     description: Directe up/downloads vanuit de browser (JWT in ?token=)
   - name: backups
+  - name: databases
+    description: Klantdatabases op de MariaDB van deze node (panel-mariadb); het panel beheert ze via de daemon
   - name: routes
     description: Caddy-routes; de daemon is de bron van waarheid en synchroniseert Caddy
 
@@ -622,6 +624,130 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /api/db/status:
+    get:
+      tags: [databases]
+      operationId: getDbStatus
+      summary: Is de lokale MariaDB van deze node bereikbaar?
+      description: |
+        De daemon spreekt de MariaDB van de node via `docker exec` in de container `MARIADB_CONTAINER`
+        (standaard `panel-mariadb`) met het rootwachtwoord uit zijn eigen omgeving (`MARIADB_ROOT_PASSWORD`);
+        dat wachtwoord verlaat de node nooit. Zonder container of wachtwoord is `available` false.
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [available]
+                properties:
+                  available: { type: boolean }
+                  error: { type: string, description: Reden als available false is }
+                  host: { type: string, description: "Naam waaronder sites de database bereiken (de containernaam), bv. panel-mariadb" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/db/databases:
+    post:
+      tags: [databases]
+      operationId: createDatabase
+      summary: Database + gebruiker aanmaken (gebruiker krijgt alleen rechten op deze database)
+      description: |
+        Namen moeten `^[a-zA-Z0-9_]{1,64}$` zijn, het wachtwoord 8-128 printbare ASCII-tekens zonder `'` en `\`.
+        De gebruiker is `user@'%'` met `ALL PRIVILEGES` op alleen deze database (underscores worden geescaped).
+        Bij een fout wordt alles wat al gemaakt was weer verwijderd.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DbCreate" }
+      responses:
+        "204": { description: Aangemaakt }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "503": { $ref: "#/components/responses/DbUnavailable" }
+
+  /api/db/databases/{name}:
+    parameters: [{ $ref: "#/components/parameters/DbName" }]
+    delete:
+      tags: [databases]
+      operationId: dropDatabase
+      summary: Database en gebruiker verwijderen (idempotent)
+      parameters:
+        - name: username
+          in: query
+          required: true
+          schema: { type: string, pattern: "^[a-zA-Z0-9_]{1,64}$" }
+      responses:
+        "204": { description: Verwijderd (of bestond niet) }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/DbUnavailable" }
+
+  /api/db/databases/{name}/password:
+    parameters: [{ $ref: "#/components/parameters/DbName" }]
+    put:
+      tags: [databases]
+      operationId: setDatabasePassword
+      summary: Wachtwoord van de databasegebruiker wijzigen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DbPassword" }
+      responses:
+        "204": { description: Gewijzigd }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/DbUnavailable" }
+
+  /api/db/databases/{name}/dump:
+    parameters: [{ $ref: "#/components/parameters/DbName" }]
+    get:
+      tags: [databases]
+      operationId: dumpDatabase
+      summary: SQL-dump van een database als stroom (voor verplaatsen naar een andere node)
+      description: |
+        Streamt `mariadb-dump --single-transaction --routines --events` (utf8mb4). Mislukt de dump nadat de
+        stroom begonnen is, dan wordt de verbinding afgebroken zodat de ontvanger geen afgekapte maar geldige
+        dump ziet.
+      responses:
+        "200":
+          description: SQL-stroom
+          content:
+            application/sql:
+              schema: { type: string, format: binary }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/DbUnavailable" }
+
+  /api/db/databases/{name}/import:
+    parameters: [{ $ref: "#/components/parameters/DbName" }]
+    put:
+      tags: [databases]
+      operationId: importDatabase
+      summary: SQL-dump inladen in een bestaande (lege) database
+      description: De database moet eerst met `createDatabase` zijn aangemaakt. Bij een SQL-fout 500 `import_failed` met het eind van de foutmelding.
+      requestBody:
+        required: true
+        content:
+          application/sql:
+            schema: { type: string, format: binary }
+      responses:
+        "204": { description: Ingeladen }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500":
+          description: Import mislukt
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503": { $ref: "#/components/responses/DbUnavailable" }
+
   /api/routes:
     get:
       tags: [routes]
@@ -701,6 +827,11 @@ components:
       required: true
       description: Pad binnen de serverdata, begint met `/`. `..` buiten de root → 400.
       schema: { type: string }
+    DbName:
+      name: name
+      in: path
+      required: true
+      schema: { type: string, pattern: "^[a-zA-Z0-9_]{1,64}$" }
     Token:
       name: token
       in: query
@@ -733,6 +864,11 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
+    DbUnavailable:
+      description: Geen (bereikbare) MariaDB op deze node
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
     TooLarge:
       description: Te groot
       content:
@@ -745,6 +881,20 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
+    DbCreate:
+      type: object
+      required: [name, username, password]
+      properties:
+        name: { type: string, pattern: "^[a-zA-Z0-9_]{1,64}$" }
+        username: { type: string, pattern: "^[a-zA-Z0-9_]{1,64}$" }
+        password: { type: string, minLength: 8, maxLength: 128 }
+    DbPassword:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, pattern: "^[a-zA-Z0-9_]{1,64}$" }
+        password: { type: string, minLength: 8, maxLength: 128 }
+
     Error:
       type: object
       required: [error]

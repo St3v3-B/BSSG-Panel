@@ -495,6 +495,134 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/db/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Is de lokale MariaDB van deze node bereikbaar?
+         * @description De daemon spreekt de MariaDB van de node via `docker exec` in de container `MARIADB_CONTAINER`
+         *     (standaard `panel-mariadb`) met het rootwachtwoord uit zijn eigen omgeving (`MARIADB_ROOT_PASSWORD`);
+         *     dat wachtwoord verlaat de node nooit. Zonder container of wachtwoord is `available` false.
+         */
+        get: operations["getDbStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/db/databases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Database + gebruiker aanmaken (gebruiker krijgt alleen rechten op deze database)
+         * @description Namen moeten `^[a-zA-Z0-9_]{1,64}$` zijn, het wachtwoord 8-128 printbare ASCII-tekens zonder `'` en `\`.
+         *     De gebruiker is `user@'%'` met `ALL PRIVILEGES` op alleen deze database (underscores worden geescaped).
+         *     Bij een fout wordt alles wat al gemaakt was weer verwijderd.
+         */
+        post: operations["createDatabase"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/db/databases/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: components["parameters"]["DbName"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Database en gebruiker verwijderen (idempotent) */
+        delete: operations["dropDatabase"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/db/databases/{name}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: components["parameters"]["DbName"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Wachtwoord van de databasegebruiker wijzigen */
+        put: operations["setDatabasePassword"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/db/databases/{name}/dump": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: components["parameters"]["DbName"];
+            };
+            cookie?: never;
+        };
+        /**
+         * SQL-dump van een database als stroom (voor verplaatsen naar een andere node)
+         * @description Streamt `mariadb-dump --single-transaction --routines --events` (utf8mb4). Mislukt de dump nadat de
+         *     stroom begonnen is, dan wordt de verbinding afgebroken zodat de ontvanger geen afgekapte maar geldige
+         *     dump ziet.
+         */
+        get: operations["dumpDatabase"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/db/databases/{name}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: components["parameters"]["DbName"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * SQL-dump inladen in een bestaande (lege) database
+         * @description De database moet eerst met `createDatabase` zijn aangemaakt. Bij een SQL-fout 500 `import_failed` met het eind van de foutmelding.
+         */
+        put: operations["importDatabase"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/routes": {
         parameters: {
             query?: never;
@@ -534,6 +662,15 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        DbCreate: {
+            name: string;
+            username: string;
+            password: string;
+        };
+        DbPassword: {
+            username: string;
+            password: string;
+        };
         Error: {
             /** @description Machineleesbare code, bv. `not_found`, `disk_exceeded`, `invalid_state` */
             error: string;
@@ -877,6 +1014,15 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Geen (bereikbare) MariaDB op deze node */
+        DbUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Te groot */
         TooLarge: {
             headers: {
@@ -900,6 +1046,7 @@ export interface components {
         Uuid: string;
         /** @description Pad binnen de serverdata, begint met `/`. `..` buiten de root → 400. */
         Path: string;
+        DbName: string;
         /** @description Browser-JWT met files.read (download) of files.write (upload) */
         Token: string;
     };
@@ -1725,6 +1872,175 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getDbStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        available: boolean;
+                        /** @description Reden als available false is */
+                        error?: string;
+                        /** @description Naam waaronder sites de database bereiken (de containernaam), bv. panel-mariadb */
+                        host?: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createDatabase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DbCreate"];
+            };
+        };
+        responses: {
+            /** @description Aangemaakt */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            503: components["responses"]["DbUnavailable"];
+        };
+    };
+    dropDatabase: {
+        parameters: {
+            query: {
+                username: string;
+            };
+            header?: never;
+            path: {
+                name: components["parameters"]["DbName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verwijderd (of bestond niet) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            503: components["responses"]["DbUnavailable"];
+        };
+    };
+    setDatabasePassword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: components["parameters"]["DbName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DbPassword"];
+            };
+        };
+        responses: {
+            /** @description Gewijzigd */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["DbUnavailable"];
+        };
+    };
+    dumpDatabase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: components["parameters"]["DbName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SQL-stroom */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/sql": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            503: components["responses"]["DbUnavailable"];
+        };
+    };
+    importDatabase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: components["parameters"]["DbName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/sql": string;
+            };
+        };
+        responses: {
+            /** @description Ingeladen */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description Import mislukt */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            503: components["responses"]["DbUnavailable"];
         };
     };
     listRoutes: {

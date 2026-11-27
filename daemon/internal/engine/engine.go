@@ -93,6 +93,23 @@ type ExecResult struct {
 	Truncated bool
 }
 
+// ExecIO is een commando met stdin/stdout-stromen (bv. een SQL-dump). stderr wordt apart bewaard.
+type ExecIO struct {
+	Cmd []string
+	Env []string // "K=V"
+	// Stdin wordt naar het commando gestuurd (nil: leeg); Stdout krijgt de uitvoer (nil: weggegooid).
+	Stdin  io.Reader
+	Stdout io.Writer
+	// MaxStderr: hoeveel van het einde van stderr bewaard blijft (standaard 4 KiB).
+	MaxStderr int
+}
+
+// ExecIOResult is de uitkomst van ExecStream.
+type ExecIOResult struct {
+	ExitCode int
+	Stderr   string
+}
+
 // StatsSample is één meting uit de Docker-statsstream.
 type StatsSample struct {
 	CPUPct      float64 // 100 = één core
@@ -126,6 +143,8 @@ type Engine interface {
 	Update(ctx context.Context, id string, r Resources) error
 	// Exec draait een commando in een draaiende container en wacht tot het klaar is of ctx afloopt.
 	Exec(ctx context.Context, id string, o ExecOptions) (ExecResult, error)
+	// ExecStream is Exec met stdin/stdout-stromen; het commando draait als de standaardgebruiker van de container.
+	ExecStream(ctx context.Context, id string, o ExecIO) (ExecIOResult, error)
 	Networks
 	Images
 }

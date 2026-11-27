@@ -286,6 +286,8 @@ export const databaseHosts = pgTable("database_hosts", {
   adminUser: text("admin_user").notNull(),
   adminPasswordEnc: text("admin_password_enc").notNull(),
   nodeId: integer("node_id").references(() => nodes.id, { onDelete: "set null" }),
+  /** true: beheerd via de daemon van `nodeId` (nooit rechtstreeks verbinden); admin_* zijn dan leeg/ongebruikt. */
+  daemonManaged: boolean("daemon_managed").notNull().default(false),
   createdAt: createdAt(),
 });
 

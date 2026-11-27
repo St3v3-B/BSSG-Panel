@@ -31,6 +31,12 @@ export class FakeDaemon {
   readonly routes = new Map<string, Record<string, unknown>>();
   /** Antwoord van POST /exec (standaard: geslaagd, geen uitvoer). */
   execResult: { exit_code: number; output: string; truncated: boolean; timed_out: boolean; duration_ms: number } = { exit_code: 0, output: "", truncated: false, timed_out: false, duration_ms: 5 };
+  /** Databases van de (nep-)MariaDB van deze node: naam -> gebruiker, wachtwoord en inhoud ("dump"). */
+  readonly dbs = new Map<string, { username: string; password: string; data: string }>();
+  /** Antwoord van GET /api/db/status. */
+  dbAvailable = true;
+  dbDumpFails = false;
+  dbImportFails = false;
   private server: Server | null = null;
   url = "";
 
@@ -56,9 +62,42 @@ export class FakeDaemon {
     this.routes.clear();
     this.diskFull = false;
     this.exportFails = false;
+    this.dbs.clear();
+    this.dbAvailable = true;
+    this.dbDumpFails = false;
+    this.dbImportFails = false;
     this.execResult = { exit_code: 0, output: "", truncated: false, timed_out: false, duration_ms: 5 };
     this.mode = "ok";
     this.override = null;
+  }
+
+  private handleDb(kind: string, name: string | undefined, sub: string | undefined, r: RecordedRequest, query: URLSearchParams, raw: string, send: (status: number, b?: unknown) => void) {
+    if (kind === "status") return send(200, { available: this.dbAvailable, host: "panel-mariadb", ...(this.dbAvailable ? {} : { error: "mariadb unavailable" }) });
+    if (!this.dbAvailable) return send(503, { error: "db_unavailable", message: "no MariaDB" });
+    const b = (r.body ?? {}) as { name?: string; username?: string; password?: string };
+    if (!name && r.method === "POST") {
+      if (this.dbs.has(b.name!)) return send(409, { error: "exists" });
+      this.dbs.set(b.name!, { username: b.username!, password: b.password!, data: "" });
+      return send(204);
+    }
+    if (!name) return send(404, { error: "not_found" });
+    const d = this.dbs.get(name);
+    if (!sub && r.method === "DELETE") {
+      this.dbs.delete(name);
+      return send(204);
+    }
+    if (!d) return send(404, { error: "not_found" });
+    if (sub === "password") {
+      d.password = b.password!;
+      return send(204);
+    }
+    if (sub === "dump") return this.dbDumpFails ? send(500, { error: "db_error", message: "dump kapot" }) : send(200, new Raw(d.data));
+    if (sub === "import") {
+      if (this.dbImportFails) return send(500, { error: "import_failed", message: "import kapot" });
+      d.data = raw;
+      return send(204);
+    }
+    return send(404, { error: "not_found" });
   }
 
   last(method: string, pathPrefix: string): RecordedRequest | undefined {
@@ -97,6 +136,8 @@ export class FakeDaemon {
     const path = r.path.split("?")[0]!;
     const query = new URLSearchParams(r.path.split("?")[1] ?? "");
     if (r.method === "POST" && path === "/api/images/check") return send(202);
+    const dm = /^\/api\/db\/(status|databases)(?:\/([A-Za-z0-9_]+)(?:\/(password|dump|import))?)?$/.exec(path);
+    if (dm) return this.handleDb(dm[1]!, dm[2], dm[3], r, query, raw, send);
     const fm = /^\/api\/servers\/([0-9a-f-]{36})\/files\/([a-z]+)$/.exec(path);
     if (fm) return this.handleFiles(fm[1]!, fm[2]!, r, query, raw, send);
     const rm = /^\/api\/routes(?:\/(.+))?$/.exec(path);

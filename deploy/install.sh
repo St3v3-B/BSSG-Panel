@@ -5,7 +5,7 @@
 #   sudo PANEL_DOMAIN=... deploy/install.sh --non-interactive
 #   deploy/install.sh --dry-run [--root DIR]    # schrijft alleen naar DIR (standaard mktemp)
 #
-# Remote node (alleen daemon + Caddy, geen panel/Postgres/Redis/MariaDB):
+# Remote node (daemon + Caddy + eigen MariaDB, geen panel/Postgres/Redis):
 #   sudo PANEL_URL=https://panel.example.com NODE_DOMAIN=node2.example.com NODE_TOKEN=... \
 #     ACME_EMAIL=admin@example.com deploy/install.sh --node-only --non-interactive
 #   (of met flags: --panel-url --node-domain --node-token --acme-email --daemon-port --sftp-port)
@@ -42,7 +42,7 @@ Usage: install.sh [options]
   --root DIR          (only with --dry-run) target directory instead of /
   --daemon-bin PATH   use a prebuilt panel-daemon instead of building with Go
   --no-start          do not (re)start the unit and compose
-  --node-only         install a remote node only: daemon + systemd unit + Caddy (docker-compose.node.yml).
+  --node-only         install a remote node only: daemon + systemd unit + Caddy + its own MariaDB (docker-compose.node.yml).
                       Needs PANEL_URL, NODE_DOMAIN, NODE_TOKEN, ACME_EMAIL (environment or the flags below)
   --panel-url URL, --node-domain HOST, --node-token TOKEN, --acme-email MAIL, --daemon-port N,
   --sftp-port N       same as the environment variables of the same name
@@ -408,6 +408,7 @@ Done.
   unit:    $UNIT_DST
   daemon:  $BIN_DST
   compose: PANEL_ENV_FILE=$ENV_FILE docker compose --env-file $ENV_FILE -f $COMPOSE_FILE ps
+  MariaDB: container ${VAL[MARIADB_CONTAINER]} (internal only; root password in $ENV_FILE, never sent to the panel)
 
 DNS: A records for ${VAL[PANEL_DOMAIN]} and ${VAL[NODE_DOMAIN]} pointing to ${VAL[NODE_PUBLIC_IP]:-the public IP of this machine}.
 Discord redirect URI: https://${VAL[PANEL_DOMAIN]}/api/auth/discord/callback
@@ -431,7 +432,7 @@ main() {
 
 # ---------------------------------------------------------------- node-only
 NODE_KEYS=(PANEL_URL NODE_DOMAIN NODE_TOKEN ACME_EMAIL DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR
-  CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER PANEL_INSTANCE DOCKER_EXTRA_LABELS)
+  CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER PANEL_INSTANCE DOCKER_EXTRA_LABELS MARIADB_CONTAINER MARIADB_ROOT_PASSWORD)
 
 collect_node_values() {
   log "values for the node (panel.env without panel secrets)"
@@ -440,9 +441,16 @@ collect_node_values() {
   ask NODE_TOKEN "Node token (from the panel: Admin > Nodes)" secret
   ask ACME_EMAIL "Email address for Let's Encrypt"
   local key
-  for key in DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER PANEL_INSTANCE DOCKER_EXTRA_LABELS; do
+  for key in DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER PANEL_INSTANCE DOCKER_EXTRA_LABELS MARIADB_CONTAINER; do
     keep_or_default "$key"
   done
+  # Eigen MariaDB van de node: het rootwachtwoord wordt hier gegenereerd en blijft in dit bestand
+  # (de daemon beheert de database ermee; het panel krijgt hem nooit).
+  if [ -z "${MARIADB_ROOT_PASSWORD:-}" ] && [ -z "${OLD[MARIADB_ROOT_PASSWORD]:-}" ] \
+     && docker volume inspect panel-mariadb-data >/dev/null 2>&1; then
+    warn "volume panel-mariadb-data already exists: the new MariaDB password only applies to an empty database"
+  fi
+  keep_or_generate MARIADB_ROOT_PASSWORD gen_pg_password
   [ "${VAL[PANEL_INSTANCE]}" = main ] || warn "PANEL_INSTANCE=${VAL[PANEL_INSTANCE]} (normally main)"
 }
 
@@ -475,7 +483,7 @@ start_node() {
   log "(re)starting daemon"
   run systemctl enable panel-daemon.service
   run systemctl restart panel-daemon.service
-  log "starting Caddy (docker compose up -d --build)"
+  log "starting Caddy + MariaDB (docker compose up -d --build)"
   if [ "$DRY_RUN" = 1 ]; then
     compose config -q && log "docker compose config: OK"
     printf '[dry-run] PANEL_ENV_FILE=%q docker compose --env-file %q -f %q up -d --build\n' "$ENV_FILE" "$ENV_FILE" "$COMPOSE_FILE"

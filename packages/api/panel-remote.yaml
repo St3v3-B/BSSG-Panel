@@ -58,6 +58,11 @@ paths:
               properties:
                 version: { type: string }
                 disk_quota_mode: { type: string, enum: [soft, xfs] }
+                has_mariadb:
+                  type: boolean
+                  description: |
+                    De node heeft een bereikbare lokale MariaDB (panel-mariadb). Het panel registreert dan een
+                    daemon-beheerde `database_hosts`-rij voor de node. De daemon meldt zich opnieuw (hello) als dit verandert.
       responses:
         "204": { description: OK }
         "401": { $ref: "#/components/responses/Unauthorized" }

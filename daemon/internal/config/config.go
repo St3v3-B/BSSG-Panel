@@ -27,6 +27,8 @@ type Config struct {
 	ExtraLabels    map[string]string
 	// MariaDBContainer wordt aan site-netwerken gekoppeld (MARIADB_CONTAINER).
 	MariaDBContainer string
+	// MariaDBRootPassword (MARIADB_ROOT_PASSWORD): rootwachtwoord van de MariaDB van deze node; blijft op de node.
+	MariaDBRootPassword string
 	// ImageCheckInterval: hoe vaak op nieuwe images gecontroleerd wordt (IMAGE_CHECK_INTERVAL, 0 = uit).
 	ImageCheckInterval time.Duration
 }
@@ -40,17 +42,18 @@ func Load(getenv func(string) string) (Config, error) {
 		return def
 	}
 	c := Config{
-		NodeToken:        get("NODE_TOKEN", ""),
-		NodeDomain:       strings.ToLower(get("NODE_DOMAIN", "")),
-		PanelDomain:      strings.ToLower(get("PANEL_DOMAIN", "")),
-		PanelURL:         strings.TrimRight(get("PANEL_URL", ""), "/"),
-		DaemonSocket:     get("DAEMON_SOCKET", "/run/panel/daemon.sock"),
-		DataDir:          get("DATA_DIR", "/var/lib/panel"),
-		CaddyAdminURL:    get("CADDY_ADMIN_URL", ""),
-		CaddyContainer:   get("CADDY_CONTAINER", "panel-caddy"),
-		CaddyTLSAddr:     get("CADDY_TLS_ADDR", "127.0.0.1:443"),
-		Instance:         get("PANEL_INSTANCE", "main"),
-		MariaDBContainer: get("MARIADB_CONTAINER", "panel-mariadb"),
+		NodeToken:           get("NODE_TOKEN", ""),
+		NodeDomain:          strings.ToLower(get("NODE_DOMAIN", "")),
+		PanelDomain:         strings.ToLower(get("PANEL_DOMAIN", "")),
+		PanelURL:            strings.TrimRight(get("PANEL_URL", ""), "/"),
+		DaemonSocket:        get("DAEMON_SOCKET", "/run/panel/daemon.sock"),
+		DataDir:             get("DATA_DIR", "/var/lib/panel"),
+		CaddyAdminURL:       get("CADDY_ADMIN_URL", ""),
+		CaddyContainer:      get("CADDY_CONTAINER", "panel-caddy"),
+		CaddyTLSAddr:        get("CADDY_TLS_ADDR", "127.0.0.1:443"),
+		Instance:            get("PANEL_INSTANCE", "main"),
+		MariaDBContainer:    get("MARIADB_CONTAINER", "panel-mariadb"),
+		MariaDBRootPassword: get("MARIADB_ROOT_PASSWORD", ""),
 	}
 	var errs []error
 	if c.NodeToken == "" {

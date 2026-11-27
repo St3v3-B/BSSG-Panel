@@ -31,7 +31,7 @@ func TestReportsWithRetry(t *testing.T) {
 	if len(calls) != 1 || calls[0].Body["successful"] != false || calls[0].Body["error"] != "kapot" {
 		t.Fatalf("%+v", calls)
 	}
-	c.Hello("1.0", "soft")
+	c.Hello("1.0", "soft", false)
 	c.Wait()
 	h := p.Calls("/api/remote/node/hello")
 	if len(h) != 1 || h[0].Body["version"] != "1.0" || h[0].Body["disk_quota_mode"] != "soft" {

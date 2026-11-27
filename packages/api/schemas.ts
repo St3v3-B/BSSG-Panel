@@ -604,6 +604,8 @@ export const DatabaseHost = z.object({
   port: z.number().int(),
   adminUser: z.string(),
   nodeId: Id.nullable(),
+  /** Beheerd via de daemon van de node (de node meldt zijn eigen MariaDB aan). */
+  daemonManaged: z.boolean(),
   databaseCount: z.number().int(),
 });
 export const DatabaseHostInput = z.object({

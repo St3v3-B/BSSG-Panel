@@ -636,9 +636,9 @@ export function createMock(): Implementation {
         },
       },
       databaseHosts: {
-        list: () => [{ id: 1, name: "mariadb", host: "203.0.113.10", port: 3306, adminUser: "panel", nodeId: 1, databaseCount: databases.length }],
-        create: ({ input }) => ({ id: id(), name: input.name, host: input.host, port: input.port, adminUser: input.adminUser, nodeId: input.nodeId, databaseCount: 0 }),
-        update: ({ input }) => ({ id: input.id, name: input.name ?? "mariadb", host: input.host ?? "203.0.113.10", port: input.port ?? 3306, adminUser: input.adminUser ?? "panel", nodeId: input.nodeId ?? 1, databaseCount: 0 }),
+        list: () => [{ id: 1, name: "mariadb", host: "203.0.113.10", port: 3306, adminUser: "panel", nodeId: 1, daemonManaged: false, databaseCount: databases.length }],
+        create: ({ input }) => ({ id: id(), name: input.name, host: input.host, port: input.port, adminUser: input.adminUser, nodeId: input.nodeId, daemonManaged: false, databaseCount: 0 }),
+        update: ({ input }) => ({ id: input.id, name: input.name ?? "mariadb", host: input.host ?? "203.0.113.10", port: input.port ?? 3306, adminUser: input.adminUser ?? "panel", nodeId: input.nodeId ?? 1, daemonManaged: false, databaseCount: 0 }),
         delete: () => ok,
         test: () => ({ ok: true, error: null }),
       },
