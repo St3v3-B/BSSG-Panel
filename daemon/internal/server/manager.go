@@ -5,6 +5,7 @@ import (
 	"errors"
 	"hash/fnv"
 	"log/slog"
+	"net/netip"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -41,11 +42,14 @@ type Reporter interface {
 
 // Config van de manager.
 type Config struct {
-	DataDir        string
-	Instance       string
-	ExtraLabels    map[string]string
-	UID, GID       int
-	NetworkMode    string
+	DataDir     string
+	Instance    string
+	ExtraLabels map[string]string
+	UID, GID    int
+	NetworkMode string
+	// NetworkPool: hieruit krijgt elk netwerk dat de daemon maakt een eigen subnet
+	// (DOCKER_NETWORK_POOL). Ongeldig (nul) = Docker kiest uit zijn standaardpools.
+	NetworkPool    netip.Prefix
 	StopTimeout    time.Duration
 	InstallTimeout time.Duration
 	DiskInterval   time.Duration
@@ -114,6 +118,11 @@ type Manager struct {
 
 	onState func(uuid, state string)
 	img     *imageUpdater
+
+	// netMu serialiseert het kiezen van subnets en het schrijven van proxy-networks.json.
+	netMu sync.Mutex
+	// proxyNets: proxy-uuid → backend-uuids (onder mu).
+	proxyNets map[string][]string
 }
 
 // OnState registreert een functie die bij elke statuswijziging wordt aangeroepen (onder
@@ -124,7 +133,7 @@ func (m *Manager) OnState(fn func(uuid, state string)) { m.onState = fn }
 func NewManager(cfg Config, eng engine.Engine, rep Reporter, log *slog.Logger) *Manager {
 	cfg.defaults()
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Manager{cfg: cfg, eng: eng, rep: rep, log: log, ctx: ctx, cancel: cancel, servers: map[string]*Server{}}
+	return &Manager{cfg: cfg, eng: eng, rep: rep, log: log, ctx: ctx, cancel: cancel, servers: map[string]*Server{}, proxyNets: map[string][]string{}}
 }
 
 // Close stopt alle achtergrondtaken. Containers blijven draaien.
@@ -302,6 +311,7 @@ func (m *Manager) Recover(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	m.loadProxyNets()
 	var interrupted []*Server
 	m.mu.Lock()
 	for _, f := range files {

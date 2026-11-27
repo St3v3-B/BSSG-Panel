@@ -120,6 +120,8 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /api/servers/{uuid}/exec", p(a.withServer(a.exec)))
 	mux.Handle("GET /api/servers/{uuid}/logs", p(a.withServer(a.logs)))
 	mux.Handle("GET /api/servers/{uuid}/stats", p(a.withServer(a.stats)))
+	mux.Handle("GET /api/servers/{uuid}/network", p(a.withServer(a.getProxyNetwork)))
+	mux.Handle("PUT /api/servers/{uuid}/network", p(a.withServer(a.setProxyNetwork)))
 	mux.HandleFunc("GET /api/servers/{uuid}/ws", a.websocket)
 
 	mux.Handle("GET /api/servers/{uuid}/files/list", p(a.withServer(a.listFiles)))

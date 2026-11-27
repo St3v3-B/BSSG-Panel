@@ -563,8 +563,9 @@ func websocketDial(url string, h http.Header) (*websocket.Conn, *http.Response, 
 	return websocket.DefaultDialer.Dial(url, h)
 }
 
-// TestGameRoute: http-route op een game-server (bv. BlueMap): netwerk panel-site-<uuid> met
-// role=site, container gekoppeld (ook na herstart van de server), geen placeholder, opruimen bij delete.
+// TestGameRoute: http-route op een game-server (bv. BlueMap): het eigen netwerk panel-site-<uuid>
+// (role=site, bestaat sinds de netwerkisolatie al vanaf de start), container eraan (ook na herstart),
+// geen placeholder, opruimen bij delete.
 func TestGameRoute(t *testing.T) {
 	eng := engine.NewFake()
 	router := proxy.NewFake()
@@ -576,8 +577,8 @@ func TestGameRoute(t *testing.T) {
 	h.expect("POST", "/api/servers/"+u+"/power", map[string]string{"action": "start"}, 202)
 	h.waitState(u, "online", 10*time.Second)
 	netName := "panel-site-" + u
-	if eng.Network(netName) != nil {
-		t.Fatal("netwerk bestaat al voor er een route is")
+	if n := eng.Network(netName); n == nil || !n.Connected["panel-"+u] || eng.Container("panel-"+u).Config.NetworkMode != netName {
+		t.Fatalf("game-server niet op zijn eigen netwerk: %+v", n)
 	}
 	h.expect("PUT", "/api/routes/map.test", map[string]any{"server_uuid": u}, 400) // port verplicht
 	h.expect("PUT", "/api/routes/map.test", map[string]any{"server_uuid": u, "port": 8123}, 200)

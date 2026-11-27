@@ -49,9 +49,10 @@ func (s *Server) containerConfig(sp spec.ServerSpec) engine.ContainerConfig {
 			ports = append(ports, engine.PortBinding{HostIP: a.IP, HostPort: a.Port, ContainerPort: a.Port, Proto: proto})
 		}
 	}
-	netMode := s.m.cfg.NetworkMode
+	// Eigen netwerk per server (zie netiso.go); websites publiceren geen poorten.
+	netMode := SiteNetwork(sp.UUID)
 	if sp.Type == "web" {
-		netMode, ports = SiteNetwork(sp.UUID), nil
+		ports = nil
 	}
 	return engine.ContainerConfig{
 		Name:           ContainerName(sp.UUID),
@@ -98,7 +99,7 @@ func (s *Server) installConfig(sp spec.ServerSpec) engine.ContainerConfig {
 		Mounts:      []engine.Mount{{Source: s.m.volume(sp.UUID), Target: spec.ContainerHome}},
 		SecurityOpt: []string{"no-new-privileges"},
 		Resources:   r,
-		NetworkMode: s.m.cfg.NetworkMode,
+		NetworkMode: SiteNetwork(sp.UUID),
 	}
 }
 
@@ -227,10 +228,18 @@ func (s *Server) launch(sp spec.ServerSpec) error {
 		if err := s.m.ensureSiteNetwork(ctx, sp.UUID); err != nil {
 			return err
 		}
+	} else if err := s.m.ensureServerNetwork(ctx, sp.UUID); err != nil {
+		return err
 	}
 	id, err := eng.Create(ctx, s.containerConfig(sp))
 	if err != nil {
 		return fmt.Errorf("container aanmaken: %w", err)
+	}
+	if sp.Type != "web" {
+		// Velocity-netwerk vóór de start, zodat de proxy zijn backends meteen bereikt.
+		if err := s.m.attachProxyNetworks(ctx, sp.UUID); err != nil {
+			s.DaemonMessage("warning", err.Error())
+		}
 	}
 	att, err := eng.AttachStdin(ctx, id)
 	if err != nil {
@@ -498,6 +507,9 @@ func (s *Server) runInstall(ctx context.Context, sp spec.ServerSpec) error {
 	if err := eng.Remove(ctx, name); err != nil && !errors.Is(err, engine.ErrNotFound) {
 		return err
 	}
+	if err := s.m.ensureServerNetwork(ctx, sp.UUID); err != nil {
+		return err
+	}
 	id, err := eng.Create(ctx, s.installConfig(sp))
 	if err != nil {
 		return fmt.Errorf("install-container aanmaken: %w", err)
@@ -615,11 +627,10 @@ func (s *Server) destroy() error {
 			return fmt.Errorf("container %s verwijderen: %w", n, err)
 		}
 	}
-	{
-		if err := s.m.removeSiteNetwork(ctx, s.uuid, s.IsWeb()); err != nil {
-			s.m.log.Warn("site-netwerk opruimen", "uuid", s.uuid, "err", err)
-		}
+	if err := s.m.removeSiteNetwork(ctx, s.uuid, s.IsWeb()); err != nil {
+		s.m.log.Warn("site-netwerk opruimen", "uuid", s.uuid, "err", err)
 	}
+	s.m.forgetProxyNetworks(ctx, s.uuid)
 	if err := os.RemoveAll(s.m.volume(s.uuid)); err != nil {
 		return fmt.Errorf("data verwijderen: %w", err)
 	}

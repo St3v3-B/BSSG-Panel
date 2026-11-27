@@ -51,3 +51,28 @@ func TestLoadErrors(t *testing.T) {
 		t.Error("label zonder =")
 	}
 }
+
+func TestNetworkPool(t *testing.T) {
+	base := map[string]string{"NODE_TOKEN": "t", "NODE_DOMAIN": "node1.test", "PANEL_DOMAIN": "panel.test"}
+	with := func(v string) (Config, error) {
+		m := map[string]string{"DOCKER_NETWORK_POOL": v}
+		for k, x := range base {
+			m[k] = x
+		}
+		return Load(env(m))
+	}
+	if c, err := with(""); err != nil || c.NetworkPool.String() != "10.213.0.0/16" {
+		t.Fatal(c.NetworkPool, err)
+	}
+	if c, err := with("10.99.1.0/20"); err != nil || c.NetworkPool.String() != "10.99.0.0/20" {
+		t.Fatal(c.NetworkPool, err)
+	}
+	if c, err := with("docker"); err != nil || c.NetworkPool.IsValid() {
+		t.Fatal(c.NetworkPool, err)
+	}
+	for _, bad := range []string{"10.0.0.0/28", "fd00::/48", "nonsense"} {
+		if _, err := with(bad); err == nil || !strings.Contains(err.Error(), "DOCKER_NETWORK_POOL") {
+			t.Fatal(bad, err)
+		}
+	}
+}

@@ -29,18 +29,10 @@ func (m *Manager) ours(labels map[string]string) bool {
 // geïsoleerd van andere bridge-netwerken) als het ontbreekt en koppelt
 // panel-mariadb eraan als die container bestaat.
 func (m *Manager) ensureSiteNetwork(ctx context.Context, uuid string) error {
-	name := SiteNetwork(uuid)
-	labels, err := m.eng.NetworkLabels(ctx, name)
-	switch {
-	case errors.Is(err, engine.ErrNotFound):
-		if err := m.eng.CreateNetwork(ctx, name, m.labels(uuid, RoleSite), false); err != nil {
-			return fmt.Errorf("netwerk %s aanmaken: %w", name, err)
-		}
-	case err != nil:
+	if err := m.ensureServerNetwork(ctx, uuid); err != nil {
 		return err
-	case !m.ours(labels):
-		return fmt.Errorf("network %s exists but does not belong to this daemon", name)
 	}
+	name := SiteNetwork(uuid)
 	if _, err := m.eng.Inspect(ctx, m.cfg.MariaDB); err == nil {
 		if err := m.eng.ConnectNetwork(ctx, name, m.cfg.MariaDB); err != nil {
 			m.log.Warn("attaching MariaDB to site network failed", "network", name, "err", err)
@@ -49,20 +41,12 @@ func (m *Manager) ensureSiteNetwork(ctx context.Context, uuid string) error {
 	return nil
 }
 
-// EnsureGameNetwork maakt panel-site-<uuid> voor een game-server met een http-route (zonder
-// MariaDB) en koppelt de container als die draait. Aangeroepen bij het zetten van een route.
+// EnsureGameNetwork zorgt voor panel-site-<uuid> van een game-server (zonder MariaDB) en
+// koppelt de container als die draait (een oude container op "bridge" van vóór de
+// netwerkisolatie). Aangeroepen bij het zetten van een http-route.
 func (m *Manager) EnsureGameNetwork(ctx context.Context, uuid string) error {
-	name := SiteNetwork(uuid)
-	labels, err := m.eng.NetworkLabels(ctx, name)
-	switch {
-	case errors.Is(err, engine.ErrNotFound):
-		if err := m.eng.CreateNetwork(ctx, name, m.labels(uuid, RoleSite), false); err != nil {
-			return fmt.Errorf("netwerk %s aanmaken: %w", name, err)
-		}
-	case err != nil:
+	if err := m.ensureServerNetwork(ctx, uuid); err != nil {
 		return err
-	case !m.ours(labels):
-		return fmt.Errorf("network %s exists but is not managed by this daemon", name)
 	}
 	return m.connectGameContainer(ctx, uuid)
 }
@@ -114,7 +98,10 @@ func (m *Manager) removeSiteNetwork(ctx context.Context, uuid string, web bool) 
 // ReconcileNetworks zorgt dat elke website zijn netwerk heeft en dat MariaDB eraan hangt
 // (na een herstart van panel-mariadb is die koppeling weg). Draaiende gameservers met een
 // site-netwerk (http-route) worden opnieuw gekoppeld, bijvoorbeeld na een herstart van de daemon.
+// Daarna de proxy-netwerken en het opruimen van verweesde server-netwerken.
 func (m *Manager) ReconcileNetworks(ctx context.Context) {
+	defer m.removeOrphanServerNetworks(ctx)
+	defer m.reconcileProxyNetworks(ctx)
 	for _, s := range m.List() {
 		if !s.IsWeb() {
 			if st := s.State(); st == "online" || st == "starting" {
