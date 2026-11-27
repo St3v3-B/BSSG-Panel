@@ -10,10 +10,32 @@ export const STATE_COOKIE = "panel_oauth_state";
 
 export const redirectUri = () => `https://${getEnv().PANEL_DOMAIN}/api/auth/discord/callback`;
 
-/** Alleen relatieve paden binnen het panel (geen open redirect). */
+/**
+ * Alleen een strikt relatief pad binnen het panel (geen open redirect): begint met één `/`, geen
+ * backslash of stuurtekens (ook niet na URL-decoderen; browsers strippen tab/CR/LF), en de URL
+ * blijft op dezelfde origin.
+ */
 export function safeRedirect(to: string | null | undefined): string {
-  if (!to || !to.startsWith("/") || to.startsWith("//") || to.startsWith("/\\")) return "/";
-  return to;
+  if (!to || to.length > 2048) return "/";
+  let cur = to;
+  for (let i = 0; i < 3; i++) {
+    if (/[\u0000-\u001f\u007f-\u009f\\]/.test(cur) || !/^\/(?![/\\])/.test(cur)) return "/";
+    let next: string;
+    try {
+      next = decodeURIComponent(cur);
+    } catch {
+      return "/";
+    }
+    if (next === cur) break;
+    cur = next;
+  }
+  try {
+    const u = new URL(to, "https://x.invalid");
+    if (u.origin !== "https://x.invalid") return "/";
+    return u.pathname + u.search + u.hash;
+  } catch {
+    return "/";
+  }
 }
 
 /** Waar de browser heen moet; `/api/auth/discord/login` zet daar het state-cookie. */

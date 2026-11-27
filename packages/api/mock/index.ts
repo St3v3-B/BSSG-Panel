@@ -7,6 +7,7 @@
  */
 import { TRPCError } from "@trpc/server";
 import { ALL_PERMISSIONS } from "../schemas";
+import { suggestBackendName } from "../network";
 import type * as s from "../schemas";
 import type { Implementation, SessionCtx } from "../trpc-builder";
 import * as data from "./data";
@@ -48,6 +49,8 @@ export function createMock(): Implementation {
     backups: clone(data.backups),
     schedules: clone(data.schedules),
     activity: clone(data.activity),
+    /** Proxy-uuid → backends (de eerste is de standaardserver); alleen servers met template "Velocity" zijn een proxy. */
+    networks: new Map<string, Array<{ serverUuid: string; name: string }>>(),
     subusers: [] as Array<{ serverUuid: string; userId: number; permissions: s.Permission[]; createdAt: Date }>,
     apiKeys: [] as s.ApiKey[],
     admins: ["100000000000000001"],
@@ -62,10 +65,22 @@ export function createMock(): Implementation {
     const { permissions: _p, allocations: _a, variables: _v, node: _n, sftp: _s, installedAt: _i, createdAt: _c, ownerId, ...rest } = x;
     return { ...rest, isOwner: ownerId === uid };
   };
+  const isMcProxy = (x: (typeof db.servers)[number]) => x.templateName === "Velocity";
+  const network = (x: (typeof db.servers)[number]): s.ServerNetwork => {
+    if (isMcProxy(x)) {
+      const members = (db.networks.get(x.uuid) ?? []).map((m, i) => {
+        const b = srv(m.serverUuid);
+        return { serverUuid: b.uuid, serverName: b.name, name: m.name, isDefault: i === 0, address: b.primaryAddress };
+      });
+      return { role: "proxy", members, proxy: null, connectAddress: x.primaryAddress };
+    }
+    for (const [p, list] of db.networks) if (list.some((m) => m.serverUuid === x.uuid)) return { role: "backend", members: [], proxy: { uuid: p, name: srv(p).name }, connectAddress: null };
+    return { role: "none", members: [], proxy: null, connectAddress: null };
+  };
   const detail = (x: (typeof db.servers)[number], uid: number): s.ServerDetail => {
     const { ownerId, ...rest } = x;
     const sub = db.subusers.find((u) => u.serverUuid === x.uuid && u.userId === uid);
-    return { ...rest, isOwner: ownerId === uid, permissions: ownerId === uid || uid === 1 ? [...ALL_PERMISSIONS] : (sub?.permissions ?? []) };
+    return { ...rest, network: network(x), isOwner: ownerId === uid, permissions: ownerId === uid || uid === 1 ? [...ALL_PERMISSIONS] : (sub?.permissions ?? []) };
   };
   const me = (session: SessionCtx): s.Me => ({
     user: user(session.userId),
@@ -187,6 +202,30 @@ export function createMock(): Implementation {
       reinstall: ({ input }) => ((srv(input.uuid).status = "installing"), ok),
       updateSleep: ({ input }) => ((srv(input.uuid).sleep = { ...srv(input.uuid).sleep, enabled: input.enabled, idleMinutes: input.idleMinutes }), ok),
       activity: ({ input }) => pageOf(db.activity.filter((a) => a.serverUuid === input.uuid), input.limit),
+      networkCandidates: ({ input }) => {
+        if (!isMcProxy(srv(input.uuid))) throw new TRPCError({ code: "BAD_REQUEST", message: "NOT_A_PROXY" });
+        return db.servers
+          .filter((x) => ["Paper", "Folia", "Fabric"].includes(x.templateName))
+          .map((x) => {
+            const taken = [...db.networks].find(([p, l]) => p !== input.uuid && l.some((m) => m.serverUuid === x.uuid));
+            return { uuid: x.uuid, name: x.name, templateName: x.templateName, address: x.primaryAddress, ownerName: x.owner.name, suggestedName: suggestBackendName(x.name), takenBy: taken ? srv(taken[0]).name : null };
+          });
+      },
+      updateNetwork: ({ input }) => {
+        const p = srv(input.uuid);
+        if (!isMcProxy(p)) throw new TRPCError({ code: "BAD_REQUEST", message: "NOT_A_PROXY" });
+        const before = db.networks.get(input.uuid) ?? [];
+        const sorted = [...input.members].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+        db.networks.set(input.uuid, sorted.map((m) => ({ serverUuid: m.serverUuid, name: m.name })));
+        const removed = before.filter((m) => !sorted.some((n) => n.serverUuid === m.serverUuid));
+        return {
+          servers: [
+            { uuid: p.uuid, name: p.name, role: "proxy" as const, restarted: input.restart, error: null },
+            ...sorted.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "backend" as const, restarted: input.restart, error: null })),
+            ...removed.map((m) => ({ uuid: m.serverUuid, name: srv(m.serverUuid).name, role: "removed" as const, restarted: input.restart, error: null })),
+          ],
+        };
+      },
     },
     files: {
       list: ({ input }) => (input.path === "/" ? db.files : []),
@@ -341,7 +380,7 @@ export function createMock(): Implementation {
             permissions: [], allocations: allocs,
             variables: t.variables.map((v) => ({ ...v, value: input.variables[v.key] ?? v.default })),
             node: { id: 1, name: "node1", fqdn: "node1.test" }, sftp: { host: "node1.test", port: 2022, username: `${owner.name ?? owner.discordId}.${uuid.slice(0, 8)}` },
-            suspended: null,
+            suspended: null, network: { role: "none" as const, members: [], proxy: null, connectAddress: null },
             domainsAllowed: t.type === "web",
             sleep: { supported: t.type === "game", enabled: false, idleMinutes: 10 },
             installedAt: null, createdAt: new Date(),

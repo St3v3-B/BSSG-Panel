@@ -13,6 +13,7 @@ import { dnsProviders } from "./routers/dns-providers";
 import { domains } from "./routers/domains";
 import { nodeMutations } from "./routers/nodes";
 import { files } from "./routers/files";
+import { network } from "./routers/network";
 import { servers } from "./routers/servers";
 import { subusers } from "./routers/subusers";
 
@@ -29,7 +30,7 @@ function merge(base: Tree, over: Tree): Tree {
   return out;
 }
 
-const phase1 = { auth, backups, schedules, account: { ...account, ...credentials }, servers, files, subusers, domains, databases, admin: { ...admin, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders, s3Targets } };
+const phase1 = { auth, backups, schedules, account: { ...account, ...credentials }, servers: { ...servers, ...network }, files, subusers, domains, databases, admin: { ...admin, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders, s3Targets } };
 
 /** Paden die echt geïmplementeerd zijn (de rest is NOT_IMPLEMENTED). */
 export function implementedPaths(tree: Tree = phase1 as unknown as Tree, prefix = ""): string[] {

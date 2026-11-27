@@ -28,7 +28,7 @@ export function toFileEntry(f: DaemonFileEntry): FileEntry {
 /** Eenmalige up/download-URL met een JWT die alleen het ene recht draagt. */
 async function signedUrl(ctx: Parameters<Implementation["files"]["uploadUrl"]>[0]["ctx"], uuid: string, kind: "upload" | "download", query: Record<string, string>) {
   const perm = kind === "upload" ? "files.write" : "files.read";
-  const a = await requireServer(ctx, uuid, perm);
+  const a = await requireServer(ctx, uuid, perm, { mutates: kind === "upload" });
   const { token, claims } = await signBrowserJwt({
     iss: getEnv().PANEL_URL,
     aud: a.bundle.node.fqdn,
@@ -57,42 +57,42 @@ export const files: Implementation["files"] = {
   },
 
   write: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "files.write");
+    const a = await requireServer(ctx, input.uuid, "files.write", { mutates: true });
     await call(() => daemonFor(a.bundle.node).writeFile(input.uuid, input.path, input.content));
     await logActivity({ action: "server.file.write", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { path: input.path }, ip: ctx.ip, ctx });
     return ok;
   },
 
   mkdir: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "files.write");
+    const a = await requireServer(ctx, input.uuid, "files.write", { mutates: true });
     await call(() => daemonFor(a.bundle.node).mkdir(input.uuid, input.path));
     await logActivity({ action: "server.file.mkdir", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { path: input.path }, ip: ctx.ip, ctx });
     return ok;
   },
 
   rename: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "files.write");
+    const a = await requireServer(ctx, input.uuid, "files.write", { mutates: true });
     await call(() => daemonFor(a.bundle.node).rename(input.uuid, input.from, input.to));
     await logActivity({ action: "server.file.rename", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { from: input.from, to: input.to }, ip: ctx.ip, ctx });
     return ok;
   },
 
   delete: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "files.write");
+    const a = await requireServer(ctx, input.uuid, "files.write", { mutates: true });
     await call(() => daemonFor(a.bundle.node).deleteFiles(input.uuid, input.paths));
     await logActivity({ action: "server.file.delete", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { paths: input.paths }, ip: ctx.ip, ctx });
     return ok;
   },
 
   compress: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "files.write");
+    const a = await requireServer(ctx, input.uuid, "files.write", { mutates: true });
     const archive = await call(() => daemonFor(a.bundle.node).compress(input.uuid, input.root, input.paths));
     await logActivity({ action: "server.file.compress", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { root: input.root, paths: input.paths, archive: archive.path }, ip: ctx.ip, ctx });
     return { archive: toFileEntry(archive) };
   },
 
   decompress: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "files.write");
+    const a = await requireServer(ctx, input.uuid, "files.write", { mutates: true });
     await call(() => daemonFor(a.bundle.node).decompress(input.uuid, input.path));
     await logActivity({ action: "server.file.decompress", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { path: input.path }, ip: ctx.ip, ctx });
     return ok;

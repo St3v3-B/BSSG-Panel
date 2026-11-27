@@ -147,6 +147,14 @@ func TestTransfer(t *testing.T) {
 		t.Fatal("ander server_uuid", res.StatusCode)
 	}
 
+	// Claims moeten bij de URL passen.
+	if res := dl(h.panel.Sign(testpanel.TokenOpts{Server: u1, Permissions: []string{"files.read"}, Path: "/ander.txt"}), ""); res.StatusCode != 403 {
+		t.Fatal("path-claim genegeerd", res.StatusCode)
+	}
+	if res := dl(h.panel.Sign(testpanel.TokenOpts{Server: u1, Permissions: []string{"files.read"}, Path: "/readme.txt"}), ""); res.StatusCode != 200 {
+		t.Fatal("juiste path-claim", res.StatusCode)
+	}
+
 	// Preflight.
 	req, _ := http.NewRequest("OPTIONS", h.base+"/api/servers/"+u1+"/files/upload?directory=/", nil)
 	req.Header.Set("Origin", "https://panel.test")
@@ -172,6 +180,9 @@ func TestTransfer(t *testing.T) {
 		}
 		res.Body.Close()
 		return res.StatusCode
+	}
+	if c := upload(h.panel.Sign(testpanel.TokenOpts{Server: u1, Permissions: []string{"files.write"}, Directory: "/plugins"}), "/", map[string]string{"a.txt": "a"}); c != 403 {
+		t.Fatal("directory-claim genegeerd", c)
 	}
 	if c := upload(sign("files.read"), "/", map[string]string{"a.txt": "a"}); c != 403 {
 		t.Fatal("upload zonder files.write", c)

@@ -8,8 +8,9 @@ import { getDb, schema } from "../db";
 import { getEnv } from "../env";
 import { signBrowserJwt } from "../lib/jwt";
 import { buildServerSpec, templateSleepCapable, validateVariables } from "../spec";
+import { serverNetwork } from "../network";
 import { forbidApiKey } from "../apikey";
-import { fetchServers, limitsOf, sleepOf, requireServer, serverVariables, toDetail, toSummary, type ServerBundle } from "../servers-data";
+import { fetchServers, limitsOf, sleepOf, requireServer, isSuspendedFor, serverVariables, toDetail, toSummary, type ServerBundle } from "../servers-data";
 
 const ok = { ok: true as const };
 const LIVE_TIMEOUT_MS = 1500;
@@ -85,12 +86,13 @@ export const servers: Pick<
 
   get: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "any");
-    const [live, vars, [viewer]] = await Promise.all([
+    const [live, vars, [viewer], net] = await Promise.all([
       liveState(a.bundle),
       serverVariables(a.bundle.server.id),
       getDb().select().from(schema.users).where(eq(schema.users.id, ctx.session!.userId)),
+      serverNetwork(a.bundle),
     ]);
-    return toDetail(a.bundle, { id: viewer!.id, name: viewer!.name, discordId: viewer!.discordId }, a.permissions, vars, live);
+    return toDetail(a.bundle, { id: viewer!.id, name: viewer!.name, discordId: viewer!.discordId }, a.permissions, vars, live, net);
   },
 
   stats: async ({ input, ctx }) => {
@@ -115,14 +117,14 @@ export const servers: Pick<
   },
 
   power: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "power");
+    const a = await requireServer(ctx, input.uuid, "power", { mutates: input.action === "start" || input.action === "restart" });
     await call(() => daemonFor(a.bundle.node).power(input.uuid, input.action));
     await logActivity({ action: `server.power.${input.action}`, userId: ctx.session!.userId, serverId: a.bundle.server.id, ip: ctx.ip, ctx });
     return ok;
   },
 
   sendCommand: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "console.write");
+    const a = await requireServer(ctx, input.uuid, "console.write", { mutates: true });
     await call(() => daemonFor(a.bundle.node).sendCommands(input.uuid, [input.command]));
     await logActivity({ action: "server.console.command", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { command: input.command }, ip: ctx.ip, ctx });
     return ok;
@@ -136,13 +138,14 @@ export const servers: Pick<
       aud: a.bundle.node.fqdn,
       sub: String(ctx.session!.userId),
       serverUuid: a.bundle.server.uuid,
-      permissions: a.permissions,
+      // Opgeschort: alleen-lezen console (geen console.write/power).
+      permissions: isSuspendedFor(ctx, a.bundle) ? a.permissions.filter((p) => p === "console.read") : a.permissions,
     });
     return { token, socketUrl: `wss://${a.bundle.node.fqdn}/api/servers/${a.bundle.server.uuid}/ws`, expiresAt: new Date(claims.exp * 1000) };
   },
 
   rename: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "owner");
+    const a = await requireServer(ctx, input.uuid, "owner", { mutates: true });
     const name = input.name.trim();
     if (!name) throw new TRPCError({ code: "BAD_REQUEST", message: "NAME_EMPTY" });
     await getDb().update(schema.servers).set({ name }).where(eq(schema.servers.id, a.bundle.server.id));
@@ -151,7 +154,7 @@ export const servers: Pick<
   },
 
   updateVariables: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "owner");
+    const a = await requireServer(ctx, input.uuid, "owner", { mutates: true });
     const b = a.bundle;
     const errors = validateVariables(b.template.variables, input.variables, { onlyUserEditable: !ctx.session!.isAdmin });
     if (errors.length) throw new TRPCError({ code: "BAD_REQUEST", message: `INVALID_VARIABLES: ${errors.join("; ")}` });
@@ -171,7 +174,7 @@ export const servers: Pick<
 
   updateSleep: async ({ input, ctx }) => {
     forbidApiKey(ctx);
-    const a = await requireServer(ctx, input.uuid, "owner");
+    const a = await requireServer(ctx, input.uuid, "owner", { mutates: true });
     const b = a.bundle;
     if (b.server.type !== "game" || !templateSleepCapable(b.template)) throw new TRPCError({ code: "BAD_REQUEST", message: "SLEEP_NOT_SUPPORTED" });
     const next = { ...b.server, sleepEnabled: input.enabled, sleepIdleMinutes: input.idleMinutes };
@@ -182,7 +185,7 @@ export const servers: Pick<
   },
 
   reinstall: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "owner");
+    const a = await requireServer(ctx, input.uuid, "owner", { mutates: true });
     await call(() => daemonFor(a.bundle.node).reinstall(input.uuid));
     await getDb().update(schema.servers).set({ status: "installing" }).where(eq(schema.servers.id, a.bundle.server.id));
     await logActivity({ action: "server.reinstall", userId: ctx.session!.userId, serverId: a.bundle.server.id, ip: ctx.ip, ctx });
@@ -191,6 +194,10 @@ export const servers: Pick<
 
   activity: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "any");
-    return activityPage(and(eq(schema.activityLog.serverId, a.bundle.server.id)), input);
+    const page = await activityPage(and(eq(schema.activityLog.serverId, a.bundle.server.id)), input);
+    // Eigenaar en admin zien alles; subusers zien alleen wie wat deed, zonder IP-adressen en
+    // metadata (bevat o.a. consolecommando's, bestandspaden en SFTP-gebruikersnamen).
+    if (a.canManage) return page;
+    return { ...page, items: page.items.map((i) => ({ ...i, ip: null, metadata: {} })) };
   },
 };

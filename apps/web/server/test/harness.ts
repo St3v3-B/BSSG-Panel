@@ -118,7 +118,7 @@ export function makeTemplatesDir(files: Record<string, string> = { "game/testgam
   return dir;
 }
 
-export function useHarness(opts: { env?: Record<string, string> } = {}) {
+export function useHarness(opts: { env?: Record<string, string>; templates?: Record<string, string> } = {}) {
   const h = {
     pg: null as TestPg | null,
     daemon: null as unknown as FakeDaemon,
@@ -170,7 +170,7 @@ export function useHarness(opts: { env?: Record<string, string> } = {}) {
   beforeAll(async () => {
     h.pg = await startPostgres();
     h.daemon = new FakeDaemon("");
-    h.templatesDir = makeTemplatesDir();
+    h.templatesDir = makeTemplatesDir(opts.templates && { "game/testgame.yaml": GAME_TEMPLATE, "web/testweb.yaml": WEB_TEMPLATE, ...opts.templates });
     h.env = baseEnv({ DATABASE_URL: h.pg.url, TEMPLATES_DIR: h.templatesDir, ...opts.env });
     h.daemon.token = h.env.NODE_TOKEN!;
     h.env.DAEMON_URL = await h.daemon.start();

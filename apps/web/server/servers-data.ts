@@ -1,5 +1,5 @@
 /** Servers ophalen met alles wat ServerSummary/ServerDetail nodig heeft, plus rechten. */
-import { ALL_PERMISSIONS, type Ctx, type Permission, type ServerDetail, type ServerStatus, type ServerSummary, type UserPublic } from "@panel/api";
+import { ALL_PERMISSIONS, type Ctx, type Permission, type ServerDetail, type ServerNetwork, type ServerStatus, type ServerSummary, type UserPublic } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -85,6 +85,7 @@ export function toDetail(
   permissions: Permission[],
   storedVariables: Record<string, string>,
   live?: { status?: ServerStatus; installedAt?: Date | null },
+  network?: ServerNetwork,
 ): ServerDetail {
   return {
     ...toSummary(b, viewer.id, live?.status),
@@ -103,6 +104,7 @@ export function toDetail(
     sftp: { host: b.node.fqdn, port: b.node.sftpPort, username: sftpUsername(viewer.name, viewer.discordId, b.server.uuid) },
     domainsAllowed: b.server.type === "web" || b.server.domainsAllowed,
     sleep: { supported: templateSleepCapable(b.template), enabled: b.server.sleepEnabled, idleMinutes: b.server.sleepIdleMinutes },
+    network: network ?? { role: "none", members: [], proxy: null, connectAddress: null },
     installedAt: live?.installedAt !== undefined ? live.installedAt : b.server.installedAt,
     createdAt: b.server.createdAt,
   };
@@ -119,6 +121,14 @@ export async function serverVariables(serverId: number): Promise<Record<string, 
 export function isFullAdmin(ctx: Ctx): boolean {
   const s = ctx.session;
   return !!s && s.isAdmin && s.totpEnabled && s.totpVerified;
+}
+
+/** Centrale controle voor opgeschorte servers: FORBIDDEN `SUSPENDED` tenzij volledige admin. */
+export function isSuspendedFor(ctx: Ctx, bundle: ServerBundle): boolean {
+  return !!bundle.server.suspendedAt && !isFullAdmin(ctx);
+}
+export function assertNotSuspended(ctx: Ctx, bundle: ServerBundle): void {
+  if (isSuspendedFor(ctx, bundle)) throw new TRPCError({ code: "FORBIDDEN", message: "SUSPENDED" });
 }
 
 export interface ServerAccess {
@@ -157,11 +167,13 @@ async function baseAccess(ctx: Ctx, bundle: ServerBundle): Promise<ServerAccess>
  * - een Permission: dat recht
  * Bestaat niet → NOT_FOUND; geen toegang → FORBIDDEN.
  */
-export async function requireServer(ctx: Ctx, uuid: string, need: Permission | "any" | "owner"): Promise<ServerAccess> {
+export async function requireServer(ctx: Ctx, uuid: string, need: Permission | "any" | "owner", opts: { mutates?: boolean } = {}): Promise<ServerAccess> {
   const bundle = await fetchServerByUuid(uuid);
   if (!bundle) throw new TRPCError({ code: "NOT_FOUND", message: "SERVER_NOT_FOUND" });
   const a = await accessFor(ctx, bundle);
   if (!a.canManage && !a.isSubuser) throw new TRPCError({ code: "FORBIDDEN", message: "NO_ACCESS" });
+  // Opgeschort: wijzigen mag alleen een volledige admin (lezen blijft kunnen).
+  if (opts.mutates) assertNotSuspended(ctx, bundle);
   if (need === "any") return a;
   if (need === "owner") {
     if (!a.canManage) throw new TRPCError({ code: "FORBIDDEN", message: "OWNER_ONLY" });

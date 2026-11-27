@@ -240,6 +240,15 @@ export const domains = pgTable("domains", {
   createdAt: createdAt(),
 });
 
+/** Backend-servers achter een proxy (Minecraft-netwerk). Een backend hoort bij hooguit één proxy; positie 0 = standaardserver. */
+export const networkMembers = pgTable("network_members", {
+  id: pk(),
+  proxyServerId: integer("proxy_server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  backendServerId: integer("backend_server_id").notNull().unique().references(() => servers.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  position: integer("position").notNull(),
+}, (t) => [uniqueIndex("network_members_proxy_name").on(t.proxyServerId, t.name), index("network_members_proxy_idx").on(t.proxyServerId)]);
+
 export const databaseHosts = pgTable("database_hosts", {
   id: pk(),
   name: text("name").notNull(),

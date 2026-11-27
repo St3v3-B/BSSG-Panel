@@ -13,7 +13,7 @@ import { decrypt } from "../lib/crypto";
 import { CloudflareError, setARecord, setSrvRecord, zoneFor } from "../lib/cloudflare";
 import { checkDomain, checkMinecraftDomain, dns } from "../lib/dns";
 import { zonesOrThrow } from "./dns-providers";
-import { requireServer, type ServerAccess } from "../servers-data";
+import { isFullAdmin, requireServer, type ServerAccess } from "../servers-data";
 
 type DomainRow = typeof schema.domains.$inferSelect;
 const ok = { ok: true as const };
@@ -32,14 +32,14 @@ const toDomain = (d: DomainRow, serverUuid: string) => ({
   lastCheckedAt: d.lastCheckedAt,
 });
 
-async function domainById(ctx: Ctx, id: number, need: "any" | "domain.manage") {
+async function domainById(ctx: Ctx, id: number, need: "any" | "domain.manage", mutates = false) {
   const [r] = await getDb()
     .select({ d: schema.domains, uuid: schema.servers.uuid })
     .from(schema.domains)
     .innerJoin(schema.servers, eq(schema.servers.id, schema.domains.serverId))
     .where(eq(schema.domains.id, id));
   if (!r) throw new TRPCError({ code: "NOT_FOUND", message: "DOMAIN_NOT_FOUND" });
-  return { d: r.d, a: await requireServer(ctx, r.uuid, need) };
+  return { d: r.d, a: await requireServer(ctx, r.uuid, need, { mutates }) };
 }
 
 /** Caddy leidt wildcard af uit de host: `*.<hostname>`. */
@@ -53,6 +53,12 @@ async function routeFor(d: Pick<DomainRow, "hostname" | "targetPort" | "redirect
     dns_challenge = { provider: "cloudflare", api_token: decrypt(p.apiTokenEnc) };
   }
   return { host: routeHost(d), server_uuid: serverUuid, port: d.targetPort, redirect_to: d.redirectTo, wildcard: d.wildcard, dns_challenge };
+}
+
+/** Namen die applyDns mag aanraken: de hostnaam, `*.hostnaam` (wildcard) en de Minecraft-SRV. */
+export function nameAllowed(name: string, d: Pick<DomainRow, "hostname" | "wildcard">, zoneName: string): boolean {
+  const inZone = d.hostname === zoneName || d.hostname.endsWith(`.${zoneName}`);
+  return inZone && (name === d.hostname || (d.wildcard && name === `*.${d.hostname}`) || name === `_minecraft._tcp.${d.hostname}`);
 }
 
 /** IP waar de records naar moeten wijzen: NODE_PUBLIC_IP (lokale node) of het A-record van de node. */
@@ -110,7 +116,7 @@ export const domains: Implementation["domains"] = {
   },
 
   add: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "domain.manage");
+    const a = await requireServer(ctx, input.uuid, "domain.manage", { mutates: true });
     const isWeb = a.bundle.server.type === "web";
     if (isWeb && input.protocol !== "http") throw new TRPCError({ code: "BAD_REQUEST", message: "PROTOCOL_NOT_ALLOWED" });
     if (!isWeb && !a.bundle.server.domainsAllowed) throw new TRPCError({ code: "FORBIDDEN", message: "DOMAINS_NOT_ALLOWED" });
@@ -126,6 +132,8 @@ export const domains: Implementation["domains"] = {
     // "*.x" als hostnaam betekent wildcard op x; opgeslagen zonder "*.".
     const wildcard = input.wildcard || input.hostname.startsWith("*.");
     const hostname = input.hostname.toLowerCase().replace(/^\*\./, "");
+    // DNS-providers (het Cloudflare-token van de beheerder) mag alleen een volledige admin koppelen.
+    if (input.dnsProviderId && !isFullAdmin(ctx)) throw new TRPCError({ code: "FORBIDDEN", message: "DNS_PROVIDER_ADMIN_ONLY" });
     if (input.dnsProviderId) {
       const [p] = await getDb().select({ id: schema.dnsProviders.id }).from(schema.dnsProviders).where(eq(schema.dnsProviders.id, input.dnsProviderId));
       if (!p) throw new TRPCError({ code: "NOT_FOUND", message: "DNS_PROVIDER_NOT_FOUND" });
@@ -145,7 +153,7 @@ export const domains: Implementation["domains"] = {
   },
 
   update: async ({ input, ctx }) => {
-    const { d, a } = await domainById(ctx, input.id, "domain.manage");
+    const { d, a } = await domainById(ctx, input.id, "domain.manage", true);
     if (input.redirectTo && input.redirectTo === d.hostname) throw new TRPCError({ code: "BAD_REQUEST", message: "REDIRECT_TO_SELF" });
     if (isMc(d)) throw new TRPCError({ code: "BAD_REQUEST", message: "MINECRAFT_DOMAIN_OPTIONS" });
     if (a.bundle.server.type !== "web" && input.targetPort === null && !input.redirectTo) throw new TRPCError({ code: "BAD_REQUEST", message: "PORT_REQUIRED" });
@@ -161,7 +169,7 @@ export const domains: Implementation["domains"] = {
   },
 
   remove: async ({ input, ctx }) => {
-    const { d, a } = await domainById(ctx, input.id, "domain.manage");
+    const { d, a } = await domainById(ctx, input.id, "domain.manage", true);
     if (!isMc(d)) {
       try {
         await daemonFor(a.bundle.node).deleteRoute(routeHost(d));
@@ -188,8 +196,15 @@ export const domains: Implementation["domains"] = {
 
   /** Zet A-records (zonder proxy) via de gekoppelde Cloudflare-provider en checkt daarna. */
   applyDns: async ({ input, ctx }) => {
-    const { d, a } = await domainById(ctx, input.id, "domain.manage");
+    const { d, a } = await domainById(ctx, input.id, "domain.manage", true);
     if (!d.dnsProviderId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_DNS_PROVIDER" });
+    // Een provider is alleen door een admin te koppelen (zie `add`); dit is een tweede slot voor
+    // rijen die op een andere manier een provider kregen. Niet-admins mogen alleen met een
+    // door een admin gekoppelde provider werken, en nooit voor de panel-/node-domeinen.
+    const env = getEnv();
+    if (!isFullAdmin(ctx) && [env.PANEL_DOMAIN, env.NODE_DOMAIN].some((x) => x && (d.hostname === x || d.hostname.endsWith(`.${x}`)))) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "DNS_RESERVED_HOSTNAME" });
+    }
     const [p] = await getDb().select().from(schema.dnsProviders).where(eq(schema.dnsProviders.id, d.dnsProviderId));
     if (!p) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_DNS_PROVIDER" });
     const token = decrypt(p.apiTokenEnc);
@@ -202,11 +217,14 @@ export const domains: Implementation["domains"] = {
     if (!zone) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "ZONE_NOT_FOUND" });
     const ip = await nodeIp(a.bundle.node);
     const names = d.wildcard ? [d.hostname, `*.${d.hostname}`] : [d.hostname];
+    const srvName = `_minecraft._tcp.${d.hostname}`;
+    // Alleen records met precies deze namen, in een zone die de hostnaam bevat.
+    for (const n of [...names, srvName]) if (!nameAllowed(n, d, zone.name)) throw new TRPCError({ code: "FORBIDDEN", message: "DNS_NAME_NOT_ALLOWED" });
     const changes: Record<string, unknown> = {};
     try {
       for (const n of names) changes[n] = await setARecord(token, zone.id, n, ip);
       const port = primaryPort(a);
-      if (isMc(d) && port) changes[`_minecraft._tcp.${d.hostname}`] = await setSrvRecord(token, zone.id, `_minecraft._tcp.${d.hostname}`, port, d.hostname);
+      if (isMc(d) && port) changes[srvName] = await setSrvRecord(token, zone.id, srvName, port, d.hostname);
     } catch (e) {
       if (e instanceof CloudflareError) throw new TRPCError({ code: "BAD_GATEWAY", message: `CLOUDFLARE_ERROR: ${e.message}` });
       throw e;

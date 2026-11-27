@@ -6,6 +6,7 @@ import { GET as discordLogin } from "@/app/api/auth/discord/login/route";
 import { POST as testLoginRoute } from "@/app/api/auth/test/login/route";
 import { getDb, schema } from "./db";
 import { resetEnv } from "./env";
+import { resetLimiter } from "./lib/ratelimit";
 import { totpNow } from "./lib/totp";
 import { authProxy } from "./proxy";
 import { sha256 } from "./lib/crypto";
@@ -251,11 +252,28 @@ describe("account.*", () => {
     expect((await (await h.refresh(other)).api.auth.me())?.totpVerified).toBe(false);
     await expect((await h.refresh(u)).api.account.totpSetup()).rejects.toThrow(/TOTP_ALREADY_ENABLED/);
 
-    await (await h.refresh(u)).api.account.totpDisable({ code: totpNow(setup.secret) });
+    await (await h.refresh(u)).api.account.totpDisable({ code: totpNow(setup.secret, Date.now() + 30_000) });
     const [after] = await getDb().select().from(schema.users).where(eq(schema.users.id, u.id));
     expect(after).toMatchObject({ totpEnabled: false, totpSecretEnc: null });
     const actions = (await getDb().select().from(schema.activityLog).where(eq(schema.activityLog.userId, u.id))).map((a) => a.action);
     expect(actions).toEqual(expect.arrayContaining(["account.totp.enable", "account.totp.disable"]));
+  });
+
+  it("TOTP: 5 fouten per gebruiker → TOO_MANY_REQUESTS (ook met goede code); een code werkt maar één keer", async () => {
+    await resetLimiter();
+    const u = await h.user({ discordId: "600000000000000003", name: "brute" });
+    const setup = await u.api.account.totpSetup();
+    const good = totpNow(setup.secret);
+    const bad = good === "000000" ? "111111" : "000000";
+    await u.api.account.totpEnable({ code: good });
+    const again = await h.refresh(u);
+    // hergebruik van dezelfde code binnen het venster wordt geweigerd
+    await expect(again.api.auth.verifyTotp({ code: good })).rejects.toThrow(/INVALID_CODE/);
+    for (let i = 0; i < 4; i++) await expect(again.api.auth.verifyTotp({ code: bad })).rejects.toThrow(/INVALID_CODE/);
+    // 5 fouten gehad (1 hergebruik + 4 fout): nu ook een geldige nieuwe code geweigerd
+    await expect(again.api.auth.verifyTotp({ code: totpNow(setup.secret, Date.now() + 30_000) })).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+    await expect(again.api.account.totpDisable({ code: bad })).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+    await resetLimiter();
   });
 
   it("totpEnable zonder setup → PRECONDITION_FAILED", async () => {

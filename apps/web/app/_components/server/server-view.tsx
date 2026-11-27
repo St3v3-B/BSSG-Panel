@@ -5,6 +5,7 @@ import type { ServerDetail } from "@panel/api";
 import { ConsolePanel } from "@/app/_components/console-panel";
 import type { TerminalHandle } from "@/app/_components/console-terminal";
 import { LiveStatsPanel } from "@/app/_components/live-stats";
+import { BackendNotice } from "@/app/_components/server/network-manager";
 import { PowerButtons } from "@/app/_components/power-buttons";
 import { StatusBadge } from "@/app/_components/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/app/_components/ui/alert";
@@ -61,6 +62,7 @@ export function ServerView({ server }: { server: ServerDetail }) {
           )}
         </Alert>
       )}
+      {server.network.role === "backend" && server.network.proxy && <BackendNotice proxyName={server.network.proxy.name} />}
       {status === "disk_exceeded" && (
         <Alert variant="destructive">
           <div>

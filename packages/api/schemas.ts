@@ -176,6 +176,51 @@ export const ServerVariable = z.object({
 });
 export type ServerVariable = z.infer<typeof ServerVariable>;
 
+/** Netwerknaam van een backend achter een proxy: kort, voor `[servers]` in velocity.toml. */
+export const NetworkName = z.string().regex(/^[a-z0-9-]{1,32}$/);
+
+/** Een backend-server achter een proxy. De standaardserver (eerste in `try`) staat vooraan, `isDefault` is daar true. */
+export const NetworkMember = z.object({
+  serverUuid: Uuid,
+  serverName: z.string(),
+  name: NetworkName,
+  isDefault: z.boolean(),
+  /** "ip:poort" zoals in velocity.toml (0.0.0.0 vervangen door het publieke IP van de node). */
+  address: z.string().nullable(),
+});
+export type NetworkMember = z.infer<typeof NetworkMember>;
+
+/**
+ * Minecraft-netwerk van een server. `proxy`: Velocity-server met `members` (op volgorde van `try`) en
+ * `connectAddress` (domein of allocation voor spelers). `backend`: lid van de proxy in `proxy`.
+ * `none`: geen van beide (ook voor servers die geen proxy of backend kunnen zijn).
+ */
+export const ServerNetwork = z.object({
+  role: z.enum(["none", "proxy", "backend"]),
+  members: z.array(NetworkMember),
+  proxy: z.object({ uuid: Uuid, name: z.string() }).nullable(),
+  connectAddress: z.string().nullable(),
+});
+export type ServerNetwork = z.infer<typeof ServerNetwork>;
+
+/** Een server die als backend gekozen kan worden; `takenBy` = naam van een andere proxy waar hij al achter hangt. */
+export const NetworkCandidate = z.object({
+  uuid: Uuid,
+  name: z.string(),
+  templateName: z.string(),
+  address: z.string().nullable(),
+  ownerName: z.string().nullable(),
+  suggestedName: NetworkName,
+  takenBy: z.string().nullable(),
+});
+export type NetworkCandidate = z.infer<typeof NetworkCandidate>;
+
+/** Uitkomst per betrokken server (proxy en backends) van `updateNetwork`. */
+export const NetworkUpdateResult = z.object({
+  servers: z.array(z.object({ uuid: Uuid, name: z.string(), role: z.enum(["proxy", "backend", "removed"]), restarted: z.boolean(), error: z.string().nullable() })),
+});
+export type NetworkUpdateResult = z.infer<typeof NetworkUpdateResult>;
+
 export const ServerDetail = ServerSummary.extend({
   /** Rechten van de ingelogde gebruiker op deze server. */
   permissions: z.array(Permission),
@@ -187,6 +232,8 @@ export const ServerDetail = ServerSummary.extend({
   /** Door een admin aangezet: deze game-server mag domeinen koppelen (web: altijd). */
   domainsAllowed: z.boolean().default(false),
   sleep: z.object({ supported: z.boolean(), enabled: z.boolean(), idleMinutes: z.number().int() }).default({ supported: false, enabled: false, idleMinutes: 10 }),
+  /** Minecraft-netwerk (proxy of backend); `role: "none"` voor alle andere servers. */
+  network: ServerNetwork.default({ role: "none", members: [], proxy: null, connectAddress: null }),
   installedAt: z.date().nullable(),
   createdAt: z.date(),
 });

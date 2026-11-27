@@ -14,3 +14,4 @@ export {
 } from "./trpc-builder";
 export { TemplateSpec, parseTemplate, BUILTIN_VARIABLES } from "./template-schema";
 export * from "./daemon-types";
+export * from "./network";

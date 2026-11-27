@@ -13,6 +13,7 @@ import { getEnv } from "../env";
 import { buildServerSpec, validateVariables } from "../spec";
 import { fetchServerByUuid, fetchServers, limitsOf, sleepOf, serverVariables, toDetail, toSummary, userPublic, type ServerBundle } from "../servers-data";
 import { getSettings } from "../settings";
+import { templateRow } from "../templates";
 import type { Ctx } from "@panel/api";
 
 const ok = { ok: true as const };
@@ -519,6 +520,50 @@ export const admin = {
       const [t] = await templateDetails(eq(schema.templates.id, input.id));
       if (!t) throw notFound("TEMPLATE_NOT_FOUND");
       return t;
+    },
+    /**
+     * Let op: templates uit TEMPLATES_DIR worden bij elke start opnieuw ingelezen zodra de versie in het
+     * bestand hoger is dan die in de database (zie `upsertTemplate`). Beheerderswijzigingen aan een
+     * ingebouwde template worden dan overschreven; verhoog bij een eigen aanpassing dus de versie
+     * boven die van het bestand, of kopieer de template onder een eigen slug.
+     */
+    create: async ({ input, ctx }) => {
+      const r = parseTemplate(input.yaml);
+      if (!r.ok) throw bad(`INVALID_TEMPLATE: ${r.errors.join("; ")}`);
+      const [dup] = await getDb().select({ id: schema.templates.id }).from(schema.templates).where(eq(schema.templates.slug, r.spec.slug));
+      if (dup) throw new TRPCError({ code: "CONFLICT", message: "SLUG_EXISTS" });
+      const [row] = await getDb().insert(schema.templates).values(templateRow(r.spec, input.yaml)).onConflictDoNothing().returning({ id: schema.templates.id });
+      if (!row) throw new TRPCError({ code: "CONFLICT", message: "SLUG_EXISTS" });
+      await logActivity({ action: "admin.template.create", userId: uid(ctx), metadata: { slug: r.spec.slug, version: r.spec.version }, ip: ctx.ip, ctx });
+      return (await templateDetails(eq(schema.templates.id, row.id)))[0]!;
+    },
+    update: async ({ input, ctx }) => {
+      const [cur] = await getDb().select().from(schema.templates).where(eq(schema.templates.id, input.id));
+      if (!cur) throw notFound("TEMPLATE_NOT_FOUND");
+      const r = parseTemplate(input.yaml);
+      if (!r.ok) throw bad(`INVALID_TEMPLATE: ${r.errors.join("; ")}`);
+      if (r.spec.slug !== cur.slug) throw bad("SLUG_MISMATCH");
+      if (r.spec.version < cur.version) throw bad("VERSION_LOWER");
+      if (r.spec.type !== cur.type) {
+        const [u] = await getDb().select({ n: count() }).from(schema.servers).where(eq(schema.servers.templateId, cur.id));
+        if (u!.n > 0) throw new TRPCError({ code: "CONFLICT", message: "TEMPLATE_IN_USE" });
+      }
+      await getDb().update(schema.templates).set({ ...templateRow(r.spec, input.yaml), updatedAt: new Date() }).where(eq(schema.templates.id, cur.id));
+      await logActivity({ action: "admin.template.update", userId: uid(ctx), metadata: { slug: cur.slug, from: cur.version, to: r.spec.version }, ip: ctx.ip, ctx });
+      return (await templateDetails(eq(schema.templates.id, cur.id)))[0]!;
+    },
+    delete: async ({ input, ctx }) => {
+      const [cur] = await getDb().select().from(schema.templates).where(eq(schema.templates.id, input.id));
+      if (!cur) throw notFound("TEMPLATE_NOT_FOUND");
+      const [u] = await getDb().select({ n: count() }).from(schema.servers).where(eq(schema.servers.templateId, cur.id));
+      if (u!.n > 0) throw new TRPCError({ code: "CONFLICT", message: "TEMPLATE_IN_USE" });
+      try {
+        await getDb().delete(schema.templates).where(eq(schema.templates.id, cur.id));
+      } catch {
+        throw new TRPCError({ code: "CONFLICT", message: "TEMPLATE_IN_USE" }); // server aangemaakt tussen check en delete (FK restrict)
+      }
+      await logActivity({ action: "admin.template.delete", userId: uid(ctx), metadata: { slug: cur.slug }, ip: ctx.ip, ctx });
+      return ok;
     },
     validate: async ({ input }) => {
       const r = parseTemplate(input.yaml);

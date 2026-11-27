@@ -31,7 +31,7 @@ const toDatabase = (d: DbRow, h: HostRow, serverUuid: string) => ({
 const mariaError = (e: unknown) => new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: `DATABASE_HOST_ERROR: ${(e as Error).message?.slice(0, 300)}`, cause: e });
 
 /** Database op id met host en servercontrole (database.manage). */
-async function databaseById(ctx: Ctx, id: number) {
+async function databaseById(ctx: Ctx, id: number, mutates = false) {
   const [r] = await getDb()
     .select({ d: schema.databases, h: schema.databaseHosts, uuid: schema.servers.uuid })
     .from(schema.databases)
@@ -39,7 +39,7 @@ async function databaseById(ctx: Ctx, id: number) {
     .innerJoin(schema.servers, eq(schema.servers.id, schema.databases.serverId))
     .where(eq(schema.databases.id, id));
   if (!r) throw new TRPCError({ code: "NOT_FOUND", message: "DATABASE_NOT_FOUND" });
-  const a = await requireServer(ctx, r.uuid, "database.manage");
+  const a = await requireServer(ctx, r.uuid, "database.manage", { mutates });
   return { ...r, a };
 }
 
@@ -68,7 +68,7 @@ export const databases: Implementation["databases"] = {
   },
 
   create: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "database.manage");
+    const a = await requireServer(ctx, input.uuid, "database.manage", { mutates: true });
     let host: HostRow;
     if (input.hostId) {
       const [h] = await getDb().select().from(schema.databaseHosts).where(eq(schema.databaseHosts.id, input.hostId));
@@ -96,7 +96,7 @@ export const databases: Implementation["databases"] = {
   },
 
   resetPassword: async ({ input, ctx }) => {
-    const r = await databaseById(ctx, input.id);
+    const r = await databaseById(ctx, input.id, true);
     const password = newPassword();
     try {
       await setPassword(r.h, r.d.username, password);
@@ -109,7 +109,7 @@ export const databases: Implementation["databases"] = {
   },
 
   delete: async ({ input, ctx }) => {
-    const r = await databaseById(ctx, input.id);
+    const r = await databaseById(ctx, input.id, true);
     try {
       await dropDatabase(r.h, r.d.name, r.d.username);
     } catch (e) {

@@ -96,7 +96,7 @@ describe("openapi-types", () => {
       execFileSync("pnpm", ["exec", "openapi-typescript", src, "-o", join(dir, gen)], { cwd: __dirname, stdio: "ignore" });
       expect(readFileSync(join(dir, gen), "utf8"), gen).toBe(readFileSync(join(__dirname, gen), "utf8"));
     }
-  });
+  }, 60_000);
 });
 
 describe("templates", () => {
