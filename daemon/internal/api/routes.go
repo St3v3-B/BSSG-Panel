@@ -137,9 +137,10 @@ func (r *Routes) toProxy(rt Route) (proxy.Route, bool) {
 		return pr, false
 	}
 	pr.Upstream = proxy.Upstream{Container: server.ContainerName(rt.ServerUUID), Port: port}
-	if s, ok := r.mgr.Get(rt.ServerUUID); ok && s.IsWeb() {
+	if s, ok := r.mgr.Get(rt.ServerUUID); ok {
 		pr.Upstream.Network = server.SiteNetwork(rt.ServerUUID)
-		if pr.RedirectTo == "" {
+		// Game-routes krijgen nooit een placeholder.
+		if s.IsWeb() && pr.RedirectTo == "" {
 			pr.Placeholder = placeholder(s.State())
 		}
 	}
@@ -278,6 +279,16 @@ func (a *API) setRoute(w http.ResponseWriter, r *http.Request) {
 	if _, ok := a.mgr.Get(rt.ServerUUID); !ok {
 		writeErr(w, http.StatusNotFound, "not_found", "server_uuid onbekend op deze node")
 		return
+	}
+	if s, _ := a.mgr.Get(rt.ServerUUID); !s.IsWeb() && (rt.RedirectTo == nil || *rt.RedirectTo == "") {
+		if rt.Port == nil {
+			writeErr(w, http.StatusBadRequest, "bad_request", "port is verplicht voor game-servers")
+			return
+		}
+		if err := a.mgr.EnsureGameNetwork(r.Context(), rt.ServerUUID); err != nil {
+			writeErr(w, http.StatusInternalServerError, "internal", err.Error())
+			return
+		}
 	}
 	pr, ok := a.routes.toProxy(rt)
 	if !ok {
