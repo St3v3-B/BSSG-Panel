@@ -179,6 +179,8 @@ export const sftpAuth = remoteHandler(async (req, node) => {
       if (!perms) continue;
       if (c.user.blocked) return fail("blocked", srv.id);
       if (!perms.includes("files.read")) return fail("no_files_read", srv.id);
+      // Opgeschort: geen SFTP, ook niet met een API-sleutel (admins gebruiken het paneel).
+      if (srv.suspendedAt) return fail("suspended", srv.id);
       await limiter.reset(userKey);
       await logActivity({ action: "server.sftp.login", userId: c.user.id, serverId: srv.id, ip: b.ip });
       return json(200, { server_uuid: srv.uuid, user_id: String(c.user.id), permissions: perms });

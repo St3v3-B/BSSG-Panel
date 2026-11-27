@@ -51,7 +51,7 @@ export const subusers: Implementation["subusers"] = {
   },
 
   invite: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "owner");
+    const a = await requireServer(ctx, input.uuid, "owner", { mutates: true });
     const u = await resolveUser(input.who);
     if (u.id === a.bundle.server.ownerId) throw new TRPCError({ code: "BAD_REQUEST", message: "IS_OWNER" });
     const inserted = await getDb()
@@ -65,7 +65,7 @@ export const subusers: Implementation["subusers"] = {
   },
 
   update: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "owner");
+    const a = await requireServer(ctx, input.uuid, "owner", { mutates: true });
     const r = await getDb()
       .update(schema.subusers)
       .set({ permissions: uniq(input.permissions) })
@@ -77,7 +77,7 @@ export const subusers: Implementation["subusers"] = {
   },
 
   remove: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "owner");
+    const a = await requireServer(ctx, input.uuid, "owner", { mutates: true });
     const db = getDb();
     const r = await db.delete(schema.subusers).where(and(eq(schema.subusers.serverId, a.bundle.server.id), eq(schema.subusers.userId, input.userId))).returning();
     if (!r.length) throw new TRPCError({ code: "NOT_FOUND", message: "SUBUSER_NOT_FOUND" });

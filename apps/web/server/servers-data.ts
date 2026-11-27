@@ -121,6 +121,14 @@ export function isFullAdmin(ctx: Ctx): boolean {
   return !!s && s.isAdmin && s.totpEnabled && s.totpVerified;
 }
 
+/** Centrale controle voor opgeschorte servers: FORBIDDEN `SUSPENDED` tenzij volledige admin. */
+export function isSuspendedFor(ctx: Ctx, bundle: ServerBundle): boolean {
+  return !!bundle.server.suspendedAt && !isFullAdmin(ctx);
+}
+export function assertNotSuspended(ctx: Ctx, bundle: ServerBundle): void {
+  if (isSuspendedFor(ctx, bundle)) throw new TRPCError({ code: "FORBIDDEN", message: "SUSPENDED" });
+}
+
 export interface ServerAccess {
   bundle: ServerBundle;
   isOwner: boolean;
@@ -157,11 +165,13 @@ async function baseAccess(ctx: Ctx, bundle: ServerBundle): Promise<ServerAccess>
  * - een Permission: dat recht
  * Bestaat niet → NOT_FOUND; geen toegang → FORBIDDEN.
  */
-export async function requireServer(ctx: Ctx, uuid: string, need: Permission | "any" | "owner"): Promise<ServerAccess> {
+export async function requireServer(ctx: Ctx, uuid: string, need: Permission | "any" | "owner", opts: { mutates?: boolean } = {}): Promise<ServerAccess> {
   const bundle = await fetchServerByUuid(uuid);
   if (!bundle) throw new TRPCError({ code: "NOT_FOUND", message: "SERVER_NOT_FOUND" });
   const a = await accessFor(ctx, bundle);
   if (!a.canManage && !a.isSubuser) throw new TRPCError({ code: "FORBIDDEN", message: "NO_ACCESS" });
+  // Opgeschort: wijzigen mag alleen een volledige admin (lezen blijft kunnen).
+  if (opts.mutates) assertNotSuspended(ctx, bundle);
   if (need === "any") return a;
   if (need === "owner") {
     if (!a.canManage) throw new TRPCError({ code: "FORBIDDEN", message: "OWNER_ONLY" });

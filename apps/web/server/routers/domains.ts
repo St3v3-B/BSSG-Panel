@@ -32,14 +32,14 @@ const toDomain = (d: DomainRow, serverUuid: string) => ({
   lastCheckedAt: d.lastCheckedAt,
 });
 
-async function domainById(ctx: Ctx, id: number, need: "any" | "domain.manage") {
+async function domainById(ctx: Ctx, id: number, need: "any" | "domain.manage", mutates = false) {
   const [r] = await getDb()
     .select({ d: schema.domains, uuid: schema.servers.uuid })
     .from(schema.domains)
     .innerJoin(schema.servers, eq(schema.servers.id, schema.domains.serverId))
     .where(eq(schema.domains.id, id));
   if (!r) throw new TRPCError({ code: "NOT_FOUND", message: "DOMAIN_NOT_FOUND" });
-  return { d: r.d, a: await requireServer(ctx, r.uuid, need) };
+  return { d: r.d, a: await requireServer(ctx, r.uuid, need, { mutates }) };
 }
 
 /** Caddy leidt wildcard af uit de host: `*.<hostname>`. */
@@ -110,7 +110,7 @@ export const domains: Implementation["domains"] = {
   },
 
   add: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "domain.manage");
+    const a = await requireServer(ctx, input.uuid, "domain.manage", { mutates: true });
     const isWeb = a.bundle.server.type === "web";
     if (isWeb && input.protocol !== "http") throw new TRPCError({ code: "BAD_REQUEST", message: "PROTOCOL_NOT_ALLOWED" });
     if (!isWeb && !a.bundle.server.domainsAllowed) throw new TRPCError({ code: "FORBIDDEN", message: "DOMAINS_NOT_ALLOWED" });
@@ -145,7 +145,7 @@ export const domains: Implementation["domains"] = {
   },
 
   update: async ({ input, ctx }) => {
-    const { d, a } = await domainById(ctx, input.id, "domain.manage");
+    const { d, a } = await domainById(ctx, input.id, "domain.manage", true);
     if (input.redirectTo && input.redirectTo === d.hostname) throw new TRPCError({ code: "BAD_REQUEST", message: "REDIRECT_TO_SELF" });
     if (isMc(d)) throw new TRPCError({ code: "BAD_REQUEST", message: "MINECRAFT_DOMAIN_OPTIONS" });
     if (a.bundle.server.type !== "web" && input.targetPort === null && !input.redirectTo) throw new TRPCError({ code: "BAD_REQUEST", message: "PORT_REQUIRED" });
@@ -161,7 +161,7 @@ export const domains: Implementation["domains"] = {
   },
 
   remove: async ({ input, ctx }) => {
-    const { d, a } = await domainById(ctx, input.id, "domain.manage");
+    const { d, a } = await domainById(ctx, input.id, "domain.manage", true);
     if (!isMc(d)) {
       try {
         await daemonFor(a.bundle.node).deleteRoute(routeHost(d));
@@ -188,7 +188,7 @@ export const domains: Implementation["domains"] = {
 
   /** Zet A-records (zonder proxy) via de gekoppelde Cloudflare-provider en checkt daarna. */
   applyDns: async ({ input, ctx }) => {
-    const { d, a } = await domainById(ctx, input.id, "domain.manage");
+    const { d, a } = await domainById(ctx, input.id, "domain.manage", true);
     if (!d.dnsProviderId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_DNS_PROVIDER" });
     const [p] = await getDb().select().from(schema.dnsProviders).where(eq(schema.dnsProviders.id, d.dnsProviderId));
     if (!p) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_DNS_PROVIDER" });

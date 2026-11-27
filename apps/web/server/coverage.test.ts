@@ -37,7 +37,7 @@ export const PHASE3 = [
 ];
 
 /** Admin-beheer (opschorten, template wisselen, instellingen). */
-export const ADMIN2 = ["admin.servers.setSuspended", "admin.servers.changeTemplate", "admin.settings.update", "admin.servers.setDomainsAllowed"];
+export const ADMIN2 = ["admin.servers.setSuspended", "admin.servers.changeTemplate", "admin.settings.update", "admin.servers.setDomainsAllowed", "admin.templates.create", "admin.templates.update", "admin.templates.delete"];
 
 describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
