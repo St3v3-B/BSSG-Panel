@@ -26,7 +26,13 @@ export async function login(discordId: string, name: string) {
   if (res.status !== 200 && res.status !== 204) throw new Error(`test-login ${res.status}: ${await res.text()}`);
   const cookie = res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
   if (!cookie.includes("panel_session=")) throw new Error(`geen panel_session-cookie: ${cookie}`);
-  return { cookie, api: client(cookie) };
+  const jar = { cookie };
+  return {
+    get cookie() {
+      return jar.cookie;
+    },
+    api: client(jar),
+  };
 }
 
 /**
@@ -49,9 +55,25 @@ export async function adminLogin() {
   return s;
 }
 
-export function client(cookie: string | null) {
+/**
+ * tRPC-client met een minimale cookie-jar: het panel roteert het sessietoken (bv. na TOTP) via
+ * Set-Cookie, en dan moet de client het nieuwe token gebruiken.
+ */
+export function client(jar: { cookie: string } | null) {
   return createTRPCClient<AppRouter>({
-    links: [httpLink({ url: `${PANEL()}/api/trpc`, transformer: superjson, headers: () => (cookie ? { cookie } : {}) })],
+    links: [
+      httpLink({
+        url: `${PANEL()}/api/trpc`,
+        transformer: superjson,
+        headers: () => (jar ? { cookie: jar.cookie } : {}),
+        fetch: async (url, init) => {
+          const res = await fetch(url, init as RequestInit);
+          const fresh = res.headers.getSetCookie().map((c) => c.split(";")[0]!).find((c) => c.startsWith("panel_session="));
+          if (jar && fresh && fresh !== "panel_session=") jar.cookie = fresh;
+          return res;
+        },
+      }),
+    ],
   });
 }
 
