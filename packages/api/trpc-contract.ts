@@ -237,8 +237,13 @@ export const contract = {
       updateOwner: mutation("admin", server.extend({ ownerId: s.Id }), s.Ok),
       updateAllocations: mutation("admin", server.extend({ allocationIds: z.array(s.Id) }), s.Ok),
       delete: mutation("admin", server, s.Ok),
-      /** Verplaatsen naar een andere node (na v1-fase 4, contract staat alvast). */
-      transfer: mutation("admin", server.extend({ nodeId: s.Id }), s.Ok),
+      /**
+       * Verplaatsen naar een andere node: stopt de server, kopieert de data (tar-stroom via het panel),
+       * maakt hem aan op de doelnode, verwijdert hem pas daarna van de bron. Bij een fout blijft de bron intact.
+       * `allocationIds` = vrije allocations op de doelnode (eerste = primair); weglaten = eerste vrije
+       * (zoveel als de server nu heeft). Web: geen allocations. Domeinen en routes verhuizen mee.
+       */
+      transfer: mutation("admin", server.extend({ nodeId: s.Id, allocationIds: z.array(s.Id).optional() }), s.Ok),
       /** Opschorten stopt de server; eigenaar en subusers kunnen dan niet starten, schrijven of SFTP'en. Admins wel. */
       /** Domeinen koppelen aan een game-server toestaan (bv. play.example.com of map.example.com). */
       setDomainsAllowed: mutation("admin", server.extend({ allowed: z.boolean() }), s.Ok),
