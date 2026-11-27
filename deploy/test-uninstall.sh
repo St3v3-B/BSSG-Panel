@@ -18,6 +18,7 @@ cat > "$W/bin/docker" <<'SHIM'
 # Fake docker: logs every call; list commands only return objects when filtered on BOTH labels of the
 # expected instance (so an unfiltered or half-filtered call would show up as "foreign" objects).
 echo "docker $*" >> "$SHIM_LOG"
+[ "$1" = info ] && [ -n "${SHIM_DOCKER_DOWN:-}" ] && exit 1
 args=" $* "
 mine=0
 [[ "$args" == *" label=panel.managed=true "* && "$args" == *" label=panel.instance=$SHIM_INSTANCE "* ]] && mine=1
@@ -169,6 +170,11 @@ sed -i 's|^DATA_DIR=.*|DATA_DIR=/|' "$PANEL_ROOT/etc/panel/panel.env"
 "$UN" --yes --purge >"$W/out" 2>&1; rc=$?
 check "exit non-zero" test "$rc" != 0
 check "nothing removed" test "$(changes)" = 0
+
+echo "== docker not running: refused"
+setup
+SHIM_DOCKER_DOWN=1 "$UN" --yes --purge >"$W/out" 2>&1; rc=$?
+check "exit non-zero, nothing removed" test "$rc" != 0 -a "$(changes)" = 0 -a -e "$PANEL_ROOT/usr/local/bin/panel-daemon"
 
 echo "== ENV_FILE override"
 setup

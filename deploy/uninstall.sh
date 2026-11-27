@@ -70,6 +70,7 @@ env_get() {
 
 [ "$DRY_RUN" = 1 ] || [ "$(id -u)" = 0 ] || die "run as root (sudo)"
 command -v docker >/dev/null || die "docker is missing"
+docker info >/dev/null 2>&1 || die "docker is not running or not reachable (needed to find the panel's containers)"
 
 if [ -f "$ENV_FILE" ]; then
   log "using $ENV_FILE"
