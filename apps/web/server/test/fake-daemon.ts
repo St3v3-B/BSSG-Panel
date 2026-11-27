@@ -31,6 +31,10 @@ export class FakeDaemon {
   /** transfer/export geeft 500. */
   exportFails = false;
   readonly routes = new Map<string, Record<string, unknown>>();
+  /** Velocity-netwerken (PUT /api/servers/{proxy}/network): proxy-uuid → backend-uuids. */
+  readonly proxyNetworks = new Map<string, string[]>();
+  /** Doet alsof de daemon PUT /network niet kent (oude versie: 404 unknown path). */
+  proxyNetworkUnsupported = false;
   /** Antwoord van POST /exec (standaard: geslaagd, geen uitvoer). */
   execResult: { exit_code: number; output: string; truncated: boolean; timed_out: boolean; duration_ms: number } = { exit_code: 0, output: "", truncated: false, timed_out: false, duration_ms: 5 };
   /** Databases van de (nep-)MariaDB van deze node: naam -> gebruiker, wachtwoord en inhoud ("dump"). */
@@ -66,6 +70,8 @@ export class FakeDaemon {
     this.files.clear();
     this.dirs.clear();
     this.routes.clear();
+    this.proxyNetworks.clear();
+    this.proxyNetworkUnsupported = false;
     this.diskFull = false;
     this.exportFails = false;
     this.dbs.clear();
@@ -180,6 +186,23 @@ export class FakeDaemon {
       }
       return send(404, { error: "not_found" });
     }
+    const nm = /^\/api\/servers\/([0-9a-f-]{36})\/network$/.exec(path);
+    if (nm) {
+      if (this.proxyNetworkUnsupported) return send(404, { error: "not_found", message: "unknown path" });
+      const proxy = nm[1]!;
+      if (!this.servers.has(proxy)) return send(404, { error: "not_found" });
+      const view = () => {
+        const members = this.proxyNetworks.get(proxy) ?? [];
+        return { members, network: members.length ? `panel-net-${proxy}` : "" };
+      };
+      if (r.method === "GET") return send(200, view());
+      if (r.method !== "PUT") return send(404, { error: "not_found" });
+      const members = (body as { members?: string[] }).members ?? [];
+      if (members.some((u) => u === proxy || !this.servers.has(u))) return send(400, { error: "bad_request", message: "bad network member" });
+      if (members.length) this.proxyNetworks.set(proxy, [...new Set(members)]);
+      else this.proxyNetworks.delete(proxy);
+      return send(200, view());
+    }
     const tm = /^\/api\/servers\/([0-9a-f-]{36})\/transfer\/(export|import)$/.exec(path);
     if (tm) {
       const s = this.servers.get(tm[1]!);
@@ -230,6 +253,12 @@ export class FakeDaemon {
         return send(200, this.state(uuid));
       case "DELETE ":
         this.servers.delete(uuid);
+        this.proxyNetworks.delete(uuid);
+        for (const [p, list] of this.proxyNetworks) {
+          const next = list.filter((x) => x !== uuid);
+          if (next.length) this.proxyNetworks.set(p, next);
+          else this.proxyNetworks.delete(p);
+        }
         return send(204);
       case "POST /install":
         s.state = "installing";

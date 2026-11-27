@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -88,12 +89,13 @@ func (f *Fake) ExecStream(_ context.Context, id string, o ExecIO) (ExecIOResult,
 type FakeNetwork struct {
 	Labels    map[string]string
 	Internal  bool
+	Subnet    netip.Prefix
 	Connected map[string]bool // containernamen
 }
 
 // AddNetwork maakt een netwerk aan (zoals compose dat zou doen).
 func (f *Fake) AddNetwork(name string, labels map[string]string) {
-	_ = f.CreateNetwork(context.Background(), name, labels, false)
+	_ = f.CreateNetwork(context.Background(), name, NetworkOptions{Labels: labels})
 }
 
 // Network geeft een kopie van een netwerk, of nil.
@@ -104,7 +106,7 @@ func (f *Fake) Network(name string) *FakeNetwork {
 	if !ok {
 		return nil
 	}
-	c := &FakeNetwork{Labels: n.Labels, Internal: n.Internal, Connected: map[string]bool{}}
+	c := &FakeNetwork{Labels: n.Labels, Internal: n.Internal, Subnet: n.Subnet, Connected: map[string]bool{}}
 	for k, v := range n.Connected {
 		c.Connected[k] = v
 	}
@@ -121,7 +123,7 @@ func (f *Fake) NetworkLabels(_ context.Context, name string) (map[string]string,
 	return n.Labels, nil
 }
 
-func (f *Fake) CreateNetwork(_ context.Context, name string, labels map[string]string, internal bool) error {
+func (f *Fake) CreateNetwork(_ context.Context, name string, o NetworkOptions) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.networks == nil {
@@ -130,8 +132,47 @@ func (f *Fake) CreateNetwork(_ context.Context, name string, labels map[string]s
 	if _, ok := f.networks[name]; ok {
 		return fmt.Errorf("network %s already exists", name)
 	}
-	f.networks[name] = &FakeNetwork{Labels: labels, Internal: internal, Connected: map[string]bool{}}
+	if o.Subnet.IsValid() {
+		for n, x := range f.networks {
+			if x.Subnet.IsValid() && x.Subnet.Overlaps(o.Subnet) {
+				return fmt.Errorf("Pool overlaps with other one on this address space (%s)", n)
+			}
+		}
+	}
+	f.networks[name] = &FakeNetwork{Labels: o.Labels, Internal: o.Internal, Subnet: o.Subnet, Connected: map[string]bool{}}
 	return nil
+}
+
+func (f *Fake) NetworkSubnets(context.Context) ([]netip.Prefix, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []netip.Prefix
+	for _, n := range f.networks {
+		if n.Subnet.IsValid() {
+			out = append(out, n.Subnet)
+		}
+	}
+	return out, nil
+}
+
+func (f *Fake) ListNetworks(_ context.Context, labels map[string]string) ([]NetworkInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []NetworkInfo
+outer:
+	for name, n := range f.networks {
+		for k, v := range labels {
+			if n.Labels[k] != v {
+				continue outer
+			}
+		}
+		ni := NetworkInfo{Name: name, Labels: n.Labels}
+		for c := range n.Connected {
+			ni.Containers = append(ni.Containers, c)
+		}
+		out = append(out, ni)
+	}
+	return out, nil
 }
 
 func (f *Fake) RemoveNetwork(_ context.Context, name string) error {

@@ -384,14 +384,12 @@ func TestWebSiteNetwork(t *testing.T) {
 		t.Fatal("MariaDB aangeraakt")
 	}
 
-	// Een netwerk met die naam dat niet van ons is: niet gebruiken.
+	// Een netwerk met die naam dat niet van ons is: niet gebruiken (ook de install niet).
 	eng.AddNetwork(net, map[string]string{"panel.role": "infra"})
 	h.expect("POST", "/api/servers", sp, 202)
-	h.waitState(u1, "offline", 5*time.Second)
-	h.expect("POST", "/api/servers/"+u1+"/power", map[string]string{"action": "start"}, 202)
-	time.Sleep(200 * time.Millisecond)
-	if h.state(u1).State != "offline" {
-		t.Fatal("gestart op een vreemd netwerk")
+	h.waitState(u1, "install_failed", 5*time.Second)
+	if eng.Container("panel-"+u1) != nil {
+		t.Fatal("container op een vreemd netwerk")
 	}
 	h.expect("DELETE", "/api/servers/"+u1, nil, 204)
 	if eng.Network(net) == nil {

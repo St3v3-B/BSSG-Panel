@@ -139,6 +139,10 @@ export class DaemonClient {
   exec(uuid: string, command: string, timeoutSeconds = 60) {
     return this.request<{ exit_code: number; output: string; truncated: boolean; timed_out: boolean; duration_ms: number }>("POST", `/api/servers/${uuid}/exec`, { command, timeout_seconds: timeoutSeconds }, (timeoutSeconds + 15) * 1000);
   }
+  /** Velocity-netwerk: proxy + deze backends delen panel-net-<proxy>. 404 bij een oude daemon. */
+  setProxyNetwork(uuid: string, members: string[]) {
+    return this.request<DaemonSchemas["ProxyNetwork"]>("PUT", `/api/servers/${uuid}/network`, { members }, 30_000);
+  }
   stats(uuid: string, timeoutMs?: number) {
     return this.request<DaemonStats>("GET", `/api/servers/${uuid}/stats`, undefined, timeoutMs);
   }

@@ -66,6 +66,8 @@ cp "$root/tests/integration/templates/game/"*.yaml "$work/templates/game/"
 export TEMPLATES_DIR="$work/templates"
 export PANEL_INSTANCE="$instance"
 export DOCKER_EXTRA_LABELS="panel.test=true"
+# Eigen subnetpool voor testnetwerken (niet die van de echte daemon).
+export DOCKER_NETWORK_POOL="10.253.0.0/16"
 export PANEL_INSECURE_TEST_LOGIN=1
 
 echo "== migraties"

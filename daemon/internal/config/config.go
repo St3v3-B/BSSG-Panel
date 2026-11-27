@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -36,6 +37,9 @@ type Config struct {
 	MariaDBContainer string
 	// MariaDBRootPassword (MARIADB_ROOT_PASSWORD): rootwachtwoord van de MariaDB van deze node; blijft op de node.
 	MariaDBRootPassword string
+	// NetworkPool (DOCKER_NETWORK_POOL): IPv4-blok waaruit elk netwerk van de daemon een eigen
+	// subnet krijgt (standaard 10.213.0.0/16; "docker" = Docker kiest zelf). Nul = Docker kiest.
+	NetworkPool netip.Prefix
 	// ImageCheckInterval: hoe vaak op nieuwe images gecontroleerd wordt (IMAGE_CHECK_INTERVAL, 0 = uit).
 	ImageCheckInterval time.Duration
 }
@@ -93,6 +97,16 @@ func Load(getenv func(string) string) (Config, error) {
 	c.ACMEDirectory = get("ACME_DIRECTORY", "")
 	if c.SFTPPort, err = port(get("SFTP_PORT", "2022")); err != nil {
 		errs = append(errs, fmt.Errorf("SFTP_PORT: %w", err))
+	}
+	switch v := get("DOCKER_NETWORK_POOL", "10.213.0.0/16"); v {
+	case "docker":
+	default:
+		p, perr := netip.ParsePrefix(v)
+		if perr != nil || !p.Addr().Is4() || p.Bits() > 24 {
+			errs = append(errs, fmt.Errorf("DOCKER_NETWORK_POOL: %q is not an IPv4 prefix of /24 or larger", v))
+		} else {
+			c.NetworkPool = p.Masked()
+		}
 	}
 	if c.ExtraLabels, err = ParseLabels(getenv("DOCKER_EXTRA_LABELS")); err != nil {
 		errs = append(errs, fmt.Errorf("DOCKER_EXTRA_LABELS: %w", err))

@@ -118,6 +118,9 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	if sc.MariaDB == "" {
 		sc.MariaDB = cfg.MariaDBContainer
 	}
+	if !sc.NetworkPool.IsValid() {
+		sc.NetworkPool = cfg.NetworkPool
+	}
 	d.mgr = server.NewManager(sc, deps.Engine, d.panel, deps.Log)
 	ic := deps.Image
 	if ic.Interval == 0 {

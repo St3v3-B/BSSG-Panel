@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,6 +74,8 @@ func newHarnessWith(t *testing.T, eng engine.Engine, router proxy.Router, p *tes
 		// database van de installatie aan zijn testnetwerken. Tests met een eigen nep-MariaDB
 		// overschrijven dit via mutate.
 		MariaDBContainer: "panel-mariadb-test-" + instance,
+		// Eigen pool voor testnetwerken (niet die van de echte daemon, niet Docker's standaardpools).
+		NetworkPool: netip.MustParsePrefix("10.252.0.0/16"),
 	}
 	log := testLogger(t)
 	pc := panel.New(p.URL, nodeToken, log)

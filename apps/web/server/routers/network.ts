@@ -13,7 +13,7 @@ import { logActivity } from "../activity";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema } from "../db";
 import { applyNetworkToml } from "../lib/velocity-toml";
-import { FORWARDING_VAR, PROXY_SECRET_VAR, SECRET_VAR, allocationAddress, isBackend, isProxy, proxyMembers, suggestNames } from "../network";
+import { FORWARDING_VAR, PROXY_SECRET_VAR, SECRET_VAR, allocationAddress, isBackend, isProxy, memberAddresses, proxyMembers, suggestNames } from "../network";
 import { syncBedrockBackends } from "../bedrock";
 import { buildServerSpec } from "../spec";
 import { imagePolicyOf, fetchServerByUuid, fetchServers, isFullAdmin, limitsOf, requireServer, serverVariables, sleepOf, autoRestartOf, type ServerBundle } from "../servers-data";
@@ -88,22 +88,21 @@ export const network: Pick<Implementation["servers"], "networkCandidates" | "upd
     if (new Set(wanted.map((m) => m.serverUuid)).size !== wanted.length) throw bad("NETWORK_DUPLICATE_SERVER");
     if (new Set(wanted.map((m) => m.name)).size !== wanted.length) throw bad("NETWORK_DUPLICATE_NAME");
     if (wanted.some((m) => m.name === "try" || m.serverUuid === proxy.server.uuid)) throw bad("NETWORK_INVALID_MEMBER");
-    const members: Array<{ b: ServerBundle; name: string; address: string }> = [];
+    const members: Array<{ b: ServerBundle; name: string }> = [];
     for (const w of wanted) {
       const b = await fetchServerByUuid(w.serverUuid);
       if (!b) throw bad("SERVER_NOT_FOUND", "NOT_FOUND");
       if (b.server.ownerId !== uid && !isFullAdmin(ctx)) throw bad("NO_ACCESS", "FORBIDDEN");
       if (!isBackend(b)) throw bad(`NOT_A_BACKEND: ${b.server.name}`);
       if (b.node.id !== proxy.node.id) throw bad(`BACKEND_OTHER_NODE: ${b.server.name}`);
-      const address = await allocationAddress(b);
-      if (!address) throw bad(`NO_ALLOCATION: ${b.server.name}`, "PRECONDITION_FAILED");
+      if (!b.allocations[0]) throw bad(`NO_ALLOCATION: ${b.server.name}`, "PRECONDITION_FAILED");
       const [other] = await db
         .select({ name: schema.servers.name })
         .from(schema.networkMembers)
         .innerJoin(schema.servers, eq(schema.servers.id, schema.networkMembers.proxyServerId))
         .where(and(eq(schema.networkMembers.backendServerId, b.server.id), ne(schema.networkMembers.proxyServerId, proxy.server.id)));
       if (other) throw bad(`ALREADY_IN_NETWORK: ${b.server.name} (${other.name})`, "CONFLICT");
-      members.push({ b, name: w.name, address });
+      members.push({ b, name: w.name });
     }
     const previous = await proxyMembers(proxy.server.id);
     const removed = previous.map((x) => x.b).filter((b) => !members.some((m) => m.b.server.id === b.server.id));
@@ -123,8 +122,11 @@ export const network: Pick<Implementation["servers"], "networkCandidates" | "upd
       if (e instanceof DaemonHttpError && e.status === 404) throw bad("PROXY_NOT_INSTALLED: velocity.toml not found, wait for the installation to finish", "PRECONDITION_FAILED");
       throw await call(() => Promise.reject(e));
     }
+    // Gedeeld Docker-netwerk van proxy + backends (servers zitten verder elk op een eigen netwerk).
+    const addrs = await call(() => memberAddresses(proxy, members.map((m) => m.b)));
+    for (const m of members) if (!addrs.get(m.b.server.uuid)) throw bad(`NO_ALLOCATION: ${m.b.server.name}`, "PRECONDITION_FAILED");
     const modernBefore = /^\s*player-info-forwarding-mode\s*=\s*"modern"/m.test(toml);
-    await call(() => d.writeFile(proxy.server.uuid, TOML_PATH, applyNetworkToml(toml, members.map((m) => ({ name: m.name, address: m.address })))));
+    await call(() => d.writeFile(proxy.server.uuid, TOML_PATH, applyNetworkToml(toml, members.map((m) => ({ name: m.name, address: addrs.get(m.b.server.uuid)! })))));
     // Alleen backends waarvan de forwarding-variabelen echt veranderen worden aangeraakt (en herstart).
     const changed = new Set<number>();
     for (const m of members) {
