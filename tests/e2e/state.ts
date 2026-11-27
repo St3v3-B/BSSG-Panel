@@ -9,5 +9,5 @@ export const saveState = (p: Partial<State>) => writeFileSync(file(), JSON.strin
 export const need = (k: keyof State): string => {
   const v = readState()[k];
   if (!v) throw new Error(`${k} ontbreekt: een eerdere spec is mislukt`);
-  return v;
+  return String(v);
 };

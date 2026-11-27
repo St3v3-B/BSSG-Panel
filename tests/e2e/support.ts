@@ -65,7 +65,7 @@ export async function adminSession() {
   const f = `${env("IT_WORK")}/admin-cookie`;
   if (existsSync(f)) {
     const cookie = readFileSync(f, "utf8");
-    const api = client(cookie);
+    const api = client({ cookie });
     const me = await api.auth.me.query().catch(() => null);
     if (me?.isAdmin && me.totpVerified) return { cookie, api };
   }
