@@ -347,6 +347,52 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/servers/{uuid}/network:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    description: |
+      Velocity-netwerk van een proxy. Elke server draait op zijn eigen bridge-netwerk
+      `panel-site-<uuid>` en ziet andere servers en de infra niet. De proxy en de hier
+      opgegeven backends delen daarnaast `panel-net-<proxy-uuid>` (panel.role=proxy-net,
+      panel.server_uuid=<proxy>), waarop de proxy een backend bereikt als `panel-<uuid>:<poort>`.
+      Leden die niet draaien worden bij hun start gekoppeld. Een lege lijst (of het verwijderen
+      van de proxy) ruimt het netwerk op; een verwijderde backend gaat automatisch uit de lijst.
+    get:
+      tags: [servers]
+      operationId: getProxyNetwork
+      responses:
+        "200":
+          description: Huidige leden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProxyNetwork" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [servers]
+      operationId: setProxyNetwork
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [members]
+              properties:
+                members:
+                  type: array
+                  maxItems: 60
+                  description: uuids van de backends (game-servers op deze node, niet de proxy zelf)
+                  items: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Vastgelegd en gekoppeld
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProxyNetwork" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/servers/{uuid}/ws:
     parameters: [{ $ref: "#/components/parameters/Uuid" }]
     get:
@@ -1087,6 +1133,14 @@ components:
         daemon_version: { type: string }
         daemon_commit: { type: string }
 
+    ProxyNetwork:
+      type: object
+      required: [members, network]
+      properties:
+        members:
+          type: array
+          items: { type: string, format: uuid }
+        network: { type: string, description: "naam van het gedeelde Docker-netwerk; leeg zonder leden" }
     Stats:
       type: object
       required: [cpu_pct, memory_bytes, memory_limit_bytes, network_rx_bytes, network_tx_bytes, disk_bytes, disk_limit_bytes, uptime_ms]

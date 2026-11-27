@@ -241,6 +241,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/servers/{uuid}/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get: operations["getProxyNetwork"];
+        put: operations["setProxyNetwork"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{uuid}/ws": {
         parameters: {
             query?: never;
@@ -841,6 +859,11 @@ export interface components {
             log_tail: string;
             daemon_version: string;
             daemon_commit?: string;
+        };
+        ProxyNetwork: {
+            members: string[];
+            /** @description naam van het gedeelde Docker-netwerk; leeg zonder leden */
+            network: string;
         };
         Stats: {
             /** @description 100 = één core vol */
@@ -1633,6 +1656,62 @@ export interface operations {
                     "application/json": components["schemas"]["Stats"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getProxyNetwork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Huidige leden */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProxyNetwork"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setProxyNetwork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description uuids van de backends (game-servers op deze node, niet de proxy zelf) */
+                    members: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Vastgelegd en gekoppeld */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProxyNetwork"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
