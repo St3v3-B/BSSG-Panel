@@ -73,6 +73,12 @@ func TestDockerPhpManagedSettings(t *testing.T) {
 		_ = mw.Close()
 		resp, err := e.client.Post("https://"+host+"/upload.php", mw.FormDataContentType(), &buf)
 		if err != nil {
+			// nginx weigert een te grote body soms al terwijl de client nog schrijft; dan ziet de
+			// client "broken pipe"/"connection reset" in plaats van het 413-antwoord. Dat is ook
+			// een weigering.
+			if es := err.Error(); strings.Contains(es, "broken pipe") || strings.Contains(es, "connection reset") {
+				return 413, ""
+			}
 			t.Fatal(err)
 		}
 		defer resp.Body.Close()
