@@ -112,11 +112,24 @@ daemon's systemd unit. The commented reference is
 
 ## Updating
 
+Use **Admin, Settings, Updates** in the panel, or on the host:
+
 ```bash
 cd BSSG-Panel
-git pull
-sudo deploy/install.sh --non-interactive
+sudo deploy/upgrade.sh          # fetch origin/main, run install.sh, health check, roll back on failure
 ```
+
+`git pull && sudo deploy/install.sh --non-interactive` also works, without the rollback. See the
+[admin guide](admin-guide.md#updates-and-upgrades).
+
+## Uninstalling
+
+```bash
+sudo deploy/uninstall.sh --dry-run    # list what would be removed
+sudo deploy/uninstall.sh --backup     # dump PostgreSQL and MariaDB first, then remove (keeps data unless --purge)
+```
+
+Details: [admin guide](admin-guide.md#uninstalling).
 
 ## Changing the domain
 
