@@ -122,7 +122,7 @@ export function toDetail(
     })),
     node: { id: b.node.id, name: b.node.name, fqdn: b.node.fqdn, supportsDomains: b.node.supportsDomains },
     sftp: { host: b.node.fqdn, port: b.node.sftpPort, username: sftpUsername(viewer.name, viewer.discordId, b.server.uuid) },
-    domainsAllowed: b.server.type === "web" || b.server.domainsAllowed,
+    domainsAllowed: b.server.type === "web" || (b.server.domainsAllowed && b.node.supportsDomains),
     sleep: { supported: templateSleepCapable(b.template), enabled: b.server.sleepEnabled, idleMinutes: b.server.sleepIdleMinutes },
     network: network ?? { role: "none", members: [], proxy: null, connectAddress: null },
     installedAt: live?.installedAt !== undefined ? live.installedAt : b.server.installedAt,

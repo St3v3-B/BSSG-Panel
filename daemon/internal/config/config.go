@@ -12,12 +12,17 @@ import (
 
 // Config is de configuratie van de daemon.
 type Config struct {
-	NodeToken      string
-	NodeDomain     string
-	PanelDomain    string
-	PanelURL       string
-	DaemonSocket   string
-	DaemonPort     int
+	NodeToken    string
+	NodeDomain   string
+	PanelDomain  string
+	PanelURL     string
+	DaemonSocket string
+	DaemonPort   int
+	// TLSPort (DAEMON_TLS_PORT, 0 = uit): de daemon serveert zelf https op deze poort met een DNS-01-certificaat
+	// via het panel; voor nodes zonder Caddy op 80/443 (supports_domains = false).
+	TLSPort        int
+	ACMEEmail      string
+	ACMEDirectory  string
 	SFTPPort       int
 	DataDir        string
 	CaddyAdminURL  string
@@ -78,6 +83,11 @@ func Load(getenv func(string) string) (Config, error) {
 	if c.DaemonPort, err = port(get("DAEMON_PORT", "8080")); err != nil {
 		errs = append(errs, fmt.Errorf("DAEMON_PORT: %w", err))
 	}
+	if c.TLSPort, err = port(get("DAEMON_TLS_PORT", "0")); err != nil {
+		errs = append(errs, fmt.Errorf("DAEMON_TLS_PORT: %w", err))
+	}
+	c.ACMEEmail = get("ACME_EMAIL", "")
+	c.ACMEDirectory = get("ACME_DIRECTORY", "")
 	if c.SFTPPort, err = port(get("SFTP_PORT", "2022")); err != nil {
 		errs = append(errs, fmt.Errorf("SFTP_PORT: %w", err))
 	}

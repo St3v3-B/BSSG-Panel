@@ -11,7 +11,13 @@ export interface NodeRef {
   fqdn: string;
   isLocal: boolean;
   daemonPort?: number;
+  publicPort?: number;
   tokenEnc?: string | null;
+}
+
+/** Host (met poort als die niet 443 is) waarop https://<fqdn> van de node bereikbaar is: console, uploads, daemon. */
+export function nodeHost(node: Pick<NodeRef, "fqdn" | "publicPort">): string {
+  return node.publicPort && node.publicPort !== 443 ? `${node.fqdn}:${node.publicPort}` : node.fqdn;
 }
 
 /** Alleen tests: basis-URL per node-id (een nep-daemon in plaats van https://<fqdn>). */
@@ -21,7 +27,7 @@ export const daemonUrlOverrides = new Map<number, string>();
 export function daemonFor(node: NodeRef): DaemonClient {
   const env = getEnv();
   if (node.isLocal) return new DaemonClient({ nodeId: node.id, baseUrl: env.DAEMON_URL, token: env.NODE_TOKEN });
-  if (node.tokenEnc) return new DaemonClient({ nodeId: node.id, baseUrl: daemonUrlOverrides.get(node.id) ?? `https://${node.fqdn}`, token: decrypt(node.tokenEnc) });
+  if (node.tokenEnc) return new DaemonClient({ nodeId: node.id, baseUrl: daemonUrlOverrides.get(node.id) ?? `https://${nodeHost(node)}`, token: decrypt(node.tokenEnc) });
   throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "NODE_TOKEN_UNAVAILABLE" });
 }
 

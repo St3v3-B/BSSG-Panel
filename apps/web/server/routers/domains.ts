@@ -121,6 +121,7 @@ export const domains: Implementation["domains"] = {
   add: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "domain.manage", { mutates: true });
     const isWeb = a.bundle.server.type === "web";
+    if (!a.bundle.node.supportsDomains) throw new TRPCError({ code: "FORBIDDEN", message: "NODE_HAS_NO_DOMAINS" });
     if (isWeb && input.protocol !== "http") throw new TRPCError({ code: "BAD_REQUEST", message: "PROTOCOL_NOT_ALLOWED" });
     if (!isWeb && !a.bundle.server.domainsAllowed) throw new TRPCError({ code: "FORBIDDEN", message: "DOMAINS_NOT_ALLOWED" });
     const mc = input.protocol === "minecraft";

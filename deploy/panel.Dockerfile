@@ -5,6 +5,20 @@
 # staat in deploy/panel.Dockerfile.dockerignore.
 
 ARG NODE_IMAGE=node:22-bookworm-slim
+ARG GO_IMAGE=golang:1.26-bookworm
+
+# Daemon voor remote nodes (amd64 en arm64), uit dezelfde commit als het panel. Het panel serveert ze op
+# /join/daemon/<arch> (met .sha256) voor `curl .../join | sudo bash` en voor "Update daemon".
+FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS daemon
+ARG PANEL_COMMIT=dev
+WORKDIR /src
+COPY daemon/go.mod daemon/go.sum ./
+RUN go mod download
+COPY daemon/ ./
+RUN set -e; mkdir -p /out; for arch in amd64 arm64; do \
+      CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=0.1.0-${PANEL_COMMIT}" -o /out/panel-daemon-linux-$arch ./cmd/panel-daemon; \
+      (cd /out && sha256sum panel-daemon-linux-$arch | cut -d' ' -f1 > panel-daemon-linux-$arch.sha256); \
+    done
 
 FROM ${NODE_IMAGE} AS build
 ENV NEXT_TELEMETRY_DISABLED=1 \
@@ -36,6 +50,8 @@ COPY --from=build /repo/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /repo/apps/web/public ./apps/web/public
 COPY --from=build /repo/packages/db/migrations ./packages/db/migrations
 COPY --from=build /repo/templates ./templates
+COPY --from=daemon /out/ /app/join/
+COPY --from=build /repo/deploy/join/join.sh /app/join/join.sh
 RUN mkdir -p apps/web/.next/cache && chown -R 1000:1000 apps/web/.next/cache
 # De node-image heeft gebruiker "node" met uid/gid 1000.
 USER 1000:1000

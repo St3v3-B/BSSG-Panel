@@ -365,6 +365,7 @@ export const admin = {
       if (!template) throw bad("TEMPLATE_NOT_FOUND");
       if (template.type === "game" && input.allocationIds.length === 0) throw bad("ALLOCATION_REQUIRED");
       if (template.type === "web" && input.allocationIds.length > 0) throw bad("WEB_HAS_NO_ALLOCATIONS");
+      if (template.type === "web" && !node.supportsDomains) throw bad("NODE_HAS_NO_DOMAINS: this node does not support websites");
       const allocs = await checkAllocations(db, input.allocationIds, node.id, null);
       const errors = validateVariables(template.variables, input.variables, { onlyUserEditable: false });
       if (errors.length) throw bad(`INVALID_VARIABLES: ${errors.join("; ")}`);
@@ -484,6 +485,7 @@ export const admin = {
     setDomainsAllowed: async ({ input, ctx }) => {
       const b = await mustServer(input.uuid);
       if (b.server.type === "web") throw bad("NOT_A_GAME_SERVER");
+      if (input.allowed && !b.node.supportsDomains) throw bad("NODE_HAS_NO_DOMAINS: this node does not support domains");
       const db = getDb();
       if (!input.allowed) {
         // Uitzetten: bestaande domeinen en hun routes verdwijnen.
@@ -522,6 +524,7 @@ export const admin = {
       if (!tpl) throw bad("TEMPLATE_NOT_FOUND");
       if (tpl.id === b.template.id) throw bad("SAME_TEMPLATE");
       if (tpl.type !== b.server.type) throw bad("TEMPLATE_TYPE_MISMATCH");
+      if (tpl.type === "web" && !b.node.supportsDomains) throw bad("NODE_HAS_NO_DOMAINS: this node does not support websites");
       // Variabelen met dezelfde key blijven (mits ze nog aan het patroon voldoen); de rest valt terug op de default.
       const old = await serverVariables(b.server.id);
       const keep: Record<string, string> = {};

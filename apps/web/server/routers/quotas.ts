@@ -110,6 +110,7 @@ export const quotaServers: Pick<Implementation["servers"], "create" | "updateOwn
     const [node] = await db.select().from(schema.nodes).where(eq(schema.nodes.id, input.nodeId));
     if (!template) throw bad("TEMPLATE_NOT_FOUND");
     if (!node) throw bad("NODE_NOT_FOUND");
+    if (template.type === "web" && !node.supportsDomains) throw bad("NODE_HAS_NO_DOMAINS: this node does not support websites");
     const errors = validateVariables(template.variables, input.variables, { onlyUserEditable: true });
     if (errors.length) throw bad(`INVALID_VARIABLES: ${errors.join("; ")}`);
     const name = input.name.trim();

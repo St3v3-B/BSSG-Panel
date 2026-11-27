@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"panel/daemon/internal/config"
 	"panel/daemon/internal/engine"
 	"panel/daemon/internal/server"
 	"panel/daemon/internal/testpanel"
@@ -599,4 +600,16 @@ func TestGameRoute(t *testing.T) {
 	if len(router.Routes()) != 0 || eng.Network(netName) != nil {
 		t.Fatal("route/netwerk niet opgeruimd")
 	}
+}
+
+// De hello wordt herhaald: na een mislukte poging (panel nog niet klaar) en periodiek daarna.
+func TestHelloRepeats(t *testing.T) {
+	p := testpanel.New(nodeToken, "node1.test")
+	p.FailNext = 1
+	t.Cleanup(p.Close)
+	h := newHarnessWith(t, engine.NewFake(), nil, p, "", nil, "", func(_ *config.Config, d *Deps) {
+		d.HelloRetry = 30 * time.Millisecond
+		d.HelloInterval = 60 * time.Millisecond
+	})
+	waitFor(t, "hello herhaald", 3*time.Second, func() bool { return len(h.panel.Calls("/api/remote/node/hello")) >= 4 })
 }

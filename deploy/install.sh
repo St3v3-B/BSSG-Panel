@@ -374,12 +374,22 @@ install_unit() {
   if [ "$DRY_RUN" = 1 ]; then mkdir -p "$ROOT$data"; elif [ ! -d "$data" ]; then mkdir -p "$data" && chmod 0711 "$data"; fi
 }
 
+# Wacht tot het panel (container panel-web) healthy is; anders een waarschuwing (de daemon herhaalt zijn hello toch).
+wait_panel_healthy() {
+  if [ "$DRY_RUN" = 1 ]; then printf '[dry-run] wait until panel-web is healthy\n'; return 0; fi
+  local i st
+  for i in $(seq 1 60); do
+    st="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' panel-web 2>/dev/null || true)"
+    case "$st" in healthy|running) return 0 ;; esac
+    sleep 3
+  done
+  warn "panel-web is not healthy after 3 minutes; restarting the daemon anyway (it repeats its hello every 5 minutes)"
+}
+
+# Volgorde: eerst de compose-stack (panel) up en healthy, daarna de daemon (her)starten. Zo komt de hello van de
+# daemon (met has_mariadb) bij het nieuwe panel aan, en niet bij het oude of nog niet draaiende.
 start_all() {
   if [ "$SKIP_START" = 1 ]; then log "--no-start: nothing started"; return; fi
-  log "(re)starting daemon"
-  run systemctl enable panel-daemon.service
-  # Herstart laat game-containers draaien (zie de unit).
-  run systemctl restart panel-daemon.service
   log "starting panel stack (docker compose up -d --build)"
   if [ "$DRY_RUN" = 1 ]; then
     compose config -q && log "docker compose config: OK"
@@ -387,6 +397,11 @@ start_all() {
   else
     compose up -d --build
   fi
+  wait_panel_healthy
+  log "(re)starting daemon"
+  run systemctl enable panel-daemon.service
+  # Herstart laat game-containers draaien (zie de unit).
+  run systemctl restart panel-daemon.service
 }
 
 # Alleen een waarschuwing: 80/443 bezet terwijl Caddy van het panel niet draait.
