@@ -99,13 +99,13 @@ describe("DatabaseManager", () => {
     const { bodies } = renderWithTrpc(<DatabaseManager uuid={SITE} />, { session: sessionFor("admin") });
     const [card] = await screen.findAllByTestId("database-card");
     expect(within(card!).getAllByText("s1_wordpress").length).toBeGreaterThan(0);
-    expect(within(card!).queryByText("mock-wachtwoord")).toBeNull(); // verborgen tot je op tonen klikt
+    expect(within(card!).queryByText("mock-password")).toBeNull(); // verborgen tot je op tonen klikt
     fireEvent.click(within(card!).getAllByRole("button", { name: "Tonen" })[0]!);
-    expect(within(card!).getByText("mock-wachtwoord")).toBeTruthy();
+    expect(within(card!).getByText("mock-password")).toBeTruthy();
 
     fireEvent.click(within(card!).getByRole("button", { name: /Wachtwoord resetten/ }));
     fireEvent.click(within(card!).getByRole("button", { name: /Nieuw wachtwoord/ }));
-    expect(await within(card!).findByText("nieuw-mock-wachtwoord")).toBeTruthy();
+    expect(await within(card!).findByText("nieuw-mock-password")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Naam"), { target: { value: "shop-db" } });
     fireEvent.click(screen.getByRole("button", { name: /Aanmaken/ }));

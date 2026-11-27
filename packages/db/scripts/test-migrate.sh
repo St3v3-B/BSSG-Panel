@@ -30,5 +30,5 @@ pnpm exec tsx migrate.ts
 # Tweede keer moet niets doen
 pnpm exec tsx migrate.ts
 tables=$(docker exec "$name" psql -U postgres -d panel -Atc "select count(*) from information_schema.tables where table_schema='public'")
-echo "tabellen na migratie: $tables"
+echo "tables after migration: $tables"
 test "$tables" -ge 20

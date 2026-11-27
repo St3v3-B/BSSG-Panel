@@ -163,9 +163,9 @@ describe("eigenaarsacties: rename / updateVariables / reinstall", () => {
   });
 
   it("updateVariables: alleen userEditable, patroon gecontroleerd, spec naar de daemon (skip_install)", async () => {
-    await expect(player.api.servers.updateVariables({ uuid, variables: { SECRET_FLAG: "on" } })).rejects.toThrow(/niet door de gebruiker/);
-    await expect(player.api.servers.updateVariables({ uuid, variables: { JAR_FILE: "kwaad; rm -rf" } })).rejects.toThrow(/voldoet niet/);
-    await expect(player.api.servers.updateVariables({ uuid, variables: { ONBEKEND: "1" } })).rejects.toThrow(/onbekende variabele/);
+    await expect(player.api.servers.updateVariables({ uuid, variables: { SECRET_FLAG: "on" } })).rejects.toThrow(/cannot be changed by the user/);
+    await expect(player.api.servers.updateVariables({ uuid, variables: { JAR_FILE: "kwaad; rm -rf" } })).rejects.toThrow(/does not match/);
+    await expect(player.api.servers.updateVariables({ uuid, variables: { ONBEKEND: "1" } })).rejects.toThrow(/unknown variable/);
     await expect(sub.api.servers.updateVariables({ uuid, variables: { JAR_FILE: "a.jar" } })).rejects.toThrow(/OWNER_ONLY/);
     await player.api.servers.updateVariables({ uuid, variables: { JAR_FILE: "paper.jar" } });
     const put = h.daemon.last("PUT", `/api/servers/${uuid}`)!.body as DaemonServerSpec;

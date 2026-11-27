@@ -18,7 +18,7 @@ WORK="$(mktemp -d -t panel-deploy-test-XXXXXX)"
 LABELS=(--label panel.test=true --label "panel.instance=$INSTANCE")
 
 pass() { printf '  ok   %s\n' "$*"; }
-fail() { printf '  FOUT %s\n' "$*" >&2; exit 1; }
+fail() { printf '  ERROR %s\n' "$*" >&2; exit 1; }
 step() { printf '\n== %s\n' "$*"; }
 
 cleanup() {
@@ -140,7 +140,7 @@ getv() { sed -n "s/^$1=//p" "$E"; }
 pw="$(getv POSTGRES_PASSWORD)"
 [ "$pw" != panel ] && [ "$(getv DATABASE_URL)" = "postgres://panel:$pw@postgres:5432/panel" ] \
   && pass "POSTGRES_PASSWORD generated and DATABASE_URL matches" || fail "postgres password"
-diff <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$DEPLOY/panel.env.example") <(sed -n '/^# --- overig/q; s/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$E") >/dev/null \
+diff <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$DEPLOY/panel.env.example") <(sed -n '/^# --- other/q; s/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$E") >/dev/null \
   && pass "same variables in the same order as panel.env.example" || fail "variables differ from panel.env.example"
 [[ "$(getv MARIADB_ROOT_PASSWORD)" =~ ^[0-9a-f]{48}$ ]] && pass "MARIADB_ROOT_PASSWORD generated" || fail "MARIADB_ROOT_PASSWORD"
 [ -x "$ROOT/usr/local/bin/panel-daemon" ] && pass "daemon installed (stub)" || fail "daemon"
@@ -152,16 +152,16 @@ grep -q '^\[dry-run\] systemctl restart panel-daemon.service$' "$WORK/install1.l
   && pass "CADDY_ADMIN_URL/CADDY_TLS_ADDR from the example" || fail "CADDY_ADMIN_URL/CADDY_TLS_ADDR"
 grep -q 'docker compose config: OK' "$WORK/install1.log" && pass "compose config with written env" || fail "compose with written env"
 
-# Idempotent: second run behoudt alles; een extra sleutel blijft staan.
+# Idempotent: second run keeps everything; an extra key is kept.
 mariadb_pw="$(getv MARIADB_ROOT_PASSWORD)"
-before="$(grep -v '^# /etc/panel' "$E" | sed '/^# --- overig/,$d')"
+before="$(grep -v '^# /etc/panel' "$E" | sed '/^# --- other/,$d')"
 echo "MY_OWN=value" >> "$E"
 sed -i 's#^PANEL_URL=.*#PANEL_URL=https://panel.test#; s#^CADDY_TLS_ADDR=.*#CADDY_TLS_ADDR=127.0.0.1:8443#; s#^CADDY_ADMIN_URL=.*#CADDY_ADMIN_URL=#' "$E"
 before="$(printf '%s\n' "$before" | sed 's#^PANEL_URL=.*#PANEL_URL=https://panel.test#; s#^CADDY_TLS_ADDR=.*#CADDY_TLS_ADDR=127.0.0.1:8443#')"
 env "${inst_env[@]}" bash "$DEPLOY/install.sh" --dry-run --non-interactive --root "$ROOT" --daemon-bin "$BIN_STUB" \
   > "$WORK/install2.log" 2>&1 || { cat "$WORK/install2.log"; fail "install.sh second run"; }
-after="$(grep -v '^# /etc/panel' "$E" | grep -v '^MIJN_EIGEN=' | sed '/^# --- overig/,$d')"
-[ "$(printf '%s\n' "$before" | sed '/^$/d')" = "$(printf '%s\n' "$after" | sed '/^$/d')" ] && pass "second run: keys and values kept" || fail "second run wijzigt panel.env"
+after="$(grep -v '^# /etc/panel' "$E" | grep -v '^MY_OWN=' | sed '/^# --- other/,$d')"
+[ "$(printf '%s\n' "$before" | sed '/^$/d')" = "$(printf '%s\n' "$after" | sed '/^$/d')" ] && pass "second run: keys and values kept" || fail "second run changes panel.env"
 grep -qx 'MY_OWN=value' "$E" && pass "unknown key kept" || fail "unknown key lost"
 [ "$(getv MARIADB_ROOT_PASSWORD)" = "$mariadb_pw" ] && [ "$(grep -c '^MARIADB_ROOT_PASSWORD=' "$E")" = 1 ] \
   && pass "MARIADB_ROOT_PASSWORD kept (only once)" || fail "MARIADB_ROOT_PASSWORD changed or duplicated"

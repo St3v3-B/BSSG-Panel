@@ -17,7 +17,7 @@ export async function runMigrations(url = process.env.DATABASE_URL) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   runMigrations().then(
-    () => console.log("migraties klaar"),
+    () => console.log("migrations done"),
     (e) => {
       console.error(e);
       process.exit(1);
