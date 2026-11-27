@@ -386,6 +386,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/servers/{uuid}/files/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recursief zoeken op bestandsnaam of inhoud
+         * @description Zoekt onder `path` (standaard `/`). Op naam: hoofdletterongevoelig deel van de naam, of een
+         *     glob met `*`, `?` of `[...]`. Met `content: true` in de inhoud van tekstbestanden tot 1 MB
+         *     (binaire bestanden worden overgeslagen; max 5 regels per bestand, regels ingekort tot 300 tekens).
+         *     Symlinks worden nooit gevolgd (wel op naam gevonden). Stopt na `limit` resultaten
+         *     (`truncated`) of na 10 s (`timed_out`, met de resultaten tot dan).
+         */
+        post: operations["searchFiles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/files/chmod": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rechten (octaal) zetten, optioneel recursief
+         * @description `mode` geldt voor bestanden, `dir_mode` (standaard gelijk aan `mode`) voor mappen. Setuid,
+         *     setgid en sticky (het vierde cijfer) alleen met `allow_special: true`, anders 400 `bad_mode`.
+         *     Symlinks worden overgeslagen en nooit gevolgd; de root zelf kan niet (400). Sockets, fifo's
+         *     en devices worden niet aangeraakt.
+         */
+        post: operations["chmodFiles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{uuid}/files/upload": {
         parameters: {
             query?: never;
@@ -414,6 +465,33 @@ export interface paths {
             cookie?: never;
         };
         get: operations["downloadFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/files/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Map of selectie als zip of tar.gz (gestreamd)
+         * @description De selectie staat in de `archive`-claim van de eenmalige JWT (`files.read`): `root` (map waartegen
+         *     de namen in het archief relatief zijn), `paths` (1-1000; `/` = alles) en `format` (`zip` of `tar.gz`).
+         *     Het archief wordt tijdens het verzenden gemaakt, zonder tijdelijk bestand op de schijf van de
+         *     server. Symlinks worden nooit gevolgd: in tar.gz blijven ze symlinks, in zip worden ze overgeslagen.
+         *     Fouten in de selectie geven vooraf 400/404; een fout tijdens het streamen breekt de verbinding af.
+         *     Max 4 tegelijk per node, anders 429 `busy`.
+         */
+        get: operations["downloadArchive"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1011,6 +1089,35 @@ export interface components {
             /** Format: date-time */
             modified_at: string;
         };
+        SearchResult: {
+            results: {
+                entry: components["schemas"]["FileEntry"];
+                /** @description Alleen bij zoeken op inhoud (anders leeg) */
+                matches: {
+                    /** @description Regelnummer (vanaf 1) */
+                    line: number;
+                    text: string;
+                }[];
+            }[];
+            /** @description Er zijn meer resultaten dan `limit` */
+            truncated: boolean;
+            /** @description Na 10 s gestopt; de resultaten zijn onvolledig */
+            timed_out: boolean;
+        };
+        ChmodRequest: {
+            paths: string[];
+            /** @example 644 */
+            mode: string;
+            /** @example 755 */
+            dir_mode?: string;
+            /** @default false */
+            recursive: boolean;
+            /**
+             * @description Setuid/setgid/sticky toestaan
+             * @default false
+             */
+            allow_special: boolean;
+        };
         /** @description Alleen voor de duur van het verzoek; de daemon bewaart ze niet */
         S3Credentials: {
             endpoint: string;
@@ -1202,7 +1309,7 @@ export interface components {
         /** @description Pad binnen de serverdata, begint met `/`. `..` buiten de root → 400. */
         Path: string;
         DbName: string;
-        /** @description Browser-JWT met files.read (download) of files.write (upload) */
+        /** @description Browser-JWT met files.read (download, archief) of files.write (upload) */
         Token: string;
     };
     requestBodies: never;
@@ -1890,10 +1997,82 @@ export interface operations {
             507: components["responses"]["DiskFull"];
         };
     };
+    searchFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @default / */
+                    path?: string;
+                    query: string;
+                    /** @default false */
+                    content?: boolean;
+                    /**
+                     * @description 0 = standaard (200)
+                     * @default 200
+                     */
+                    limit?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Resultaten */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    chmodFiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChmodRequest"];
+            };
+        };
+        responses: {
+            /** @description Gewijzigd */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Aantal bestanden en mappen waarvan de modus is gezet */
+                        changed: number;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     uploadFiles: {
         parameters: {
             query: {
-                /** @description Browser-JWT met files.read (download) of files.write (upload) */
+                /** @description Browser-JWT met files.read (download, archief) of files.write (upload) */
                 token: components["parameters"]["Token"];
                 directory: string;
             };
@@ -1926,7 +2105,7 @@ export interface operations {
     downloadFile: {
         parameters: {
             query: {
-                /** @description Browser-JWT met files.read (download) of files.write (upload) */
+                /** @description Browser-JWT met files.read (download, archief) of files.write (upload) */
                 token: components["parameters"]["Token"];
                 /** @description Pad binnen de serverdata, begint met `/`. `..` buiten de root → 400. */
                 path: components["parameters"]["Path"];
@@ -1951,6 +2130,43 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    downloadArchive: {
+        parameters: {
+            query: {
+                /** @description Browser-JWT met files.read (download, archief) of files.write (upload) */
+                token: components["parameters"]["Token"];
+            };
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Archief (Content-Disposition attachment) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": string;
+                    "application/gzip": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Te veel archief-downloads tegelijk */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     exportServerData: {

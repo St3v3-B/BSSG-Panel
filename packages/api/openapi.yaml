@@ -22,6 +22,9 @@ info:
       Bij de websocket gaat de JWT in het eerste bericht; bij upload/download in `?token=`.
       Download/upload-JWT's zijn eenmalig (`jti` wordt onthouden tot `exp`). Bij upload staat
       `directory` in de JWT, bij download `path`; wijkt de query-parameter af, dan 403.
+      Bij een archief-download (`/files/archive`) staat `archive` (`root`, `paths`, `format`) in de
+      JWT en komt de selectie alleen daaruit. Een token met `archive` geldt nergens anders, en
+      een token zonder `archive` niet voor `/files/archive` (403).
 
     ## Fouten
     Altijd `application/json` met het `Error`-schema en een passende statuscode.
@@ -506,6 +509,70 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "507": { $ref: "#/components/responses/DiskFull" }
 
+  /api/servers/{uuid}/files/search:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [files]
+      operationId: searchFiles
+      summary: Recursief zoeken op bestandsnaam of inhoud
+      description: |
+        Zoekt onder `path` (standaard `/`). Op naam: hoofdletterongevoelig deel van de naam, of een
+        glob met `*`, `?` of `[...]`. Met `content: true` in de inhoud van tekstbestanden tot 1 MB
+        (binaire bestanden worden overgeslagen; max 5 regels per bestand, regels ingekort tot 300 tekens).
+        Symlinks worden nooit gevolgd (wel op naam gevonden). Stopt na `limit` resultaten
+        (`truncated`) of na 10 s (`timed_out`, met de resultaten tot dan).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                path: { type: string, default: "/" }
+                query: { type: string, minLength: 1, maxLength: 200 }
+                content: { type: boolean, default: false }
+                limit: { type: integer, minimum: 0, maximum: 1000, default: 200, description: "0 = standaard (200)" }
+      responses:
+        "200":
+          description: Resultaten
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SearchResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/servers/{uuid}/files/chmod:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [files]
+      operationId: chmodFiles
+      summary: Rechten (octaal) zetten, optioneel recursief
+      description: |
+        `mode` geldt voor bestanden, `dir_mode` (standaard gelijk aan `mode`) voor mappen. Setuid,
+        setgid en sticky (het vierde cijfer) alleen met `allow_special: true`, anders 400 `bad_mode`.
+        Symlinks worden overgeslagen en nooit gevolgd; de root zelf kan niet (400). Sockets, fifo's
+        en devices worden niet aangeraakt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChmodRequest" }
+      responses:
+        "200":
+          description: Gewijzigd
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [changed]
+                properties:
+                  changed: { type: integer, description: Aantal bestanden en mappen waarvan de modus is gezet }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/servers/{uuid}/files/upload:
     parameters: [{ $ref: "#/components/parameters/Uuid" }]
     post:
@@ -552,6 +619,36 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/servers/{uuid}/files/archive:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    get:
+      tags: [transfer]
+      operationId: downloadArchive
+      summary: Map of selectie als zip of tar.gz (gestreamd)
+      description: |
+        De selectie staat in de `archive`-claim van de eenmalige JWT (`files.read`): `root` (map waartegen
+        de namen in het archief relatief zijn), `paths` (1-1000; `/` = alles) en `format` (`zip` of `tar.gz`).
+        Het archief wordt tijdens het verzenden gemaakt, zonder tijdelijk bestand op de schijf van de
+        server. Symlinks worden nooit gevolgd: in tar.gz blijven ze symlinks, in zip worden ze overgeslagen.
+        Fouten in de selectie geven vooraf 400/404; een fout tijdens het streamen breekt de verbinding af.
+        Max 4 tegelijk per node, anders 429 `busy`.
+      security: []
+      parameters:
+        - { $ref: "#/components/parameters/Token" }
+      responses:
+        "200":
+          description: Archief (Content-Disposition attachment)
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+            application/gzip:
+              schema: { type: string, format: binary }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { description: Te veel archief-downloads tegelijk }
 
   /api/servers/{uuid}/transfer/export:
     parameters: [{ $ref: "#/components/parameters/Uuid" }]
@@ -931,7 +1028,7 @@ components:
       name: token
       in: query
       required: true
-      description: Browser-JWT met files.read (download) of files.write (upload)
+      description: Browser-JWT met files.read (download, archief) of files.write (upload)
       schema: { type: string }
   responses:
     BadRequest:
@@ -1238,6 +1335,39 @@ components:
         mode: { type: string, example: "-rw-r--r--" }
         mime_type: { type: string }
         modified_at: { type: string, format: date-time }
+
+    SearchResult:
+      type: object
+      required: [results, truncated, timed_out]
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            required: [entry, matches]
+            properties:
+              entry: { $ref: "#/components/schemas/FileEntry" }
+              matches:
+                type: array
+                description: Alleen bij zoeken op inhoud (anders leeg)
+                items:
+                  type: object
+                  required: [line, text]
+                  properties:
+                    line: { type: integer, description: Regelnummer (vanaf 1) }
+                    text: { type: string }
+        truncated: { type: boolean, description: Er zijn meer resultaten dan `limit` }
+        timed_out: { type: boolean, description: Na 10 s gestopt; de resultaten zijn onvolledig }
+
+    ChmodRequest:
+      type: object
+      required: [paths, mode]
+      properties:
+        paths: { type: array, minItems: 1, maxItems: 1000, items: { type: string } }
+        mode: { type: string, pattern: "^[0-7]{3,4}$", example: "644" }
+        dir_mode: { type: string, pattern: "^[0-7]{3,4}$", example: "755" }
+        recursive: { type: boolean, default: false }
+        allow_special: { type: boolean, default: false, description: Setuid/setgid/sticky toestaan }
 
     S3Credentials:
       type: object

@@ -17,6 +17,8 @@ export type DaemonSystemInfo = D["schemas"]["SystemInfo"];
 export type DaemonRoute = D["schemas"]["Route"];
 export type DaemonRouteWithStatus = D["schemas"]["RouteWithStatus"];
 export type DaemonFileEntry = D["schemas"]["FileEntry"];
+export type DaemonSearchResult = D["schemas"]["SearchResult"];
+export type DaemonChmodRequest = D["schemas"]["ChmodRequest"];
 export type WsClientMessage = D["schemas"]["WsClientMessage"];
 export type WsServerMessage = D["schemas"]["WsServerMessage"];
 
@@ -31,6 +33,8 @@ export interface BrowserJwtClaims {
   path?: string;
   /** Alleen bij upload: de map uit de URL moet hieraan gelijk zijn. */
   directory?: string;
+  /** Alleen bij een archief-download (`/files/archive`): wat er ingepakt wordt. */
+  archive?: { root: string; paths: string[]; format: "zip" | "tar.gz" };
   jti: string;
   iat: number;
   exp: number;

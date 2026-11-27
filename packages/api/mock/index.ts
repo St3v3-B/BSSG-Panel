@@ -419,6 +419,34 @@ export function createMock(): Implementation {
       decompress: () => ok,
       uploadUrl: ({ input }) => signed(`/api/servers/${input.uuid}/files/upload`),
       downloadUrl: ({ input }) => signed(`/api/servers/${input.uuid}/files/download`),
+      search: ({ input }) => {
+        const q = input.query.toLowerCase();
+        const results = input.content
+          ? Object.entries(db.fileContents).flatMap(([path, text]) => {
+              const matches = text.split("\n").flatMap((line, i) => (line.toLowerCase().includes(q) ? [{ line: i + 1, text: line }] : [])).slice(0, 5);
+              const entry = db.files.find((f) => f.path === path);
+              return entry && matches.length ? [{ entry, matches }] : [];
+            })
+          : db.files.filter((f) => f.path.startsWith(input.path) && f.name.toLowerCase().includes(q)).map((entry) => ({ entry, matches: [] }));
+        return { results: results.slice(0, input.limit), truncated: results.length > input.limit, timedOut: false };
+      },
+      chmod: ({ input }) => {
+        const rwx = (d: number) => `${d & 4 ? "r" : "-"}${d & 2 ? "w" : "-"}${d & 1 ? "x" : "-"}`;
+        const str = (m: string) => m.slice(-3).split("").map((c) => rwx(Number(c))).join("");
+        let changed = 0;
+        for (const f of db.files) {
+          if (!input.paths.includes(f.path)) continue;
+          f.mode = (f.isDirectory ? "d" : "-") + str(f.isDirectory ? (input.dirMode ?? input.mode) : input.mode);
+          changed++;
+        }
+        return { changed };
+      },
+      move: ({ input }) => {
+        if (input.paths.some((p) => input.destination === p || input.destination.startsWith(`${p}/`))) throw new TRPCError({ code: "BAD_REQUEST", message: "destination inside source" });
+        db.files = db.files.filter((f) => !input.paths.includes(f.path));
+        return ok;
+      },
+      archiveUrl: ({ input }) => signed(`/api/servers/${input.uuid}/files/archive`),
       sftpDetails: ({ input }) => srv(input.uuid).sftp,
     },
     domains: {
