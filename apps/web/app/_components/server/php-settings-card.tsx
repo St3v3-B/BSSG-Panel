@@ -20,7 +20,7 @@ export function PhpSettingsCard({ uuid }: { uuid: string }) {
   const q = trpc.siteSettings.php.useQuery({ uuid }, { retry: false });
   if (q.error) return null;
   if (!q.data) return <Skeleton className="h-64 rounded-xl" />;
-  return <PhpForm key={JSON.stringify(q.data.settings)} uuid={uuid} info={q.data} />;
+  return <PhpForm uuid={uuid} info={q.data} />;
 }
 
 function PhpForm({ uuid, info }: { uuid: string; info: { settings: PhpSettings; defaults: PhpSettings; managed: boolean; ramLimitMb: number; extensions: PhpSettings["disabledExtensions"] } }) {
