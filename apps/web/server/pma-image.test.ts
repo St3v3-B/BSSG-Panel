@@ -164,6 +164,20 @@ describe("phpMyAdmin-image met single sign-on", () => {
     expect(other).toMatch(/denied|Access|#1044|error/i);
   });
 
+  it("het thema bssg wordt geserveerd met het panellogo", async () => {
+    const css = await (await get("/themes/bssg/css/theme.css")).text();
+    expect(css).toContain("--pb-primary");
+    expect(css).toContain("prefers-color-scheme: light");
+    for (const img of ["logo_left.png", "logo_right.png"]) {
+      const r = await get("/themes/bssg/img/" + img);
+      expect(r.status).toBe(200);
+      expect(r.headers.get("content-type")).toBe("image/png");
+    }
+    // Eenvoudige check dat het logo niet het standaard phpMyAdmin-logo is (die is 165 px breed).
+    const logo = Buffer.from(await (await get("/themes/bssg/img/logo_left.png")).arrayBuffer());
+    expect(logo.readUInt32BE(16)).toBe(56);
+  });
+
   it("geen versiecontrole of externe verwijzingen in de hoofdpagina; PHP-versie verborgen", async () => {
     const r = await get("/signon.php");
     expect(r.headers.get("x-powered-by")).toBeNull();
