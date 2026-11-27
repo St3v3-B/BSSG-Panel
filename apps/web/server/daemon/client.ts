@@ -273,6 +273,10 @@ export class DaemonClient {
   dbDrop(name: string, username: string) {
     return this.request<void>("DELETE", `/api/db/databases/${encodeURIComponent(name)}?username=${encodeURIComponent(username)}`, undefined, 60_000);
   }
+  /** phpMyAdmin-account van een panelgebruiker: wachtwoord + exact deze databases. */
+  dbSyncPmaUser(username: string, password: string, databases: string[]) {
+    return this.request<void>("PUT", `/api/db/pma-users/${encodeURIComponent(username)}`, { password, databases }, 60_000);
+  }
   /** SQL-dump als stroom. */
   async dbDump(name: string): Promise<ReadableStream<Uint8Array>> {
     let res: Response;

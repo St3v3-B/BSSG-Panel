@@ -816,6 +816,33 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "503": { $ref: "#/components/responses/DbUnavailable" }
 
+  /api/db/pma-users/{username}:
+    parameters:
+      - name: username
+        in: path
+        required: true
+        schema: { type: string, pattern: "^pma_u[0-9]{1,18}$" }
+    put:
+      tags: [databases]
+      operationId: syncPmaUser
+      summary: phpMyAdmin-account van een panelgebruiker bijwerken (wachtwoord + exact deze databases)
+      description: |
+        Maakt `username@'%'` aan of vervangt het (DROP + CREATE: alle oude rechten vervallen) met het opgegeven
+        wachtwoord en `ALL PRIVILEGES` op precies de genoemde databases (underscores geescaped), zonder
+        `GRANT OPTION`. Alleen gebruikersnamen `pma_u<getal>` zijn toegestaan en de systeemschema's
+        (`mysql`, `information_schema`, `performance_schema`, `sys`) worden geweigerd (400). Een lege lijst geeft
+        een account zonder rechten. Databases die (nog) niet bestaan krijgen toch een grant (die is dan leeg).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PmaUserSync" }
+      responses:
+        "204": { description: Bijgewerkt }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/DbUnavailable" }
+
   /api/routes:
     get:
       tags: [routes]
@@ -962,6 +989,16 @@ components:
       properties:
         username: { type: string, pattern: "^[a-zA-Z0-9_]{1,64}$" }
         password: { type: string, minLength: 8, maxLength: 128 }
+
+    PmaUserSync:
+      type: object
+      required: [password, databases]
+      properties:
+        password: { type: string, minLength: 8, maxLength: 128 }
+        databases:
+          type: array
+          maxItems: 5000
+          items: { type: string, pattern: "^[a-zA-Z0-9_]{1,64}$" }
 
     Error:
       type: object

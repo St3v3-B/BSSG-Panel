@@ -689,6 +689,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/db/pma-users/{username}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * phpMyAdmin-account van een panelgebruiker bijwerken (wachtwoord + exact deze databases)
+         * @description Maakt `username@'%'` aan of vervangt het (DROP + CREATE: alle oude rechten vervallen) met het opgegeven
+         *     wachtwoord en `ALL PRIVILEGES` op precies de genoemde databases (underscores geescaped), zonder
+         *     `GRANT OPTION`. Alleen gebruikersnamen `pma_u<getal>` zijn toegestaan en de systeemschema's
+         *     (`mysql`, `information_schema`, `performance_schema`, `sys`) worden geweigerd (400). Een lege lijst geeft
+         *     een account zonder rechten. Databases die (nog) niet bestaan krijgen toch een grant (die is dan leeg).
+         */
+        put: operations["syncPmaUser"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/routes": {
         parameters: {
             query?: never;
@@ -736,6 +762,10 @@ export interface components {
         DbPassword: {
             username: string;
             password: string;
+        };
+        PmaUserSync: {
+            password: string;
+            databases: string[];
         };
         Error: {
             /** @description Machineleesbare code, bv. `not_found`, `disk_exceeded`, `invalid_state` */
@@ -2257,6 +2287,33 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            503: components["responses"]["DbUnavailable"];
+        };
+    };
+    syncPmaUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                username: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PmaUserSync"];
+            };
+        };
+        responses: {
+            /** @description Bijgewerkt */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
             503: components["responses"]["DbUnavailable"];
         };
     };

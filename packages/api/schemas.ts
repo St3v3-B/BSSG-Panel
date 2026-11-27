@@ -391,6 +391,15 @@ export const Database = z.object({
 });
 export type Database = z.infer<typeof Database>;
 
+/** Zichtbaarheid en doel van de phpMyAdmin-koppeling (zijbalk en databasescherm). */
+export const PhpMyAdminInfo = z.object({
+  /** Gebruiker heeft databases op de lokale node, of is volledige admin. */
+  visible: z.boolean(),
+  /** Gebruiker heeft ook databases op andere nodes; die staan (nog) niet in phpMyAdmin. */
+  hasRemoteDatabases: z.boolean(),
+});
+export type PhpMyAdminInfo = z.infer<typeof PhpMyAdminInfo>;
+
 // ---------- one-click apps ----------
 
 export const AppId = z.string().regex(/^[a-z0-9-]{2,32}$/);
