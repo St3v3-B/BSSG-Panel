@@ -12,7 +12,7 @@ Module `panel/daemon`, binary `cmd/panel-daemon`. Toegestane dependencies o.a.:
 
 `NODE_TOKEN`, `NODE_DOMAIN`, `PANEL_URL` (leeg → `https://$PANEL_DOMAIN`), `DAEMON_SOCKET`,
 `DAEMON_PORT`, `SFTP_PORT`, `DATA_DIR`, `CADDY_ADMIN_URL` (leeg → `proxy.NewFake()`),
-`CADDY_CONTAINER`, `CADDY_TLS_ADDR`, `PANEL_INSTANCE`, `DOCKER_EXTRA_LABELS` (`k=v,k2=v2`).
+`CADDY_CONTAINER`, `CADDY_TLS_ADDR`, `PANEL_INSTANCE`, `DOCKER_EXTRA_LABELS` (`k=v,k2=v2`), `DOCKER_NETWORK_POOL` (standaard `10.213.0.0/16`; /28 per server, /26 per Velocity-netwerk; `docker` = Docker kiest).
 
 ## Fase 1 — taak
 

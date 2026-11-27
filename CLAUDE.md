@@ -95,7 +95,9 @@ Toolchain: Go 1.27 (module vereist 1.23+), Node 22, pnpm 12, TypeScript 5.9
   De daemon raakt alleen objecten met **beide** eerste labels aan. Daarnaast `panel.role`:
   `infra` (de compose-stack: panel, postgres, redis, caddy, hun netwerken en volumes — **nooit
   aanraken**), `server` (servercontainer, met `panel.server_uuid`), `install` (tijdelijke
-  install-container) en `site` (site-netwerk `panel-site-<uuid>`). Servers herkent de daemon
+  install-container), `site` (eigen netwerk `panel-site-<uuid>` van élke server, ook game-servers; geen
+  gedeelde `bridge`) en `proxy-net` (Velocity-netwerk `panel-net-<proxy-uuid>`, alleen de proxy en zijn
+  backends; subnets uit `DOCKER_NETWORK_POOL`). Servers herkent de daemon
   uitsluitend aan `panel.role=server` + `panel.server_uuid`.
 - **Caddy-admin** luistert op de unix-socket `/run/panel/caddy-admin.sock` (gedeelde map met de
   daemon), niet op TCP. `CADDY_ADMIN_URL` mag `unix://…` of (tests) `http://127.0.0.1:<poort>` zijn;
