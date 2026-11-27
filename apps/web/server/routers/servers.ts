@@ -153,7 +153,7 @@ export const servers: Pick<
   updateVariables: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "owner");
     const b = a.bundle;
-    const errors = validateVariables(b.template.variables, input.variables, { onlyUserEditable: true });
+    const errors = validateVariables(b.template.variables, input.variables, { onlyUserEditable: !ctx.session!.isAdmin });
     if (errors.length) throw new TRPCError({ code: "BAD_REQUEST", message: `INVALID_VARIABLES: ${errors.join("; ")}` });
     const merged = { ...(await serverVariables(b.server.id)), ...input.variables };
     const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: merged, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server) });
