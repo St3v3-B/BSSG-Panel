@@ -124,6 +124,7 @@ export const nl: Dict = {
     online: "Online",
     stopping: "Stoppen",
     disk_exceeded: "Schijf vol",
+    sleeping: "Slaapt",
     unknown: "Onbekend",
   },
   power: { start: "Starten", restart: "Herstarten", stop: "Stoppen", kill: "Kill", killConfirm: "Echt killen?", killTitle: "Proces direct beëindigen (kan data kosten)" },
@@ -698,6 +699,19 @@ export const nl: Dict = {
     deleteConfirm: (name) => `Typ “${name}” om te bevestigen`,
     deleteButton: "Definitief verwijderen",
     deleteOpen: "Server verwijderen…",
+  },
+  sleep: {
+    title: "Slaapstand",
+    toggle: "Slapen als er niemand online is",
+    minutes: "Minuten zonder spelers",
+    minutesError: "Tussen 1 en 1440 minuten",
+    explain: (m) =>
+      `De server stopt als er ${m} ${m === 1 ? "minuut" : "minuten"} niemand online is en start vanzelf zodra iemand verbindt. De eerste speler moet na ongeveer een minuut opnieuw verbinden.`,
+    save: "Slaapstand opslaan",
+    saved: "Slaapstand opgeslagen.",
+    sleepingTitle: "De server slaapt",
+    sleepingText: "Hij start vanzelf als een speler verbindt (die verbindt na ongeveer een minuut opnieuw), of start hem nu.",
+    cardHint: "Slaapt · start zodra iemand verbindt",
   },
   docTitle: { server: "Server", account: "Account", login: "Inloggen" },
 };

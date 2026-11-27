@@ -125,6 +125,7 @@ export const en = {
     online: "Online",
     stopping: "Stopping",
     disk_exceeded: "Disk full",
+    sleeping: "Sleeping",
     unknown: "Unknown",
   },
   power: { start: "Start", restart: "Restart", stop: "Stop", kill: "Kill", killConfirm: "Really kill?", killTitle: "End the process immediately (may lose data)" },
@@ -698,6 +699,19 @@ export const en = {
     deleteConfirm: (name: string) => `Type “${name}” to confirm`,
     deleteButton: "Delete permanently",
     deleteOpen: "Delete server…",
+  },
+  sleep: {
+    title: "Sleep mode",
+    toggle: "Sleep when nobody is online",
+    minutes: "Minutes without players",
+    minutesError: "Between 1 and 1440 minutes",
+    explain: (m: number) =>
+      `The server stops when nobody has been online for ${m} ${m === 1 ? "minute" : "minutes"} and starts by itself as soon as someone connects. The first player has to reconnect after about a minute.`,
+    save: "Save sleep mode",
+    saved: "Sleep mode saved.",
+    sleepingTitle: "The server is sleeping",
+    sleepingText: "It starts by itself when a player connects (they reconnect after about a minute), or start it now.",
+    cardHint: "Sleeping · starts when someone connects",
   },
   docTitle: { server: "Server", account: "Account", login: "Sign in" },
 };

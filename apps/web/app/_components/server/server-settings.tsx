@@ -1,5 +1,5 @@
 "use client";
-import { RotateCcw } from "lucide-react";
+import { Moon, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ServerDetail } from "@panel/api";
@@ -8,6 +8,7 @@ import { variableError } from "@/app/_components/create-server-form";
 import { Alert, AlertDescription, AlertTitle } from "@/app/_components/ui/alert";
 import { Button } from "@/app/_components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/_components/ui/card";
+import { Checkbox } from "@/app/_components/ui/checkbox";
 import { Input } from "@/app/_components/ui/input";
 import { Label } from "@/app/_components/ui/label";
 import { Spinner } from "@/app/_components/ui/spinner";
@@ -171,6 +172,66 @@ export function ReinstallCard({ server, onDone }: { server: ServerDetail; onDone
             <RotateCcw /> {t.settings.reinstall}
           </Button>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Slaapstand (servers.updateSleep); alleen als de template het ondersteunt. Eigenaar of admin. */
+export function SleepCard({ server }: { server: ServerDetail }) {
+  const utils = trpc.useUtils();
+  const t = useT();
+  const [enabled, setEnabled] = useState(server.sleep.enabled);
+  const [minutes, setMinutes] = useState(String(server.sleep.idleMinutes));
+  const save = trpc.servers.updateSleep.useMutation({ onSuccess: () => utils.servers.get.invalidate({ uuid: server.uuid }) });
+  if (!server.sleep.supported) return null;
+  const m = Number(minutes);
+  const valid = Number.isInteger(m) && m >= 1 && m <= 1440;
+  const changed = enabled !== server.sleep.enabled || m !== server.sleep.idleMinutes;
+  return (
+    <Card data-testid="sleep-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Moon className="size-4 text-indigo-300" /> {t.sleep.title}
+        </CardTitle>
+        <CardDescription>{t.sleep.explain(valid ? m : server.sleep.idleMinutes)}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (valid) save.mutate({ uuid: server.uuid, enabled, idleMinutes: m });
+          }}
+        >
+          <label className="flex items-center gap-2 text-sm">
+            <Checkbox role="switch" checked={enabled} onChange={(e) => (setEnabled(e.target.checked), save.reset())} /> {t.sleep.toggle}
+          </label>
+          <div className="max-w-48 space-y-1.5">
+            <Label htmlFor="sleep-minutes">{t.sleep.minutes}</Label>
+            <Input
+              id="sleep-minutes"
+              type="number"
+              min={1}
+              max={1440}
+              inputMode="numeric"
+              value={minutes}
+              disabled={!enabled}
+              aria-invalid={!valid || undefined}
+              onChange={(e) => (setMinutes(e.target.value), save.reset())}
+            />
+            {!valid && <p className="text-xs text-destructive">{t.sleep.minutesError}</p>}
+          </div>
+          {save.error && <p className="text-sm text-destructive">{errorText(save.error)}</p>}
+          {save.isSuccess && (
+            <p className="text-sm text-success" role="status">
+              {t.sleep.saved}
+            </p>
+          )}
+          <Button type="submit" disabled={!valid || !changed || save.isPending}>
+            {save.isPending && <Spinner />} {t.sleep.save}
+          </Button>
+        </form>
       </CardContent>
     </Card>
   );

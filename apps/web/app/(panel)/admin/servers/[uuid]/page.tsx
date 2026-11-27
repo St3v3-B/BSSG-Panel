@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { DeleteServerCard, LimitsCard, OwnerCard, PortsCard } from "@/app/_components/admin/server-manage";
 import { QueryError } from "@/app/_components/query-error";
-import { RenameCard, ReinstallCard, VariablesCard } from "@/app/_components/server/server-settings";
+import { RenameCard, ReinstallCard, SleepCard, VariablesCard } from "@/app/_components/server/server-settings";
 import { StatusBadge } from "@/app/_components/status-badge";
 import { Button } from "@/app/_components/ui/button";
 import { Skeleton } from "@/app/_components/ui/skeleton";
@@ -50,6 +50,7 @@ export default function AdminServerPage() {
           <OwnerCard server={s} />
           {s.type === "game" && <PortsCard key={`p-${s.allocations.map((a) => a.id).join()}`} server={s} />}
           <VariablesCard server={s} all />
+          <SleepCard key={`s-${s.sleep.enabled}-${s.sleep.idleMinutes}`} server={s} />
           <RenameCard key={`n-${s.name}`} server={s} />
           <ReinstallCard server={s} />
           <DeleteServerCard server={s} onDeleted={() => router.push("/admin")} />
