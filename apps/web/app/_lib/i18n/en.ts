@@ -60,6 +60,7 @@ export const en = {
     callback: {
       blocked: { title: "Account blocked", text: "Your account has been blocked by an administrator. Get in touch if you think this is a mistake." },
       discord: { title: "Discord sign-in failed", text: "Discord returned an error. Please try again." },
+      ratelimit: { title: "Too many attempts", text: "Too many sign-in attempts from your network. Wait a minute and try again." },
       denied: { title: "Sign-in cancelled", text: "You declined access in Discord." },
       state: { title: "Sign-in session expired", text: "Signing in took too long or the link was invalid. Please try again." },
     },
@@ -856,6 +857,7 @@ export const en = {
       NO_WEBHOOK: "Set a webhook first.",
       DAEMON_UNREACHABLE: "The node can't be reached right now. Please try again later.",
       INVALID_CODE: "That code isn't right. Please try again.",
+      RATE_LIMITED: "You are sending requests too fast. Wait a moment and try again.",
       INVALID_CREDENTIALS: "Wrong password or code.",
       TOO_MANY_ATTEMPTS: "Too many failed attempts. Wait 10 to 15 minutes and try again.",
       QUOTA_EXCEEDED: "That is more than your quota allows. Lower the limits or free up resources.",

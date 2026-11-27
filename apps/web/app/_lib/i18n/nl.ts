@@ -59,6 +59,7 @@ export const nl: Dict = {
     callback: {
       blocked: { title: "Account geblokkeerd", text: "Je account is geblokkeerd door een beheerder. Neem contact op als je denkt dat dit een vergissing is." },
       discord: { title: "Inloggen via Discord mislukt", text: "Discord gaf een fout terug. Probeer het opnieuw." },
+      ratelimit: { title: "Te veel pogingen", text: "Te veel inlogpogingen vanaf jouw netwerk. Wacht een minuut en probeer het opnieuw." },
       denied: { title: "Inloggen geannuleerd", text: "Je hebt de toegang in Discord geweigerd." },
       state: { title: "Inlogsessie verlopen", text: "Het inloggen duurde te lang of de link was ongeldig. Probeer het opnieuw." },
     },
@@ -856,6 +857,7 @@ export const nl: Dict = {
       NO_WEBHOOK: "Stel eerst een webhook in.",
       DAEMON_UNREACHABLE: "De node is op dit moment niet bereikbaar. Probeer het straks opnieuw.",
       INVALID_CODE: "Die code klopt niet. Probeer het opnieuw.",
+      RATE_LIMITED: "Je stuurt te snel verzoeken. Wacht even en probeer het opnieuw.",
       INVALID_CREDENTIALS: "Wachtwoord of code klopt niet.",
       TOO_MANY_ATTEMPTS: "Te veel mislukte pogingen. Wacht 10 tot 15 minuten en probeer het opnieuw.",
       QUOTA_EXCEEDED: "Dat is meer dan je quotum toestaat. Verlaag de limieten of maak ruimte vrij.",

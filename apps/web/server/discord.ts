@@ -1,4 +1,5 @@
 /** Discord OAuth2 (authorization code, scope identify). */
+import { allowPerIp } from "./http-limits";
 import { getEnv } from "./env";
 import { randomToken, safeEqual } from "./lib/crypto";
 import { loginWithProfile, type DiscordProfile } from "./login";
@@ -117,13 +118,15 @@ function redirect(to: string, setCookies: string[]): Response {
 export async function finishLogin(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const secure = cookieSecure(req);
+  const limited = !(await allowPerIp(req, "discord-callback"));
   const clearState = cookie(STATE_COOKIE, "", { secure, maxAgeSeconds: 0, path: "/api/auth/discord" });
   const stored = parseCookies(req.headers.get("cookie")).get(STATE_COOKIE);
   const [storedState, redirB64] = (stored ?? "").split(".");
   const redirectTo = safeRedirect(Buffer.from(redirB64 ?? "", "base64url").toString());
-  const fail = (code: "blocked" | "discord" | "denied" | "state") =>
+  const fail = (code: "blocked" | "discord" | "denied" | "state" | "ratelimit") =>
     redirect(`/login?error=${code}&redirectTo=${encodeURIComponent(redirectTo)}`, [clearState]);
 
+  if (limited) return fail("ratelimit");
   if (url.searchParams.get("error")) return fail("denied");
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
