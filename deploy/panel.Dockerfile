@@ -54,6 +54,8 @@ COPY --from=build /repo/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /repo/apps/web/public ./apps/web/public
 # CLI voor het noodaccount: deploy/install.sh --set-emergency-password
 COPY --from=build /repo/apps/web/emergency-cli.mjs ./apps/web/emergency-cli.mjs
+# argon2 staat in de standalone alleen in de pnpm-opslag; de CLI-bundel vindt hem via deze link.
+RUN mkdir -p apps/web/node_modules && ln -s /app/node_modules/.pnpm/node_modules/@node-rs apps/web/node_modules/@node-rs
 COPY --from=build /repo/packages/db/migrations ./packages/db/migrations
 COPY --from=build /repo/templates ./templates
 COPY --from=daemon /out/ /app/join/
