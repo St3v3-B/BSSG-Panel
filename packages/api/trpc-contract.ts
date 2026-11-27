@@ -133,6 +133,15 @@ export const contract = {
     testWebhook: mutation("user", server, s.Ok),
     updateSleep: mutation("user", server.extend({ enabled: z.boolean(), idleMinutes: z.number().int().min(1).max(1440) }), s.Ok),
     activity: query("user", server.extend(s.PageInput.shape), s.page(s.ActivityEntry)),
+    /** Bedrock (Geyser): huidige stand en vrije poorten. Paper/Folia/Velocity; leesbaar voor wie de server mag zien. */
+    bedrock: query("user", server, s.BedrockStatus),
+    /**
+     * Eigenaar of admin. Aan: installeert Geyser + Floodgate (officiële GeyserMC-download-API, sha256 gecontroleerd),
+     * koppelt een UDP-allocation (`allocationId`, anders 19132 of de eerste vrije op het IP van de primaire poort)
+     * en schrijft de Geyser-config; op een Velocity-netwerk ook Floodgate + key.pem op de backends.
+     * Uit: verwijdert de plugins en geeft de poort vrij. `restart` herstart de betrokken servers die draaien.
+     */
+    setBedrock: mutation("user", server.extend({ enabled: z.boolean(), allocationId: s.Id.optional(), restart: z.boolean().default(false) }), s.BedrockStatus),
     /** Proxy-server (Velocity), eigenaar of admin: eigen game-servers (admin: alle) op dezelfde node die als backend kunnen. */
     networkCandidates: query("user", server, z.array(s.NetworkCandidate)),
     /**

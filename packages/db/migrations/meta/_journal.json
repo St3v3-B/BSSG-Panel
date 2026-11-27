@@ -78,6 +78,13 @@
       "when": 1795777942180,
       "tag": "0010_lethal_blindfold",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795779289740,
+      "tag": "0011_redundant_wrecker",
+      "breakpoints": true
     }
   ]
 }

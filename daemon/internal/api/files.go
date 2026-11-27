@@ -19,7 +19,7 @@ import (
 
 const (
 	maxReadBytes  = 5 << 20
-	maxWriteBytes = 50 << 20
+	maxWriteBytes = 100 << 20
 )
 
 func fileErr(w http.ResponseWriter, err error) {

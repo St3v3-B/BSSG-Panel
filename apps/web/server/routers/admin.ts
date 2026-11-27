@@ -294,12 +294,12 @@ export const admin = {
     list: async ({ input }) => {
       await nodeById(input.nodeId);
       const rows = await getDb()
-        .select({ a: schema.allocations, uuid: schema.servers.uuid })
+        .select({ a: schema.allocations, uuid: schema.servers.uuid, bedrockId: schema.servers.bedrockAllocationId })
         .from(schema.allocations)
         .leftJoin(schema.servers, eq(schema.servers.id, schema.allocations.serverId))
         .where(eq(schema.allocations.nodeId, input.nodeId))
         .orderBy(asc(schema.allocations.ip), asc(schema.allocations.port));
-      return rows.map(({ a, uuid }) => ({ id: a.id, nodeId: a.nodeId, ip: a.ip, port: a.port, serverUuid: uuid, primary: a.isPrimary }));
+      return rows.map(({ a, uuid, bedrockId }) => ({ id: a.id, nodeId: a.nodeId, ip: a.ip, port: a.port, serverUuid: uuid, primary: a.isPrimary, role: uuid && bedrockId === a.id ? ("bedrock" as const) : ("game" as const) }));
     },
     create: async ({ input, ctx }) => {
       await nodeById(input.nodeId);
@@ -437,9 +437,12 @@ export const admin = {
       if (b.server.type === "game" && input.allocationIds.length === 0) throw bad("ALLOCATION_REQUIRED");
       if (b.server.type === "web" && input.allocationIds.length > 0) throw bad("WEB_HAS_NO_ALLOCATIONS");
       const vars = await serverVariables(b.server.id);
+      // De Bedrock-poort (Geyser) blijft bij de server; die schakelt de eigenaar via servers.setBedrock.
+      const bedrockId = b.allocations.find((a) => a.id === b.server.bedrockAllocationId)?.id;
+      const allocationIds = bedrockId !== undefined && !input.allocationIds.includes(bedrockId) ? [...input.allocationIds, bedrockId] : input.allocationIds;
       await getDb().transaction(async (tx) => {
-        const allocs = await checkAllocations(tx, input.allocationIds, b.node.id, b.server.id);
-        await assignAllocations(tx, b.server.id, input.allocationIds);
+        const allocs = await checkAllocations(tx, allocationIds, b.node.id, b.server.id);
+        await assignAllocations(tx, b.server.id, allocationIds);
         const spec = buildServerSpec({
           uuid: b.server.uuid,
           template: b.template,

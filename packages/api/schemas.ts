@@ -133,6 +133,8 @@ export const Allocation = z.object({
   port: z.number().int().min(1).max(65535),
   serverUuid: Uuid.nullable(),
   primary: z.boolean(),
+  /** `bedrock` = de UDP-poort van Geyser (zie servers.bedrock); anders gewoon een game-poort. */
+  role: z.enum(["game", "bedrock"]).default("game"),
 });
 export type Allocation = z.infer<typeof Allocation>;
 
@@ -220,6 +222,24 @@ export const NetworkUpdateResult = z.object({
   servers: z.array(z.object({ uuid: Uuid, name: z.string(), role: z.enum(["proxy", "backend", "removed"]), restarted: z.boolean(), reloaded: z.boolean(), error: z.string().nullable() })),
 });
 export type NetworkUpdateResult = z.infer<typeof NetworkUpdateResult>;
+
+/**
+ * Bedrock-toegang (Geyser + Floodgate) voor Java-servers. `mode`: `standalone` (Paper/Folia), `proxy`
+ * (Velocity: Geyser + Floodgate op de proxy, Floodgate op de backends) of `backend` (hangt achter een
+ * proxy: Bedrock loopt via de proxy, hier niets te schakelen). `supported` = false voor andere templates
+ * en voor backends. `address`/`port` = wat Bedrock-spelers invullen (UDP).
+ */
+export const BedrockStatus = z.object({
+  supported: z.boolean(),
+  mode: z.enum(["standalone", "proxy", "backend"]),
+  enabled: z.boolean(),
+  address: z.string().nullable(),
+  port: z.number().int().nullable(),
+  allocationId: Id.nullable(),
+  /** Vrije allocations op de node (zelfde IP als de primaire poort) die als Bedrock-poort kunnen. */
+  freeAllocations: z.array(z.object({ id: Id, ip: z.ipv4(), port: z.number().int() })),
+});
+export type BedrockStatus = z.infer<typeof BedrockStatus>;
 
 export const ServerDetail = ServerSummary.extend({
   /** Rechten van de ingelogde gebruiker op deze server. */

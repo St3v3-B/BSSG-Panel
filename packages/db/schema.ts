@@ -172,6 +172,8 @@ export const servers = pgTable("servers", {
   diskMb: integer("disk_mb").notNull(),
   sleepEnabled: boolean("sleep_enabled").notNull().default(false),
   sleepIdleMinutes: integer("sleep_idle_minutes").notNull().default(10),
+  /** Allocation die Geyser (Bedrock, UDP) gebruikt; geldig zolang die allocation nog bij deze server hoort. null = Bedrock uit. */
+  bedrockAllocationId: integer("bedrock_allocation_id"),
   suspendedAt: ts("suspended_at"),
   suspendedReason: text("suspended_reason"),
   domainsAllowed: boolean("domains_allowed").notNull().default(false),

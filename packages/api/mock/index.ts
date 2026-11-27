@@ -7,7 +7,7 @@
  */
 import { TRPCError } from "@trpc/server";
 import { ALL_PERMISSIONS } from "../schemas";
-import { suggestBackendName } from "../network";
+import { bedrockPlatform, suggestBackendName } from "../network";
 import type * as s from "../schemas";
 import type { Implementation, SessionCtx } from "../trpc-builder";
 import { contentProfile } from "../content";
@@ -77,6 +77,21 @@ export function createMock(): Implementation {
   const summary = (x: (typeof db.servers)[number], uid: number): s.ServerSummary => {
     const { permissions: _p, allocations: _a, variables: _v, node: _n, sftp: _s, installedAt: _i, createdAt: _c, ownerId, ...rest } = x;
     return { ...rest, isOwner: ownerId === uid };
+  };
+  const mockBedrock = (uuid: string) => {
+    const x = srv(uuid);
+    const slug = x.templateName.toLowerCase();
+    const mode = slug === "velocity" ? ("proxy" as const) : ("standalone" as const);
+    const a = db.allocations.find((a) => a.serverUuid === uuid && a.role === "bedrock");
+    return {
+      supported: !!bedrockPlatform(slug),
+      mode,
+      enabled: !!a,
+      address: a ? a.ip : null,
+      port: a?.port ?? null,
+      allocationId: a?.id ?? null,
+      freeAllocations: db.allocations.filter((f) => f.serverUuid === null).map((f) => ({ id: f.id, ip: f.ip, port: f.port })),
+    };
   };
   const isMcProxy = (x: (typeof db.servers)[number]) => x.templateName === "Velocity";
   const network = (x: (typeof db.servers)[number]): s.ServerNetwork => {
@@ -274,6 +289,20 @@ export function createMock(): Implementation {
       testWebhook: () => ok,
       updateSleep: ({ input }) => ((srv(input.uuid).sleep = { ...srv(input.uuid).sleep, enabled: input.enabled, idleMinutes: input.idleMinutes }), ok),
       activity: ({ input }) => pageOf(db.activity.filter((a) => a.serverUuid === input.uuid), input.limit),
+      bedrock: ({ input }) => mockBedrock(input.uuid),
+      setBedrock: ({ input }) => {
+        const x = srv(input.uuid);
+        if (!bedrockPlatform(x.templateName.toLowerCase())) throw new TRPCError({ code: "BAD_REQUEST", message: "BEDROCK_NOT_SUPPORTED" });
+        if (!input.enabled) {
+          const a = db.allocations.find((a) => a.serverUuid === x.uuid && a.role === "bedrock");
+          if (a) Object.assign(a, { serverUuid: null, role: "game" });
+          return mockBedrock(input.uuid);
+        }
+        const free = db.allocations.find((a) => a.serverUuid === null && (input.allocationId ? a.id === input.allocationId : true));
+        if (!free) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_FREE_ALLOCATIONS" });
+        Object.assign(free, { serverUuid: x.uuid, role: "bedrock" });
+        return mockBedrock(input.uuid);
+      },
       networkCandidates: ({ input }) => {
         if (!isMcProxy(srv(input.uuid))) throw new TRPCError({ code: "BAD_REQUEST", message: "NOT_A_PROXY" });
         return db.servers
@@ -493,7 +522,7 @@ export function createMock(): Implementation {
           for (const part of input.ports.split(",")) {
             const [a, b] = part.split("-").map((p) => Number(p.trim()));
             for (let p = a!; p <= (b ?? a!); p++) {
-              db.allocations.push({ id: id(), nodeId: input.nodeId, ip: input.ip, port: p, serverUuid: null, primary: false });
+              db.allocations.push({ id: id(), nodeId: input.nodeId, ip: input.ip, port: p, serverUuid: null, primary: false, role: "game" });
               created++;
             }
           }

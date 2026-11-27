@@ -50,7 +50,7 @@ export const PHASE4 = [
 ];
 
 /** Admin-beheer (opschorten, template wisselen, instellingen). */
-export const ADMIN2 = ["admin.servers.setSuspended", "admin.servers.changeTemplate", "admin.settings.update", "admin.servers.setDomainsAllowed", "admin.templates.create", "admin.templates.update", "admin.templates.delete", "servers.networkCandidates", "servers.updateNetwork"];
+export const ADMIN2 = ["admin.servers.setSuspended", "admin.servers.changeTemplate", "admin.settings.update", "admin.servers.setDomainsAllowed", "admin.templates.create", "admin.templates.update", "admin.templates.delete", "servers.networkCandidates", "servers.updateNetwork", "servers.bedrock", "servers.setBedrock"];
 
 /** Minecraft-inhoud: plugins, mods, modpacks, versiekiezer. */
 export const CONTENT = ["content.info", "content.search", "content.resolve", "content.install", "content.list", "content.checkUpdates", "content.update", "content.uninstall", "content.importModpack", "content.versionOptions"];

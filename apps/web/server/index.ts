@@ -17,6 +17,7 @@ import { nodeMutations } from "./routers/nodes";
 import { content } from "./routers/content";
 import { files } from "./routers/files";
 import { network } from "./routers/network";
+import { bedrock } from "./bedrock";
 import { quotaAccount, quotaAdmin, quotaServers } from "./routers/quotas";
 import { notificationsAccount, notificationsAdmin, notificationsServer } from "./routers/notifications";
 import { servers } from "./routers/servers";
@@ -35,7 +36,7 @@ function merge(base: Tree, over: Tree): Tree {
   return out;
 }
 
-const phase1 = { apps, auth, backups, schedules, siteSettings, account: { ...account, ...credentials, ...quotaAccount, ...notificationsAccount }, servers: { ...servers, ...network, ...quotaServers, ...notificationsServer }, files, content, subusers, domains, databases, admin: { ...admin, notifications: notificationsAdmin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders, s3Targets } };
+const phase1 = { apps, auth, backups, schedules, siteSettings, account: { ...account, ...credentials, ...quotaAccount, ...notificationsAccount }, servers: { ...servers, ...network, ...bedrock, ...quotaServers, ...notificationsServer }, files, content, subusers, domains, databases, admin: { ...admin, notifications: notificationsAdmin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders, s3Targets } };
 
 /** Paden die echt geïmplementeerd zijn (de rest is NOT_IMPLEMENTED). */
 export function implementedPaths(tree: Tree = phase1 as unknown as Tree, prefix = ""): string[] {
