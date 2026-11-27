@@ -459,3 +459,96 @@ export const serverStats = pgTable("server_stats", {
   primaryKey({ columns: [t.serverId, t.resolution, t.bucket] }),
   index("server_stats_retention_idx").on(t.resolution, t.bucket),
 ]);
+
+// ---------- pakketten en facturatie ----------
+
+export const subscriptionStatus = pgEnum("subscription_status", ["pending", "active", "past_due", "suspended", "canceled"]);
+export const invoiceStatus = pgEnum("invoice_status", ["open", "paid", "overdue", "void"]);
+
+/** Pakketten (plans): vaste limieten waarmee een gebruiker zelf een server maakt. */
+export const plans = pgTable("plans", {
+  id: pk(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  type: serverType("type").notNull(),
+  /** Toegestane templates (minstens één, van hetzelfde type). */
+  templateIds: jsonb("template_ids").$type<number[]>().notNull(),
+  /** null = automatisch kiezen uit alle nodes; anders alleen deze nodes. */
+  nodeIds: jsonb("node_ids").$type<number[] | null>(),
+  ramMb: integer("ram_mb").notNull(),
+  cpuPct: integer("cpu_pct").notNull(),
+  diskMb: integer("disk_mb").notNull(),
+  maxDatabases: integer("max_databases").notNull().default(0),
+  maxBackups: integer("max_backups").notNull().default(0),
+  /** Aantal poorten (allocations) van een game-server; 0 voor websites. */
+  allocations: integer("allocations").notNull().default(1),
+  /** Prijs per maand in centen; 0 = gratis. */
+  priceCents: integer("price_cents").notNull().default(0),
+  currency: text("currency").notNull().default("EUR"),
+  visible: boolean("visible").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: createdAt(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [check("plans_price_nonneg", sql`${t.priceCents} >= 0`)]);
+
+/** Abonnement: gebruiker ↔ pakket, met hooguit één server. `free` = zonder facturen (toegekend of gratis pakket). */
+export const subscriptions = pgTable("subscriptions", {
+  id: pk(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  planId: integer("plan_id").notNull().references(() => plans.id, { onDelete: "restrict" }),
+  /** null zodra de server weg is (verwijderd door eigenaar/admin of na opzeggen). */
+  serverId: integer("server_id").unique().references(() => servers.id, { onDelete: "set null" }),
+  status: subscriptionStatus("status").notNull().default("pending"),
+  free: boolean("free").notNull().default(false),
+  /** Prijs op het moment van afsluiten (centen per maand). */
+  priceCents: integer("price_cents").notNull().default(0),
+  currency: text("currency").notNull().default("EUR"),
+  cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
+  /** Dag van de maand waarop de periode begint (1-31; korter in korte maanden). */
+  anchorDay: integer("anchor_day"),
+  currentPeriodStart: ts("current_period_start"),
+  currentPeriodEnd: ts("current_period_end"),
+  /** Vervaldatum van de oudste openstaande factuur zodra die achterstallig is. */
+  pastDueSince: ts("past_due_since"),
+  suspendedAt: ts("suspended_at"),
+  canceledAt: ts("canceled_at"),
+  grantedBy: integer("granted_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+}, (t) => [index("subscriptions_user_idx").on(t.userId), index("subscriptions_status_idx").on(t.status)]);
+
+/** Facturen. Nummer `<prefix><jaar>-<volgnummer>` via `invoice_sequences`. */
+export const invoices = pgTable("invoices", {
+  id: pk(),
+  number: text("number").notNull().unique(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  subscriptionId: integer("subscription_id").references(() => subscriptions.id, { onDelete: "set null" }),
+  description: text("description").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: text("currency").notNull(),
+  status: invoiceStatus("status").notNull().default("open"),
+  periodStart: ts("period_start"),
+  periodEnd: ts("period_end"),
+  issuedAt: ts("issued_at").notNull().defaultNow(),
+  dueAt: ts("due_at").notNull(),
+  paidAt: ts("paid_at"),
+  /** Klantgegevens op het moment van uitgeven. */
+  customerName: text("customer_name"),
+  customerDiscordId: text("customer_discord_id"),
+  provider: text("provider"),
+  providerPaymentId: text("provider_payment_id"),
+  checkoutUrl: text("checkout_url"),
+  createdAt: createdAt(),
+}, (t) => [index("invoices_user_idx").on(t.userId), index("invoices_subscription_idx").on(t.subscriptionId), index("invoices_status_idx").on(t.status, t.dueAt)]);
+
+export const invoiceSequences = pgTable("invoice_sequences", {
+  year: integer("year").primaryKey(),
+  last: integer("last").notNull(),
+});
+
+/** Verwerkte webhook-events van betaalproviders (idempotentie). */
+export const billingEvents = pgTable("billing_events", {
+  provider: text("provider").notNull(),
+  eventId: text("event_id").notNull(),
+  invoiceId: integer("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
+  receivedAt: ts("received_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.provider, t.eventId] })]);
