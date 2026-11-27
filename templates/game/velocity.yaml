@@ -2,16 +2,16 @@ schema: 1
 slug: velocity
 name: Velocity
 description: >-
-  Velocity-proxy (papermc.io) voor Minecraft Java Edition: spelers verbinden met de proxy en
-  wisselen tussen je Paper/Folia-servers met /server. Modern forwarding staat aan: zet op elke
-  Paper-server `VELOCITY_FORWARDING=true` en `VELOCITY_SECRET` gelijk aan de secret hier
-  (variabele `VELOCITY_FORWARDING_SECRET`, of leeg laten en de gegenereerde secret uit
-  `forwarding.secret` overnemen). Zet de servers in `velocity.toml` onder `[servers]` als
-  `naam = "IP:poort"` (de allocation van de Paper-server) en `try = ["naam"]`.
-  Stappenplan: deploy/README.md, "Velocity met twee Paper-servers". Java 25, heap = 80% van
-  het RAM-limiet (512 MB is meestal genoeg).
+  Velocity proxy (papermc.io) for Minecraft Java Edition: players connect to the proxy and
+  switch between your Paper/Folia servers with /server. Modern forwarding is enabled: on every
+  Paper server set `VELOCITY_FORWARDING=true` and `VELOCITY_SECRET` equal to the secret here
+  (variable `VELOCITY_FORWARDING_SECRET`, or leave it empty and copy the generated secret from
+  `forwarding.secret`). Add the servers in `velocity.toml` under `[servers]` as
+  `name = "IP:port"` (the allocation of the Paper server) and `try = ["name"]`.
+  Step-by-step: deploy/README.md, "Velocity with two Paper servers". Java 25, heap = 80% of
+  the RAM limit (512 MB is usually enough).
 type: game
-version: 1
+version: 2
 image: eclipse-temurin:25-jre
 # Aanbevolen flags van Velocity; netty-workdir en user.home in /home/container (read-only rootfs).
 startup: >-
@@ -30,35 +30,35 @@ stop:
 ready_pattern: "Done \\([0-9.,]+s\\)!"
 variables:
   - key: VELOCITY_VERSION
-    name: Velocity-versie
-    description: Bijvoorbeeld 4.3.1; `latest` = nieuwste versie zonder -SNAPSHOT. Na wijzigen opnieuw installeren.
+    name: Velocity version
+    description: For example 4.3.1; `latest` = newest version without -SNAPSHOT. Reinstall after changing.
     default: latest
     user_editable: true
     pattern: "^(latest|[0-9]+(\\.[0-9]+){1,2}(-[A-Za-z0-9.-]+)?)$"
   - key: BUILD
-    name: Velocity-build
-    description: Buildnummer; `latest` = nieuwste build van die versie. Na wijzigen opnieuw installeren.
+    name: Velocity build
+    description: Build number; `latest` = newest build of that version. Reinstall after changing.
     default: latest
     user_editable: true
     pattern: "^(latest|[0-9]+)$"
   - key: VELOCITY_FORWARDING_SECRET
-    name: Forwarding-secret
+    name: Forwarding secret
     description: >-
-      Gedeelde secret voor modern forwarding; zet dezelfde waarde als VELOCITY_SECRET op elke
-      Paper-server. Leeg = de secret uit forwarding.secret (bij de installatie willekeurig
-      gemaakt). Velocity leest deze omgevingsvariabele zelf. Herstart nodig.
+      Shared secret for modern forwarding; set the same value as VELOCITY_SECRET on every
+      Paper server. Empty = the secret from forwarding.secret (generated randomly during
+      installation). Velocity reads this environment variable itself. Restart required.
     default: ""
     user_editable: true
     pattern: "^([A-Za-z0-9_-]{12,128})?$"
   - key: ONLINE_MODE
-    name: Online-mode
-    description: "`true` = spelers moeten een echt Minecraft-account hebben (aanbevolen)."
+    name: Online mode
+    description: "`true` = players must have a real Minecraft account (recommended)."
     default: "true"
     user_editable: true
     pattern: "^(true|false)$"
   - key: SERVER_JARFILE
-    name: Jar-bestand
-    description: Naam van de proxy-jar in de hoofdmap.
+    name: Jar file
+    description: Name of the proxy jar in the root directory.
     default: velocity.jar
     user_editable: false
     pattern: "^[A-Za-z0-9._-]+\\.jar$"
@@ -80,24 +80,24 @@ install:
     if [ "$VERSION" = "latest" ]; then
       VERSION=$(fetch "$API/versions" | jq -r '[.versions[].version.id | select(test("^[0-9]+(\\.[0-9]+)*$"))][0]')
     fi
-    [ -n "$VERSION" ] && [ "$VERSION" != "null" ] || { echo "Geen Velocity-versie gevonden" >&2; exit 1; }
-    INFO=$(fetch "$API/versions/$VERSION") || { echo "Onbekende Velocity-versie: $VERSION" >&2; exit 1; }
+    [ -n "$VERSION" ] && [ "$VERSION" != "null" ] || { echo "No Velocity version found" >&2; exit 1; }
+    INFO=$(fetch "$API/versions/$VERSION") || { echo "Unknown Velocity version: $VERSION" >&2; exit 1; }
     JAVA_MIN=$(echo "$INFO" | jq -r '.version.java.version.minimum // empty')
     if [ -n "$JAVA_MIN" ] && [ "$JAVA_MIN" -gt 25 ]; then
-      echo "Velocity $VERSION vraagt Java $JAVA_MIN; deze template draait Java 25." >&2
+      echo "Velocity $VERSION requires Java $JAVA_MIN; this template runs Java 25." >&2
       exit 1
     fi
 
     B="${BUILD:-latest}"
-    BUILD_JSON=$(fetch "$API/versions/$VERSION/builds/$B") || { echo "Build $B van $VERSION niet gevonden" >&2; exit 1; }
+    BUILD_JSON=$(fetch "$API/versions/$VERSION/builds/$B") || { echo "Build $B of $VERSION not found" >&2; exit 1; }
     URL=$(echo "$BUILD_JSON" | jq -r '.downloads["server:default"].url')
     SHA=$(echo "$BUILD_JSON" | jq -r '.downloads["server:default"].checksums.sha256')
     ID=$(echo "$BUILD_JSON" | jq -r '.id')
-    [ "$URL" != "null" ] && [ "$SHA" != "null" ] || { echo "Geen download in het API-antwoord" >&2; exit 1; }
+    [ "$URL" != "null" ] && [ "$SHA" != "null" ] || { echo "No download in the API response" >&2; exit 1; }
 
-    echo "Velocity $VERSION build $ID downloaden"
+    echo "Downloading Velocity $VERSION build $ID"
     curl -fsSL --retry 3 --retry-delay 2 -A "$UA" -o "$SERVER_JARFILE.part" "$URL"
-    echo "$SHA  $SERVER_JARFILE.part" | sha256sum -c - >/dev/null || { echo "SHA-256 klopt niet" >&2; rm -f "$SERVER_JARFILE.part"; exit 1; }
+    echo "$SHA  $SERVER_JARFILE.part" | sha256sum -c - >/dev/null || { echo "SHA-256 mismatch" >&2; rm -f "$SERVER_JARFILE.part"; exit 1; }
     mv -f "$SERVER_JARFILE.part" "$SERVER_JARFILE"
 
     # velocity.toml alleen bij een nieuwe installatie: de standaardconfig uit de jar, met de
@@ -108,8 +108,8 @@ install:
       awk '
         /^\[servers\]/ {
           print "[servers]"
-          print "# naam = \"IP:poort\" van een Paper-server (de allocation uit het panel)."
-          print "# Spelers komen eerst op de eerste bereikbare server uit try."
+          print "# name = \"IP:port\" of a Paper server (the allocation from the panel)."
+          print "# Players first land on the first reachable server from try."
           print "lobby = \"127.0.0.1:25566\""
           print "try = [\"lobby\"]"
           print ""
@@ -123,15 +123,15 @@ install:
       ' velocity.toml.part > velocity.toml
       rm -f velocity.toml.part
       if ! grep -q '^\[servers\]' velocity.toml || ! grep -q '^config-version' velocity.toml; then
-        echo "velocity.toml uit de jar onverwacht" >&2; exit 1
+        echo "Unexpected velocity.toml in the jar" >&2; exit 1
       fi
     fi
     if [ ! -s forwarding.secret ]; then
       tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32 > forwarding.secret
-      echo "forwarding.secret gemaakt"
+      echo "forwarding.secret created"
     fi
     printf 'version=%s\nbuild=%s\n' "$VERSION" "$ID" > .velocity-install
-    echo "Installatie klaar: Velocity $VERSION build $ID"
+    echo "Installation complete: Velocity $VERSION build $ID"
 config_files:
   # Bind op alle interfaces in de container; Docker publiceert de poort op het IP van de allocation.
   - path: velocity.toml

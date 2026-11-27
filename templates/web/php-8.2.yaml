@@ -2,13 +2,13 @@ schema: 1
 slug: php-8-2
 name: PHP 8.2 (nginx + PHP-FPM)
 description: >-
-  Website met nginx en PHP-FPM 8.2, geschikt voor WordPress. Zet je bestanden in de map
-  `public`; verzoeken die niet op een bestand uitkomen gaan naar `index.php` (permalinks).
-  Extensies o.a. mysqli, pdo_mysql, gd, intl, zip, exif, curl, mbstring, opcache.
-  De database heet vanuit de site `panel-mariadb:3306`. Eigen PHP-instellingen in
-  `php/*.ini`, eigen nginx-regels (binnen het server-blok) in `nginx/*.conf`; daarna herstarten.
+  Website with nginx and PHP-FPM 8.2, suitable for WordPress. Put your files in the
+  `public` folder; requests that do not match a file go to `index.php` (permalinks).
+  Extensions include mysqli, pdo_mysql, gd, intl, zip, exif, curl, mbstring, opcache.
+  From the site, the database is reachable as `panel-mariadb:3306`. Custom PHP settings go in
+  `php/*.ini`, custom nginx rules (inside the server block) in `nginx/*.conf`; restart afterwards.
 type: web
-version: 6
+version: 7
 # serversideup/php: officiële PHP-build met nginx erbij. We gebruiken alleen de binaries;
 # hun s6-entrypoint niet (dat wil als root schrijven op de rootfs).
 image: serversideup/php:8.2-fpm-nginx-alpine
@@ -132,41 +132,41 @@ startup: |
     kill -0 $FPM 2>/dev/null && kill -0 $NGX 2>/dev/null || break
     sleep 0.2
   done
-  kill -0 $FPM 2>/dev/null && kill -0 $NGX 2>/dev/null && echo "PHP-FPM en nginx klaar op poort 8080"
+  kill -0 $FPM 2>/dev/null && kill -0 $NGX 2>/dev/null && echo "PHP-FPM and nginx ready on port 8080"
   while kill -0 $FPM 2>/dev/null && kill -0 $NGX 2>/dev/null; do sleep 1 & wait $!; done
   kill -QUIT $NGX $FPM 2>/dev/null; wait $NGX; wait $FPM
   [ "$STOP" = 1 ] && exit 0
-  echo "PHP-FPM of nginx is gestopt" >&2; exit 1
+  echo "PHP-FPM or nginx has stopped" >&2; exit 1
 stop:
   type: signal
   value: SIGTERM
-ready_pattern: "^PHP-FPM en nginx klaar op poort"
+ready_pattern: "^PHP-FPM and nginx ready on port"
 http_port: 8080
 variables:
   - key: PHP_MEMORY_LIMIT
-    name: PHP-geheugenlimiet
-    description: memory_limit per PHP-verzoek, bijvoorbeeld 256M.
+    name: PHP memory limit
+    description: memory_limit per PHP request, for example 256M.
     default: 256M
     user_editable: true
     pattern: "^[0-9]{2,5}M$"
   - key: UPLOAD_MAX_SIZE
-    name: Maximale uploadgrootte
-    description: upload_max_filesize, post_max_size en de nginx-limiet, bijvoorbeeld 64M.
+    name: Maximum upload size
+    description: upload_max_filesize, post_max_size and the nginx limit, for example 64M.
     default: 64M
     user_editable: true
     pattern: "^[0-9]{1,4}M$"
   # Intern: zodat ook `php` op de command line (WP-CLI, cronjobs, console) dezelfde
   # ini's en zelfgebouwde extensies laadt als PHP-FPM. Niet wijzigen.
   - key: PHP_INI_SCAN_DIR
-    name: PHP-ini-mappen (intern)
+    name: PHP ini directories (internal)
     default: /usr/local/etc/php/conf.d:/tmp/php/conf.d:/home/container/php
     user_editable: false
   - key: LD_LIBRARY_PATH
-    name: Bibliotheken voor PHP-extensies (intern)
+    name: Libraries for PHP extensions (internal)
     default: /home/container/.php/lib
     user_editable: false
   - key: ICU_DATA
-    name: ICU-data voor intl (intern)
+    name: ICU data for intl (internal)
     default: /home/container/.php/icu
     user_editable: false
 install:
@@ -184,12 +184,12 @@ install:
     rm -rf $H/.php/ext $H/.php/lib $H/.php/icu
     mkdir -p $H/.php/ext $H/.php/lib
     ls /lib /usr/lib /usr/local/lib > /tmp/libs-before
-    echo "Bouwtools installeren"
+    echo "Installing build tools"
     apk add --no-cache --virtual .panel-build $PHPIZE_DEPS \
       libpng-dev libjpeg-turbo-dev freetype-dev libwebp-dev icu-dev icu-data-full >/dev/null
     docker-php-source extract
     for e in mysqli gd intl exif; do
-      echo "Extensie $e bouwen"
+      echo "Building extension $e"
       cd /usr/src/php/ext/$e
       phpize >/dev/null
       case $e in
@@ -299,9 +299,9 @@ install:
     </html>
     EOF
     fi
-    [ -e $H/php/README.txt ] || echo "Bestanden *.ini in deze map komen na de standaardinstellingen (na een herstart)." > $H/php/README.txt
-    [ -e $H/nginx/README.txt ] || echo "Bestanden *.conf in deze map komen binnen het server-blok van nginx (na een herstart)." > $H/nginx/README.txt
+    [ -e $H/php/README.txt ] || echo "*.ini files in this folder are loaded after the default settings (after a restart)." > $H/php/README.txt
+    [ -e $H/nginx/README.txt ] || echo "*.conf files in this folder are included inside the nginx server block (after a restart)." > $H/nginx/README.txt
     PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d LD_LIBRARY_PATH=$H/.php/lib ICU_DATA=$H/.php/icu \
       php $(for f in $H/.php/ext/*.so; do printf -- '-d extension=%s ' "$f"; done) -r 'echo (new NumberFormatter("nl_NL", NumberFormatter::DECIMAL))->format(1.5), " ", function_exists("mysqli_connect") ? "mysqli" : "";' | grep -qx '1,5 mysqli'
-    echo "Installatie klaar: PHP $(php -r 'echo PHP_VERSION;')"
+    echo "Installation complete: PHP $(php -r 'echo PHP_VERSION;')"
 config_files: []

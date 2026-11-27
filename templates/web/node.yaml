@@ -1,13 +1,13 @@
 schema: 1
 slug: node
-name: Node.js-site
+name: Node.js site
 description: >-
-  Website of app met Node.js 24 (LTS). Je app moet luisteren op de poort in `PORT`
-  (3000). Staat er een `package.json`, dan installeert de installatie de dependencies
-  (`npm ci` of `npm install`, zonder devDependencies); na een wijziging opnieuw installeren.
-  Tijdens het draaien heeft de site geen internet, alleen de database (`panel-mariadb:3306`).
+  Website or app with Node.js 24 (LTS). Your app must listen on the port in `PORT`
+  (3000). If a `package.json` exists, the installer installs the dependencies
+  (`npm ci` or `npm install`, without devDependencies); reinstall after a change.
+  While running, the site has no internet access, only the database (`panel-mariadb:3306`).
 type: web
-version: 4
+version: 5
 image: node:24-alpine
 # De daemon draait dit als uid 1000 met een read-only rootfs; alleen /home/container en
 # /tmp (tmpfs) zijn schrijfbaar. Online zodra de app op PORT luistert.
@@ -21,19 +21,19 @@ startup: |
     kill -0 $APP 2>/dev/null || break
     sleep 0.3
   done
-  kill -0 $APP 2>/dev/null && echo "Node.js-site klaar op poort 3000"
+  kill -0 $APP 2>/dev/null && echo "Node.js site ready on port 3000"
   wait $APP; RC=$?
   if [ "$STOP" = 1 ]; then wait $APP; exit 0; fi
-  echo "De app is gestopt (exitcode $RC)" >&2; exit $RC
+  echo "The app has stopped (exit code $RC)" >&2; exit $RC
 stop:
   type: signal
   value: SIGTERM
-ready_pattern: "^Node\\.js-site klaar op poort"
+ready_pattern: "^Node\\.js site ready on port"
 http_port: 3000
 variables:
   - key: MAIN_FILE
-    name: Startbestand
-    description: Het JavaScript-bestand dat gestart wordt, relatief aan de hoofdmap.
+    name: Start file
+    description: The JavaScript file that is started, relative to the root directory.
     default: index.js
     user_editable: true
     pattern: "^[A-Za-z0-9._/-]+\\.(js|mjs|cjs)$"
@@ -140,7 +140,7 @@ install:
       if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
     elif [ ! -e "$MAIN_FILE" ]; then
       cat > "$MAIN_FILE" <<'EOF'
-    // Voorbeeld-app: serveert public/index.html. Vervang dit door je eigen app.
+    // Example app: serves public/index.html. Replace this with your own app.
     const http = require("http");
     const fs = require("fs");
     const path = require("path");
@@ -148,11 +148,11 @@ install:
     http.createServer((req, res) => {
       fs.readFile(path.join(__dirname, "public", "index.html"), (err, data) => {
         res.writeHead(err ? 404 : 200, { "Content-Type": "text/html; charset=utf-8" });
-        res.end(err ? "Niet gevonden" : data);
+        res.end(err ? "Not found" : data);
       });
-    }).listen(port, () => console.log("luistert op " + port));
+    }).listen(port, () => console.log("listening on " + port));
     process.on("SIGTERM", () => process.exit(0));
     EOF
     fi
-    echo "Installatie klaar: Node.js $(node -v)"
+    echo "Installation complete: Node.js $(node -v)"
 config_files: []
