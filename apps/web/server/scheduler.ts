@@ -11,6 +11,7 @@ import { failStaleBackups, startBackup } from "./backups";
 import { getDb, schema } from "./db";
 import { call, daemonFor } from "./daemon";
 import { nextRuns } from "./lib/cron";
+import { monitorTick } from "./monitor";
 import { fetchServerByUuid, type ServerBundle } from "./servers-data";
 
 type ScheduleRow = typeof schema.schedules.$inferSelect;
@@ -82,6 +83,8 @@ export async function tick(now: Date = new Date()): Promise<number> {
     ran++;
   }
   await failStaleBackups(now).catch((e) => console.error("[scheduler] stale backups:", e));
+  // Alleen in het echte proces: de tests roepen tick() zelf aan en willen geen netwerkverkeer.
+  if (!process.env.VITEST) await monitorTick().catch((e) => console.error("[scheduler] monitor:", e));
   return ran;
 }
 
