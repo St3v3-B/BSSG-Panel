@@ -12,6 +12,7 @@ import { ensureBooted } from "./boot";
 import { getDb, schema } from "./db";
 import { safeEqual, sha256 } from "./lib/crypto";
 import { jwks } from "./lib/jwt";
+import { registerNodeDatabaseHost } from "./node-database";
 import { notify, targetForServer } from "./notify";
 import { getLimiter } from "./lib/ratelimit";
 import { logImageUpdate, remoteImageSettings, storeImageReport } from "./image-updates";
@@ -72,9 +73,10 @@ async function serverOnNode(uuid: string, node: NodeRow) {
 export const getJwtKey = remoteHandler(async () => json(200, await jwks()));
 
 export const nodeHello = remoteHandler(async (req, node) => {
-  const b = await body(req, z.object({ version: z.string().max(100), disk_quota_mode: z.enum(["soft", "xfs"]) }));
+  const b = await body(req, z.object({ version: z.string().max(100), disk_quota_mode: z.enum(["soft", "xfs"]), has_mariadb: z.boolean().optional() }));
   if (!b) return error(400, "bad_request");
   await getDb().update(schema.nodes).set({ daemonVersion: b.version, diskQuotaMode: b.disk_quota_mode, lastSeenAt: new Date() }).where(eq(schema.nodes.id, node.id));
+  if (b.has_mariadb) await registerNodeDatabaseHost(node);
   return noContent();
 });
 

@@ -86,7 +86,7 @@ export class DaemonClient {
         /* geen JSON */
       }
       // Een gateway die de daemon niet bereikt (Caddy) telt als onbereikbaar.
-      if (res.status === 502 || res.status === 503 || res.status === 504) throw new DaemonUnreachableError(this.nodeId, new Error(`${res.status} ${message}`));
+      if ((res.status === 502 || res.status === 503 || res.status === 504) && code !== "db_unavailable") throw new DaemonUnreachableError(this.nodeId, new Error(`${res.status} ${message}`));
       throw new DaemonHttpError(res.status, code, message || code);
     }
     return text;
@@ -246,8 +246,56 @@ export class DaemonClient {
     } catch {
       /* geen JSON */
     }
-    if (res.status === 502 || res.status === 503 || res.status === 504) return new DaemonUnreachableError(this.nodeId, new Error(`${res.status} ${message}`));
+    if ((res.status === 502 || res.status === 503 || res.status === 504) && code !== "db_unavailable") return new DaemonUnreachableError(this.nodeId, new Error(`${res.status} ${message}`));
     return new DaemonHttpError(res.status, code, message || code);
+  }
+
+  // ---------- databases (MariaDB van de node) ----------
+  dbStatus(timeoutMs = 10_000) {
+    return this.request<{ available: boolean; error?: string; host?: string }>("GET", "/api/db/status", undefined, timeoutMs);
+  }
+  dbCreate(name: string, username: string, password: string) {
+    return this.request<void>("POST", "/api/db/databases", { name, username, password }, 30_000);
+  }
+  dbSetPassword(name: string, username: string, password: string) {
+    return this.request<void>("PUT", `/api/db/databases/${encodeURIComponent(name)}/password`, { username, password }, 30_000);
+  }
+  dbDrop(name: string, username: string) {
+    return this.request<void>("DELETE", `/api/db/databases/${encodeURIComponent(name)}?username=${encodeURIComponent(username)}`, undefined, 60_000);
+  }
+  /** SQL-dump als stroom. */
+  async dbDump(name: string): Promise<ReadableStream<Uint8Array>> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/api/db/databases/${encodeURIComponent(name)}/dump`, {
+        headers: { authorization: `Bearer ${this.token}` },
+        signal: AbortSignal.timeout(TRANSFER_TIMEOUT_MS),
+        cache: "no-store",
+      });
+    } catch (e) {
+      throw new DaemonUnreachableError(this.nodeId, e);
+    }
+    if (!res.ok || !res.body) throw await this.httpError(res);
+    return res.body;
+  }
+  /** Laadt een SQL-stroom in een bestaande (lege) database. */
+  async dbImport(name: string, body: ReadableStream<Uint8Array>): Promise<void> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/api/db/databases/${encodeURIComponent(name)}/import`, {
+        method: "PUT",
+        headers: { authorization: `Bearer ${this.token}`, "content-type": "application/sql" },
+        body,
+        // @ts-expect-error duplex is verplicht voor een stream-body (Node/undici), ontbreekt in de DOM-types
+        duplex: "half",
+        signal: AbortSignal.timeout(TRANSFER_TIMEOUT_MS),
+        cache: "no-store",
+      });
+    } catch (e) {
+      throw new DaemonUnreachableError(this.nodeId, e);
+    }
+    if (!res.ok) throw await this.httpError(res);
+    await res.arrayBuffer().catch(() => undefined);
   }
 
   // ---------- routes (web) ----------

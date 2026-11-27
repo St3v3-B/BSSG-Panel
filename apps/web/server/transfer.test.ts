@@ -2,6 +2,7 @@ import type { DaemonServerState } from "@panel/api";
 import { and, eq, isNull } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { daemonUrlOverrides } from "./daemon";
+import { encrypt } from "./lib/crypto";
 import { getDb, schema } from "./db";
 import { transferPollMs } from "./routers/transfer";
 import { FakeDaemon } from "./test/fake-daemon";
@@ -135,12 +136,105 @@ describe("admin.servers.transfer", () => {
     expect(h.daemon.servers.has(s.uuid)).toBe(false);
   });
 
-  it("server met databases kan niet verplaatst worden", async () => {
-    const uuid = await gameServer("offline");
-    await node2Alloc(27051);
+});
+
+describe("admin.servers.transfer met databases", () => {
+  let srcHost = 0, dstHost = 0;
+  beforeAll(async () => {
+    const db = getDb();
+    await db.delete(schema.databaseHosts);
+    const mk = (name: string, nodeId: number | null, managed: boolean) =>
+      db.insert(schema.databaseHosts).values({ name, host: "panel-mariadb", port: 3306, adminUser: "", adminPasswordEnc: "x", nodeId, daemonManaged: managed }).returning().then((r) => r[0]!.id);
+    srcHost = await mk("local", h.localNodeId, true);
+    dstHost = await mk("node2", node2, true);
+  });
+  const addDb = async (uuid: string, name: string, hostId = srcHost) => {
     const srv = await row(uuid);
-    const [host] = await getDb().insert(schema.databaseHosts).values({ name: "t-" + uuid.slice(0, 6), host: "x", port: 3306, adminUser: "root", adminPasswordEnc: "x" }).returning();
-    await getDb().insert(schema.databases).values({ serverId: srv.id, hostId: host!.id, name: "d" + uuid.slice(0, 6), username: "u", passwordEnc: "x" });
-    await expect(admin.api.admin.servers.transfer({ uuid, nodeId: node2 })).rejects.toThrow(/HAS_DATABASES/);
+    const [d] = await getDb().insert(schema.databases).values({ serverId: srv.id, hostId, name, username: "u_" + name, passwordEnc: encrypt("pw-" + name + "-secret") }).returning();
+    return d!;
+  };
+  const dbRow = async (id: number) => (await getDb().select().from(schema.databases).where(eq(schema.databases.id, id)))[0]!;
+
+  it("databases.create gebruikt de MariaDB van de node van de server (via de daemon)", async () => {
+    const uuid = await gameServer("offline");
+    const d = await admin.api.databases.create({ uuid, name: "app", hostId: null });
+    expect(d.hostId).toBe(srcHost);
+    expect(h.daemon.dbs.get(d.name)).toMatchObject({ username: d.username, password: d.password });
+    expect(d2.dbs.size).toBe(0);
+    await admin.api.databases.resetPassword({ id: d.id });
+    expect(h.daemon.dbs.get(d.name)!.password).not.toBe(d.password);
+    await admin.api.databases.delete({ id: d.id });
+    expect(h.daemon.dbs.size).toBe(0);
+  });
+
+  it("verplaatst databases mee: zelfde naam, gebruiker, wachtwoord en inhoud; bron opgeruimd; host_id bijgewerkt", async () => {
+    const uuid = await gameServer("offline");
+    await node2Alloc(27061);
+    const d = await addDb(uuid, "d" + uuid.slice(0, 6));
+    h.daemon.dbs.set(d.name, { username: d.username, password: "pw-" + d.name + "-secret", data: "-- dump\nCREATE TABLE t;" });
+    await admin.api.admin.servers.transfer({ uuid, nodeId: node2 });
+    expect((await row(uuid)).nodeId).toBe(node2);
+    expect(d2.dbs.get(d.name)).toEqual({ username: d.username, password: "pw-" + d.name + "-secret", data: "-- dump\nCREATE TABLE t;" });
+    expect(h.daemon.dbs.has(d.name)).toBe(false);
+    const after = await dbRow(d.id);
+    expect(after.hostId).toBe(dstHost);
+    expect(after.passwordEnc).toBe(d.passwordEnc);
+    // het panel toont nu de host van het doel (zelfde naam waaronder de site hem bereikt)
+    const listed = await admin.api.databases.list({ uuid });
+    expect(listed[0]).toMatchObject({ hostId: dstHost, host: "panel-mariadb", port: 3306, password: "pw-" + d.name + "-secret" });
+  });
+
+  it("fout bij de import: bron en databases intact, doel opgeruimd, host_id ongewijzigd", async () => {
+    const uuid = await gameServer("online");
+    await node2Alloc(27071);
+    const d = await addDb(uuid, "e" + uuid.slice(0, 6));
+    h.daemon.dbs.set(d.name, { username: d.username, password: "pw", data: "-- dump" });
+    d2.dbImportFails = true;
+    await expect(admin.api.admin.servers.transfer({ uuid, nodeId: node2 })).rejects.toThrow(/IMPORT_FAILED/i);
+    d2.dbImportFails = false;
+    expect((await row(uuid)).nodeId).toBe(h.localNodeId);
+    expect(h.daemon.servers.has(uuid)).toBe(true);
+    expect(h.daemon.servers.get(uuid)!.state).toBe("starting");
+    expect(h.daemon.dbs.get(d.name)!.data).toBe("-- dump");
+    expect(d2.dbs.size).toBe(0);
+    expect(d2.servers.has(uuid)).toBe(false);
+    expect((await dbRow(d.id)).hostId).toBe(srcHost);
+  });
+
+  it("dump mislukt of een database met die naam bestaat al op het doel: niets weggegooid, niets verplaatst", async () => {
+    const uuid = await gameServer("offline");
+    await node2Alloc(27081);
+    const d = await addDb(uuid, "f" + uuid.slice(0, 6));
+    h.daemon.dbs.set(d.name, { username: d.username, password: "pw", data: "-- dump" });
+    h.daemon.dbDumpFails = true;
+    await expect(admin.api.admin.servers.transfer({ uuid, nodeId: node2 })).rejects.toThrow();
+    h.daemon.dbDumpFails = false;
+    expect(d2.dbs.size).toBe(0);
+    // Bestaande database op het doel (andere eigenaar) blijft staan.
+    d2.dbs.set(d.name, { username: "ander", password: "x", data: "bestaand" });
+    await expect(admin.api.admin.servers.transfer({ uuid, nodeId: node2 })).rejects.toThrow(/EXISTS/i);
+    expect(d2.dbs.get(d.name)!.data).toBe("bestaand");
+    expect(h.daemon.dbs.has(d.name)).toBe(true);
+    expect((await row(uuid)).nodeId).toBe(h.localNodeId);
+    expect((await dbRow(d.id)).hostId).toBe(srcHost);
+  });
+
+  it("doelnode zonder MariaDB: duidelijke fout vooraf; externe hosts en niet-beheerde node-hosts", async () => {
+    const uuid = await gameServer("offline");
+    await node2Alloc(27091);
+    const d = await addDb(uuid, "g" + uuid.slice(0, 6));
+    await getDb().update(schema.databaseHosts).set({ daemonManaged: false }).where(eq(schema.databaseHosts.id, dstHost));
+    await getDb().update(schema.databaseHosts).set({ daemonManaged: false }).where(eq(schema.databaseHosts.id, srcHost));
+    await expect(admin.api.admin.servers.transfer({ uuid, nodeId: node2 })).rejects.toThrow(/DATABASE_HOST_NOT_DAEMON_MANAGED/);
+    await getDb().update(schema.databaseHosts).set({ daemonManaged: true }).where(eq(schema.databaseHosts.id, srcHost));
+    await expect(admin.api.admin.servers.transfer({ uuid, nodeId: node2 })).rejects.toThrow(/NO_DATABASE_HOST_ON_TARGET/);
+    // Een externe host (geen node) gaat niet mee en blijft ongewijzigd.
+    await getDb().update(schema.databaseHosts).set({ daemonManaged: true }).where(eq(schema.databaseHosts.id, dstHost));
+    const [ext] = await getDb().insert(schema.databaseHosts).values({ name: "ext", host: "db.example.test", port: 3306, adminUser: "root", adminPasswordEnc: "x", nodeId: null }).returning();
+    await getDb().update(schema.databases).set({ hostId: ext!.id }).where(eq(schema.databases.id, d.id));
+    await admin.api.admin.servers.transfer({ uuid, nodeId: node2 });
+    expect((await dbRow(d.id)).hostId).toBe(ext!.id);
+    expect(d2.dbs.size).toBe(0);
+    await getDb().update(schema.databases).set({ hostId: srcHost }).where(eq(schema.databases.id, d.id));
   });
 });

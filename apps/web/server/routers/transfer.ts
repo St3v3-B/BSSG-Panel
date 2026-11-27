@@ -6,8 +6,13 @@
  * node-naar-node-authenticatie, geen extra open verbindingen en geen gedeelde geheimen nodig, en
  * het panel kent al beide tokens. De data stroomt (zonder buffering) bron-daemon -> panel -> doel-daemon.
  *
- * Volgorde: bron stoppen -> doel aanmaken (skip_install) -> data kopieren -> routes op het doel ->
- * database-update (node + allocations) -> doel starten (als hij draaide) -> bron verwijderen.
+ * Databases: elke node heeft zijn eigen MariaDB (daemon-beheerd). Per database: aanmaken op het doel met dezelfde
+ * naam, gebruiker en wachtwoord, dump van de bron -> panel -> import op het doel. Sites bereiken hun database op elke
+ * node als `panel-mariadb:3306`, dus de siteconfig verandert niet. Na de database-update (host_id) wordt de bron-
+ * database verwijderd.
+ *
+ * Volgorde: bron stoppen -> doel aanmaken (skip_install) -> data kopieren -> databases kopieren -> routes op het doel ->
+ * database-update (node + allocations + host_id) -> doel starten (als hij draaide) -> bron verwijderen.
  * Alles vóór de database-update wordt bij een fout teruggedraaid door de doelserver te verwijderen;
  * de bron blijft dan ongemoeid (en wordt weer gestart als hij draaide).
  */
@@ -17,6 +22,7 @@ import { and, asc, eq, isNull } from "drizzle-orm";
 import { logActivity } from "../activity";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema } from "../db";
+import { decrypt } from "../lib/crypto";
 import { buildServerSpec } from "../spec";
 import { imagePolicyOf, fetchServerByUuid, limitsOf, serverVariables, sleepOf, autoRestartOf } from "../servers-data";
 import { isBackend, syncProxyAddresses } from "../network";
@@ -48,8 +54,22 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
   if (target.id === b.node.id) throw new TRPCError({ code: "BAD_REQUEST", message: "SAME_NODE" });
   if (inProgress.has(b.server.uuid)) throw new TRPCError({ code: "CONFLICT", message: "TRANSFER_IN_PROGRESS" });
   const db = getDb();
-  const [hasDb] = await db.select({ id: schema.databases.id }).from(schema.databases).where(eq(schema.databases.serverId, b.server.id)).limit(1);
-  if (hasDb) throw precondition("HAS_DATABASES: databases are bound to the local MariaDB; remove or move them first");
+  // Databases op de daemon-beheerde MariaDB van de bronnode gaan mee naar die van het doel. Databases op
+  // andere hosts (externe hosts) blijven staan: die zijn vanaf elke node bereikbaar.
+  const dbRows = await db
+    .select({ d: schema.databases, h: schema.databaseHosts })
+    .from(schema.databases)
+    .innerJoin(schema.databaseHosts, eq(schema.databaseHosts.id, schema.databases.hostId))
+    .where(eq(schema.databases.serverId, b.server.id))
+    .orderBy(asc(schema.databases.id));
+  const unmovable = dbRows.find((r) => r.h.nodeId === b.node.id && !r.h.daemonManaged);
+  if (unmovable) throw precondition(`DATABASE_HOST_NOT_DAEMON_MANAGED: database ${unmovable.d.name} is on host ${unmovable.h.name}, which the node daemon does not manage`);
+  const movable = dbRows.filter((r) => r.h.daemonManaged && r.h.nodeId === b.node.id);
+  let targetHost: typeof schema.databaseHosts.$inferSelect | undefined;
+  if (movable.length) {
+    [targetHost] = await db.select().from(schema.databaseHosts).where(and(eq(schema.databaseHosts.nodeId, target.id), eq(schema.databaseHosts.daemonManaged, true)));
+    if (!targetHost) throw precondition(`NO_DATABASE_HOST_ON_TARGET: node ${target.name} has no MariaDB (install it with install.sh --node-only, or check that the daemon is up to date)`);
+  }
 
   // Allocations op het doel (alleen game): opgegeven of de eerste vrije.
   const isWeb = b.server.type === "web";
@@ -84,6 +104,7 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
   inProgress.add(uuid);
   let targetCreated = false;
   let stopped = false;
+  const createdOnTarget: { name: string; username: string }[] = [];
   try {
     if (wasRunning) {
       await call(() => src.power(uuid, "stop"));
@@ -107,6 +128,15 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
 
     await call(async () => dst.importData(uuid, await src.exportData(uuid)));
 
+    // Databases kopieren: zelfde naam, gebruiker en wachtwoord. Pas na een gelukte create telt de database als
+    // "van ons" op het doel (een bestaande met dezelfde naam geeft 409 en wordt dus nooit weggegooid).
+    for (const r of movable) {
+      const password = decrypt(r.d.passwordEnc);
+      await call(() => dst.dbCreate(r.d.name, r.d.username, password));
+      createdOnTarget.push({ name: r.d.name, username: r.d.username });
+      await call(async () => dst.dbImport(r.d.name, await src.dbDump(r.d.name)));
+    }
+
     // Routes (web en game-domeinen) op de doelnode zetten voordat de database verandert.
     const domains = await db.select().from(schema.domains).where(eq(schema.domains.serverId, b.server.id));
     for (const d of domains.filter((d) => !isMc(d))) await call(async () => dst.putRoute(await routeFor(d, uuid)));
@@ -117,10 +147,12 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
       await tx.update(schema.allocations).set({ serverId: null, isPrimary: false }).where(eq(schema.allocations.serverId, b.server.id));
       if (allocIds.length) await assignAllocations(tx, b.server.id, allocIds);
       await tx.update(schema.servers).set({ nodeId: target.id, status: "offline", bedrockAllocationId: null }).where(eq(schema.servers.id, b.server.id));
+      for (const r of movable) await tx.update(schema.databases).set({ hostId: targetHost!.id }).where(eq(schema.databases.id, r.d.id));
     });
   } catch (e) {
     // Terugdraaien: niets op de bron is veranderd behalve dat hij gestopt is.
     if (targetCreated) await dst.deleteServer(uuid).catch(() => undefined);
+    for (const c of createdOnTarget) await dst.dbDrop(c.name, c.username).catch(() => undefined);
     if (stopped) await src.power(uuid, "start").catch(() => undefined);
     inProgress.delete(uuid);
     throw e;
@@ -150,12 +182,21 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
   } catch (e) {
     if (!(e instanceof DaemonHttpError && e.status === 404)) warnings.push(`source cleanup failed: ${(e as Error).message}`);
   }
+  // Bron-databases opruimen (het panel wijst nu naar het doel; een mislukte drop laat alleen een stale kopie achter).
+  for (const r of movable) {
+    try {
+      await src.dbDrop(r.d.name, r.d.username);
+    } catch (e) {
+      warnings.push(`source database ${r.d.name} cleanup failed: ${(e as Error).message}`);
+    }
+  }
+  if (movable.length && movable[0]!.h.host !== targetHost!.host) warnings.push(`database host name changed from ${movable[0]!.h.host} to ${targetHost!.host}: update the site configuration`);
   inProgress.delete(uuid);
   await logActivity({
     action: "admin.server.transfer",
     userId: ctx.session!.userId,
     serverId: b.server.id,
-    metadata: { serverUuid: uuid, from: b.node.id, to: target.id, allocationIds: allocIds, restarted: wasRunning, warnings },
+    metadata: { serverUuid: uuid, from: b.node.id, to: target.id, allocationIds: allocIds, databases: movable.map((r) => r.d.name), restarted: wasRunning, warnings },
     ip: ctx.ip,
     ctx,
   });

@@ -66,6 +66,17 @@ describe("remote-API", () => {
     expect((await hello(req("/api/remote/node/hello", { version: "1" }), params({}))).status).toBe(400);
   });
 
+  it("node/hello met has_mariadb registreert een daemon-beheerde database-host (idempotent, zet `local` om)", async () => {
+    const hosts = () => getDb().select().from(schema.databaseHosts).where(eq(schema.databaseHosts.nodeId, h.localNodeId));
+    await getDb().insert(schema.databaseHosts).values({ name: "local", host: "panel-mariadb", port: 3306, adminUser: "root", adminPasswordEnc: "x", nodeId: h.localNodeId });
+    await hello(req("/api/remote/node/hello", { version: "1", disk_quota_mode: "soft", has_mariadb: false }), params({}));
+    expect((await hosts()).map((x) => x.daemonManaged)).toEqual([false]);
+    for (let i = 0; i < 2; i++) expect((await hello(req("/api/remote/node/hello", { version: "1", disk_quota_mode: "soft", has_mariadb: true }), params({}))).status).toBe(204);
+    const rows = await hosts();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ name: "local", host: "panel-mariadb", port: 3306, daemonManaged: true, nodeId: h.localNodeId });
+  });
+
   it("servers/{uuid}/install: gelukt → installed_at + offline; mislukt → install_failed; gelogd", async () => {
     expect((await install(req(`/api/remote/servers/${uuid}/install`, { successful: false, error: "boem" }), params({ uuid }))).status).toBe(204);
     expect((await serverRow()).status).toBe("install_failed");

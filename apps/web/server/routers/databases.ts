@@ -44,14 +44,18 @@ async function databaseById(ctx: Ctx, id: number, mutates = false) {
   return { ...r, a };
 }
 
-/** Standaardhost: `local`, anders een host op de node van de server, anders een host zonder node. */
-async function defaultHost(nodeId: number): Promise<HostRow> {
+/**
+ * Standaardhost: de (daemon-beheerde) MariaDB van de node van de server, anders een andere host op die node,
+ * anders `local`, anders een host zonder node. Zo hoort de database altijd bij de node waar de site draait.
+ */
+export async function defaultHost(nodeId: number): Promise<HostRow> {
   const hosts = await getDb()
     .select()
     .from(schema.databaseHosts)
     .where(or(eq(schema.databaseHosts.name, "local"), eq(schema.databaseHosts.nodeId, nodeId), isNull(schema.databaseHosts.nodeId)))
     .orderBy(asc(schema.databaseHosts.id));
-  const h = hosts.find((x) => x.name === "local") ?? hosts.find((x) => x.nodeId === nodeId) ?? hosts[0];
+  const onNode = hosts.filter((x) => x.nodeId === nodeId);
+  const h = onNode.find((x) => x.daemonManaged) ?? onNode[0] ?? hosts.find((x) => x.name === "local") ?? hosts[0];
   if (!h) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_DATABASE_HOST" });
   return h;
 }
@@ -119,7 +123,7 @@ export const databases: Implementation["databases"] = {
     const r = await databaseById(ctx, input.id, true);
     const password = newPassword();
     try {
-      await setPassword(r.h, r.d.username, password);
+      await setPassword(r.h, r.d.username, password, r.d.name);
     } catch (e) {
       throw mariaError(e);
     }
