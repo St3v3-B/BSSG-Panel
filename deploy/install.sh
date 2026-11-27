@@ -104,6 +104,15 @@ run() {
   fi
 }
 
+# Git-versie van deze checkout: in de panel-image (build args) en in de daemon (ldflags).
+export_version() {
+  PANEL_COMMIT="$(git -C "$REPO" -c safe.directory="$REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
+  PANEL_COMMIT_DATE="$(git -C "$REPO" -c safe.directory="$REPO" log -1 --format=%cI 2>/dev/null || true)"
+  PANEL_COMMIT_MESSAGE="$(git -C "$REPO" -c safe.directory="$REPO" log -1 --format=%s 2>/dev/null | head -c 200 || true)"
+  export PANEL_COMMIT PANEL_COMMIT_DATE PANEL_COMMIT_MESSAGE
+}
+export_version
+
 compose() {
   # De node-compose heeft Caddy achter het profiel "caddy"; install.sh --node-only wil Caddy altijd.
   PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES="${COMPOSE_PROFILES:-$([ "$NODE_ONLY" = 1 ] && echo caddy)}" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
@@ -300,6 +309,10 @@ collect_values() {
     warn "CADDY_ADMIN_URL=${OLD[CADDY_ADMIN_URL]} is outdated; Caddy now listens on $(example_default CADDY_ADMIN_URL)"
   fi
 
+  # De checkout waar install.sh draait: deploy/upgrade.sh en de "Update panel"-knop gebruiken die.
+  VAL[PANEL_REPO_DIR]="$REPO"
+  safe_value "$REPO" || warn "the path $REPO contains spaces or special characters; panel updates will not work"
+
   local key
   while IFS= read -r key; do
     [ -n "${VAL[$key]+x}" ] || keep_or_default "$key"
@@ -354,11 +367,11 @@ install_daemon() {
     cp "$DAEMON_BIN_SRC" "$tmp"
   elif command -v go >/dev/null; then
     log "building daemon (go build)"
-    (cd "$REPO/daemon" && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$tmp" ./cmd/panel-daemon)
+    (cd "$REPO/daemon" && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.commit=$PANEL_COMMIT" -o "$tmp" ./cmd/panel-daemon)
   elif [ "$NODE_ONLY" = 1 ] && [ "$DRY_RUN" = 0 ]; then
     log "building daemon in a golang container (go is not installed)"
     docker run --rm -v "$REPO/daemon":/src:ro -v "$(dirname "$tmp")":/out -w /src -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false \
-      golang:1.23 go build -trimpath -ldflags "-s -w" -o "/out/$(basename "$tmp")" ./cmd/panel-daemon
+      golang:1.23 go build -trimpath -ldflags "-s -w -X main.commit=$PANEL_COMMIT" -o "/out/$(basename "$tmp")" ./cmd/panel-daemon
   else
     rm -f "$tmp"; warn "daemon not built"; return 0
   fi

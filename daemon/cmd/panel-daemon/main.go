@@ -20,6 +20,9 @@ import (
 
 var version = "0.1.0-dev"
 
+// commit wordt bij het bouwen gezet door install.sh (-X main.commit=<sha>).
+var commit = ""
+
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "version" {
 		fmt.Println(version)
@@ -56,7 +59,7 @@ func run(log *slog.Logger) error {
 			return fmt.Errorf("caddy: %w", err)
 		}
 	}
-	d, err := daemon.New(cfg, daemon.Deps{Engine: eng, Router: router, Log: log, Version: version})
+	d, err := daemon.New(cfg, daemon.Deps{Engine: eng, Router: router, Log: log, Version: version, Commit: commit})
 	if err != nil {
 		return err
 	}

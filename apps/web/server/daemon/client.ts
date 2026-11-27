@@ -116,6 +116,13 @@ export class DaemonClient {
   updateServerImage(uuid: string) {
     return this.request<void>("POST", `/api/servers/${uuid}/image-update`, undefined, 30_000);
   }
+  /** Alleen lokale node: git-status + laatste upgrade-run. `fetch=false` slaat `git fetch` over. */
+  getPanelUpgradeStatus(fetch = true) {
+    return this.request<DaemonSchemas["PanelUpgradeStatus"]>("GET", `/api/panel-upgrade/status?fetch=${fetch ? 1 : 0}`, undefined, 70_000);
+  }
+  startPanelUpgrade(ref?: string) {
+    return this.request<{ unit: string; started_at: string }>("POST", "/api/panel-upgrade", ref ? { ref } : {}, 20_000);
+  }
   checkImages() {
     return this.request<void>("POST", "/api/images/check", undefined, 15_000);
   }

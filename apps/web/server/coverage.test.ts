@@ -38,6 +38,8 @@ export const PHASE3 = [
 ];
 
 /** One-click apps. */
+export const UPDATES = ["admin.updates.status", "admin.updates.start", "admin.updates.setEnabled"];
+
 export const APPS = ["apps.catalog", "apps.check", "apps.install", "apps.job", "apps.jobs"];
 
 /** Website-instellingen (PHP). */
@@ -70,7 +72,7 @@ export const QUOTA = ["account.quota", "servers.create", "servers.updateOwnLimit
 describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN];
+    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES];
     for (const p of all) expect(contract.has(p), p).toBe(true);
     expect(implementedPaths().sort()).toEqual(all.sort());
   });

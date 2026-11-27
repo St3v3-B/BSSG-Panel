@@ -471,6 +471,17 @@ export const contract = {
       test: mutation("admin", none, s.Ok),
     },
 
+    /**
+     * Panel bijwerken vanaf GitHub via de lokale daemon (deploy/upgrade.sh). `status` haalt eerst
+     * origin op (de daemon doet `git fetch`), en voegt de CI-status per commit toe. `start` weigert
+     * met PRECONDITION_FAILED: `UPDATES_DISABLED`, `UPGRADE_RUNNING`, `CI_NOT_GREEN`; `ref` = hex-sha of origin/main.
+     */
+    updates: {
+      status: query("admin", z.object({ refresh: z.boolean().optional() }), s.UpdatesStatus),
+      start: mutation("admin", z.object({ ref: z.string().optional(), onlyIfCiGreen: z.boolean() }), z.object({ unit: z.string() })),
+      setEnabled: mutation("admin", z.object({ enabled: z.boolean() }), s.Ok),
+    },
+
     settings: {
       get: query("admin", none, s.Settings),
       update: mutation("admin", s.Settings.partial(), s.Settings),

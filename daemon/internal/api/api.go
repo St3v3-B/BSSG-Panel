@@ -30,6 +30,7 @@ type SystemInfo struct {
 	DockerVersion    string `json:"docker_version"`
 	ServerCount      int    `json:"server_count"`
 	CaddyHealthy     *bool  `json:"caddy_healthy,omitempty"`
+	Commit           string `json:"commit,omitempty"`
 }
 
 // JWTVerifier controleert browser-JWT's.
@@ -51,15 +52,16 @@ type Options struct {
 
 // API bundelt de handlers.
 type API struct {
-	opt     Options
-	mgr     *server.Manager
-	routes  *Routes
-	jwt     JWTVerifier
-	backups Backups
-	dbadmin DBAdmin
-	dbHost  string
-	system  func(ctx context.Context) SystemInfo
-	log     *slog.Logger
+	opt      Options
+	mgr      *server.Manager
+	routes   *Routes
+	jwt      JWTVerifier
+	backups  Backups
+	dbadmin  DBAdmin
+	dbHost   string
+	upgrader Upgrader
+	system   func(ctx context.Context) SystemInfo
+	log      *slog.Logger
 
 	jti jtiStore
 
@@ -103,6 +105,8 @@ func (a *API) Handler() http.Handler {
 
 	mux.Handle("GET /api/system", p(a.getSystem))
 	mux.Handle("POST /api/update", p(a.updateDaemon))
+	mux.Handle("GET /api/panel-upgrade/status", p(a.panelUpgradeStatus))
+	mux.Handle("POST /api/panel-upgrade", p(a.startPanelUpgrade))
 	mux.Handle("GET /api/servers", p(a.listServers))
 	mux.Handle("POST /api/servers", p(a.createServer))
 	mux.Handle("GET /api/servers/{uuid}", p(a.withServer(a.getServer)))

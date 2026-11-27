@@ -28,6 +28,10 @@ services:
       context: ..
       dockerfile: deploy/panel.Dockerfile
       labels: *labels
+      args:
+        PANEL_COMMIT: ${PANEL_COMMIT:-unknown}
+        PANEL_COMMIT_DATE: ${PANEL_COMMIT_DATE:-}
+        PANEL_COMMIT_MESSAGE: ${PANEL_COMMIT_MESSAGE:-}
     image: panel/web:local
     container_name: panel-web
     restart: unless-stopped

@@ -639,6 +639,59 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /api/panel-upgrade/status:
+    get:
+      tags: [system]
+      operationId: getPanelUpgradeStatus
+      summary: Versie van de checkout, beschikbare commits en de laatste upgrade (alleen lokale node)
+      description: |
+        Alleen op de lokale node (`PANEL_REPO_DIR` gezet en `deploy/upgrade.sh` aanwezig); elders 404 `not_local`.
+        Doet `git fetch origin` (tenzij `fetch=0`; bij een fout staat die in `fetch_error` en blijft de rest bruikbaar)
+        en toont `git log HEAD..origin/main`. `upgrade` en `log_tail` komen uit `$DATA_DIR/upgrade/status.json` en het laatste log.
+      parameters:
+        - { name: fetch, in: query, required: false, schema: { type: string, enum: ["0", "1"], default: "1" } }
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PanelUpgradeStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/panel-upgrade:
+    post:
+      tags: [system]
+      operationId: startPanelUpgrade
+      summary: deploy/upgrade.sh gedetacheerd starten (systemd-run --unit panel-upgrade-<ts>); alleen lokale node
+      description: |
+        `ref` is `origin/main` (standaard) of een hex-sha van 7-40 tekens; al het andere is 400 `bad_request`.
+        Draait al een upgrade (lock of status `running`), dan 409 `conflict`. Het script herstart daemon en panel zelf;
+        de eenheid is los van de daemon, dus een herstart doodt hem niet.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ref: { type: string, description: "origin/main of hex-sha" }
+      responses:
+        "202":
+          description: Gestart
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [unit, started_at]
+                properties:
+                  unit: { type: string }
+                  started_at: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /api/db/status:
     get:
       tags: [databases]
@@ -954,6 +1007,48 @@ components:
         docker_version: { type: string }
         server_count: { type: integer }
         caddy_healthy: { type: boolean }
+        commit: { type: string, description: "Git-commit waaruit de daemon gebouwd is (leeg bij een ontwikkelbuild)" }
+
+    PanelUpgradeStatus:
+      type: object
+      required: [current, commits, upgrade, log_tail, daemon_version]
+      properties:
+        current:
+          type: object
+          description: HEAD van de checkout
+          required: [sha, date, message]
+          properties:
+            sha: { type: string }
+            date: { type: [string, "null"] }
+            message: { type: string }
+        commits:
+          type: array
+          description: HEAD..origin/main, nieuwste eerst, max 50
+          items:
+            type: object
+            required: [sha, date, message, author]
+            properties:
+              sha: { type: string }
+              date: { type: [string, "null"] }
+              message: { type: string }
+              author: { type: [string, "null"] }
+        fetch_error: { type: [string, "null"] }
+        origin: { type: [string, "null"], description: "URL van git remote origin (voor de GitHub-repo bij CI-status)" }
+        upgrade:
+          description: Inhoud van status.json (null als er nog nooit een upgrade was)
+          type: [object, "null"]
+          properties:
+            state: { type: string, enum: [idle, running, success, failed, rolled_back] }
+            from: { type: string }
+            to: { type: string }
+            ref: { type: string }
+            step: { type: string }
+            started: { type: string }
+            finished: { type: string }
+            error: { type: string }
+        log_tail: { type: string, description: "Laatste ~40 regels van het laatste log" }
+        daemon_version: { type: string }
+        daemon_commit: { type: string }
 
     Stats:
       type: object
