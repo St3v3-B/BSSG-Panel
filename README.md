@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="apps/web/public/brand/logo.svg" alt="BSSG Panel" height="72">
+
 # BSSG Panel
 
 **One self-hosted control panel for Minecraft servers *and* websites.**
@@ -26,6 +28,17 @@ a live console, a file manager and SFTP — on your own machine, behind Discord 
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Status](https://img.shields.io/badge/status-active%20development-orange)
 
+</div>
+
+<div align="center">
+  <img src="docs/screenshots/home.d.dark.png" alt="Servers overview (dark)" width="49%">
+  <img src="docs/screenshots/servers-game.d.light.png" alt="Server console (light)" width="49%">
+  <br>
+  <img src="docs/screenshots/login.m.dark.png" alt="Sign in (mobile)" width="19%">
+  <img src="docs/screenshots/servers-game.m.dark.png" alt="Console (mobile)" width="19%">
+  <img src="docs/screenshots/drawer.m.dark.png" alt="Navigation drawer (mobile)" width="19%">
+  <img src="docs/screenshots/admin.m.light.png" alt="Admin dashboard (mobile, light)" width="19%">
+  <img src="docs/screenshots/admin-servers.m.dark.png" alt="Admin servers as cards (mobile)" width="19%">
 </div>
 
 ---

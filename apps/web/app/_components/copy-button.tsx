@@ -13,7 +13,7 @@ export function CopyButton({ value, label: labelProp, className }: { value: stri
     <Button
       variant="ghost"
       size="icon-sm"
-      className={cn("size-7 text-muted-foreground", className)}
+      className={cn("size-9 text-muted-foreground md:size-7", className)}
       aria-label={copied ? t.common.copied : label}
       title={copied ? t.common.copied : label}
       onClick={(e) => {

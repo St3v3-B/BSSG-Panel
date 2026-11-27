@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { BrandMark } from "@/app/_components/branding";
+import { ThemeToggle } from "@/app/_components/theme";
 import { LocaleSwitcher } from "@/app/_components/locale-switcher";
 import { isTotpCode, TotpCodeInput } from "@/app/_components/totp-code-input";
 import { Alert, AlertDescription, AlertTitle } from "@/app/_components/ui/alert";
@@ -20,14 +21,30 @@ export default function LoginPage() {
   const t = useT();
   useDocumentTitle(t.login.docTitle);
   return (
-    <div className="relative grid min-h-screen place-items-center overflow-hidden p-4">
-      <LocaleSwitcher className="absolute right-4 top-4 z-10" />
-      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-96 bg-gradient-to-b from-primary/10 to-transparent" />
-      <div className="relative w-full max-w-sm space-y-8">
-        <BrandMark size="lg" className="justify-center" />
+    <div className="relative grid min-h-dvh place-items-center overflow-hidden p-4">
+      <div className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-10 flex items-center gap-2">
+        <ThemeToggle />
+        <LocaleSwitcher />
+      </div>
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-0 opacity-60 [background-image:linear-gradient(var(--border)_1px,transparent_1px),linear-gradient(90deg,var(--border)_1px,transparent_1px)] [background-size:44px_44px] [mask-image:radial-gradient(ellipse_at_center,#000_20%,transparent_70%)]"
+      />
+      <div className="relative w-full max-w-sm animate-rise space-y-8">
+        <div className="space-y-3 text-center">
+          <BrandMark size="lg" stacked className="justify-center" />
+          <p className="text-balance text-sm text-muted-foreground">{t.login.tagline}</p>
+        </div>
         <Suspense fallback={<Card className="h-48" />}>
           <LoginFlow />
         </Suspense>
+        <ul className="flex flex-wrap justify-center gap-2 text-xs text-muted-foreground" aria-hidden>
+          {t.login.features.map((f) => (
+            <li key={f} className="rounded-full border border-border bg-card/50 px-3 py-1 backdrop-blur">
+              {f}
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );
@@ -90,7 +107,7 @@ function DiscordStep({ redirectTo }: { redirectTo: string }) {
   const login = trpc.auth.discordLoginUrl.useQuery({ redirectTo }, { retry: 1, staleTime: 60_000 });
   const t = useT();
   return (
-    <Card>
+    <Card className="bg-card/70 backdrop-blur-xl">
       <CardHeader className="text-center">
         <CardTitle className="text-lg">{t.login.title}</CardTitle>
         <CardDescription>{t.login.description}</CardDescription>
@@ -99,7 +116,7 @@ function DiscordStep({ redirectTo }: { redirectTo: string }) {
         {login.error ? (
           <p className="text-center text-sm text-destructive">{errorText(login.error)}</p>
         ) : (
-          <Button asChild size="lg" className="w-full bg-[#5865F2] text-white hover:bg-[#4752c4]" aria-disabled={!login.data}>
+          <Button asChild size="lg" className="w-full bg-[#5865F2] text-white shadow-lg shadow-[#5865F2]/30 hover:bg-[#4752c4] hover:brightness-100" aria-disabled={!login.data}>
             <a href={login.data?.url ?? "#"} data-testid="discord-login" onClick={(e) => !login.data && e.preventDefault()}>
               <DiscordIcon className="size-5" /> {t.login.discord}
             </a>
@@ -126,7 +143,7 @@ function TotpStep({ redirectTo, name }: { redirectTo: string; name: string | nul
   const logout = trpc.auth.logout.useMutation({ onSettled: () => window.location.assign("/login") });
 
   return (
-    <Card data-testid="totp-step">
+    <Card data-testid="totp-step" className="bg-card/70 backdrop-blur-xl">
       <CardHeader className="text-center">
         <span className="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-primary/15 text-primary">
           <KeyRound className="size-5" />

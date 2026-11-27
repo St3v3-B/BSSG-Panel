@@ -36,12 +36,14 @@ export function ServerView({ server }: { server: ServerDetail }) {
   const me = trpc.auth.me.useQuery(undefined, { staleTime: 30_000 });
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+    <div className="space-y-5 sm:space-y-6">
+      <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-30 -mx-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border bg-background/85 px-4 py-2.5 backdrop-blur-xl sm:static sm:z-auto sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none" data-testid="power-bar">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground max-sm:hidden">
           {t.server.liveStatus} <StatusBadge status={status} />
         </div>
-        {perms.has("power") && <PowerButtons status={status} pending={live.powerPending} onPower={(a) => void live.power(a).catch(() => {})} />}
+        {perms.has("power") && (
+          <PowerButtons status={status} pending={live.powerPending} onPower={(a) => void live.power(a).catch(() => {})} />
+        )}
       </div>
       {live.powerError && (
         <Alert variant="destructive">
@@ -53,7 +55,7 @@ export function ServerView({ server }: { server: ServerDetail }) {
       )}
       <ImageUpdateNotice server={server} canManage={server.isOwner || !!me.data?.isAdmin} />
       {status === "sleeping" && (
-        <Alert className="border-indigo-400/40 bg-indigo-500/10 text-indigo-200" data-testid="sleeping-notice">
+        <Alert className="border-indigo-400/40 bg-indigo-500/10 text-indigo-700 dark:text-indigo-200" data-testid="sleeping-notice">
           <Moon />
           <div className="flex-1">
             <AlertTitle>{t.sleep.sleepingTitle}</AlertTitle>

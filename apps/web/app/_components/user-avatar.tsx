@@ -11,7 +11,7 @@ export function UserAvatar({ user, className }: { user: Pick<UserPublic, "name" 
     // eslint-disable-next-line @next/next/no-img-element
     <img src={user.avatarUrl} alt="" className={cn("size-8 rounded-full object-cover", className)} />
   ) : (
-    <span className={cn("grid size-8 place-items-center rounded-full bg-muted text-sm font-medium text-muted-foreground", className)} aria-hidden>
+    <span className={cn("grid size-8 place-items-center rounded-full brand-gradient text-sm font-semibold text-primary-foreground", className)} aria-hidden>
       {initial}
     </span>
   );

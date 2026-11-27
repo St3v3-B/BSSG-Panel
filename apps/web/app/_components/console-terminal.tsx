@@ -46,10 +46,10 @@ export function ConsoleTerminal({ handleRef, className }: { handleRef: RefObject
         cursorStyle: "underline",
         cursorInactiveStyle: "none",
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace",
-        fontSize: 13,
+        fontSize: window.innerWidth < 640 ? 12 : 13,
         lineHeight: 1.25,
         scrollback: 5000,
-        theme: { background: "#00000000", foreground: "#e4e4e7", selectionBackground: "#3f3f46" },
+        theme: { background: "#00000000", foreground: "#e4e4e7", selectionBackground: "#52525b" },
         allowTransparency: true,
       });
       fit = new FitAddon();

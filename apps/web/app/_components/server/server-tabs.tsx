@@ -1,6 +1,7 @@
 "use client";
 import { Archive, CalendarClock, Database, FolderOpen, Globe, Network, Smartphone, PackagePlus, Puzzle, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import type { ContentKind, Permission, ServerDetail } from "@panel/api";
 import { ALL_PERMISSIONS } from "@panel/api/schemas";
@@ -39,11 +40,16 @@ export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner
 export function ServerTabs({ server }: { server: ServerDetail }) {
   const pathname = usePathname() ?? "";
   const t = useT();
+  const nav = useRef<HTMLElement>(null);
+  useEffect(() => {
+    // houd het actieve tabblad zichtbaar op smalle schermen
+    nav.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView?.({ inline: "center", block: "nearest" });
+  }, [pathname]);
   const hasFiles = server.type === "game" && server.permissions.includes("files.read");
   const info = trpc.content.info.useQuery({ uuid: server.uuid }, { enabled: hasFiles, staleTime: 5 * 60_000, retry: false });
   const tabs = serverTabs({ ...server, content: info.data?.supported ? info.data.kind : null, bedrock: server.type === "game" && !!bedrockPlatform(server.templateName.toLowerCase()) });
   return (
-    <nav className="-mx-1 flex gap-1 overflow-x-auto border-b border-border px-1" aria-label={t.server.tabsLabel}>
+    <nav ref={nav} className="scrollbar-none -mx-4 flex snap-x gap-1 overflow-x-auto border-b border-border px-4 sm:mx-0 sm:px-0" aria-label={t.server.tabsLabel}>
       {tabs.map((t) => {
         const active = t.key === "console" ? pathname === t.href : pathname === t.href || pathname.startsWith(`${t.href}/`);
         return (
@@ -52,8 +58,8 @@ export function ServerTabs({ server }: { server: ServerDetail }) {
             href={t.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "-mb-px inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors [&_svg]:size-4",
-              active ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+              "-mb-px inline-flex min-h-11 snap-start items-center gap-2 whitespace-nowrap border-b-2 px-3.5 text-sm font-medium transition-colors [&_svg]:size-4",
+              active ? "border-primary text-foreground [&_svg]:text-primary" : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             <t.icon /> {t.label}

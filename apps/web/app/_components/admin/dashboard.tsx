@@ -1,25 +1,31 @@
 "use client";
-import { Activity, AlertTriangle, CheckCircle2, Plus, Server, Settings, Users } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, HardDrive, Plus, Server, Settings, Users } from "lucide-react";
 import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
 import { QueryError } from "@/app/_components/query-error";
 import { Badge } from "@/app/_components/ui/badge";
 import { Button } from "@/app/_components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/_components/ui/card";
+import { Progress } from "@/app/_components/ui/progress";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { formatBytes, formatDate } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
 
-function Stat({ label, value, href, testId }: { label: string; value: ReactNode; href?: string; testId: string }) {
+function Stat({ label, value, href, testId, icon: Icon }: { label: string; value: ReactNode; href?: string; testId: string; icon: LucideIcon }) {
   const body = (
-    <Card className="p-4" data-testid={testId}>
+    <Card className="relative h-full overflow-hidden p-3.5 sm:p-4" data-testid={testId}>
+      <span aria-hidden className="pointer-events-none absolute -right-6 -top-6 size-20 rounded-full bg-primary/20 blur-2xl" />
+      <span className="mb-2 grid size-8 place-items-center rounded-lg bg-primary/12 text-primary sm:size-9">
+        <Icon className="size-4 sm:size-[18px]" />
+      </span>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 text-2xl font-semibold tabular-nums">{value}</div>
+      <div className="mt-0.5 text-lg font-bold leading-tight tabular-nums sm:text-2xl">{value}</div>
     </Card>
   );
   return href ? (
-    <Link href={href} className="block rounded-xl transition-colors hover:bg-muted/30">
+    <Link href={href} className="block rounded-2xl transition-transform hover:-translate-y-0.5">
       {body}
     </Link>
   ) : (
@@ -33,21 +39,32 @@ export function AdminDashboard() {
   const q = trpc.admin.dashboard.useQuery(undefined, { refetchInterval: 30_000 });
   const nodes = trpc.admin.nodes.list.useQuery();
   if (q.error) return <QueryError error={q.error} />;
-  if (!q.data) return <Skeleton className="h-64 rounded-xl" />;
+  if (!q.data)
+    return (
+      <div className="space-y-6" aria-busy>
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-28 rounded-2xl" />
+          ))}
+        </div>
+        <Skeleton className="h-44 rounded-2xl" />
+        <Skeleton className="h-32 rounded-2xl" />
+      </div>
+    );
   const { nodes: health, alerts, serverCount, userCount } = q.data;
   const nameOf = (id: number) => nodes.data?.find((n) => n.id === id)?.name ?? `node ${id}`;
   const online = health.filter((h) => h.online).length;
 
   return (
     <div className="space-y-6" data-testid="admin-dashboard">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label={d.servers} value={serverCount} href="/admin/servers" testId="stat-servers" />
-        <Stat label={d.users} value={userCount} href="/admin/users" testId="stat-users" />
-        <Stat label={d.nodes} value={d.nodesOnline(online, health.length)} href="/admin/nodes" testId="stat-nodes" />
+      <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+        <Stat label={d.servers} value={serverCount} href="/admin/servers" testId="stat-servers" icon={Server} />
+        <Stat label={d.users} value={userCount} href="/admin/users" testId="stat-users" icon={Users} />
+        <Stat label={d.nodes} value={d.nodesOnline(online, health.length)} href="/admin/nodes" testId="stat-nodes" icon={HardDrive} />
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">{d.nodes}</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">{d.nodes}</h2>
         {health.length === 0 ? (
           <p className="text-sm text-muted-foreground">{d.noNodes}</p>
         ) : (
@@ -55,22 +72,28 @@ export function AdminDashboard() {
             {health.map((h) => {
               const mem = h.memoryTotalBytes ? Math.round(((h.memoryUsedBytes ?? 0) / h.memoryTotalBytes) * 100) : null;
               return (
-                <Link key={h.nodeId} href={`/admin/nodes/${h.nodeId}`} className="block rounded-xl transition-colors hover:bg-muted/30" data-testid="dash-node">
+                <Link key={h.nodeId} href={`/admin/nodes/${h.nodeId}`} className="block rounded-2xl transition-transform hover:-translate-y-0.5" data-testid="dash-node">
                   <Card>
                     <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
                       <CardTitle className="text-base">{nameOf(h.nodeId)}</CardTitle>
                       <Badge variant={h.online ? "success" : "destructive"}>{h.online ? d.online : d.offline}</Badge>
                     </CardHeader>
-                    <CardContent className="space-y-1 text-sm text-muted-foreground">
+                    <CardContent className="space-y-2.5 text-sm text-muted-foreground">
                       <div>{d.serverCount(h.serverCount)}</div>
                       {h.online ? (
                         <>
-                          <div>
-                            {d.memory}: {formatBytes(h.memoryUsedBytes)} / {formatBytes(h.memoryTotalBytes)}
-                            {mem !== null && ` (${mem}%)`}
+                          <div className="space-y-1">
+                            <div>
+                              {d.memory}: {formatBytes(h.memoryUsedBytes)} / {formatBytes(h.memoryTotalBytes)}
+                              {mem !== null && ` (${mem}%)`}
+                            </div>
+                            <Progress value={mem} label={d.memory} />
                           </div>
-                          <div>
-                            {d.disk}: {formatBytes(h.diskFreeBytes)} / {formatBytes(h.diskTotalBytes)}
+                          <div className="space-y-1">
+                            <div>
+                              {d.disk}: {formatBytes(h.diskFreeBytes)} / {formatBytes(h.diskTotalBytes)}
+                            </div>
+                            <Progress value={h.diskTotalBytes ? Math.round((1 - (h.diskFreeBytes ?? 0) / h.diskTotalBytes) * 100) : null} label={d.disk} />
                           </div>
                         </>
                       ) : (
@@ -86,11 +109,14 @@ export function AdminDashboard() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">{d.alerts}</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">{d.alerts}</h2>
         {alerts.length === 0 ? (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="no-alerts">
-            <CheckCircle2 className="size-4 text-success" /> {d.noAlerts}
-          </p>
+          <Card className="flex items-center gap-3 p-4 text-sm text-muted-foreground" data-testid="no-alerts">
+            <span className="grid size-9 place-items-center rounded-xl bg-success/12 text-success">
+              <CheckCircle2 className="size-5" />
+            </span>
+            {d.noAlerts}
+          </Card>
         ) : (
           <Card className="divide-y divide-border" data-testid="alerts">
             {alerts.map((a, i) => (
@@ -120,8 +146,8 @@ export function AdminDashboard() {
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">{d.quick}</h2>
-        <div className="flex flex-wrap gap-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">{d.quick}</h2>
+        <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
           <Button asChild>
             <Link href="/admin/servers/new">
               <Plus /> {d.createServer}

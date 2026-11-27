@@ -18,6 +18,7 @@ import { displayName, UserAvatar } from "@/app/_components/user-avatar";
 import { useDebounced } from "@/app/_hooks/use-debounced";
 import { formatDate } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
+import { Table } from "@/app/_components/ui/table";
 
 export function UsersAdmin() {
   const t = useT();
@@ -59,7 +60,7 @@ export function UsersAdmin() {
       ) : (
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-testid="users-table">
+            <Table data-testid="users-table">
               <thead className="border-b border-border bg-muted/30 text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2.5 font-medium">{u.colUser}</th>
@@ -81,7 +82,7 @@ export function UsersAdmin() {
                   <UserRow key={user.id} user={user} />
                 ))}
               </tbody>
-            </table>
+            </Table>
           </div>
           {users.hasNextPage && (
             <div className="border-t border-border p-3 text-center">

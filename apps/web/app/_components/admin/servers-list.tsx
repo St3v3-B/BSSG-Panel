@@ -20,6 +20,7 @@ import { useDebounced } from "@/app/_hooks/use-debounced";
 import { errorText } from "@/app/_lib/errors";
 import { formatCpuLimit, formatMb } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
+import { Table } from "@/app/_components/ui/table";
 
 export type BulkAction = PowerAction | "suspend" | "unsuspend";
 interface Result {
@@ -176,7 +177,7 @@ export function AdminServersList() {
       ) : (
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-testid="admin-server-table">
+            <Table data-testid="admin-server-table">
               <thead className="border-b border-border bg-muted/30 text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="w-10 px-4 py-2.5">
@@ -261,7 +262,7 @@ export function AdminServersList() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           </div>
           {servers.hasNextPage && (
             <div className="border-t border-border p-3 text-center">

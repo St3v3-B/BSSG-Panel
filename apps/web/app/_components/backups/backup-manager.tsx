@@ -123,7 +123,7 @@ function BackupRow({ uuid, backup: b, canCreate, canRestore }: { uuid: string; b
     <Card data-testid="backup-row" className="p-4">
       <div className="flex flex-wrap items-center gap-3">
         <Archive className="size-4 text-muted-foreground" />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 basis-[10rem]">
           <div className="truncate font-medium">{b.name}</div>
           <div className="text-xs text-muted-foreground">
             {formatDate(b.createdAt)}

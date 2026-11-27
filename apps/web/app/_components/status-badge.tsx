@@ -9,7 +9,7 @@ const DOT: Record<ServerStatus, string> = {
   install_failed: "bg-destructive",
   offline: "bg-muted-foreground",
   starting: "bg-warning animate-pulse",
-  online: "bg-success",
+  online: "bg-success shadow-[0_0_0_3px_color-mix(in_oklab,var(--success)_25%,transparent)]",
   stopping: "bg-warning animate-pulse",
   disk_exceeded: "bg-destructive",
   sleeping: "bg-indigo-400",

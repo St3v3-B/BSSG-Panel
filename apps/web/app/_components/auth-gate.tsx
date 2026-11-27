@@ -48,9 +48,9 @@ export function BlockedScreen() {
   const t = useT();
   const logout = trpc.auth.logout.useMutation({ onSettled: () => window.location.assign("/login") });
   return (
-    <div className="grid min-h-screen place-items-center p-4" data-testid="blocked">
+    <div className="grid min-h-dvh place-items-center p-4" data-testid="blocked">
       <div className="w-full max-w-md space-y-6 text-center">
-        <BrandMark size="lg" className="justify-center" />
+        <BrandMark size="lg" stacked className="justify-center" />
         <div className="rounded-xl border border-destructive/40 bg-destructive/10 p-6">
           <Ban className="mx-auto mb-3 size-8 text-destructive" />
           <h1 className="text-lg font-semibold">{t.blocked.title}</h1>

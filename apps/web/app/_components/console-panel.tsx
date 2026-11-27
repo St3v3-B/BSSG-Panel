@@ -113,12 +113,12 @@ export function ConsolePanel({
   }
 
   return (
-    <Card className="flex h-[32rem] flex-col overflow-hidden bg-black/40 lg:h-[36rem]">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
+    <Card className="dark flex h-[min(34rem,calc(100dvh-14rem))] min-h-[20rem] flex-col overflow-hidden border-white/10 bg-[oklch(0.125_0.02_275)] text-foreground lg:h-[36rem]">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border bg-white/[0.03] px-4 py-2.5">
         <span className="text-sm font-medium">{t.console.title}</span>
         <ConnectionIndicator state={state} retryInMs={retryInMs} onRetry={onRetry} tokenRefreshedAt={tokenRefreshedAt} />
       </div>
-      <div className="relative min-h-0 flex-1 px-3 py-2">
+      <div className="relative min-h-0 flex-1 px-2 py-2 sm:px-3">
         <ConsoleTerminal handleRef={terminalRef} />
         {state === "denied" && (
           <div className="absolute inset-0 grid place-items-center bg-background/70 text-sm text-muted-foreground">
@@ -129,7 +129,7 @@ export function ConsolePanel({
         )}
       </div>
       <form
-        className="flex items-center gap-2 border-t border-border bg-background/40 px-3 py-2"
+        className="flex items-center gap-2 border-t border-border bg-white/[0.03] px-3 py-2"
         onSubmit={(e) => {
           e.preventDefault();
           void submit();
@@ -147,10 +147,10 @@ export function ConsolePanel({
           spellCheck={false}
           aria-label={t.console.input}
           placeholder={canWrite ? t.console.placeholder : t.console.noWrite}
-          className="h-8 min-w-0 flex-1 bg-transparent font-mono text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed"
+          className="h-11 min-w-0 flex-1 bg-transparent font-mono text-sm outline-none placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed md:h-9"
           data-testid="console-input"
         />
-        {error && <span className="max-w-60 truncate text-xs text-destructive" title={error}>{error}</span>}
+        {error && <span className="max-w-28 truncate sm:max-w-60 text-xs text-destructive" title={error}>{error}</span>}
         <Button type="submit" size="sm" variant="secondary" disabled={!canWrite || !value.trim() || sending}>
           {t.console.send}
         </Button>

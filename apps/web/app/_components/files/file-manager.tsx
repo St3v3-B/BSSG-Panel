@@ -348,15 +348,18 @@ function FileRow(props: {
   const Icon = e.isDirectory ? Folder : isArchive(e.name) ? FileArchive : FileIcon;
   return (
     <tr className={cn("hover:bg-muted/30", props.selected && "bg-primary/5")} data-testid="file-row">
-      <td className="px-4 py-2">
+      <td className="px-3 py-2 sm:px-4">
         <Checkbox aria-label={t.files.select(e.name)} checked={props.selected} onChange={props.onToggle} />
       </td>
-      <td className="px-2 py-2">
-        <button type="button" onClick={props.onOpen} className="inline-flex min-w-0 items-center gap-2 text-left hover:underline">
-          <Icon className={cn("size-4 shrink-0", e.isDirectory ? "text-info" : "text-muted-foreground")} />
-          <span className="truncate">{e.name}</span>
-          {e.isSymlink && <Link2 className="size-3.5 text-muted-foreground" aria-label="symlink" />}
+      <td className="w-full max-w-0 px-2 py-2">
+        <button type="button" onClick={props.onOpen} className="flex min-h-7 w-full min-w-0 items-center gap-2.5 text-left hover:underline sm:min-h-0">
+          <Icon className={cn("size-5 shrink-0 sm:size-4", e.isDirectory ? "text-info" : "text-muted-foreground")} />
+          <span className="min-w-0 flex-1 truncate">{e.name}</span>
+          {e.isSymlink && <Link2 className="size-3.5 shrink-0 text-muted-foreground" aria-label="symlink" />}
         </button>
+        <div className="truncate pl-[30px] text-xs text-muted-foreground sm:hidden">
+          {e.isDirectory ? "–" : formatBytes(e.size)} · {formatDate(e.modifiedAt)}
+        </div>
       </td>
       <td className="hidden whitespace-nowrap px-4 py-2 text-right text-muted-foreground sm:table-cell">{e.isDirectory ? "–" : formatBytes(e.size)}</td>
       <td className="hidden whitespace-nowrap px-4 py-2 text-muted-foreground md:table-cell">{formatDate(e.modifiedAt)}</td>

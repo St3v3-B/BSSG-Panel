@@ -17,6 +17,7 @@ import { Spinner } from "@/app/_components/ui/spinner";
 import { errorText } from "@/app/_lib/errors";
 import { formatDate } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
+import { Table } from "@/app/_components/ui/table";
 
 /** Kleine badge op kaarten en in tabellen. */
 export function ImageUpdateBadge({ info }: { info: ImageUpdateInfo }) {
@@ -218,7 +219,7 @@ export function ImageUpdatesAdmin() {
             <QueryError error={list.error} />
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm" data-testid="image-table">
+              <Table className="text-left" data-testid="image-table">
                 <thead className="text-xs text-muted-foreground">
                   <tr>
                     <th className="py-2 pr-3 font-medium">{t.colServer}</th>
@@ -262,7 +263,7 @@ export function ImageUpdatesAdmin() {
                     </tr>
                   )}
                 </tbody>
-              </table>
+              </Table>
             </div>
           )}
         </CardContent>

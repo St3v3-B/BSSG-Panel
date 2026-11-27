@@ -116,12 +116,12 @@ export function LogViewer({
   const newSincePause = frozen ? lines.length - frozen.length : 0;
 
   return (
-    <Card className="overflow-hidden p-0" data-testid="log-viewer">
+    <Card className="dark overflow-hidden border-white/10 bg-[#0b0d10] p-0 text-foreground" data-testid="log-viewer">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
         <ConnectionIndicator state={state} retryInMs={retryInMs} onRetry={onRetry} tokenRefreshedAt={tokenRefreshedAt} />
-        <div className="relative ml-auto w-full max-w-56 sm:w-auto">
+        <div className="relative order-last w-full sm:order-none sm:ml-auto sm:w-56">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.logs.filter} aria-label={t.logs.filterLabel} className="h-8 pl-8 text-xs" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.logs.filter} aria-label={t.logs.filterLabel} className="h-10 pl-8 text-sm md:h-8 md:text-xs" />
         </div>
         {frozen ? (
           <Button size="sm" variant="outline" onClick={resume} aria-label={t.logs.follow}>
@@ -146,7 +146,7 @@ export function LogViewer({
           const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
           if (!frozen && atBottom !== follow) setFollow(atBottom);
         }}
-        className="h-[28rem] overflow-y-auto bg-[#0b0d10] py-2 font-mono text-xs leading-5 text-zinc-300"
+        className="h-[min(28rem,calc(100dvh-16rem))] min-h-[16rem] overflow-y-auto bg-[#0b0d10] py-2 font-mono text-xs leading-5 text-zinc-300"
         role="log"
         aria-live="off"
         data-testid="log-lines"
