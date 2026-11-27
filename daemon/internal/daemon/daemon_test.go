@@ -156,6 +156,16 @@ func TestServerLifecycle(t *testing.T) {
 		return st.MemoryBytes > 0 && st.MemoryLimitBytes == 512<<20 && st.DiskLimitBytes == 1024<<20 && st.UptimeMs >= 0
 	})
 	waitFor(t, "disk_bytes", 2*time.Second, func() bool { return h.state(u1).DiskBytes > 0 })
+	var all struct {
+		Servers []struct {
+			UUID string `json:"uuid"`
+			server.Stats
+		} `json:"servers"`
+	}
+	h.expect("GET", "/api/stats", nil, 200).json(t, &all)
+	if len(all.Servers) != 1 || all.Servers[0].UUID != u1 || all.Servers[0].MemoryLimitBytes != 512<<20 {
+		t.Fatalf("alle stats: %+v", all)
+	}
 
 	// PUT: limieten direct via docker update
 	sp3 := testSpec(u1)

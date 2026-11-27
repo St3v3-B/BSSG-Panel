@@ -241,6 +241,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Laatste meting van alle draaiende servers in één keer
+         * @description Voor de verbruiksgrafieken: het panel vraagt dit elke minuut per node. Alleen servers met een
+         *     draaiende container staan erin. Oudere daemons kennen dit pad niet (404); het panel valt dan
+         *     terug op `GET /api/servers/{uuid}/stats` per draaiende server.
+         */
+        get: operations["listStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{uuid}/ws": {
         parameters: {
             query?: never;
@@ -910,6 +932,10 @@ export interface components {
              * @description 0 als de server niet draait
              */
             uptime_ms: number;
+        };
+        ServerStats: components["schemas"]["Stats"] & {
+            /** Format: uuid */
+            uuid: string;
         };
         Limits: {
             /** @description 100 = één core, 0 = onbeperkt */
@@ -1722,6 +1748,29 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listStats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metingen per server */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        servers: components["schemas"]["ServerStats"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     websocket: {

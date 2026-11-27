@@ -17,6 +17,7 @@ import {
   pgEnum,
   pgTable,
   primaryKey,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -423,3 +424,26 @@ export const userQuotas = pgTable("user_quotas", {
   maxPortsPerServer: integer("max_ports_per_server"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
+
+/**
+ * Verbruiksgeschiedenis per server voor de grafieken. Het panel meet elke minuut (resolution 60)
+ * en vat samen naar 15 min (900) en 1 uur (3600); elke rij is het gemiddelde over `samples` metingen.
+ * Bewaard: 60 → 24 u, 900 → 7 d, 3600 → 30 d (zie apps/web/server/stats-history.ts).
+ * Netwerk in bytes/s; null als er geen vorige teller was om mee te vergelijken.
+ */
+export const serverStats = pgTable("server_stats", {
+  serverId: integer("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  resolution: integer("resolution").notNull(),
+  bucket: ts("bucket").notNull(),
+  samples: integer("samples").notNull(),
+  cpuPct: real("cpu_pct").notNull(),
+  cpuMaxPct: real("cpu_max_pct").notNull(),
+  memoryBytes: bigint("memory_bytes", { mode: "number" }).notNull(),
+  memoryMaxBytes: bigint("memory_max_bytes", { mode: "number" }).notNull(),
+  diskBytes: bigint("disk_bytes", { mode: "number" }).notNull(),
+  rxBytesPerSec: real("rx_bytes_per_sec"),
+  txBytesPerSec: real("tx_bytes_per_sec"),
+}, (t) => [
+  primaryKey({ columns: [t.serverId, t.resolution, t.bucket] }),
+  index("server_stats_retention_idx").on(t.resolution, t.bucket),
+]);

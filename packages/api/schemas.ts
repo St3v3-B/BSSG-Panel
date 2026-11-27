@@ -164,6 +164,47 @@ export const Stats = z.object({
 });
 export type Stats = z.infer<typeof Stats>;
 
+/** Periode voor `servers.statsHistory`. */
+export const StatsRange = z.enum(["1h", "24h", "7d", "30d"]);
+export type StatsRange = z.infer<typeof StatsRange>;
+
+/**
+ * Eén stap in de verbruiksgeschiedenis. Alle meetwaarden null = geen meting (server uit of node
+ * onbereikbaar): de grafiek toont dan een gat. Gemiddelden over de stap, plus de piek van CPU/RAM.
+ */
+export const StatsPoint = z.object({
+  t: z.date(), // begin van de stap
+  cpuPct: z.number().nullable(), // 100 = één core vol
+  cpuMaxPct: z.number().nullable(),
+  memoryBytes: z.number().nullable(),
+  memoryMaxBytes: z.number().nullable(),
+  diskBytes: z.number().nullable(),
+  rxBytesPerSec: z.number().nullable(),
+  txBytesPerSec: z.number().nullable(),
+});
+export type StatsPoint = z.infer<typeof StatsPoint>;
+
+export const StatsHistory = z.object({
+  range: StatsRange,
+  stepSeconds: z.number().int().positive(),
+  from: z.date(),
+  to: z.date(),
+  /** Huidige limieten (0 = onbeperkt), voor een limietlijn in de grafiek. */
+  cpuLimitPct: z.number(),
+  memoryLimitBytes: z.number(),
+  diskLimitBytes: z.number(),
+  /** Op volgorde, elke stap precies één keer (dus ook de gaten). */
+  points: z.array(StatsPoint),
+});
+export type StatsHistory = z.infer<typeof StatsHistory>;
+
+/** Compacte reeks voor de serverkaarten: de laatste 60 minuten per minuut, null = geen meting. */
+export const StatsSparkline = z.object({
+  cpuPct: z.array(z.number().nullable()),
+  memoryBytes: z.array(z.number().nullable()),
+});
+export type StatsSparkline = z.infer<typeof StatsSparkline>;
+
 /** Beleid voor image-updates (zie docs bij `servers.updateImagePolicy`). */
 export const ImagePolicy = z.enum(["auto", "notify", "off"]);
 export type ImagePolicy = z.infer<typeof ImagePolicy>;

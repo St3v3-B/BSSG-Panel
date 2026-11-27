@@ -1,5 +1,5 @@
 {
-  "id": "cb52399f-3c31-476d-9f0c-980b76ba7acb",
+  "id": "af441fe5-6101-4474-879c-53428e932e6c",
   "prevId": "ea4b4bdc-43e7-4e1f-bbe5-958237fda415",
   "version": "7",
   "dialect": "postgresql",
@@ -112,21 +112,6 @@
           "columns": [
             {
               "expression": "action",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "activity_at_idx": {
-          "name": "activity_at_idx",
-          "columns": [
-            {
-              "expression": "at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -2027,6 +2012,130 @@
         }
       },
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.server_stats": {
+      "name": "server_stats",
+      "schema": "",
+      "columns": {
+        "server_id": {
+          "name": "server_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resolution": {
+          "name": "resolution",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "bucket": {
+          "name": "bucket",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "samples": {
+          "name": "samples",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cpu_pct": {
+          "name": "cpu_pct",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cpu_max_pct": {
+          "name": "cpu_max_pct",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "memory_bytes": {
+          "name": "memory_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "memory_max_bytes": {
+          "name": "memory_max_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "disk_bytes": {
+          "name": "disk_bytes",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "rx_bytes_per_sec": {
+          "name": "rx_bytes_per_sec",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tx_bytes_per_sec": {
+          "name": "tx_bytes_per_sec",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "server_stats_retention_idx": {
+          "name": "server_stats_retention_idx",
+          "columns": [
+            {
+              "expression": "resolution",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "bucket",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "server_stats_server_id_servers_id_fk": {
+          "name": "server_stats_server_id_servers_id_fk",
+          "tableFrom": "server_stats",
+          "tableTo": "servers",
+          "columnsFrom": [
+            "server_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "server_stats_server_id_resolution_bucket_pk": {
+          "name": "server_stats_server_id_resolution_bucket_pk",
+          "columns": [
+            "server_id",
+            "resolution",
+            "bucket"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},

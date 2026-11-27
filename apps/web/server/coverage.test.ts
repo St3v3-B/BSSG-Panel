@@ -67,12 +67,14 @@ export const CONTENT = ["content.info", "content.search", "content.resolve", "co
 export const NOTIFY = ["account.webhook", "account.setWebhook", "account.testWebhook", "servers.notifications", "servers.updateNotifications", "servers.testWebhook", "admin.notifications.get", "admin.notifications.set", "admin.notifications.test"];
 /** Node-join: join-codes, voortgang, daemon bijwerken. */
 export const NODE_JOIN = ["admin.nodes.createJoin", "admin.nodes.joinCommand", "admin.nodes.joinStatus", "admin.nodes.updateDaemon", "admin.nodes.uninstallCommand"];
+/** Verbruiksgrafieken. */
+export const STATS = ["servers.statsHistory", "servers.statsSparklines"];
 export const QUOTA = ["account.quota", "servers.create", "servers.updateOwnLimits", "servers.deleteOwn", "admin.users.getQuota", "admin.users.setQuota", "admin.users.clearQuota", "admin.quotas.usage"];
 
 describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES];
+    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES, ...STATS];
     for (const p of all) expect(contract.has(p), p).toBe(true);
     expect(implementedPaths().sort()).toEqual(all.sort());
   });

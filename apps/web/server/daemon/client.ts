@@ -3,7 +3,7 @@
  * Netwerkfout of timeout → DaemonUnreachableError; HTTP-fout → DaemonHttpError.
  */
 import { openAsBlob } from "node:fs";
-import type { DaemonFileEntry, DaemonSchemas, DaemonRoute, DaemonRouteWithStatus, DaemonServerSpec, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
+import type { DaemonFileEntry, DaemonSchemas, DaemonRoute, DaemonRouteWithStatus, DaemonServerSpec, DaemonServerStats, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
 
 type DaemonBackupRequest = DaemonSchemas["BackupRequest"];
 type DaemonRestoreRequest = DaemonSchemas["RestoreRequest"];
@@ -141,6 +141,11 @@ export class DaemonClient {
   }
   stats(uuid: string, timeoutMs?: number) {
     return this.request<DaemonStats>("GET", `/api/servers/${uuid}/stats`, undefined, timeoutMs);
+  }
+
+  /** Alle draaiende servers in één keer (404 bij een oudere daemon). */
+  allStats(timeoutMs?: number) {
+    return this.request<{ servers: DaemonServerStats[] }>("GET", "/api/stats", undefined, timeoutMs);
   }
   logs(uuid: string, lines = 100) {
     return this.request<{ lines: string[] }>("GET", `/api/servers/${uuid}/logs?lines=${lines}`);
