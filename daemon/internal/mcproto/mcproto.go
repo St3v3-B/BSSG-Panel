@@ -238,10 +238,20 @@ func (rs *Responder) Serve(c net.Conn) error {
 
 // Ping doet een server-list-ping en geeft het aantal spelers online.
 func Ping(ctx context.Context, addr string) (int, error) {
+	st, err := PingStatus(ctx, addr)
+	if err != nil {
+		return 0, err
+	}
+	return st.Players.Online, nil
+}
+
+// PingStatus doet een server-list-ping en geeft het volledige statusantwoord.
+func PingStatus(ctx context.Context, addr string) (Status, error) {
+	var st Status
 	var d net.Dialer
 	c, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return 0, err
+		return st, err
 	}
 	defer c.Close()
 	if dl, ok := ctx.Deadline(); ok {
@@ -253,26 +263,25 @@ func Ping(ctx context.Context, addr string) (int, error) {
 	var port uint16
 	_, _ = fmt.Sscanf(portS, "%d", &port)
 	if err := WritePacket(c, 0, AppendHandshake(nil, Handshake{Protocol: -1, Address: host, Port: port, NextState: 1})); err != nil {
-		return 0, err
+		return st, err
 	}
 	if err := WritePacket(c, 0, nil); err != nil {
-		return 0, err
+		return st, err
 	}
 	r := bufio.NewReader(c)
 	id, p, err := ReadPacket(r, 1<<20)
 	if err != nil {
-		return 0, err
+		return st, err
 	}
 	if id != 0 {
-		return 0, ErrBadPkt
+		return st, ErrBadPkt
 	}
 	js, err := readString(bytes.NewReader(p), 1<<20)
 	if err != nil {
-		return 0, err
+		return st, err
 	}
-	var st Status
 	if err := json.Unmarshal([]byte(js), &st); err != nil {
-		return 0, fmt.Errorf("mcproto: status-JSON: %w", err)
+		return st, fmt.Errorf("mcproto: status-JSON: %w", err)
 	}
-	return st.Players.Online, nil
+	return st, nil
 }

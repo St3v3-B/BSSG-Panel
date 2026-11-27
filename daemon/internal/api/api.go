@@ -120,6 +120,7 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /api/servers/{uuid}/exec", p(a.withServer(a.exec)))
 	mux.Handle("GET /api/servers/{uuid}/logs", p(a.withServer(a.logs)))
 	mux.Handle("GET /api/servers/{uuid}/stats", p(a.withServer(a.stats)))
+	mux.Handle("GET /api/servers/{uuid}/players", p(a.withServer(a.players)))
 	mux.Handle("GET /api/servers/{uuid}/network", p(a.withServer(a.getProxyNetwork)))
 	mux.Handle("PUT /api/servers/{uuid}/network", p(a.withServer(a.setProxyNetwork)))
 	mux.Handle("GET /api/stats", p(a.allStats))
