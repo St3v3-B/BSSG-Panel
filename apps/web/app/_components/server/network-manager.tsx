@@ -1,8 +1,8 @@
 "use client";
-import { TriangleAlert } from "lucide-react";
+import { Plus, TriangleAlert, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { NetworkCandidate, NetworkUpdateResult, ServerDetail } from "@panel/api";
-import { NetworkName } from "@panel/api/schemas";
+import type { ForcedHost, NetworkCandidate, NetworkUpdateResult, ServerDetail } from "@panel/api";
+import { ForcedHostname, NetworkName } from "@panel/api/schemas";
 import { trpc } from "@/lib/trpc";
 import { CopyButton } from "@/app/_components/copy-button";
 import { QueryError } from "@/app/_components/query-error";
@@ -12,6 +12,7 @@ import { Button } from "@/app/_components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/_components/ui/card";
 import { Checkbox } from "@/app/_components/ui/checkbox";
 import { Input } from "@/app/_components/ui/input";
+import { Select } from "@/app/_components/ui/select";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { errorText } from "@/app/_lib/errors";
@@ -31,6 +32,7 @@ export function NetworkManager({ server }: { server: ServerDetail }) {
   const utils = trpc.useUtils();
   const candidates = trpc.servers.networkCandidates.useQuery({ uuid: server.uuid });
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [hosts, setHosts] = useState<ForcedHost[]>(() => server.network.forcedHosts.map((f) => ({ ...f })));
   const [confirm, setConfirm] = useState(false);
   const [result, setResult] = useState<NetworkUpdateResult | null>(null);
   const save = trpc.servers.updateNetwork.useMutation({
@@ -57,7 +59,17 @@ export function NetworkManager({ server }: { server: ServerDetail }) {
   const selected = (rows ?? []).filter((r) => r.selected);
   const nameErr = (r: Row) => (!NetworkName.safeParse(r.name).success ? n.invalidName : selected.some((o) => o !== r && o.name === r.name) ? n.duplicateName : null);
   const defaultOk = selected.length === 0 || selected.some((r) => r.isDefault);
-  const valid = defaultOk && selected.every((r) => !nameErr(r));
+  const hostErr = (f: ForcedHost, i: number) =>
+    !ForcedHostname.safeParse(f.hostname).success ? n.forcedInvalid : hosts.some((o, j) => j < i && o.hostname === f.hostname) ? n.forcedDuplicate : !selected.some((r) => r.uuid === f.serverUuid) ? n.forcedNotMember : null;
+  const hostsOk = hosts.every((f, i) => !hostErr(f, i));
+  const valid = defaultOk && hostsOk && selected.every((r) => !nameErr(r));
+  const patchHost = (i: number, p: Partial<ForcedHost>) => setHosts((hs) => hs.map((h, j) => (j === i ? { ...h, ...p } : h)));
+  const addHost = (hostname = "", serverUuid?: string) => {
+    setResult(null);
+    const backend = serverUuid && selected.some((r) => r.uuid === serverUuid) ? serverUuid : (selected.find((r) => r.isDefault)?.uuid ?? "");
+    setHosts((hs) => [...hs, { hostname, serverUuid: backend }]);
+  };
+  const suggestions = server.network.forcedHostSuggestions.filter((sg) => !hosts.some((h) => h.hostname === sg.hostname));
 
   const select = (r: Row, on: boolean) => {
     setResult(null);
@@ -71,7 +83,7 @@ export function NetworkManager({ server }: { server: ServerDetail }) {
   };
 
   const submit = (restart: boolean) =>
-    save.mutate({ uuid: server.uuid, restart, members: selected.map((r) => ({ serverUuid: r.uuid, name: r.name, isDefault: r.isDefault })) });
+    save.mutate({ uuid: server.uuid, restart, members: selected.map((r) => ({ serverUuid: r.uuid, name: r.name, isDefault: r.isDefault })), forcedHosts: hosts });
 
   // Servers that would be restarted: new members and removed members; the proxy itself only reloads.
   const removed = server.network.members.filter((m) => !selected.some((r) => r.uuid === m.serverUuid));
@@ -149,6 +161,61 @@ export function NetworkManager({ server }: { server: ServerDetail }) {
             })
           )}
           {!defaultOk && <p className="text-sm text-destructive">{n.needDefault}</p>}
+
+          {rows && candidates.data && (
+            <div className="space-y-3 border-t border-border pt-4" data-testid="forced-hosts">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">{n.forcedTitle}</p>
+                <p className="text-sm text-muted-foreground">{n.forcedText}</p>
+                <p className="text-xs text-muted-foreground">{n.forcedDns}</p>
+              </div>
+              {hosts.length === 0 && <p className="text-sm text-muted-foreground">{n.forcedEmpty}</p>}
+              {hosts.map((f, i) => {
+                const err = hostErr(f, i);
+                return (
+                  <div key={i} className="flex flex-wrap items-start gap-2" data-testid="forced-host-row">
+                    <div className="min-w-56 flex-1 space-y-1">
+                      <Input
+                        aria-label={n.forcedHostLabel(i + 1)}
+                        aria-invalid={!!err}
+                        placeholder="survival.example.com"
+                        className="h-8 font-mono"
+                        value={f.hostname}
+                        onChange={(e) => patchHost(i, { hostname: e.target.value.trim().toLowerCase() })}
+                      />
+                      {err && <p className="text-xs text-destructive">{err}</p>}
+                    </div>
+                    <Select aria-label={n.forcedBackendLabel(f.hostname)} className="h-8 w-auto" value={f.serverUuid} onChange={(e) => patchHost(i, { serverUuid: e.target.value })}>
+                      <option value="">{n.forcedPickBackend}</option>
+                      {selected.map((r) => (
+                        <option key={r.uuid} value={r.uuid}>
+                          {r.name} ({cand(r.uuid).name})
+                        </option>
+                      ))}
+                    </Select>
+                    <Button variant="ghost" size="icon-sm" aria-label={n.forcedRemove(f.hostname)} onClick={() => setHosts((hs) => hs.filter((_, j) => j !== i))}>
+                      <X />
+                    </Button>
+                  </div>
+                );
+              })}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" disabled={selected.length === 0} onClick={() => addHost()}>
+                  <Plus /> {n.forcedAdd}
+                </Button>
+                {suggestions.length > 0 && selected.length > 0 && (
+                  <>
+                    <span className="text-xs text-muted-foreground">{n.forcedSuggest}</span>
+                    {suggestions.map((sg) => (
+                      <Button key={sg.hostname} variant="ghost" size="sm" className="font-mono" data-testid="forced-suggestion" onClick={() => addHost(sg.hostname, sg.serverUuid)}>
+                        <Plus /> {sg.hostname}
+                      </Button>
+                    ))}
+                  </>
+                )}
+              </div>
+            </div>
+          )}
           {save.error && <QueryError error={save.error} />}
 
           {confirm ? (

@@ -17,9 +17,9 @@ const admin = { session: sessionFor("admin"), locale: "en" as const };
 const inputs = (bodies: Array<{ path: string; input: unknown }>, p: string) => bodies.filter((b) => b.path === p).map((b) => b.input);
 
 const cand = (uuid: string, name: string, suggestedName: string, takenBy: string | null = null) => ({ uuid, name, templateName: "Paper", address: "203.0.113.10:25565", ownerName: "steve", suggestedName, takenBy });
-const proxy = (members: ServerDetail["network"]["members"] = []): ServerDetail => ({
+const proxy = (members: ServerDetail["network"]["members"] = [], extra: Partial<ServerDetail["network"]> = {}): ServerDetail => ({
   ...({ uuid: PROXY, name: "Proxy", permissions: [], isOwner: true } as unknown as ServerDetail),
-  network: { role: "proxy", members, proxy: null, connectAddress: "play.example.com" },
+  network: { role: "proxy", members, proxy: null, connectAddress: "play.example.com", forcedHosts: [], forcedHostSuggestions: [], ...extra },
 });
 const patch = (list: ReturnType<typeof cand>[]) => (m: Implementation) => {
   (m.servers as Mutable<typeof m.servers>).networkCandidates = () => list;
@@ -57,6 +57,7 @@ describe("NetworkManager", () => {
       uuid: PROXY,
       restart: true,
       members: [{ serverUuid: A, name: "smp", isDefault: false }, { serverUuid: B, name: "creative", isDefault: true }],
+      forcedHosts: [],
     });
   });
 
@@ -94,5 +95,43 @@ describe("NetworkManager", () => {
     expect(((await screen.findByLabelText("Add Creative to the network")) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByLabelText("Name for Creative") as HTMLInputElement).value).toBe("lobby");
     expect(((screen.getByLabelText("Add SMP to the network")) as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("forced hosts: suggestie, eigen domein, validatie en opslaan", async () => {
+    const server = proxy([{ serverUuid: A, serverName: "SMP", name: "smp", isDefault: true, address: null }], {
+      forcedHosts: [{ hostname: "smp.example.com", serverUuid: A }],
+      forcedHostSuggestions: [{ hostname: "creative.example.com", serverUuid: B }, { hostname: "smp.example.com", serverUuid: A }],
+    });
+    const { bodies } = renderWithTrpc(<NetworkManager server={server} />, { ...admin, patch: patch([cand(A, "SMP", "smp"), cand(B, "Creative", "creative")]) });
+    expect(((await screen.findByLabelText("Domain 1")) as HTMLInputElement).value).toBe("smp.example.com");
+    // al gebruikte suggestie verschijnt niet nog eens
+    expect(screen.getAllByTestId("forced-suggestion").map((b) => b.textContent!.trim())).toEqual(["creative.example.com"]);
+    // suggestie van een server die (nog) geen lid is: eerst op de standaardserver; lid maken en kiezen
+    fireEvent.click(screen.getByTestId("forced-suggestion"));
+    expect((screen.getByLabelText("Server for creative.example.com") as HTMLSelectElement).value).toBe(A);
+    fireEvent.change(screen.getByLabelText("Server for creative.example.com"), { target: { value: "" } });
+    expect(screen.getByText("Choose a server that is in the network.")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Save network" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText("Add Creative to the network"));
+    fireEvent.change(screen.getByLabelText("Server for creative.example.com"), { target: { value: B } });
+    // eigen domein: ongeldig, dubbel, dan goed
+    fireEvent.click(screen.getByRole("button", { name: "Add domain" }));
+    fireEvent.change(screen.getByLabelText("Domain 3"), { target: { value: "*.example.com" } });
+    expect(screen.getByText(/lowercase, no wildcard/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Domain 3"), { target: { value: "SMP.example.com" } });
+    expect(screen.getByText("Each domain may appear only once.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Domain 3"), { target: { value: "lobby.example.com" } });
+    expect((screen.getByLabelText("Server for lobby.example.com") as HTMLSelectElement).value).toBe(A); // standaardserver
+    fireEvent.click(screen.getByRole("button", { name: "Save network" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Save without restarting" }));
+    await waitFor(() => expect(inputs(bodies, "servers.updateNetwork")).toHaveLength(1));
+    expect((inputs(bodies, "servers.updateNetwork")[0] as { forcedHosts: unknown }).forcedHosts).toEqual([
+      { hostname: "smp.example.com", serverUuid: A },
+      { hostname: "creative.example.com", serverUuid: B },
+      { hostname: "lobby.example.com", serverUuid: A },
+    ]);
+    // verwijderen
+    fireEvent.click(screen.getByRole("button", { name: "Remove lobby.example.com" }));
+    expect(screen.queryByLabelText("Domain 3")).toBeNull();
   });
 });

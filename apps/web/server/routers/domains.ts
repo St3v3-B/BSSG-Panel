@@ -79,9 +79,25 @@ export const resetNodeIpCache = () => ipCache.clear();
 export const isMc = (d: Pick<DomainRow, "protocol">) => d.protocol === "minecraft";
 const primaryPort = (a: ServerAccess) => a.bundle.allocations[0]?.port ?? null;
 
+/**
+ * Poort voor de Minecraft-SRV: die van de server zelf, behalve als het domein een forced host is van de
+ * Velocity-proxy waar deze server achter hangt; dan wijst de SRV naar de proxy (zelfde node, dus zelfde IP).
+ */
+export async function mcPort(d: Pick<DomainRow, "hostname">, a: ServerAccess): Promise<number | null> {
+  const [fh] = await getDb()
+    .select({ proxyId: schema.networkForcedHosts.proxyServerId })
+    .from(schema.networkForcedHosts)
+    .where(and(eq(schema.networkForcedHosts.hostname, d.hostname), eq(schema.networkForcedHosts.backendServerId, a.bundle.server.id)));
+  if (fh) {
+    const [p] = await getDb().select({ port: schema.allocations.port }).from(schema.allocations).where(and(eq(schema.allocations.serverId, fh.proxyId), eq(schema.allocations.isPrimary, true)));
+    if (p) return p.port;
+  }
+  return primaryPort(a);
+}
+
 async function runCheck(d: DomainRow, a: ServerAccess): Promise<DnsCheck> {
   const ip = await nodeIp(a.bundle.node);
-  const port = primaryPort(a);
+  const port = isMc(d) ? await mcPort(d, a) : null;
   const r = isMc(d) && port ? await checkMinecraftDomain(d.hostname, ip, port) : await checkDomain(d.hostname, ip);
   const checkedAt = new Date();
   const result: DnsCheck = { domainId: d.id, records: r.records, nameservers: r.nameservers, provider: r.provider, warnings: r.warnings, checkedAt };
@@ -227,7 +243,7 @@ export const domains: Implementation["domains"] = {
     const changes: Record<string, unknown> = {};
     try {
       for (const n of names) changes[n] = await setARecord(token, zone.id, n, ip);
-      const port = primaryPort(a);
+      const port = isMc(d) ? await mcPort(d, a) : null;
       if (isMc(d) && port) changes[srvName] = await setSrvRecord(token, zone.id, srvName, port, d.hostname);
     } catch (e) {
       if (e instanceof CloudflareError) throw new TRPCError({ code: "BAD_GATEWAY", message: `CLOUDFLARE_ERROR: ${e.message}` });

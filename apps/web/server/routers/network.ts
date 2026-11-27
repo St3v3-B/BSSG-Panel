@@ -13,7 +13,7 @@ import { logActivity } from "../activity";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema } from "../db";
 import { applyNetworkToml } from "../lib/velocity-toml";
-import { FORWARDING_VAR, PROXY_SECRET_VAR, SECRET_VAR, allocationAddress, isBackend, isProxy, memberAddresses, proxyMembers, suggestNames } from "../network";
+import { FORWARDING_VAR, PROXY_SECRET_VAR, SECRET_VAR, allocationAddress, forcedHostsOf, isBackend, isProxy, memberAddresses, proxyMembers, suggestNames, tomlForcedHosts } from "../network";
 import { syncBedrockBackends } from "../bedrock";
 import { buildServerSpec } from "../spec";
 import { imagePolicyOf, fetchServerByUuid, fetchServers, isFullAdmin, limitsOf, requireServer, serverVariables, sleepOf, autoRestartOf, type ServerBundle } from "../servers-data";
@@ -107,6 +107,36 @@ export const network: Pick<Implementation["servers"], "networkCandidates" | "upd
     const previous = await proxyMembers(proxy.server.id);
     const removed = previous.map((x) => x.b).filter((b) => !members.some((m) => m.b.server.id === b.server.id));
 
+    // ---- forced hosts: weggelaten = de bestaande houden (zonder die van verwijderde leden) ----
+    const memberId = (uuid: string) => members.find((m) => m.b.server.uuid === uuid)?.b.server.id;
+    const forced: Array<{ hostname: string; backendId: number }> = [];
+    if (input.forcedHosts) {
+      for (const f of input.forcedHosts) {
+        const hostname = f.hostname.toLowerCase();
+        if (forced.some((x) => x.hostname === hostname)) throw bad(`FORCED_HOST_DUPLICATE: ${hostname}`);
+        const id = memberId(f.serverUuid);
+        if (!id) throw bad(`FORCED_HOST_NOT_MEMBER: ${hostname}`);
+        forced.push({ hostname, backendId: id });
+      }
+      if (forced.length) {
+        const names = forced.map((f) => f.hostname);
+        const [other] = await db
+          .select({ hostname: schema.networkForcedHosts.hostname })
+          .from(schema.networkForcedHosts)
+          .where(and(inArray(schema.networkForcedHosts.hostname, names), ne(schema.networkForcedHosts.proxyServerId, proxy.server.id)));
+        if (other) throw bad(`FORCED_HOST_TAKEN: ${other.hostname}`, "CONFLICT");
+        // Een minecraft- of webdomein van een server buiten dit netwerk hoort niet bij deze proxy.
+        const inNet = new Set([proxy.server.id, ...members.map((m) => m.b.server.id)]);
+        const doms = await db.select({ hostname: schema.domains.hostname, serverId: schema.domains.serverId }).from(schema.domains).where(inArray(schema.domains.hostname, names));
+        const foreign = doms.find((d) => !inNet.has(d.serverId));
+        if (foreign) throw bad(`FORCED_HOST_TAKEN: ${foreign.hostname}`, "CONFLICT");
+      }
+    } else {
+      const ids = new Set(members.map((m) => m.b.server.id));
+      for (const r of await forcedHostsOf(proxy.server.id)) if (ids.has(r.backendId)) forced.push({ hostname: r.hostname, backendId: r.backendId });
+    }
+    const tomlForced = tomlForcedHosts(forced, members.map((m) => ({ backendId: m.b.server.id, name: m.name })));
+
     // ---- forwarding-secret van de proxy ----
     const proxyVars = await serverVariables(proxy.server.id);
     const stored = proxyVars[PROXY_SECRET_VAR] ?? proxy.template.variables.find((v) => v.key === PROXY_SECRET_VAR)?.default ?? "";
@@ -126,7 +156,7 @@ export const network: Pick<Implementation["servers"], "networkCandidates" | "upd
     const addrs = await call(() => memberAddresses(proxy, members.map((m) => m.b)));
     for (const m of members) if (!addrs.get(m.b.server.uuid)) throw bad(`NO_ALLOCATION: ${m.b.server.name}`, "PRECONDITION_FAILED");
     const modernBefore = /^\s*player-info-forwarding-mode\s*=\s*"modern"/m.test(toml);
-    await call(() => d.writeFile(proxy.server.uuid, TOML_PATH, applyNetworkToml(toml, members.map((m) => ({ name: m.name, address: addrs.get(m.b.server.uuid)! })))));
+    await call(() => d.writeFile(proxy.server.uuid, TOML_PATH, applyNetworkToml(toml, members.map((m) => ({ name: m.name, address: addrs.get(m.b.server.uuid)! })), tomlForced)));
     // Alleen backends waarvan de forwarding-variabelen echt veranderen worden aangeraakt (en herstart).
     const changed = new Set<number>();
     for (const m of members) {
@@ -142,12 +172,14 @@ export const network: Pick<Implementation["servers"], "networkCandidates" | "upd
     await db.transaction(async (tx) => {
       await tx.delete(schema.networkMembers).where(eq(schema.networkMembers.proxyServerId, proxy.server.id));
       if (members.length) await tx.insert(schema.networkMembers).values(members.map((m, position) => ({ proxyServerId: proxy.server.id, backendServerId: m.b.server.id, name: m.name, position })));
+      await tx.delete(schema.networkForcedHosts).where(eq(schema.networkForcedHosts.proxyServerId, proxy.server.id));
+      if (forced.length) await tx.insert(schema.networkForcedHosts).values(forced.map((f) => ({ proxyServerId: proxy.server.id, hostname: f.hostname, backendServerId: f.backendId })));
     });
     await logActivity({
       action: "server.network.update",
       userId: uid,
       serverId: proxy.server.id,
-      metadata: { members: members.map((m) => ({ server: m.b.server.name, serverUuid: m.b.server.uuid, name: m.name })), removed: removed.map((b) => b.server.uuid), restart: input.restart },
+      metadata: { members: members.map((m) => ({ server: m.b.server.name, serverUuid: m.b.server.uuid, name: m.name })), removed: removed.map((b) => b.server.uuid), forcedHosts: tomlForced, restart: input.restart },
       ip: ctx.ip,
       ctx,
     });
