@@ -639,6 +639,7 @@ export const admin = {
     resetTotp: async ({ input, ctx }) => {
       await adminUser(input.id);
       await getDb().update(schema.users).set({ totpEnabled: false, totpSecretEnc: null }).where(eq(schema.users.id, input.id));
+      await getDb().delete(schema.recoveryCodes).where(eq(schema.recoveryCodes.userId, input.id));
       await logActivity({ action: "admin.user.reset_totp", userId: uid(ctx), metadata: { targetUserId: input.id }, ip: ctx.ip, ctx });
       return ok;
     },
