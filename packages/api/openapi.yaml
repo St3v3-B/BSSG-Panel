@@ -1029,6 +1029,14 @@ components:
             policy: { type: string, enum: [default, auto, notify, off], default: default }
             version_env: { type: [string, "null"] }
         start_on_install: { type: boolean, default: false }
+        server_icon:
+          type: string
+          enum: [none, bssg]
+          default: none
+          description: |
+            `bssg`: na een geslaagde (her)installatie schrijft de daemon het BSSG-logo (64x64) als
+            `server-icon.png` in de servermap, alleen als dat bestand er nog niet is, en vóór de start
+            van `start_on_install`.
         sleep:
           type: [object, "null"]
           description: |
@@ -1043,6 +1051,21 @@ components:
             idle_minutes: { type: integer, minimum: 1, maximum: 1440 }
             motd: { type: string, default: "Server is sleeping - join to start it" }
             kick_message: { type: string, default: "The server is starting, please reconnect in a minute." }
+            server_name: { type: string, maxLength: 100, description: "Naam voor de eerste MOTD-regel (zonder: alleen `motd`)." }
+            promo:
+              type: string
+              maxLength: 120
+              description: |
+                Tweede MOTD-regel, met `&`-kleurcodes (`&a`, `&l`, `&r`, `&#rrggbb`). Leeg = standaardregel.
+                Met `server_name` bouwt de daemon een tweeregelige JSON-tekstcomponent voor `description`
+                (en `kick_message` in dezelfde stijl), een `players.sample` met een hint, en een `favicon`.
+            favicon_mode:
+              type: string
+              enum: [server_or_logo, server_only]
+              default: server_or_logo
+              description: |
+                Icoon in de serverlijst: het eigen `server-icon.png` (64x64 PNG, max 64 kB) uit de servermap,
+                anders het BSSG-logo (`server_or_logo`) of geen icoon (`server_only`).
         auto_restart:
           type: [object, "null"]
           description: |

@@ -813,6 +813,14 @@ export interface components {
             /** @default false */
             start_on_install: boolean;
             /**
+             * @description `bssg`: na een geslaagde (her)installatie schrijft de daemon het BSSG-logo (64x64) als
+             *     `server-icon.png` in de servermap, alleen als dat bestand er nog niet is, en vóór de start
+             *     van `start_on_install`.
+             * @default none
+             * @enum {string}
+             */
+            server_icon: "none" | "bssg";
+            /**
              * @description Slaapstand (alleen game, Minecraft Java). De daemon telt elke minuut de spelers via een
              *     status-ping op de primaire allocation. Na idle_minutes zonder spelers stopt hij de server
              *     (status `sleeping`) en luistert hij zelf op die ip:poort: een status-ping krijgt `motd`,
@@ -826,6 +834,21 @@ export interface components {
                 motd: string;
                 /** @default The server is starting, please reconnect in a minute. */
                 kick_message: string;
+                /** @description Naam voor de eerste MOTD-regel (zonder: alleen `motd`). */
+                server_name?: string;
+                /**
+                 * @description Tweede MOTD-regel, met `&`-kleurcodes (`&a`, `&l`, `&r`, `&#rrggbb`). Leeg = standaardregel.
+                 *     Met `server_name` bouwt de daemon een tweeregelige JSON-tekstcomponent voor `description`
+                 *     (en `kick_message` in dezelfde stijl), een `players.sample` met een hint, en een `favicon`.
+                 */
+                promo?: string;
+                /**
+                 * @description Icoon in de serverlijst: het eigen `server-icon.png` (64x64 PNG, max 64 kB) uit de servermap,
+                 *     anders het BSSG-logo (`server_or_logo`) of geen icoon (`server_only`).
+                 * @default server_or_logo
+                 * @enum {string}
+                 */
+                favicon_mode: "server_or_logo" | "server_only";
             } | null;
             /**
              * @description Automatisch herstarten na een crash (null = uit). Een crash is een exit buiten een

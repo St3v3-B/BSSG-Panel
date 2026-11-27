@@ -672,9 +672,18 @@ export const ServerNotifications = z.object({
 });
 export type ServerNotifications = z.infer<typeof ServerNotifications>;
 
+/** MOTD van slapende Minecraft-servers (promoregel met `&`-kleurcodes, icoon-opties). */
+export const SleepMotdSettings = z.object({
+  promo: z.string().max(120),
+  showLogoIcon: z.boolean(),
+  seedLogoIcon: z.boolean(),
+});
+export type SleepMotdSettings = z.infer<typeof SleepMotdSettings>;
+
 export const Settings = Branding.extend({
   defaultLimits: Limits,
   imageUpdates: ImageUpdateSettings,
+  sleepMotd: SleepMotdSettings,
 });
 export type Settings = z.infer<typeof Settings>;
 
