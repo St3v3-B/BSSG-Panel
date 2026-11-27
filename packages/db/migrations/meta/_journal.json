@@ -71,6 +71,13 @@
       "when": 1795776393240,
       "tag": "0009_mature_jane_foster",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795777942180,
+      "tag": "0010_lethal_blindfold",
+      "breakpoints": true
     }
   ]
 }

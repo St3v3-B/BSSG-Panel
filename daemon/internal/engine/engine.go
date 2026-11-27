@@ -75,6 +75,22 @@ type Attachment interface {
 	Close() error
 }
 
+// ExecOptions beschrijft een commando dat in een draaiende container loopt.
+type ExecOptions struct {
+	Cmd        []string
+	User       string // "uid:gid"; nooit leeg (anders root)
+	WorkingDir string
+	// MaxOutput: bewaar hoogstens de laatste MaxOutput bytes uitvoer.
+	MaxOutput int
+}
+
+// ExecResult is de uitkomst van Exec.
+type ExecResult struct {
+	ExitCode  int
+	Output    string // stdout+stderr, de laatste MaxOutput bytes
+	Truncated bool
+}
+
 // StatsSample is één meting uit de Docker-statsstream.
 type StatsSample struct {
 	CPUPct      float64 // 100 = één core
@@ -106,5 +122,7 @@ type Engine interface {
 	// Stats roept fn aan voor elke meting tot ctx klaar is of de container stopt.
 	Stats(ctx context.Context, id string, fn func(StatsSample)) error
 	Update(ctx context.Context, id string, r Resources) error
+	// Exec draait een commando in een draaiende container en wacht tot het klaar is of ctx afloopt.
+	Exec(ctx context.Context, id string, o ExecOptions) (ExecResult, error)
 	Networks
 }

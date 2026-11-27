@@ -221,6 +221,52 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/servers/{uuid}/exec:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [power]
+      operationId: execCommand
+      description: >-
+        Runs one command inside the running container as the container user (uid 1000, never root)
+        via `sh -c`, with a timeout and an output cap. Only for websites (`type: web`).
+        The command is the user's own, in their own container; it is not validated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [command]
+              properties:
+                command: { type: string, minLength: 1, maxLength: 2000 }
+                timeout_seconds: { type: integer, minimum: 1, maximum: 600, default: 60 }
+      responses:
+        "200":
+          description: Command finished (also with a non-zero exit code, or after the timeout)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [exit_code, output, truncated, timed_out, duration_ms]
+                properties:
+                  exit_code: { type: integer, description: "-1 on timeout" }
+                  output: { type: string, description: "stdout+stderr, the last 16 KiB at most" }
+                  truncated: { type: boolean }
+                  timed_out: { type: boolean }
+                  duration_ms: { type: integer }
+        "400":
+          description: Invalid command, or the server is not a website
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Server is not running
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/servers/{uuid}/logs:
     parameters: [{ $ref: "#/components/parameters/Uuid" }]
     get:

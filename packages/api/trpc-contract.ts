@@ -266,6 +266,13 @@ export const contract = {
     runNow: mutation("user", byId, s.Ok),
   },
 
+  /** Alleen PHP-websites (templates php-8-*). Eigenaar of admin; opgeschort → FORBIDDEN `SUSPENDED` voor niet-admins. */
+  siteSettings: {
+    php: query("user", server, s.PhpSettingsInfo),
+    /** Schrijft php/00-panel.ini en nginx/00-panel.conf via de daemon en herstart de site als hij draait. */
+    updatePhp: mutation("user", server.extend({ settings: s.PhpSettings }), s.Ok),
+  },
+
   subusers: {
     list: query("user", server, z.array(s.Subuser)),
     /** Op Discord-ID of op naam van een bekende gebruiker. Onbekend ID → leeg account. Alleen eigenaar. */

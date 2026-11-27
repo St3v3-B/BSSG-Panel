@@ -43,7 +43,7 @@ export const diskQuotaMode = pgEnum("disk_quota_mode", ["soft", "xfs"]);
 export const sslStatus = pgEnum("ssl_status", ["pending", "dns_wrong", "issuing", "active", "failed"]);
 export const dnsStatus = pgEnum("dns_status", ["unchecked", "missing", "wrong_ip", "cloudflare_proxy", "ok"]);
 export const backupStatus = pgEnum("backup_status", ["pending", "running", "completed", "failed", "restoring"]);
-export const scheduleAction = pgEnum("schedule_action", ["restart", "command", "backup"]);
+export const scheduleAction = pgEnum("schedule_action", ["restart", "command", "backup", "exec"]);
 
 // ---------- gebruikers en auth ----------
 
@@ -336,6 +336,7 @@ export const schedules = pgTable("schedules", {
   lastRunAt: ts("last_run_at"),
   nextRunAt: ts("next_run_at"),
   lastResult: text("last_result"),
+  lastOutput: text("last_output"),
   createdAt: createdAt(),
 });
 

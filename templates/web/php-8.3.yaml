@@ -5,10 +5,10 @@ description: >-
   Website with nginx and PHP-FPM 8.3, suitable for WordPress. Put your files in the
   `public` folder; requests that do not match a file go to `index.php` (permalinks).
   Extensions include mysqli, pdo_mysql, gd, intl, zip, exif, curl, mbstring, opcache.
-  From the site, the database is reachable as `panel-mariadb:3306`. Custom PHP settings go in
-  `php/*.ini`, custom nginx rules (inside the server block) in `nginx/*.conf`; restart afterwards.
+  From the site, the database is reachable as `panel-mariadb:3306`. Common PHP settings (memory, uploads, timezone, ...) are in the panel;
+  other custom PHP settings go in `php/*.ini`, custom nginx rules (inside the server block) in `nginx/*.conf`; restart afterwards.
 type: web
-version: 7
+version: 8
 # serversideup/php: officiële PHP-build met nginx erbij. We gebruiken alleen de binaries;
 # hun s6-entrypoint niet (dat wil als root schrijven op de rootfs).
 image: serversideup/php:8.3-fpm-nginx-alpine
@@ -20,7 +20,8 @@ startup: |
   R=/tmp/php; H=/home/container
   mkdir -p $R/conf.d $R/uploads /tmp/nginx $H/public $H/php $H/nginx $H/.php/sessions
   CH=$(( {{SERVER_MEMORY}} / 64 )); [ "$CH" -ge 2 ] || CH=2
-  for f in $H/.php/ext/*.so; do [ -e "$f" ] && echo "extension=$f"; done > $R/conf.d/10-panel-ext.ini
+  # php/.disabled-extensions (one name per line) is managed by the panel (PHP settings).
+  for f in $H/.php/ext/*.so; do [ -e "$f" ] || continue; grep -qx "$(basename $f .so)" $H/php/.disabled-extensions 2>/dev/null && continue; echo "extension=$f"; done > $R/conf.d/10-panel-ext.ini
   cat > $R/conf.d/20-panel.ini <<'EOF'
   memory_limit = {{PHP_MEMORY_LIMIT}}
   upload_max_filesize = {{UPLOAD_MAX_SIZE}}

@@ -6,7 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
+	"strconv"
 	"sync"
 	"time"
 
@@ -337,4 +339,53 @@ func (s *Server) SendCommand(cmd string) error {
 		return ErrNotRunning
 	}
 	return r.write([]byte(cmd + "\n"))
+}
+
+// ExecResult is de uitkomst van Server.Exec.
+type ExecResult struct {
+	ExitCode  int
+	Output    string
+	Truncated bool
+	TimedOut  bool
+	Duration  time.Duration
+}
+
+// ExecOutputMax is de grens op bewaarde uitvoer (de laatste bytes).
+const ExecOutputMax = 16 * 1024
+
+// Exec draait `sh -c command` in de draaiende container als de containergebruiker
+// (nooit root), met `timeout` in de container en een deadline van de daemon als vangnet.
+func (s *Server) Exec(ctx context.Context, command string, timeout time.Duration) (ExecResult, error) {
+	s.mu.Lock()
+	r := s.run
+	st := s.state
+	s.mu.Unlock()
+	if r == nil || (st != StateStarting && st != StateOnline) {
+		return ExecResult{}, ErrNotRunning
+	}
+	secs := int(timeout / time.Second)
+	if secs < 1 {
+		secs = 1
+	}
+	cctx, cancel := context.WithTimeout(ctx, timeout+5*time.Second)
+	defer cancel()
+	start := time.Now()
+	res, err := s.m.eng.Exec(cctx, r.id, engine.ExecOptions{
+		Cmd:        []string{"timeout", "-s", "KILL", strconv.Itoa(secs), "sh", "-c", command},
+		User:       fmt.Sprintf("%d:%d", s.m.cfg.UID, s.m.cfg.GID),
+		WorkingDir: spec.ContainerHome,
+		MaxOutput:  ExecOutputMax,
+	})
+	d := time.Since(start)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return ExecResult{ExitCode: -1, TimedOut: true, Duration: d}, nil
+		}
+		return ExecResult{}, err
+	}
+	out := ExecResult{ExitCode: res.ExitCode, Output: res.Output, Truncated: res.Truncated, Duration: d}
+	if res.ExitCode == 137 && d >= timeout-500*time.Millisecond {
+		out.TimedOut, out.ExitCode = true, -1
+	}
+	return out, nil
 }
