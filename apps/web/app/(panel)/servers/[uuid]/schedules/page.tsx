@@ -9,5 +9,5 @@ export default function SchedulesPage() {
   const t = useT();
   if (!server.data) return null;
   if (!server.data.permissions.includes("schedule.manage")) return <NoPermission>{t.schedules.noAccess}</NoPermission>;
-  return <ScheduleManager uuid={server.data.uuid} />;
+  return <ScheduleManager uuid={server.data.uuid} web={server.data.type === "web"} />;
 }

@@ -24,8 +24,11 @@ export function nextRunAfter(cron: string, from: Date = new Date()): Date | null
   }
 }
 
-/** Voert de actie van een schema uit. Gooit bij een fout. */
-export async function runAction(s: ScheduleRow, bundle: ServerBundle): Promise<void> {
+export const EXEC_TIMEOUT_S = 120;
+export const OUTPUT_TAIL = 4000;
+
+/** Voert de actie van een schema uit. Gooit bij een fout; geeft bij `exec` de uitvoer (staart) terug. */
+export async function runAction(s: ScheduleRow, bundle: ServerBundle): Promise<string | null> {
   const node = daemonFor(bundle.node);
   switch (s.action) {
     case "restart":
@@ -38,6 +41,22 @@ export async function runAction(s: ScheduleRow, bundle: ServerBundle): Promise<v
     case "backup":
       await startBackup(bundle, { name: `${s.name} ${new Date().toISOString().slice(0, 16).replace("T", " ")}`, includeDatabases: true, userId: null, scheduleId: s.id });
       break;
+    case "exec": {
+      if (!s.payload) throw new Error("no command set");
+      const r = await call(() => node.exec(bundle.server.uuid, s.payload!, EXEC_TIMEOUT_S));
+      const out = r.output.slice(-OUTPUT_TAIL);
+      if (r.timed_out) throw new ExecFailed(`timeout after ${EXEC_TIMEOUT_S}s`, out);
+      if (r.exit_code !== 0) throw new ExecFailed(`exit code ${r.exit_code}`, out);
+      return out;
+    }
+  }
+  return null;
+}
+
+/** Een exec die draaide maar mislukte: de uitvoer blijft bewaard. */
+export class ExecFailed extends Error {
+  constructor(message: string, readonly output: string) {
+    super(message);
   }
 }
 
@@ -45,14 +64,16 @@ export async function runAction(s: ScheduleRow, bundle: ServerBundle): Promise<v
 export async function execute(s: ScheduleRow, userId: number | null = null): Promise<string> {
   const db = getDb();
   let result = "ok";
+  let output: string | null = null;
   try {
     const bundle = await fetchServerByUuid(await uuidOf(s.serverId));
     if (!bundle) throw new Error("server not found");
-    await runAction(s, bundle);
+    output = await runAction(s, bundle);
   } catch (e) {
     result = `error: ${((e as Error).message ?? String(e)).slice(0, 300)}`;
+    if (e instanceof ExecFailed) output = e.output;
   }
-  await db.update(schema.schedules).set({ lastRunAt: new Date(), lastResult: result }).where(eq(schema.schedules.id, s.id));
+  await db.update(schema.schedules).set({ lastRunAt: new Date(), lastResult: result, lastOutput: s.action === "exec" ? output : null }).where(eq(schema.schedules.id, s.id));
   await logActivity({ action: "server.schedule.run", userId, serverId: s.serverId, metadata: { id: s.id, name: s.name, action: s.action, result } });
   return result;
 }

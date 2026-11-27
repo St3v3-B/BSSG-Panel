@@ -119,6 +119,10 @@ export class DaemonClient {
   sendCommands(uuid: string, commands: string[]) {
     return this.request<void>("POST", `/api/servers/${uuid}/commands`, { commands });
   }
+  /** Command in the running site container (uid 1000, via `sh -c`). Returns also on non-zero exit or timeout. */
+  exec(uuid: string, command: string, timeoutSeconds = 60) {
+    return this.request<{ exit_code: number; output: string; truncated: boolean; timed_out: boolean; duration_ms: number }>("POST", `/api/servers/${uuid}/exec`, { command, timeout_seconds: timeoutSeconds }, (timeoutSeconds + 15) * 1000);
+  }
   stats(uuid: string, timeoutMs?: number) {
     return this.request<DaemonStats>("GET", `/api/servers/${uuid}/stats`, undefined, timeoutMs);
   }
