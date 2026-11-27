@@ -771,6 +771,8 @@ export interface components {
                 author: string | null;
             }[];
             fetch_error?: string | null;
+            /** @description URL van git remote origin (voor de GitHub-repo bij CI-status) */
+            origin?: string | null;
             /** @description Inhoud van status.json (null als er nog nooit een upgrade was) */
             upgrade: {
                 /** @enum {string} */
