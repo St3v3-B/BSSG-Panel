@@ -63,7 +63,7 @@ export function createMock(): Implementation {
     apiKeys: [] as s.ApiKey[],
     phpSettings: new Map<string, s.PhpSettings>(),
     admins: ["100000000000000001"],
-    settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 }, imageUpdates: { defaultPolicy: "notify", windowStart: "04:00", windowEnd: "05:00" }, sleepMotd: { promo: "&e⚡ &fJoin to wake it up &8• &7Hosted on &b&lBSSG Panel", showLogoIcon: true, seedLogoIcon: true } } as s.Settings,
+    settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 }, imageUpdates: { defaultPolicy: "notify", windowStart: "04:00", windowEnd: "05:00" }, sleepMotd: { promo: "&e⚡ &fJoin to wake it up &8• &7Hosted on &b&lBSSG Panel", showLogoIcon: true, seedLogoIcon: true }, activityRetentionDays: 90 } as s.Settings,
     totpEnabled: new Map<number, boolean>([[1, true]]),
     quotas: new Map<number, s.QuotaInput>([[2, { maxRamMb: 4096, maxDiskMb: 50_000, maxCpuPct: 300, maxServers: 3, maxDatabases: 2, templateIds: null, nodeIds: null, maxPortsPerServer: 2 }]]),
     webhooks: new Map<string, s.WebhookStatus>(),

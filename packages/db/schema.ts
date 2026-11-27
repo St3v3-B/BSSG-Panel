@@ -406,6 +406,8 @@ export const activityLog = pgTable("activity_log", {
   index("activity_user_idx").on(t.userId, t.at),
   index("activity_server_idx").on(t.serverId, t.at),
   index("activity_action_idx").on(t.action),
+  /** Voor de bewaartermijn (verwijderen op `at`). */
+  index("activity_at_idx").on(t.at),
 ]);
 
 /** Quotum per gebruiker; geen rij = de gebruiker kan zelf geen servers maken. null in de lijsten = alles. */

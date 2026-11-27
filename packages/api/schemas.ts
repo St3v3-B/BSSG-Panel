@@ -774,6 +774,8 @@ export const Settings = Branding.extend({
   defaultLimits: Limits,
   imageUpdates: ImageUpdateSettings,
   sleepMotd: SleepMotdSettings,
+  /** Activiteitenlog zoveel dagen bewaren; 0 = altijd. Oudere regels ruimt een periodieke taak op. */
+  activityRetentionDays: z.number().int().min(0).max(3650),
 });
 export type Settings = z.infer<typeof Settings>;
 
