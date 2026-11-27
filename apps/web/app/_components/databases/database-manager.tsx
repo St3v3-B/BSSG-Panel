@@ -11,6 +11,7 @@ import { Input } from "@/app/_components/ui/input";
 import { Label } from "@/app/_components/ui/label";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
+import { usePhpMyAdmin } from "@/app/_hooks/use-phpmyadmin";
 import { errorText } from "@/app/_lib/errors";
 import { useT } from "@/app/_lib/i18n";
 
@@ -22,6 +23,7 @@ export function DatabaseManager({ uuid }: { uuid: string }) {
   return (
     <div className="max-w-4xl space-y-6" data-testid="database-manager">
       <CreateDatabase uuid={uuid} />
+      {(list.data?.length ?? 0) > 0 && <PhpMyAdminCard />}
       {list.error ? (
         <QueryError error={list.error} />
       ) : !list.data ? (
@@ -32,6 +34,31 @@ export function DatabaseManager({ uuid }: { uuid: string }) {
         list.data.map((d) => <DatabaseCard key={d.id} uuid={uuid} db={d} />)
       )}
     </div>
+  );
+}
+
+/** Knop "Open in phpMyAdmin": single sign-on in een nieuw tabblad. */
+function PhpMyAdminCard() {
+  const t = useT();
+  const pma = usePhpMyAdmin();
+  if (!pma.info?.visible) return null;
+  return (
+    <Card data-testid="phpmyadmin-card">
+      <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm text-muted-foreground">{t.phpmyadmin.text}</p>
+          {pma.info.hasRemoteDatabases && <p className="text-xs text-warning">{t.phpmyadmin.remote}</p>}
+          {pma.error != null && (
+            <p role="alert" className="text-sm text-destructive">
+              {errorText(pma.error)}
+            </p>
+          )}
+        </div>
+        <Button variant="outline" onClick={() => void pma.open()} disabled={pma.pending} data-testid="open-phpmyadmin">
+          {pma.pending ? <Spinner /> : <ExternalLink />} {t.phpmyadmin.open}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 

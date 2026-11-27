@@ -1,6 +1,7 @@
 "use client";
-import { Activity, FileCode2, LayoutDashboard, Server, Settings, Users, type LucideIcon } from "lucide-react";
+import { Activity, Database, FileCode2, LayoutDashboard, Server, Settings, Users, type LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { usePhpMyAdmin } from "@/app/_hooks/use-phpmyadmin";
 import { useT } from "@/app/_lib/i18n";
 
 export interface NavItem {
@@ -12,6 +13,8 @@ export interface NavItem {
   current: boolean;
   icon: LucideIcon;
   children?: NavItem[];
+  /** Geen pagina maar een actie die in een nieuw tabblad opent (phpMyAdmin). */
+  action?: { run: () => void; pending: boolean; error: unknown; hint: string | null };
 }
 
 export interface NavSection {
@@ -38,9 +41,15 @@ export function useNav(isAdmin: boolean) {
     mk("/admin/settings/updates", sub.updates, Settings, under("/admin/settings/updates")),
   ];
   const n = t.admin2.nav;
-  const sections: NavSection[] = [
-    { id: "panel", title: t.nav.panelSection, items: [{ ...mk("/", t.nav.myServers, Server, pathname === "/" || under("/servers")), current: pathname === "/" }] },
-  ];
+  const pma = usePhpMyAdmin();
+  const panelItems: NavItem[] = [{ ...mk("/", t.nav.myServers, Server, pathname === "/" || under("/servers")), current: pathname === "/" }];
+  if (pma.info?.visible) {
+    panelItems.push({
+      ...mk("#phpmyadmin", t.phpmyadmin.nav, Database, false),
+      action: { run: () => void pma.open(), pending: pma.pending, error: pma.error, hint: pma.info.hasRemoteDatabases ? t.phpmyadmin.navRemote : null },
+    });
+  }
+  const sections: NavSection[] = [{ id: "panel", title: t.nav.panelSection, items: panelItems }];
   if (isAdmin) {
     sections.push({
       id: "admin",

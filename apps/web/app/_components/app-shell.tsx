@@ -1,5 +1,5 @@
 "use client";
-import { Check, ChevronRight, Languages, LogOut, Menu, PanelLeftClose, PanelLeftOpen, User, X } from "lucide-react";
+import { Check, ChevronRight, ExternalLink, Languages, LogOut, Menu, PanelLeftClose, PanelLeftOpen, User, X } from "lucide-react";
 import Link from "next/link";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
 import type { Me } from "@panel/api";
@@ -13,6 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { displayName, UserAvatar } from "@/app/_components/user-avatar";
 import { LOCALE_NAME, LocaleSwitcher } from "@/app/_components/locale-switcher";
 import { useNav, type NavItem, type NavSection } from "@/app/_components/nav-items";
+import { errorText } from "@/app/_lib/errors";
 import { LOCALES, useLocale, useT } from "@/app/_lib/i18n";
 
 const COLLAPSE_KEY = "panel.sidebar.collapsed";
@@ -164,6 +165,40 @@ function Section({ section, first, collapsed, touch }: { section: NavSection; fi
 
 function NavRow({ item, collapsed, touch }: { item: NavItem; collapsed: boolean; touch: boolean }) {
   const Icon = item.icon;
+  const t = useT();
+  if (item.action) {
+    const a = item.action;
+    return (
+      <li>
+        <button
+          type="button"
+          onClick={a.run}
+          disabled={a.pending}
+          aria-label={collapsed ? item.label : undefined}
+          title={collapsed ? item.label : (a.hint ?? t.phpmyadmin.newTab)}
+          data-testid="nav-phpmyadmin"
+          className={cn(
+            "flex w-full items-center gap-3 rounded-xl px-3 text-sm font-medium text-foreground/80 outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 motion-reduce:transition-none",
+            touch ? "min-h-11" : "min-h-9",
+            collapsed && "justify-center px-0",
+          )}
+        >
+          <Icon className={cn("size-4.5 shrink-0", a.error != null && "text-destructive")} aria-hidden />
+          {!collapsed && (
+            <>
+              <span className="truncate">{a.pending ? t.phpmyadmin.opening : item.label}</span>
+              <ExternalLink className="ml-auto size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            </>
+          )}
+        </button>
+        {a.error != null && (
+          <p role="alert" className={cn("px-3 pt-1 text-xs text-destructive", collapsed && "sr-only")}>
+            {errorText(a.error)}
+          </p>
+        )}
+      </li>
+    );
+  }
   return (
     <li>
       <Link
