@@ -142,7 +142,8 @@ services:
 
   # phpMyAdmin onder https://$PANEL_DOMAIN/phpmyadmin/ (Caddy -> hier), met single sign-on vanuit het panel:
   # - de image (deploy/phpmyadmin/) bevat onze config, signon.php en het thema bssg;
-  # - zit op `backend` (bereikt panel:3000 voor /api/pma/exchange en MariaDB) en op `pma` (alleen Caddy
+  # - zit op `backend` (bereikt panel:3000 voor /api/pma/exchange, de lokale MariaDB en de tunnels van het panel
+  #   naar de MariaDB van remote nodes) en op `pma` (alleen Caddy
   #   en deze container), dus Caddy hoeft niet op backend (Postgres/Redis);
   # - geen gepubliceerde poorten, geen internet (beide netwerken zijn intern);
   # - gebruikers loggen nooit zelf in: het panel geeft per login een eigen MariaDB-account met alleen hun databases.
@@ -158,6 +159,9 @@ services:
       PMA_ABSOLUTE_URI: https://${PANEL_DOMAIN}/phpmyadmin/
       PMA_DB_HOST: ${MARIADB_CONTAINER:-panel-mariadb}
       PMA_PANEL_URL: http://panel:3000
+      # Databases op remote nodes: phpMyAdmin verbindt met panel:<tunnelpoort> (PMA_TUNNEL_PORT_BASE + node-id); het
+      # panel stuurt dat via de daemon van de node (GET /api/db/tunnel) naar zijn MariaDB. Geen MariaDB-poort naar buiten.
+      PMA_TUNNEL_HOST: panel
       PMA_SHARED_SECRET: ${PMA_SHARED_SECRET:?PMA_SHARED_SECRET ontbreekt in het env-bestand (deploy/install.sh opnieuw draaien)}
       PMA_BLOWFISH_SECRET: ${PMA_BLOWFISH_SECRET:?PMA_BLOWFISH_SECRET ontbreekt in het env-bestand (deploy/install.sh opnieuw draaien)}
       UPLOAD_LIMIT: 256M

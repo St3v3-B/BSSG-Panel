@@ -2,14 +2,17 @@
 /**
  * Single sign-on voor phpMyAdmin (zie config.user.inc.php, auth_type signon).
  *
- * Het panel stuurt de gebruiker naar /phpmyadmin/signon.php?token=<eenmalig token>. Dit script wisselt het token
- * server-to-server in bij het panel (POST /api/pma/exchange met Bearer PMA_SHARED_SECRET) voor de gegevens van het
- * MariaDB-account van deze gebruiker, zet die in de signon-sessie en stuurt door naar phpMyAdmin.
+ * Het panel stuurt de gebruiker naar /phpmyadmin/signon.php?token=<eenmalig token>[&db=<naam>]. Dit script wisselt
+ * het token server-to-server in bij het panel (POST /api/pma/exchange met Bearer PMA_SHARED_SECRET) voor de gegevens
+ * van het MariaDB-account van deze gebruiker: per node een server (id, naam, poort, wachtwoord). Per server komt er
+ * een eigen signon-sessie (PanelPmaSignon voor server 1, PanelPmaSignon_<id> voor de rest); sessies van servers die
+ * niet meer in het antwoord staan, worden opgeruimd. Daarna door naar phpMyAdmin, op de server die het panel koos.
  * Zonder geldig token komt er geen sessie en dus geen toegang.
  */
 declare(strict_types=1);
 
-const SESSION_NAME = 'PanelPmaSignon';
+require_once '/etc/phpmyadmin/panel-servers.inc.php';
+
 const SESSION_TTL = 3600; // gelijk aan LoginCookieValidity
 
 header('Cache-Control: no-store');
@@ -42,12 +45,15 @@ if (strlen($secret) < 32) {
     fail(500, 'phpMyAdmin is not configured', 'PMA_SHARED_SECRET is missing.');
 }
 $panel = rtrim((string) (getenv('PMA_PANEL_URL') ?: 'http://panel:3000'), '/');
+// Optioneel meteen naar een database (vanaf de databasepagina van een server); het panel zegt op welke server die staat.
+$db = $_GET['db'] ?? '';
+$db = is_string($db) && preg_match('/^[A-Za-z0-9_]{1,64}$/', $db) ? $db : null;
 
 // De image heeft allow_url_fopen uit; curl is er wel.
 $ch = curl_init($panel . '/api/pma/exchange');
 curl_setopt_array($ch, [
     CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => json_encode(['token' => $token]),
+    CURLOPT_POSTFIELDS => json_encode(['token' => $token] + ($db !== null ? ['db' => $db] : [])),
     CURLOPT_HTTPHEADER => ["Authorization: Bearer $secret", 'Content-Type: application/json', 'Accept: application/json'],
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_FOLLOWLOCATION => false,
@@ -74,27 +80,70 @@ if (!is_array($data) || !is_string($data['user'] ?? null) || !is_string($data['p
     fail(502, 'Sign-in failed', 'Unexpected answer from the panel.');
 }
 
-$https = str_starts_with((string) getenv('PMA_ABSOLUTE_URI'), 'https://');
-session_name(SESSION_NAME);
-session_set_cookie_params([
-    'lifetime' => SESSION_TTL,
-    'path' => '/phpmyadmin/',
-    'secure' => $https,
-    'httponly' => true,
-    'samesite' => 'Lax',
-]);
-ini_set('session.gc_maxlifetime', (string) SESSION_TTL);
-session_start();
-session_regenerate_id(true);
-$_SESSION = [
-    'PMA_single_signon_user' => $data['user'],
-    'PMA_single_signon_password' => $data['password'],
-    'PMA_single_signon_host' => (string) (getenv('PMA_DB_HOST') ?: 'panel-mariadb'),
-    'PMA_single_signon_port' => 3306,
-];
-session_write_close();
+// Servers uit het antwoord; een ouder panel zonder `servers` geeft alleen de lokale server.
+$servers = [];
+$list = is_array($data['servers'] ?? null) ? $data['servers'] : [['id' => 1, 'name' => 'MariaDB', 'local' => true, 'port' => 3306, 'password' => $data['password']]];
+foreach ($list as $s) {
+    if (!is_array($s) || !is_int($s['id'] ?? null) || $s['id'] < 1 || $s['id'] > 999999999 || !is_int($s['port'] ?? null) || $s['port'] < 1 || $s['port'] > 65535
+        || !is_string($s['password'] ?? null) || $s['password'] === '' || !is_string($s['name'] ?? null) || !is_bool($s['local'] ?? null)
+        || ($s['local'] !== ($s['id'] === 1))) {
+        fail(502, 'Sign-in failed', 'Unexpected answer from the panel.');
+    }
+    $servers[$s['id']] = $s;
+}
+if ($servers === []) {
+    fail(502, 'Sign-in failed', 'Unexpected answer from the panel.');
+}
+ksort($servers);
+$select = is_int($data['select'] ?? null) && isset($servers[$data['select']]) ? $data['select'] : (int) array_key_first($servers);
 
-// Optioneel meteen naar een database (vanaf de databasepagina van een server).
-$db = $_GET['db'] ?? '';
-$target = is_string($db) && preg_match('/^[A-Za-z0-9_]{1,64}$/', $db) ? 'index.php?route=/database/structure&db=' . $db : 'index.php';
+session_set_cookie_params(panel_pma_cookie_params());
+ini_set('session.gc_maxlifetime', (string) SESSION_TTL);
+$tunnelHost = (string) (getenv('PMA_TUNNEL_HOST') ?: 'panel');
+$localHost = (string) (getenv('PMA_DB_HOST') ?: 'panel-mariadb');
+
+// Eén signon-sessie per server, elk met een nieuw id (geen fixatie).
+foreach ($servers as $id => $s) {
+    $name = panel_pma_session_name($id);
+    session_name($name);
+    $old = $_COOKIE[$name] ?? null;
+    session_id(panel_pma_valid_session_id($old) ? $old : session_create_id());
+    session_start();
+    session_regenerate_id(true);
+    $_SESSION = [
+        'PMA_single_signon_user' => $data['user'],
+        'PMA_single_signon_password' => $s['password'],
+        'PMA_single_signon_host' => $s['local'] ? $localHost : $tunnelHost,
+        'PMA_single_signon_port' => $s['local'] ? 3306 : $s['port'],
+    ];
+    session_write_close();
+}
+// Sessies van servers die de gebruiker niet (meer) heeft: weg, inclusief cookie (dan verdwijnen ze uit de serverkeuze).
+foreach ($_COOKIE as $cname => $value) {
+    $id = panel_pma_server_of_cookie((string) $cname);
+    if ($id === null || isset($servers[$id])) {
+        continue;
+    }
+    if (panel_pma_valid_session_id($value)) {
+        session_name((string) $cname);
+        session_id($value);
+        session_start();
+        $_SESSION = [];
+        session_destroy();
+    }
+    $cp = panel_pma_cookie_params();
+    setcookie((string) $cname, '', ['expires' => 1, 'path' => $cp['path'], 'secure' => $cp['secure'], 'httponly' => true, 'samesite' => $cp['samesite']]);
+}
+// Nodenamen voor de serverkeuze (config.user.inc.php).
+$names = [];
+foreach ($servers as $id => $s) {
+    $names[$id] = mb_substr($s['name'], 0, 64);
+}
+panel_pma_write_names($names);
+
+if ($db !== null) {
+    $target = 'index.php?route=/database/structure&db=' . $db . ($select !== 1 ? '&server=' . $select : '');
+} else {
+    $target = $select !== 1 ? 'index.php?server=' . $select : 'index.php';
+}
 header('Location: ' . $target, true, 303);
