@@ -446,7 +446,7 @@ export const PhpSettings = z.object({
   memoryLimitMb: z.number().int().min(32).max(32768),
   /** upload_max_filesize = post_max_size = nginx client_max_body_size, in MB. */
   uploadMaxMb: z.number().int().min(1).max(4096),
-  maxExecutionTime: z.number().int().min(1).max(3600),
+  maxExecutionTime: z.number().int().min(1).max(300),
   maxInputVars: z.number().int().min(100).max(100000),
   displayErrors: z.boolean(),
   /** IANA-naam, bv. Europe/Amsterdam. */
