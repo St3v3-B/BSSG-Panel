@@ -28,6 +28,7 @@ import (
 	"panel/daemon/internal/panel"
 	"panel/daemon/internal/server"
 	"panel/daemon/internal/sftpd"
+	"panel/daemon/internal/upgrade"
 	"panel/daemon/proxy"
 )
 
@@ -37,6 +38,8 @@ type Deps struct {
 	Router  proxy.Router
 	Log     *slog.Logger
 	Version string
+	// Commit: git-commit waaruit gebouwd (-X main.commit), voor /api/system.
+	Commit string
 	// Server-opties (tests zetten korte tijden).
 	Server server.Config
 	// Image stelt de image-updater af (Interval komt anders uit IMAGE_CHECK_INTERVAL).
@@ -129,6 +132,9 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	d.backup = &backup.Service{Mgr: d.mgr, Rep: d.panel, Log: deps.Log}
 	d.api = api.New(api.Options{NodeToken: cfg.NodeToken, AllowedOrigins: cfg.AllowedOrigins(), AuthTimeout: deps.WSAuthTimeout}, d.mgr, routes, verifier, d.systemInfo, deps.Log)
 	d.api.SetBackups(d.backup)
+	if cfg.PanelRepoDir != "" {
+		d.api.SetUpgrade(&upgrade.Service{RepoDir: cfg.PanelRepoDir, UpgradeDir: filepath.Join(cfg.DataDir, "upgrade")})
+	}
 	if cfg.MariaDBRootPassword != "" {
 		d.dbadm = &dbadmin.Admin{Eng: deps.Engine, Container: cfg.MariaDBContainer, RootPassword: cfg.MariaDBRootPassword}
 		d.api.SetDBAdmin(d.dbadm, cfg.MariaDBContainer)
@@ -329,6 +335,7 @@ func (d *Daemon) Shutdown(ctx context.Context) {
 func (d *Daemon) systemInfo(ctx context.Context) api.SystemInfo {
 	si := api.SystemInfo{
 		Version:       d.deps.Version,
+		Commit:        d.deps.Commit,
 		DiskQuotaMode: DiskQuotaMode,
 		CPUCount:      runtime.NumCPU(),
 		ServerCount:   d.mgr.Count(),

@@ -12,14 +12,16 @@ import (
 
 // Config is de configuratie van de daemon.
 type Config struct {
-	NodeToken      string
-	NodeDomain     string
-	PanelDomain    string
-	PanelURL       string
-	DaemonSocket   string
-	DaemonPort     int
-	SFTPPort       int
-	DataDir        string
+	NodeToken    string
+	NodeDomain   string
+	PanelDomain  string
+	PanelURL     string
+	DaemonSocket string
+	DaemonPort   int
+	SFTPPort     int
+	DataDir      string
+	// PanelRepoDir (PANEL_REPO_DIR): checkout waar install.sh draaide; alleen op de lokale node. Leeg = geen panel-updates.
+	PanelRepoDir   string
 	CaddyAdminURL  string
 	CaddyContainer string
 	CaddyTLSAddr   string
@@ -48,6 +50,7 @@ func Load(getenv func(string) string) (Config, error) {
 		PanelURL:            strings.TrimRight(get("PANEL_URL", ""), "/"),
 		DaemonSocket:        get("DAEMON_SOCKET", "/run/panel/daemon.sock"),
 		DataDir:             get("DATA_DIR", "/var/lib/panel"),
+		PanelRepoDir:        get("PANEL_REPO_DIR", ""),
 		CaddyAdminURL:       get("CADDY_ADMIN_URL", ""),
 		CaddyContainer:      get("CADDY_CONTAINER", "panel-caddy"),
 		CaddyTLSAddr:        get("CADDY_TLS_ADDR", "127.0.0.1:443"),
