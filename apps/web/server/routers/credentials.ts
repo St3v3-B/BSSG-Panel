@@ -25,7 +25,9 @@ const toApiKey = (k: KeyRow) => ({
 
 export const credentials: Pick<Implementation["account"], "setSftpPassword" | "apiKeys" | "createApiKey" | "revokeApiKey"> = {
   setSftpPassword: async ({ input, ctx }) => {
-    const a = await requireServer(ctx, input.uuid, "files.read");
+    // Een (beperkte) API-sleutel mag het SFTP-wachtwoord niet zetten: SFTP geeft de volledige rechten van de gebruiker.
+    forbidApiKey(ctx);
+    const a = await requireServer(ctx, input.uuid, "files.read", { mutates: true });
     const uid = ctx.session!.userId;
     const passwordHash = await hashPassword(input.password);
     await getDb()
