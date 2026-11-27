@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ServerDetail } from "@panel/api";
 import { DeleteServerCard, LimitsCard, OwnerCard, PortsCard } from "@/app/_components/admin/server-manage";
 import { VariablesCard } from "@/app/_components/server/server-settings";
-import AdminServersPage from "@/app/(panel)/admin/page";
+import AdminServersPage from "@/app/(panel)/admin/servers/page";
 import { renderWithTrpc, sessionFor } from "./utils";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }), usePathname: () => "/admin", useParams: () => ({}) }));

@@ -1,5 +1,6 @@
 "use client";
 import { Ban, KeyRound, Search, ShieldCheck, UserPlus } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import type { AdminUser } from "@panel/api";
 import { DiscordId } from "@panel/api/schemas";
@@ -113,7 +114,9 @@ function UserRow({ user }: { user: AdminUser }) {
         <div className="flex items-center gap-3">
           <UserAvatar user={user} className="size-8" />
           <div className="min-w-0">
-            <div className="truncate font-medium">{displayName(user)}</div>
+            <Link href={`/admin/users/${user.id}`} className="block truncate font-medium hover:underline">
+              {displayName(user)}
+            </Link>
             <div className="flex items-center gap-0.5 font-mono text-xs text-muted-foreground">
               {user.discordId}
               <CopyButton value={user.discordId} label={t.common.copyX(u.discordId)} className="size-6" />

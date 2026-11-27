@@ -188,7 +188,18 @@ export const contract = {
     },
 
     servers: {
-      list: query("admin", s.PageInput.extend({ search: z.string().optional() }), s.page(s.ServerSummary)),
+      list: query(
+        "admin",
+        s.PageInput.extend({
+          search: z.string().optional(),
+          ownerId: s.Id.optional(),
+          nodeId: s.Id.optional(),
+          type: s.ServerType.optional(),
+          status: s.ServerStatus.optional(),
+          suspended: z.boolean().optional(),
+        }),
+        s.page(s.ServerSummary),
+      ),
       /** Maakt de server aan en start de installatie. */
       create: mutation(
         "admin",
@@ -211,6 +222,10 @@ export const contract = {
       delete: mutation("admin", server, s.Ok),
       /** Verplaatsen naar een andere node (na v1-fase 4, contract staat alvast). */
       transfer: mutation("admin", server.extend({ nodeId: s.Id }), s.Ok),
+      /** Opschorten stopt de server; eigenaar en subusers kunnen dan niet starten, schrijven of SFTP'en. Admins wel. */
+      setSuspended: mutation("admin", server.extend({ suspended: z.boolean(), reason: z.string().max(500).nullable().default(null) }), s.Ok),
+      /** Andere template (zelfde type). Variabelen die de nieuwe template ook kent blijven; reinstall=true draait het install-script. */
+      changeTemplate: mutation("admin", server.extend({ templateId: s.Id, reinstall: z.boolean().default(false) }), s.Ok),
     },
 
     templates: {

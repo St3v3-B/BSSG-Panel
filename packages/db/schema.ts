@@ -170,6 +170,8 @@ export const servers = pgTable("servers", {
   diskMb: integer("disk_mb").notNull(),
   sleepEnabled: boolean("sleep_enabled").notNull().default(false),
   sleepIdleMinutes: integer("sleep_idle_minutes").notNull().default(10),
+  suspendedAt: ts("suspended_at"),
+  suspendedReason: text("suspended_reason"),
   status: serverStatus("status").notNull().default("installing"),
   installedAt: ts("installed_at"),
   createdAt: createdAt(),

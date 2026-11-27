@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { ALL_PERMISSIONS, parseTemplate, type Implementation, type NodeHealth, type Node as NodeOut, type AdminUser, type TemplateDetail } from "@panel/api";
 import { TRPCError } from "@trpc/server";
-import { and, asc, count, eq, gt, ilike, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, eq, gt, ilike, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { logActivity } from "../activity";
 import { dropServerDatabases } from "./databases";
@@ -206,6 +206,21 @@ async function mustServer(uuid: string): Promise<ServerBundle> {
   return b;
 }
 
+/**
+ * Opgeschort? Voor de andere routers (power, files, SFTP, ...): niet-admins mogen dan niet starten
+ * of schrijven. Volledige admins (zie `isFullAdmin`) mogen wel.
+ */
+export async function isSuspended(serverId: number): Promise<boolean> {
+  const [r] = await getDb().select({ at: schema.servers.suspendedAt }).from(schema.servers).where(eq(schema.servers.id, serverId));
+  return !!r?.at;
+}
+
+/** Zelfde, op uuid; `null` als de server niet bestaat. */
+export async function suspensionOf(uuid: string): Promise<{ reason: string | null; at: Date } | null> {
+  const [r] = await getDb().select({ at: schema.servers.suspendedAt, reason: schema.servers.suspendedReason }).from(schema.servers).where(eq(schema.servers.uuid, uuid));
+  return r?.at ? { reason: r.reason, at: r.at } : null;
+}
+
 const cursorNum = (c: string | null | undefined) => (c && /^\d+$/.test(c) ? Number(c) : null);
 
 // ---------- implementatie ----------
@@ -284,6 +299,11 @@ export const admin = {
       const where = and(
         s ? or(ilike(schema.servers.name, `%${s}%`), sql`${schema.servers.uuid}::text ilike ${`${s}%`}`) : undefined,
         cursor ? lt(schema.servers.id, cursor) : undefined,
+        input.ownerId ? eq(schema.servers.ownerId, input.ownerId) : undefined,
+        input.nodeId ? eq(schema.servers.nodeId, input.nodeId) : undefined,
+        input.type ? eq(schema.servers.type, input.type) : undefined,
+        input.status ? eq(schema.servers.status, input.status) : undefined,
+        input.suspended === undefined ? undefined : input.suspended ? isNotNull(schema.servers.suspendedAt) : isNull(schema.servers.suspendedAt),
       );
       const rows = await fetchServers(where, { orderBy: "id_desc", limit: input.limit + 1 });
       const page = rows.slice(0, input.limit);
@@ -422,6 +442,61 @@ export const admin = {
       });
       return ok;
     },
+
+    setSuspended: async ({ input, ctx }) => {
+      const b = await mustServer(input.uuid);
+      if (input.suspended) {
+        // Eerst stoppen: een daemon-fout (behalve "draait niet") laat de server ongewijzigd.
+        try {
+          await daemonFor(b.node).power(b.server.uuid, "stop");
+        } catch (e) {
+          if (!(e instanceof DaemonHttpError && (e.status === 404 || e.status === 409))) await call(() => Promise.reject(e));
+        }
+        const reason = input.reason?.trim() || null;
+        await getDb().update(schema.servers).set({ suspendedAt: new Date(), suspendedReason: reason }).where(eq(schema.servers.id, b.server.id));
+        await logActivity({ action: "admin.server.suspend", userId: uid(ctx), serverId: b.server.id, metadata: { serverUuid: b.server.uuid, reason }, ip: ctx.ip, ctx });
+      } else {
+        await getDb().update(schema.servers).set({ suspendedAt: null, suspendedReason: null }).where(eq(schema.servers.id, b.server.id));
+        await logActivity({ action: "admin.server.unsuspend", userId: uid(ctx), serverId: b.server.id, metadata: { serverUuid: b.server.uuid }, ip: ctx.ip, ctx });
+      }
+      return ok;
+    },
+
+    changeTemplate: async ({ input, ctx }) => {
+      const b = await mustServer(input.uuid);
+      const [tpl] = await getDb().select().from(schema.templates).where(eq(schema.templates.id, input.templateId));
+      if (!tpl) throw bad("TEMPLATE_NOT_FOUND");
+      if (tpl.id === b.template.id) throw bad("SAME_TEMPLATE");
+      if (tpl.type !== b.server.type) throw bad("TEMPLATE_TYPE_MISMATCH");
+      // Variabelen met dezelfde key blijven (mits ze nog aan het patroon voldoen); de rest valt terug op de default.
+      const old = await serverVariables(b.server.id);
+      const keep: Record<string, string> = {};
+      const dropped: string[] = [];
+      for (const v of tpl.variables) {
+        if (!(v.key in old)) continue;
+        if (validateVariables([v], { [v.key]: old[v.key]! }, { onlyUserEditable: false }).length) dropped.push(v.key);
+        else keep[v.key] = old[v.key]!;
+      }
+      const spec = buildServerSpec({ uuid: b.server.uuid, template: tpl, variables: keep, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: !input.reinstall });
+      await getDb().transaction(async (tx) => {
+        await tx.update(schema.servers).set({ templateId: tpl.id, ...(input.reinstall ? { status: "installing" as const } : {}) }).where(eq(schema.servers.id, b.server.id));
+        await tx.delete(schema.serverVariables).where(eq(schema.serverVariables.serverId, b.server.id));
+        const rows = Object.entries(keep).map(([key, value]) => ({ serverId: b.server.id, key, value }));
+        if (rows.length) await tx.insert(schema.serverVariables).values(rows);
+        // Binnen de transactie: faalt de daemon, dan blijft de database ongewijzigd.
+        await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
+        if (input.reinstall) await call(() => daemonFor(b.node).reinstall(b.server.uuid));
+      });
+      await logActivity({
+        action: "admin.server.template",
+        userId: uid(ctx),
+        serverId: b.server.id,
+        metadata: { serverUuid: b.server.uuid, from: b.template.slug, to: tpl.slug, reinstall: input.reinstall, droppedVariables: dropped },
+        ip: ctx.ip,
+        ctx,
+      });
+      return ok;
+    },
   } satisfies Partial<A["servers"]>,
 
   templates: {
@@ -523,5 +598,29 @@ export const admin = {
 
   settings: {
     get: async () => getSettings(),
+    update: async ({ input, ctx }) => {
+      const pairs: Array<[string, unknown]> = [];
+      if (input.panelName !== undefined) {
+        const n = input.panelName.trim();
+        if (!n || n.length > 60) throw bad("INVALID_PANEL_NAME");
+        pairs.push(["panel_name", n]);
+      }
+      if (input.logoUrl !== undefined) {
+        const u = input.logoUrl?.trim() ?? "";
+        if (u && !/^(https?:\/\/|\/(?!\/))\S+$/i.test(u)) throw bad("INVALID_LOGO_URL");
+        pairs.push(["logo_url", u]);
+      }
+      if (input.accentColor !== undefined) pairs.push(["accent_color", input.accentColor.toLowerCase()]);
+      if (input.defaultLimits !== undefined) {
+        const l = input.defaultLimits;
+        if (l.cpuPct < 0 || l.ramMb < 0 || l.swapMb < 0 || l.diskMb < 0) throw bad("INVALID_LIMITS");
+        pairs.push(["default_limits", l]);
+      }
+      for (const [key, value] of pairs) {
+        await getDb().insert(schema.settings).values({ key, value }).onConflictDoUpdate({ target: schema.settings.key, set: { value } });
+      }
+      await logActivity({ action: "admin.settings.update", userId: uid(ctx), metadata: { fields: pairs.map(([k]) => k) }, ip: ctx.ip, ctx });
+      return getSettings();
+    },
   } satisfies Partial<A["settings"]>,
 };

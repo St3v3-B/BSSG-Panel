@@ -69,6 +69,7 @@ export function toSummary(b: ServerBundle, viewerId: number, status?: ServerStat
     limits: limitsOf(b.server),
     isOwner: b.server.ownerId === viewerId,
     owner: userPublic(b.owner),
+    suspended: b.server.suspendedAt ? { reason: b.server.suspendedReason, at: b.server.suspendedAt } : null,
   };
 }
 

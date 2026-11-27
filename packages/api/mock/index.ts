@@ -341,6 +341,7 @@ export function createMock(): Implementation {
             permissions: [], allocations: allocs,
             variables: t.variables.map((v) => ({ ...v, value: input.variables[v.key] ?? v.default })),
             node: { id: 1, name: "node1", fqdn: "node1.test" }, sftp: { host: "node1.test", port: 2022, username: `${owner.name ?? owner.discordId}.${uuid.slice(0, 8)}` },
+            suspended: null,
             sleep: { supported: t.type === "game", enabled: false, idleMinutes: 10 },
             installedAt: null, createdAt: new Date(),
           };
@@ -357,6 +358,18 @@ export function createMock(): Implementation {
         updateAllocations: () => ok,
         delete: ({ input }) => ((db.servers = db.servers.filter((x) => x.uuid !== input.uuid)), ok),
         transfer: () => ok,
+        setSuspended: ({ input }) => {
+          const x = srv(input.uuid);
+          (x as { suspended: s.ServerSummary["suspended"] }).suspended = input.suspended ? { reason: input.reason, at: new Date() } : null;
+          if (input.suspended) x.status = "offline";
+          return ok;
+        },
+        changeTemplate: ({ input }) => {
+          const t = db.templates.find((y) => y.id === input.templateId) ?? notFound("template");
+          srv(input.uuid).templateName = t.name;
+          if (input.reinstall) srv(input.uuid).status = "installing";
+          return ok;
+        },
       },
       templates: {
         list: () => db.templates.map(({ yaml: _y, variables: _v, ...t }) => t),
