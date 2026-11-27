@@ -135,7 +135,7 @@ export function buildServerSpec(i: SpecInput): DaemonServerSpec {
     config_files: t.configFiles.map((c) => ({ path: c.path, format: c.format, set: { ...c.set } })),
     start_on_install: i.startOnInstall ?? false,
     skip_install: i.skipInstall ?? false,
-    ...(!i.skipInstall && getSleepMotdConfig().seedLogoIcon && t.type === "game" && templateSleepCapable(t) ? { server_icon: "bssg" as const } : {}),
+    ...(!i.skipInstall && getSleepMotdConfig().seedLogoIcon && t.type === "game" && templateSleepCapable(t) ? { server_icon: "bssg" as const } : ({} as { server_icon: "bssg" | "none" })),
     sleep: sleepSpec(t, i.sleep),
     image_update: imageUpdateSpec(t, i.imagePolicy),
     auto_restart: i.autoRestart?.enabled ? { max_per_10min: i.autoRestart.max } : null,
