@@ -1,6 +1,6 @@
 /** Nep-daemon (node:http) volgens packages/api/openapi.yaml, voor tests van de daemon-client en procedures. */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import { connect, type AddressInfo, type Socket } from "node:net";
 import type { DaemonServerSpec, DaemonServerState } from "@panel/api";
 
 export interface RecordedRequest {
@@ -51,6 +51,11 @@ export class FakeDaemon {
   statsBatch = true;
   /** Meting per server voor /stats en /api/stats (standaard vaste waarden). */
   statsFor: ((uuid: string) => Partial<Record<"cpu_pct" | "memory_bytes" | "network_rx_bytes" | "network_tx_bytes" | "disk_bytes" | "uptime_ms", number>>) | null = null;
+  /** Doel van GET /api/db/tunnel (de "MariaDB van deze node"); null = 503 db_unavailable. */
+  tunnelTarget: { host: string; port: number } | null = null;
+  /** Aantal geopende databasetunnels. */
+  tunnelsOpened = 0;
+  private readonly tunnelSockets = new Set<Socket>();
   private server: Server | null = null;
   url = "";
 
@@ -58,12 +63,58 @@ export class FakeDaemon {
 
   async start(): Promise<string> {
     this.server = createServer((req, res) => void this.handle(req, res));
+    this.server.on("upgrade", (req: IncomingMessage, socket: Socket) => this.upgrade(req, socket));
     await new Promise<void>((r) => this.server!.listen(0, "127.0.0.1", () => r()));
     this.url = `http://127.0.0.1:${(this.server.address() as AddressInfo).port}`;
     return this.url;
   }
 
+  /** GET /api/db/tunnel (upgrade panel-mariadb) zoals de echte daemon: token, vast doel, 503 zonder MariaDB. */
+  private upgrade(req: IncomingMessage, socket: Socket): void {
+    const path = (req.url ?? "").split("?")[0];
+    this.requests.push({ method: req.method ?? "", path: req.url ?? "", auth: req.headers.authorization, body: null });
+    const reply = (status: number, error: string) => {
+      const body = JSON.stringify({ error });
+      socket.end(`HTTP/1.1 ${status} X\r\ncontent-type: application/json\r\ncontent-length: ${Buffer.byteLength(body)}\r\nconnection: close\r\n\r\n${body}`);
+    };
+    socket.on("error", () => socket.destroy());
+    if (this.mode === "hang") return; // nooit antwoorden
+    if (req.method !== "GET" || path !== "/api/db/tunnel") return reply(404, "not_found");
+    if (req.headers.authorization !== `Bearer ${this.token}`) return reply(401, "unauthorized");
+    if (String(req.headers.upgrade).toLowerCase() !== "panel-mariadb") return reply(426, "upgrade_required");
+    if (this.mode === "error500") return reply(500, "internal");
+    const target = this.tunnelTarget;
+    if (!target) return reply(503, "db_unavailable");
+    const up = connect(target.port, target.host);
+    up.once("connect", () => {
+      this.tunnelsOpened++;
+      this.tunnelSockets.add(socket).add(up);
+      socket.write("HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: panel-mariadb\r\n\r\n");
+      up.pipe(socket);
+      socket.pipe(up);
+      const close = () => {
+        up.destroy();
+        socket.destroy();
+        this.tunnelSockets.delete(up);
+        this.tunnelSockets.delete(socket);
+      };
+      up.on("close", close);
+      socket.on("close", close);
+    });
+    up.once("error", () => {
+      if (!this.tunnelSockets.has(up)) reply(503, "db_unavailable");
+      else socket.destroy();
+    });
+  }
+
+  /** Sluit alle open tunnels (bv. node valt weg). */
+  dropTunnels(): void {
+    for (const s of this.tunnelSockets) s.destroy();
+    this.tunnelSockets.clear();
+  }
+
   async stop(): Promise<void> {
+    this.dropTunnels();
     this.server?.closeAllConnections();
     await new Promise<void>((r) => (this.server ? this.server.close(() => r()) : r()));
   }
@@ -94,6 +145,8 @@ export class FakeDaemon {
     this.exportFails = false;
     this.dbs.clear();
     this.pmaUsers.clear();
+    this.tunnelTarget = null;
+    this.tunnelsOpened = 0;
     this.dbAvailable = true;
     this.dbDumpFails = false;
     this.dbImportFails = false;

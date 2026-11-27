@@ -47,6 +47,22 @@ const EnvSchema = z
     MARIADB_ADMIN_ADDR: optional,
     /** Bearer tussen de phpMyAdmin-container en /api/pma/exchange; leeg = phpMyAdmin-koppeling uit. */
     PMA_SHARED_SECRET: optional.refine((v) => v === undefined || v.length >= 32, "te kort (minimaal 32 tekens)"),
+    /**
+     * Databasetunnels voor phpMyAdmin naar remote nodes: het panel luistert per node op PMA_TUNNEL_BIND:(base + node-id)
+     * en stuurt elke verbinding via de daemon van die node (GET /api/db/tunnel) naar zijn MariaDB. 0 = willekeurige poort (tests).
+     */
+    PMA_TUNNEL_PORT_BASE: optional.transform((v, ctx) => {
+      if (v === undefined) return 40000;
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 0 || n > 64000) {
+        ctx.addIssue({ code: "custom", message: `invalid port base: ${v}` });
+        return z.NEVER;
+      }
+      return n;
+    }),
+    PMA_TUNNEL_BIND: optional.transform((v) => v ?? "0.0.0.0"),
+    /** Wie de tunnelpoorten mag gebruiken (hostnamen of IP's, komma-gescheiden), naast loopback. */
+    PMA_TUNNEL_ALLOW: optional.transform((v) => (v ?? "phpmyadmin").split(",").map((x) => x.trim()).filter(Boolean)),
     DATABASE_URL: optional.transform((v) => v ?? "postgres://panel:panel@postgres:5432/panel"),
     REDIS_URL: optional.transform((v) => v ?? "redis://redis:6379"),
     SFTP_PORT: port(2022),
