@@ -26,6 +26,38 @@ type Fake struct {
 	FailCreate error
 
 	networks map[string]*FakeNetwork
+
+	// ExecHandler beantwoordt Exec; standaard exitcode 0 en lege uitvoer.
+	ExecHandler func(id string, o ExecOptions) (ExecResult, error)
+	execs       []ExecOptions
+}
+
+// Execs geeft de tot nu toe uitgevoerde Exec-aanroepen.
+func (f *Fake) Execs() []ExecOptions {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]ExecOptions(nil), f.execs...)
+}
+
+func (f *Fake) Exec(ctx context.Context, id string, o ExecOptions) (ExecResult, error) {
+	c, err := f.get(id)
+	if err != nil {
+		return ExecResult{}, err
+	}
+	c.mu.Lock()
+	running := c.running
+	c.mu.Unlock()
+	if !running {
+		return ExecResult{}, fmt.Errorf("container %s is not running", id)
+	}
+	f.mu.Lock()
+	f.execs = append(f.execs, o)
+	h := f.ExecHandler
+	f.mu.Unlock()
+	if h != nil {
+		return h(id, o)
+	}
+	return ExecResult{}, nil
 }
 
 // FakeNetwork is een netwerk in de fake.
