@@ -2,7 +2,7 @@
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { DeleteServerCard, LimitsCard, OwnerCard, PortsCard, SuspendSection, TemplateSection } from "@/app/_components/admin/server-manage";
+import { DeleteServerCard, DomainsAllowedSection, LimitsCard, OwnerCard, PortsCard, SuspendSection, TemplateSection } from "@/app/_components/admin/server-manage";
 import { QueryError } from "@/app/_components/query-error";
 import { RenameCard, ReinstallCard, SleepCard, VariablesCard } from "@/app/_components/server/server-settings";
 import { StatusBadge } from "@/app/_components/status-badge";
@@ -52,6 +52,7 @@ export default function AdminServerPage() {
           <TemplateSection uuid={s.uuid} type={s.type} currentName={s.templateName} />
           <LimitsCard key={`l-${JSON.stringify(s.limits)}`} server={s} />
           <OwnerCard server={s} />
+          {s.type === "game" && <DomainsAllowedSection uuid={s.uuid} allowed={s.domainsAllowed} />}
           {s.type === "game" && <PortsCard key={`p-${s.allocations.map((a) => a.id).join()}`} server={s} />}
           <VariablesCard server={s} all />
           <SleepCard key={`s-${s.sleep.enabled}-${s.sleep.idleMinutes}`} server={s} />

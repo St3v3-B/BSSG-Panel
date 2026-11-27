@@ -14,13 +14,13 @@ export interface ServerTab {
 }
 
 /** Welke tabbladen deze gebruiker op deze server ziet (op basis van type en rechten). */
-export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner" | "permissions">): ServerTab[] {
+export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner" | "permissions"> & { domainsAllowed?: boolean }): ServerTab[] {
   const base = `/servers/${server.uuid}`;
   const has = (p: Permission) => server.permissions.includes(p);
   const l = getT().server.tabs;
   const tabs: ServerTab[] = [server.type === "web" ? { key: "console", href: base, label: l.logs, icon: ScrollText } : { key: "console", href: base, label: l.console, icon: SquareTerminal }];
   if (has("files.read")) tabs.push({ key: "files", href: `${base}/files`, label: l.files, icon: FolderOpen });
-  if (server.type === "web" && has("domain.manage")) tabs.push({ key: "domains", href: `${base}/domains`, label: l.domains, icon: Globe });
+  if ((server.type === "web" || server.domainsAllowed) && has("domain.manage")) tabs.push({ key: "domains", href: `${base}/domains`, label: l.domains, icon: Globe });
   if (has("database.manage")) tabs.push({ key: "databases", href: `${base}/databases`, label: l.databases, icon: Database });
   if (server.isOwner) tabs.push({ key: "users", href: `${base}/users`, label: l.users, icon: Users });
   tabs.push({ key: "settings", href: `${base}/settings`, label: l.settings, icon: Settings });

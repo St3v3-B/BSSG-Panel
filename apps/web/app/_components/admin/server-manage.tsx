@@ -411,3 +411,51 @@ export function TemplateSection({ uuid, type, currentName }: { uuid: string; typ
     </Card>
   );
 }
+
+/** Game-server: domeinen (HTTP-map, Minecraft-SRV) wel of niet toestaan. */
+export function DomainsAllowedSection({ uuid, allowed }: { uuid: string; allowed: boolean }) {
+  const t = useT();
+  const d = t.admin2.server;
+  const utils = trpc.useUtils();
+  const [confirm, setConfirm] = useState(false);
+  const m = trpc.admin.servers.setDomainsAllowed.useMutation({
+    onSuccess: () => {
+      setConfirm(false);
+      void utils.servers.get.invalidate({ uuid });
+      void utils.domains.list.invalidate({ uuid });
+    },
+  });
+  return (
+    <Card data-testid="domains-allowed-section">
+      <CardHeader>
+        <CardTitle className="text-base">{d.domainsTitle}</CardTitle>
+        <CardDescription>{d.domainsText}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            checked={allowed}
+            disabled={m.isPending}
+            onChange={(e) => {
+              if (e.target.checked) m.mutate({ uuid, allowed: true });
+              else setConfirm(true);
+            }}
+          />
+          {d.domainsToggle}
+        </label>
+        {confirm && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">{d.domainsOffWarning}</span>
+            <Button variant="destructive" disabled={m.isPending} onClick={() => m.mutate({ uuid, allowed: false })}>
+              {m.isPending && <Spinner />} {d.domainsOff}
+            </Button>
+            <Button variant="ghost" onClick={() => setConfirm(false)}>
+              {t.common.cancel}
+            </Button>
+          </div>
+        )}
+        {m.error && <AdminError error={m.error} />}
+      </CardContent>
+    </Card>
+  );
+}
