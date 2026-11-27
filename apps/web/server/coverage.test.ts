@@ -9,7 +9,7 @@ export const PHASE1 = [
   "servers.list", "servers.get", "servers.stats", "servers.power", "servers.sendCommand", "servers.consoleToken",
   "servers.rename", "servers.updateVariables", "servers.reinstall", "servers.activity", "servers.updateSleep",
   "admin.dashboard",
-  "admin.servers.list", "admin.servers.create", "admin.servers.updateLimits", "admin.servers.updateOwner", "admin.servers.updateAllocations", "admin.servers.delete",
+  "admin.servers.list", "admin.servers.create", "admin.servers.updateLimits", "admin.servers.updateOwner", "admin.servers.updateAllocations", "admin.servers.delete", "admin.servers.transfer",
   "admin.nodes.list", "admin.nodes.get",
   "admin.allocations.list", "admin.allocations.create", "admin.allocations.delete",
   "admin.users.list", "admin.users.get", "admin.users.create", "admin.users.setBlocked", "admin.users.resetTotp",
