@@ -159,7 +159,7 @@ test("no console errors on any main page (user and admin)", async ({ page, conte
 });
 
 // BUG (docs/qa-report.md #2): Spinner defaults to the Dutch label "Laden…" (ui/spinner.tsx:4), also for English users.
-test.fixme("loading spinner has an English accessible name for English users", async ({ page, context }) => {
+test("loading spinner has an English accessible name for English users", async ({ page, context }) => {
   await asUser(context);
   await page.route("**/api/trpc/**auth.me**", async (route) => { await new Promise((r) => setTimeout(r, 4000)); await route.continue(); });
   await page.goto("/");

@@ -52,14 +52,14 @@ export default function AdminServerPage() {
           </div>
           <SuspendSection uuid={s.uuid} suspended={s.suspended} />
           <TemplateSection uuid={s.uuid} type={s.type} currentName={s.templateName} />
-          <LimitsCard key={`l-${JSON.stringify(s.limits)}`} server={s} />
+          <LimitsCard key={`l-${s.uuid}`} server={s} />
           <OwnerCard server={s} />
           {s.type === "game" && <DomainsAllowedSection uuid={s.uuid} allowed={s.domainsAllowed} nodeSupportsDomains={s.node.supportsDomains} />}
           {s.type === "game" && <PortsCard key={`p-${s.allocations.map((a) => a.id).join()}`} server={s} />}
           <MoveNodeCard key={`m-${s.node.id}`} server={s} />
           <VariablesCard server={s} all />
-          <ImageUpdateCard key={`i-${s.imageUpdate.policy}-${s.imageUpdate.available}`} server={s} />
-          <SleepCard key={`s-${s.sleep.enabled}-${s.sleep.idleMinutes}`} server={s} />
+          <ImageUpdateCard key={`i-${s.uuid}`} server={s} />
+          <SleepCard key={`s-${s.uuid}`} server={s} />
           <ServerNotificationsCard uuid={s.uuid} />
           <RenameCard server={s} />
           <ReinstallCard server={s} />

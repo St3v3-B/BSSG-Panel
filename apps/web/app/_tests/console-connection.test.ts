@@ -75,6 +75,31 @@ describe("ConsoleConnection", () => {
     expect(states).toEqual(["connecting", "authenticating", "connected"]);
   });
 
+  it("socket open maar geen auth_success binnen 15 s: sluiten zodat hij opnieuw verbindt", async () => {
+    const { conn, last } = setup();
+    conn.start();
+    await flush();
+    const ws = last();
+    ws.open();
+    await vi.advanceTimersByTimeAsync(14_000);
+    expect(ws.closedWith).toBeNull();
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(ws.closedWith).toBe(4000);
+    conn.stop();
+  });
+
+  it("geen auth-timeout als auth_success op tijd komt", async () => {
+    const { conn, last } = setup();
+    conn.start();
+    await flush();
+    const ws = last();
+    ws.open();
+    ws.push({ event: "auth_success", permissions: ["console.read"] });
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(ws.closedWith).toBeNull();
+    conn.stop();
+  });
+
   it("token_expiring → nieuw token ophalen → opnieuw auth op dezelfde socket", async () => {
     const { conn, fetch, messages, last } = setup();
     conn.start();

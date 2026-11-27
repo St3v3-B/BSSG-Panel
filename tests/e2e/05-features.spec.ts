@@ -90,7 +90,7 @@ test("quota user can change limits within quota and sees the settings cards", as
 });
 
 // BUG (docs/qa-report.md #1): OwnLimitsCard is remounted (key includes the limits) so "Limits saved." vanishes.
-test.fixme("quota user: 'Limits saved.' confirmation is shown after saving limits", async ({ page, context }) => {
+test("quota user: 'Limits saved.' confirmation is shown after saving limits", async ({ page, context }) => {
   await asUser(context, QUOTA_USER.id, QUOTA_USER.name);
   await page.goto(`/servers/${need("quotaUser")}/settings`);
   const card = page.getByTestId("own-limits");
@@ -262,7 +262,7 @@ test("image-update policy: change to Notify only, persists; admin page lists ser
 });
 
 // BUG (docs/qa-report.md #1): the card is remounted (key includes the policy) so the confirmation vanishes.
-test.fixme("image-update policy: shows 'Image update settings saved.' after saving", async ({ page, context }) => {
+test("image-update policy: shows 'Image update settings saved.' after saving", async ({ page, context }) => {
   await asUser(context);
   await page.goto(`/servers/${need("paper")}/settings`);
   const card = page.getByTestId("image-update-card");

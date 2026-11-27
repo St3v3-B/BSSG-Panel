@@ -23,16 +23,16 @@ export default function ServerSettingsPage() {
     <div className="max-w-3xl space-y-6">
       {manage && <RenameCard server={s} />}
       {manage && s.type === "game" && <VariablesCard server={s} />}
-      {manage && <ImageUpdateCard key={`i-${s.imageUpdate.policy}-${s.imageUpdate.available}`} server={s} />}
+      {manage && <ImageUpdateCard key={`i-${s.uuid}`} server={s} />}
       {manage && s.type === "web" && <PhpSettingsCard uuid={s.uuid} />}
-      {manage && <SleepCard key={`s-${s.sleep.enabled}-${s.sleep.idleMinutes}`} server={s} />}
+      {manage && <SleepCard key={`s-${s.uuid}`} server={s} />}
       {manage && <ServerNotificationsCard uuid={s.uuid} />}
       {perms.includes("files.read") || perms.includes("files.write") ? (
         <SftpCard uuid={s.uuid} />
       ) : (
         <NoPermission>{t.sftp.noAccess}</NoPermission>
       )}
-      {s.isOwner && quota.data && <OwnLimitsCard key={`l-${s.limits.ramMb}-${s.limits.diskMb}-${s.limits.cpuPct}`} server={s} />}
+      {s.isOwner && quota.data && <OwnLimitsCard key={`l-${s.uuid}`} server={s} />}
       {manage && <ReinstallCard server={s} />}
       {s.isOwner && quota.data && <DeleteOwnCard server={s} />}
     </div>

@@ -46,6 +46,8 @@ export interface ConsoleConnectionOptions {
   /** Na een geslaagde token-refresh (handig voor de UI en tests). */
   onTokenRefreshed?: () => void;
   backoff?: Backoff;
+  /** Socket open maar geen auth_success binnen deze tijd: sluiten en opnieuw verbinden. */
+  authTimeoutMs?: number;
 }
 
 export class ConsoleConnection {
@@ -149,6 +151,9 @@ export class ConsoleConnection {
       if (gen !== this.generation) return;
       this.setState("authenticating");
       ws.send(JSON.stringify({ event: "auth", token: tok.token } satisfies WsClientMessage));
+      setTimeout(() => {
+        if (gen === this.generation && this.socket === ws && !this.authedOnSocket && !this.stopped) ws.close(4000, "auth timeout");
+      }, this.opts.authTimeoutMs ?? 15_000);
     };
     ws.onmessage = (ev) => {
       if (gen !== this.generation) return;
