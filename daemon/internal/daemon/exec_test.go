@@ -129,7 +129,7 @@ func TestRealDockerExec(t *testing.T) {
 		h.expect("POST", "/api/servers/"+site+"/exec", map[string]any{"command": cmd, "timeout_seconds": secs}, 200).json(t, &o)
 		return o
 	}
-	if o := run("id -u; id -g; pwd; echo err >&2; exit 7", 10); o.ExitCode != 7 || o.Output != "1000\n1000\n/home/container\nerr\n" {
+	if o := run("id -u; id -g; pwd; echo err >&2; exit 7", 10); o.ExitCode != 7 || !sameLines(o.Output, "1000\n1000\n/home/container\nerr\n") {
 		t.Fatalf("%+v", o)
 	}
 	// Schrijven buiten /home/container en /tmp mag niet (read-only rootfs, geen root).
@@ -145,4 +145,12 @@ func TestRealDockerExec(t *testing.T) {
 	if !o.TimedOut || o.ExitCode != -1 || time.Since(start) > 8*time.Second {
 		t.Fatalf("timeout: %+v na %v", o, time.Since(start))
 	}
+}
+
+// sameLines vergelijkt regels zonder volgorde: stdout en stderr komen via aparte streams binnen.
+func sameLines(got, want string) bool {
+	g, w := strings.Split(got, "\n"), strings.Split(want, "\n")
+	slices.Sort(g)
+	slices.Sort(w)
+	return strings.Join(g, "\n") == strings.Join(w, "\n")
 }
