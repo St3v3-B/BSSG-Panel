@@ -14,6 +14,7 @@ import { Card } from "@/app/_components/ui/card";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { useT } from "@/app/_lib/i18n";
+import { Table } from "@/app/_components/ui/table";
 
 export function TemplatesAdmin() {
   const t = useT();
@@ -32,7 +33,7 @@ export function TemplatesAdmin() {
         <Skeleton className="h-48 rounded-xl" />
       ) : (
         <Card className="overflow-hidden">
-          <table className="w-full text-sm">
+          <Table>
             <thead className="border-b border-border bg-muted/30 text-left text-xs text-muted-foreground">
               <tr>
                 <th className="px-4 py-2.5 font-medium">{tp.colName}</th>
@@ -66,7 +67,7 @@ export function TemplatesAdmin() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         </Card>
       )}
     </div>

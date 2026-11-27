@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/app/_components/ui/c
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { displayName } from "@/app/_components/user-avatar";
 import { useT } from "@/app/_lib/i18n";
+import { Table } from "@/app/_components/ui/table";
 
 /** Admin: verbruik per gebruiker (gebruikers met een quotum of servers). */
 export function QuotaUsageTable() {
@@ -27,7 +28,7 @@ export function QuotaUsageTable() {
         ) : usage.isPending ? (
           <Skeleton className="h-24 rounded-lg" />
         ) : (
-          <table className="w-full text-sm">
+          <Table>
             <thead className="text-left text-xs text-muted-foreground">
               <tr>
                 <th className="py-1 pr-3 font-normal">{t.user}</th>
@@ -55,7 +56,7 @@ export function QuotaUsageTable() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </Table>
         )}
         {usage.hasNextPage && (
           <Button variant="ghost" className="mt-2" onClick={() => void usage.fetchNextPage()}>

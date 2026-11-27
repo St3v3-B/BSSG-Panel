@@ -29,18 +29,19 @@ export function PowerButtons({ status, pending, onPower }: { status: ServerStatu
   }, [confirmKill]);
   const icon = (a: PowerAction, I: typeof Play) => (pending === a ? <Spinner /> : <I />);
   return (
-    <div className="flex flex-wrap items-center gap-2" data-testid="power-buttons">
-      <Button size="sm" onClick={() => onPower("start")} disabled={!can.start || !!pending}>
+    <div className="grid w-full grid-cols-4 items-center gap-1.5 sm:flex sm:w-auto sm:flex-wrap sm:gap-2" data-testid="power-buttons">
+      <Button size="sm" className="max-sm:px-1.5" onClick={() => onPower("start")} disabled={!can.start || !!pending}>
         {icon("start", Play)} {t.power.start}
       </Button>
-      <Button size="sm" variant="secondary" onClick={() => onPower("restart")} disabled={!can.restart || !!pending}>
+      <Button size="sm" variant="secondary" className="max-sm:px-1.5" onClick={() => onPower("restart")} disabled={!can.restart || !!pending}>
         {icon("restart", RotateCw)} {t.power.restart}
       </Button>
-      <Button size="sm" variant="secondary" onClick={() => onPower("stop")} disabled={!can.stop || !!pending}>
+      <Button size="sm" variant="secondary" className="max-sm:px-1.5" onClick={() => onPower("stop")} disabled={!can.stop || !!pending}>
         {icon("stop", Square)} {t.power.stop}
       </Button>
       <Button
         size="sm"
+        className="max-sm:px-1.5"
         variant={confirmKill ? "destructive" : "outline"}
         onClick={() => {
           if (!confirmKill) return setConfirmKill(true);

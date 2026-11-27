@@ -2,10 +2,10 @@ import { cva, type VariantProps } from "class-variance-authority";
 import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 
-const alertVariants = cva("relative flex w-full gap-3 rounded-lg border px-4 py-3 text-sm [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0", {
+const alertVariants = cva("relative flex w-full flex-wrap gap-3 rounded-xl sm:flex-nowrap [&>div]:min-w-[12rem] max-sm:[&>button]:w-full border px-4 py-3 text-sm [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0", {
   variants: {
     variant: {
-      default: "border-border bg-card text-card-foreground",
+      default: "border-border bg-card text-card-foreground shadow-card",
       destructive: "border-destructive/40 bg-destructive/10 text-destructive",
       warning: "border-warning/40 bg-warning/10 text-warning",
       info: "border-info/40 bg-info/10 text-info",

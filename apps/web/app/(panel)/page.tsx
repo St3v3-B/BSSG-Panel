@@ -7,6 +7,7 @@ import { Button } from "@/app/_components/ui/button";
 import { PageHeader } from "@/app/_components/page-header";
 import { QueryError } from "@/app/_components/query-error";
 import { ServerCard } from "@/app/_components/server-card";
+import { EmptyState } from "@/app/_components/ui/empty-state";
 import { Card } from "@/app/_components/ui/card";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
@@ -36,7 +37,7 @@ export default function OverviewPage() {
         }
       />
       {quota.data && (
-        <Card className="mb-6 p-4" data-testid="quota-card">
+        <Card className="mb-5 p-4 sm:mb-6" data-testid="quota-card">
           <div className="mb-3 text-sm font-medium">{t.quota.title}</div>
           <QuotaMeters overview={quota.data} />
         </Card>
@@ -46,14 +47,14 @@ export default function OverviewPage() {
       ) : servers.isPending ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-56 rounded-xl" />
+            <Skeleton key={i} className="h-64 rounded-2xl" />
           ))}
         </div>
       ) : list.length === 0 ? (
-        <Card className="flex flex-col items-center gap-3 p-12 text-center" data-testid="no-servers">
-          <Server className="size-8 text-muted-foreground" />
-          <div className="font-medium">{t.overview.emptyTitle}</div>
-          <p className="max-w-sm text-sm text-muted-foreground">{quota.data ? t.quota.emptyHint : t.overview.emptyText}</p>
+        <Card data-testid="no-servers">
+          <EmptyState icon={Server} title={t.overview.emptyTitle}>
+            {quota.data ? t.quota.emptyHint : t.overview.emptyText}
+          </EmptyState>
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" data-testid="server-list">

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="BSSG Panel"><style>svg{color:#0b1220}@media (prefers-color-scheme:dark){svg{color:#f3f5fb}}</style>
+  <path d="M12 42l20 10v7L12 49z" fill="currentColor" fill-opacity=".55" stroke="currentColor" stroke-opacity=".55" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M52 42L32 52v7l20-10z" fill="currentColor" fill-opacity=".8" stroke="currentColor" stroke-opacity=".8" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M32 32l20 10-20 10-20-10z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M12 30l20 10v7L12 37z" fill="currentColor" fill-opacity=".55" stroke="currentColor" stroke-opacity=".55" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M52 30L32 40v7l20-10z" fill="currentColor" fill-opacity=".8" stroke="currentColor" stroke-opacity=".8" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M32 20l20 10-20 10-20-10z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M12 18l20 10v7L12 25z" fill="currentColor" fill-opacity=".55" stroke="currentColor" stroke-opacity=".55" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M52 18L32 28v7l20-10z" fill="currentColor" fill-opacity=".8" stroke="currentColor" stroke-opacity=".8" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M32 8l20 10-20 10-20-10z" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>

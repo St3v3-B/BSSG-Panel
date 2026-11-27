@@ -61,9 +61,9 @@ function AdminSubNav() {
     { href: "/admin/settings", label: t.settings, active: path.startsWith("/admin/settings") },
   ];
   return (
-    <nav className="-mt-2 mb-5 flex gap-1 text-sm" aria-label="admin" data-testid="admin-subnav">
+    <nav className="scrollbar-none -mx-4 -mt-2 mb-5 flex gap-1 overflow-x-auto px-4 text-sm sm:mx-0 sm:px-0" aria-label="admin" data-testid="admin-subnav">
       {tabs.map((x) => (
-        <Link key={x.href} href={x.href} className={cn("rounded-md px-3 py-1.5", x.active ? "bg-muted font-medium" : "text-muted-foreground hover:text-foreground")}>
+        <Link key={x.href} href={x.href} className={cn("whitespace-nowrap rounded-lg px-3.5 py-2 transition-colors", x.active ? "bg-primary/12 font-medium" : "text-muted-foreground hover:bg-accent hover:text-foreground")}>
           {x.label}
         </Link>
       ))}

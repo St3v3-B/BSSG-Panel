@@ -20,6 +20,7 @@ import { errorText } from "@/app/_lib/errors";
 import { formatDate } from "@/app/_lib/format";
 import { dnsStatus, providerHelp, recordStatus, sslStatus, warningText, wwwCounterpart } from "@/app/_lib/dns";
 import { useT } from "@/app/_lib/i18n";
+import { Table } from "@/app/_components/ui/table";
 
 /** Interval van de live DNS-controle zolang het scherm open is (ontwerp: 30 s). */
 export const LIVE_CHECK_MS = 30_000;
@@ -257,7 +258,7 @@ function DomainCard({ uuid, domain, all, isWeb }: { uuid: string; domain: Domain
           <Skeleton className="h-24" />
         ) : (
           <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full text-sm" data-testid="dns-records">
+            <Table data-testid="dns-records">
               <thead className="border-b border-border bg-muted/30 text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 font-medium">{t.domains.colType}</th>
@@ -294,7 +295,7 @@ function DomainCard({ uuid, domain, all, isWeb }: { uuid: string; domain: Domain
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           </div>
         )}
 

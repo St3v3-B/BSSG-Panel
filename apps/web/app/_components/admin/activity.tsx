@@ -14,6 +14,7 @@ import { displayName } from "@/app/_components/user-avatar";
 import { useDebounced } from "@/app/_hooks/use-debounced";
 import { formatDate } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
+import { Table } from "@/app/_components/ui/table";
 
 /** Korte weergave van de metadata: key=value, lange waarden ingekort. */
 export function metadataText(m: Record<string, unknown>): string {
@@ -80,7 +81,7 @@ export function ActivityAdmin() {
       ) : (
         <Card className="overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm" data-testid="activity-table">
+            <Table data-testid="activity-table">
               <thead className="border-b border-border bg-muted/30 text-left text-xs text-muted-foreground">
                 <tr>
                   <th className="px-4 py-2.5 font-medium">{a.colWhen}</th>
@@ -119,7 +120,7 @@ export function ActivityAdmin() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           </div>
           {log.hasNextPage && (
             <div className="border-t border-border p-3 text-center">

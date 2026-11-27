@@ -33,11 +33,11 @@ export default function AccountPage() {
       <PageHeader title={t.account.title} description={t.account.description} />
       <div className="space-y-6">
         <Card>
-          <CardContent className="flex items-center gap-4 p-5">
+          <CardContent className="flex flex-wrap items-center gap-4 p-5">
             <UserAvatar user={me.user} className="size-14 text-lg" />
             <div className="min-w-0 flex-1">
               <div className="truncate text-lg font-semibold">{displayName(me.user)}</div>
-              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground">
                 {t.account.discordId} <code className="font-mono">{me.user.discordId}</code>
                 <CopyButton value={me.user.discordId} label={t.account.copyDiscordId} />
               </div>

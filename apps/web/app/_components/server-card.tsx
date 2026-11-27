@@ -1,10 +1,12 @@
 "use client";
+import type { CSSProperties } from "react";
 import { Gamepad2, Globe, Moon, Play } from "lucide-react";
 import Link from "next/link";
 import type { ServerSummary } from "@panel/api";
 import { trpc } from "@/lib/trpc";
 import { CopyButton } from "@/app/_components/copy-button";
 import { ImageUpdateBadge } from "@/app/_components/image-updates";
+import { powerAvailability } from "@/app/_components/power-buttons";
 import { StatusBadge } from "@/app/_components/status-badge";
 import { Button } from "@/app/_components/ui/button";
 import { Card } from "@/app/_components/ui/card";
@@ -13,6 +15,19 @@ import { UsageMeter } from "@/app/_components/usage-meter";
 import { displayName } from "@/app/_components/user-avatar";
 import { formatBytes, formatCpuLimit, formatMb, formatPct, isRunning, usagePct } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
+import { cn } from "@/lib/utils";
+
+const STATUS_TONE: Record<ServerSummary["status"], string> = {
+  installing: "var(--info)",
+  install_failed: "var(--destructive)",
+  offline: "var(--muted-foreground)",
+  starting: "var(--warning)",
+  online: "var(--success)",
+  stopping: "var(--warning)",
+  disk_exceeded: "var(--destructive)",
+  sleeping: "oklch(0.7 0.14 275)",
+  unknown: "var(--muted-foreground)",
+};
 
 export function ServerCard({ server }: { server: ServerSummary }) {
   const t = useT();
@@ -25,15 +40,19 @@ export function ServerCard({ server }: { server: ServerSummary }) {
   const ramLimit = server.limits.ramMb * 1024 * 1024;
   const diskLimit = server.limits.diskMb * 1024 * 1024;
 
+  const tone = STATUS_TONE[server.status];
+  const canStart = server.isOwner && !server.suspended && powerAvailability(server.status).start && server.status !== "sleeping";
   return (
-    <Card className="group relative flex flex-col gap-4 p-5 transition-colors hover:border-foreground/20" data-testid="server-card">
-      <div className="flex items-start justify-between gap-3">
+    <Card className="group relative flex flex-col gap-4 overflow-hidden p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-foreground/20 sm:p-5" data-testid="server-card" data-status={server.status} style={{ "--tone": tone } as CSSProperties}>
+      <span aria-hidden className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[var(--tone)] to-transparent opacity-80" />
+      <span aria-hidden className={cn("pointer-events-none absolute -right-10 -top-10 size-40 rounded-full bg-[var(--tone)] blur-3xl transition-opacity", running ? "opacity-20 group-hover:opacity-30" : "opacity-[0.07]")} />
+      <div className="relative flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+          <span className="grid size-11 shrink-0 place-items-center rounded-xl border border-border bg-muted/70 text-[var(--tone)]">
             <Icon className="size-5" />
           </span>
           <div className="min-w-0">
-            <Link href={`/servers/${server.uuid}`} className="block truncate font-semibold after:absolute after:inset-0 after:content-['']">
+            <Link href={`/servers/${server.uuid}`} className="block truncate text-base font-semibold after:absolute after:inset-0 after:content-['']">
               {server.name}
             </Link>
             <p className="truncate text-xs text-muted-foreground">
@@ -42,16 +61,16 @@ export function ServerCard({ server }: { server: ServerSummary }) {
             </p>
           </div>
         </div>
-        <div className="flex flex-col items-end gap-1">
+        <div className="flex shrink-0 flex-col items-end gap-1">
           <StatusBadge status={server.status} />
           <ImageUpdateBadge info={server.imageUpdate} />
         </div>
       </div>
 
-      <div className="flex min-h-7 items-center gap-1 text-sm">
+      <div className="relative flex min-h-9 items-center gap-1 rounded-lg border border-border bg-background/40 px-3 text-sm">
         {server.primaryAddress ? (
           <>
-            <code className="truncate font-mono text-muted-foreground">{server.primaryAddress}</code>
+            <code className="min-w-0 flex-1 truncate font-mono text-[13px] text-foreground/80">{server.primaryAddress}</code>
             <CopyButton value={server.primaryAddress} label={t.server.copyAddress} className="relative z-10" />
           </>
         ) : (
@@ -59,7 +78,7 @@ export function ServerCard({ server }: { server: ServerSummary }) {
         )}
       </div>
 
-      <div className="grid gap-3">
+      <div className="relative grid gap-3">
         <UsageMeter
           label={t.server.cpu}
           value={s ? formatPct(s.cpuPct) : "–"}
@@ -79,9 +98,16 @@ export function ServerCard({ server }: { server: ServerSummary }) {
           pct={s ? usagePct(s.diskBytes, s.diskLimitBytes || diskLimit) : null}
         />
       </div>
+      {canStart && (
+        <div className="relative z-10 -mb-1 flex">
+          <Button size="sm" variant="secondary" className="w-full" disabled={start.isPending} onClick={() => start.mutate({ uuid: server.uuid, action: "start" })} data-testid="card-start">
+            {start.isPending ? <Spinner /> : <Play />} {t.power.start}
+          </Button>
+        </div>
+      )}
       {!running && <p className="sr-only">{t.server.cpuLimitSr(formatCpuLimit(server.limits.cpuPct))}</p>}
       {server.status === "sleeping" && (
-        <div className="relative z-10 flex items-center justify-between gap-2 rounded-md border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200" data-testid="sleeping-hint">
+        <div className="relative z-10 flex items-center justify-between gap-2 rounded-md border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-700 dark:text-indigo-200" data-testid="sleeping-hint">
           <span className="flex items-center gap-1.5">
             <Moon className="size-3.5" /> {t.sleep.cardHint}
           </span>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 252 64" role="img" aria-label="BSSG Panel"><defs>
+  <linearGradient id="g" x1="12" y1="8" x2="52" y2="28" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#a99bff"/><stop offset="1" stop-color="#22d3ee"/></linearGradient>
+</defs><style>.w{font:700 28px ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;letter-spacing:-.5px;fill:#0b1220}.p{fill:#6a4de8;font-weight:500}@media (prefers-color-scheme:dark){.w{fill:#f3f5fb}.p{fill:#a496ff}}</style><g>
+  <path d="M12 49v-7l20-10 20 10v7L32 59z" fill="none"/>
+  <path d="M12 42l20 10v7L12 49z" fill="#6a4de8" stroke="#6a4de8" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M52 42L32 52v7l20-10z" fill="#5238c4" stroke="#5238c4" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M32 32l20 10-20 10-20-10z" fill="#8f7bff" stroke="#8f7bff" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M12 37v-7l20-10 20 10v7L32 47z" fill="none"/>
+  <path d="M12 30l20 10v7L12 37z" fill="#7c5cff" stroke="#7c5cff" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M52 30L32 40v7l20-10z" fill="#5f43d8" stroke="#5f43d8" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M32 20l20 10-20 10-20-10z" fill="#a496ff" stroke="#a496ff" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M12 25v-7l20-10 20 10v7L32 35z" fill="none"/>
+  <path d="M12 18l20 10v7L12 25z" fill="#7c5cff" stroke="#7c5cff" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M52 18L32 28v7l20-10z" fill="#5a3fd0" stroke="#5a3fd0" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M32 8l20 10-20 10-20-10z" fill="url(#g)" stroke="url(#g)" stroke-width="2" stroke-linejoin="round"/></g><text class="w" x="74" y="41">BSSG <tspan class="p">Panel</tspan></text></svg>

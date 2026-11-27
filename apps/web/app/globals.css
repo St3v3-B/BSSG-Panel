@@ -2,32 +2,64 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Dark mode is standaard (class "dark" op <html>). De accentkleur komt uit auth.branding
-   en wordt client-side op --primary gezet (zie _components/branding.tsx). */
+/* Design tokens. Dark is standaard (class "dark" op <html>), light via class "light" (zie
+   _components/theme.tsx). De accentkleur komt uit auth.branding en wordt client-side op --primary
+   gezet (zie _components/branding.tsx); alle accentvarianten worden daarvan afgeleid. */
 :root {
-  --radius: 0.5rem;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.185 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
+  --radius: 0.75rem;
+  --background: oklch(0.975 0.006 275);
+  --foreground: oklch(0.2 0.03 275);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.03 275);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.03 275);
+  --muted: oklch(0.953 0.01 275);
+  --muted-foreground: oklch(0.48 0.03 275);
+  --accent: oklch(0.94 0.014 275);
+  --accent-foreground: oklch(0.2 0.03 275);
+  --border: oklch(0.25 0.04 275 / 12%);
+  --input: oklch(0.25 0.04 275 / 18%);
+  --ring: var(--primary);
+  --primary: oklch(0.55 0.22 285);
+  --primary-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.55 0.22 25);
+  --success: oklch(0.52 0.15 155);
+  --warning: oklch(0.58 0.14 70);
+  --info: oklch(0.52 0.16 245);
+  --surface-glow: color-mix(in oklab, var(--primary) 14%, transparent);
+  --shadow-card: 0 1px 2px oklch(0.25 0.05 275 / 6%), 0 8px 24px -12px oklch(0.25 0.05 275 / 14%);
+  --shadow-pop: 0 12px 40px -10px oklch(0.25 0.05 275 / 30%);
+  color-scheme: light;
+}
+
+.dark {
+  --background: oklch(0.145 0.02 275);
+  --foreground: oklch(0.975 0.005 275);
+  --card: oklch(0.19 0.022 275);
+  --card-foreground: oklch(0.975 0.005 275);
+  --popover: oklch(0.215 0.024 275);
+  --popover-foreground: oklch(0.975 0.005 275);
+  --muted: oklch(0.255 0.026 275);
+  --muted-foreground: oklch(0.72 0.03 275);
+  --accent: oklch(0.285 0.03 275);
   --accent-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --primary: oklch(0.72 0.19 150);
-  --primary-foreground: oklch(0.145 0 0);
-  --destructive: oklch(0.65 0.22 25);
-  --success: oklch(0.72 0.19 150);
-  --warning: oklch(0.8 0.16 80);
-  --info: oklch(0.7 0.13 240);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --primary: oklch(0.72 0.19 285);
+  --primary-foreground: oklch(0.145 0.02 275);
+  --destructive: oklch(0.68 0.21 22);
+  --success: oklch(0.75 0.17 155);
+  --warning: oklch(0.82 0.15 80);
+  --info: oklch(0.74 0.12 235);
+  --surface-glow: color-mix(in oklab, var(--primary) 22%, transparent);
+  --shadow-card: 0 1px 0 oklch(1 0 0 / 5%) inset, 0 12px 32px -16px oklch(0 0 0 / 60%);
+  --shadow-pop: 0 16px 50px -10px oklch(0 0 0 / 70%);
+  color-scheme: dark;
 }
 
 @theme inline {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -47,28 +79,146 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-info: var(--info);
-  --radius-sm: calc(var(--radius) - 2px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 2px);
-  --radius-xl: calc(var(--radius) + 6px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+  --animate-rise: rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-fade: fade 0.2s ease-out both;
+  --animate-sheet-up: sheet-up 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-drawer-in: drawer-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-ping-soft: ping-soft 2s ease-out infinite;
 }
+
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes drawer-in { from { transform: translateX(-100%); } to { transform: none; } }
+@keyframes ping-soft { 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes drift { to { transform: translate(6vmax, 4vmax) scale(1.12); } }
 
 @layer base {
   * {
     border-color: var(--border);
   }
   html {
-    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    overflow-x: hidden;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 35%, transparent);
+  }
+  /* iOS zoomt in op velden kleiner dan 16px */
+  @media (max-width: 767px) {
+    input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+      font-size: 16px;
+    }
+  }
+  :focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--primary) 70%, transparent);
+    outline-offset: 2px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
+@utility pt-safe { padding-top: env(safe-area-inset-top); }
+@utility pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+@utility pl-safe { padding-left: env(safe-area-inset-left); }
+@utility pr-safe { padding-right: env(safe-area-inset-right); }
+@utility scrollbar-none { scrollbar-width: none; &::-webkit-scrollbar { display: none; } }
+
+/* Zachte, bewegende achtergrond (zelfde familie als de standaard-sitepagina's) */
+.app-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.app-bg i {
+  position: absolute;
+  width: 50vmax;
+  height: 50vmax;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.2;
+  animation: drift 26s ease-in-out infinite alternate;
+}
+.app-bg i:nth-child(1) { background: var(--primary); top: -25vmax; left: -15vmax; }
+.app-bg i:nth-child(2) { background: color-mix(in oklab, var(--primary) 40%, #22d3ee); bottom: -30vmax; right: -20vmax; animation-duration: 32s; opacity: 0.22; }
+:root:not(.dark) .app-bg i { opacity: 0.14; }
+:root:not(.dark) .app-bg i:nth-child(2) { opacity: 0.1; }
+
+.brand-gradient {
+  background-image: linear-gradient(135deg, var(--primary), color-mix(in oklab, var(--primary) 45%, #22d3ee));
+}
+.brand-text {
+  background-image: linear-gradient(90deg, var(--primary), color-mix(in oklab, var(--primary) 40%, #22d3ee));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--muted) 30%, color-mix(in oklab, var(--muted) 70%, var(--foreground) 8%) 50%, var(--muted) 70%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* Tabellen worden onder md gestapelde kaarten (labels komen uit de kolomkoppen, zie ui/table.tsx) */
+@media (max-width: 767px) {
+  table.stack-table, .stack-table thead, .stack-table tbody, .stack-table tr, .stack-table td { display: block; width: 100%; }
+  .stack-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .stack-table tbody { padding: 0.5rem; }
+  .stack-table tbody > tr {
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: color-mix(in oklab, var(--muted) 35%, transparent);
+    padding: 0.25rem 0.75rem;
+  }
+  .stack-table tbody > tr:last-child { margin-bottom: 0; }
+  .stack-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0 !important;
+    text-align: right !important;
+    min-height: 2.5rem;
+    min-width: 0;
+  }
+  .stack-table td[data-label]:not([data-label=""])::before {
+    content: attr(data-label);
+    flex: none;
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+    text-align: left;
+  }
+  .stack-table td + td { border-top: 1px solid var(--border); }
+  .stack-table td[colspan] { display: block; text-align: center !important; }
+  .stack-table td.hidden, .stack-table th.hidden { display: flex !important; }
+  .stack-table td:empty { display: none; }
 }
 
 /* xterm: laat de terminal de achtergrond van de kaart overnemen */
 .console-host .xterm,
 .console-host .xterm-viewport {
   background-color: transparent !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
