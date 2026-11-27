@@ -160,6 +160,28 @@ export const contract = {
     delete: mutation("user", byId, s.Ok),
   },
 
+  /**
+   * One-click apps voor websites (catalogus op de server, geen vrije URL's). Installeren vereist
+   * files.write (en database.manage voor apps met database). Het werk loopt op de achtergrond;
+   * `job` geeft de voortgang. `install` weigert met PRECONDITION_FAILED `PUBLIC_NOT_EMPTY` als
+   * public/ al inhoud heeft en `replaceExisting` niet is gezet.
+   */
+  apps: {
+    catalog: query("user", server, z.array(s.AppSummary)),
+    check: query("user", server.extend({ appId: s.AppId }), s.AppPreflight),
+    install: mutation(
+      "user",
+      server.extend({
+        appId: s.AppId,
+        replaceExisting: z.boolean().default(false),
+        admin: z.object({ username: z.string().regex(/^[A-Za-z0-9_.-]{3,32}$/), email: z.email() }).nullable().default(null),
+      }),
+      s.AppJob,
+    ),
+    job: query("user", byId, s.AppJob),
+    jobs: query("user", server, z.array(s.AppJob)),
+  },
+
   backups: {
     list: query("user", server, z.array(s.Backup)),
     create: mutation("user", server.extend({ name: z.string().max(100).nullable().default(null), includeDatabases: z.boolean().default(true) }), s.Backup),
