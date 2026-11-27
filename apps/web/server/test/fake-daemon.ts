@@ -19,6 +19,8 @@ export class FakeDaemon {
   readonly servers = new Map<string, { spec: DaemonServerSpec; state: DaemonServerState["state"]; installedAt: string | null }>();
   /** "ok" | "hang" (geen antwoord) | "error500" */
   mode: "ok" | "hang" | "error500" = "ok";
+  /** Vertraging (ms) voor elk antwoord, om een trage node na te bootsen. */
+  delayMs = 0;
   /** Override per pad: geef een Response-achtig object terug of undefined voor standaardgedrag. */
   override: ((r: RecordedRequest) => { status: number; body?: unknown } | undefined) | null = null;
   /** Bestanden per server: pad → inhoud; mappen apart. */
@@ -68,6 +70,7 @@ export class FakeDaemon {
     this.dbImportFails = false;
     this.execResult = { exit_code: 0, output: "", truncated: false, timed_out: false, duration_ms: 5 };
     this.mode = "ok";
+    this.delayMs = 0;
     this.override = null;
   }
 
@@ -128,6 +131,7 @@ export class FakeDaemon {
       res.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(b));
     };
     if (this.mode === "hang") return; // nooit antwoorden
+    if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
     if (this.mode === "error500") return send(500, { error: "internal", message: "kapot" });
     if (r.auth !== `Bearer ${this.token}`) return send(401, { error: "unauthorized" });
     const o = this.override?.(r);

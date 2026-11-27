@@ -18,6 +18,7 @@ import { EnvError, getEnv } from "./env";
 import { encrypt, sha256 } from "./lib/crypto";
 import { ensureSigningKey } from "./lib/jwt";
 import { startBot } from "./bot/gateway";
+import { startNodeMonitor } from "./node-cache";
 import { startScheduler } from "./scheduler";
 import { ensureSettingDefaults } from "./settings";
 import { loadTemplatesFromDir } from "./templates";
@@ -77,6 +78,7 @@ async function runBoot(): Promise<void> {
   // Tests starten de tikker zelf (tick()); in het echte proces draait hij op de achtergrond.
   if (!process.env.VITEST) {
     startScheduler();
+    startNodeMonitor();
     startBot(env.DISCORD_BOT_TOKEN); // optioneel; zonder token of bij een fout blijft het panel gewoon draaien
   }
   if (env.PANEL_INSECURE_TEST_LOGIN) console.warn("[boot] PANEL_INSECURE_TEST_LOGIN is enabled (tests only)");

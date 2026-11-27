@@ -1,3 +1,4 @@
+import { pollAllNow } from "./node-cache";
 import type { DaemonServerSpec } from "@panel/api";
 import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -31,6 +32,7 @@ describe("toegang", () => {
 
 describe("admin.nodes / dashboard / settings", () => {
   it("nodes.list en nodes.get (met health van de daemon)", async () => {
+    await pollAllNow();
     const nodes = await admin.api.admin.nodes.list();
     expect(nodes).toEqual([expect.objectContaining({ isLocal: true, fqdn: "node1.test", sftpPort: 2222 })]);
     const n = await admin.api.admin.nodes.get({ id: nodes[0]!.id });
@@ -40,11 +42,14 @@ describe("admin.nodes / dashboard / settings", () => {
   });
 
   it("dashboard: node offline → melding", async () => {
+    await pollAllNow();
     let d = await admin.api.admin.dashboard();
     expect(d.nodes[0]!.online).toBe(true);
+    expect(d.nodes[0]!.lastSeenAt).toBeInstanceOf(Date);
     expect(d.alerts).toEqual([]);
     expect(d.userCount).toBeGreaterThanOrEqual(3);
     h.daemon.mode = "error500";
+    await pollAllNow();
     d = await admin.api.admin.dashboard();
     h.daemon.mode = "ok";
     expect(d.nodes[0]!.online).toBe(false);

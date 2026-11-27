@@ -7,6 +7,7 @@
 import { and, eq, ne } from "drizzle-orm";
 import { call, daemonFor } from "./daemon";
 import { getDb, schema } from "./db";
+import { cfg, getNodeLive, isStale } from "./node-cache";
 import { notify, targetForServer } from "./notify";
 
 type NodeRow = typeof schema.nodes.$inferSelect;
@@ -27,6 +28,10 @@ export function resetMonitor(): void {
 
 export type NodeProbe = (n: NodeRow) => Promise<void>;
 const defaultProbe: NodeProbe = async (n) => {
+  // De node-monitor pollt al elke paar seconden: gebruik zijn uitkomst als die vers is.
+  const live = await getNodeLive(n.id);
+  if (live && !isStale(live)) return;
+  if (live && live.checkedAt > Date.now() - cfg.staleAfterMs) throw new Error(live.error ?? "no response");
   await daemonFor(n).system(3000);
 };
 
