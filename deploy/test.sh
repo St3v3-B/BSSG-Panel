@@ -184,8 +184,10 @@ NE="$NROOT/etc/panel/panel.env"
 ngetv() { sed -n "s/^$1=//p" "$NE"; }
 [ "$(stat -c %a "$NE")" = 600 ] && [ "$(ngetv PANEL_URL)" = https://panel.test ] && [ "$(ngetv NODE_DOMAIN)" = node2.test ] \
   && pass "node: panel.env written (chmod 600)" || fail "node panel.env"
-! grep -qE '^(PANEL_ENCRYPTION_KEY|DATABASE_URL|POSTGRES_PASSWORD|MARIADB_ROOT_PASSWORD|DISCORD_CLIENT_SECRET)=' "$NE" \
+! grep -qE '^(PANEL_ENCRYPTION_KEY|DATABASE_URL|POSTGRES_PASSWORD|DISCORD_CLIENT_SECRET)=' "$NE" \
   && pass "node: no panel secrets in panel.env" || fail "node env contains panel secrets"
+[ "$(ngetv MARIADB_CONTAINER)" = panel-mariadb ] && [[ "$(ngetv MARIADB_ROOT_PASSWORD)" =~ ^[A-Za-z0-9]{16,}$ ]] \
+  && pass "node: own MariaDB (container name + generated root password)" || fail "node MariaDB env"
 [ -x "$NROOT/usr/local/bin/panel-daemon" ] && cmp -s "$UNIT" "$NROOT/etc/systemd/system/panel-daemon.service" && pass "node: daemon + unit" || fail "node daemon/unit"
 grep -q 'docker-compose.node.yml' "$WORK/node1.log" && grep -q 'docker compose config: OK' "$WORK/node1.log" && pass "node: only docker-compose.node.yml" || fail "node compose"
 cp "$NE" "$WORK/node.env.1"

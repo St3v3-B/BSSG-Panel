@@ -1,6 +1,6 @@
 # Alleen Caddy voor een remote node (deploy/install.sh --node-only): $NODE_DOMAIN -> daemon-socket,
-# automatische HTTPS. De daemon zelf draait als systemd-unit (panel-daemon). Geen panel, Postgres,
-# Redis of MariaDB. Start met:
+# automatische HTTPS, plus de eigen MariaDB van de node (klantdatabases). De daemon zelf draait als
+# systemd-unit (panel-daemon). Geen panel, Postgres of Redis. Start met:
 #   PANEL_ENV_FILE=/etc/panel/panel.env docker compose --env-file /etc/panel/panel.env -f deploy/docker-compose.node.yml up -d --build
 name: panel-node
 
@@ -37,7 +37,55 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
+  # MariaDB voor de websites en databases op deze node (net als panel-mariadb in docker-compose.yml).
+  # - Geen gepubliceerde poorten; 3306 alleen op het interne netwerk panel-db. De daemon koppelt sites met een
+  #   database aan dit container (per site-netwerk) en beheert hem via `docker exec`: het rootwachtwoord
+  #   (MARIADB_ROOT_PASSWORD in het env-bestand van de node) blijft op deze machine en gaat nooit naar het panel.
+  # - MARIADB_ROOT_PASSWORD geldt alleen bij de eerste start (lege volume).
+  mariadb:
+    image: mariadb:11
+    container_name: ${MARIADB_CONTAINER:-panel-mariadb}
+    restart: unless-stopped
+    labels: *labels
+    user: "999:999"
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD ontbreekt in het env-bestand (deploy/install.sh --node-only opnieuw draaien)}
+      MARIADB_AUTO_UPGRADE: "1"
+      TZ: Europe/Amsterdam
+    command: ["--skip-name-resolve", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    read_only: true
+    tmpfs:
+      - /tmp:uid=999,gid=999
+      - /run/mysqld:uid=999,gid=999
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks:
+      db:
+        aliases: [mariadb]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  # Alleen MariaDB; sites worden per site-netwerk gekoppeld door de daemon. Intern: geen internet.
+  db:
+    name: panel-db
+    internal: true
+    labels: *labels
+
 volumes:
+  mariadb_data:
+    name: panel-mariadb-data
+    labels: *labels
   caddy_data:
     labels: *labels
   caddy_config:
