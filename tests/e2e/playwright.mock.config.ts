@@ -10,7 +10,7 @@ export default defineConfig({
   reporter: [["list"]],
   outputDir: process.env.MOCK_OUT ?? "test-results-mock",
   webServer: {
-    command: `pnpm --filter @panel/web exec next dev -p ${port}`,
+    command: `node apps/web/copy-monaco.mjs && pnpm --filter @panel/web exec next dev -p ${port}`,
     cwd: "../..",
     url: `http://localhost:${port}/login`,
     reuseExistingServer: false,

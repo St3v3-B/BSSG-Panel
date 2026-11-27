@@ -77,7 +77,7 @@ echo "== daemon bouwen"
 (cd daemon && go build -o "$work/panel-daemon" ./cmd/panel-daemon)
 
 echo "== panel starten op :$PANEL_PORT"
-(cd apps/web && exec pnpm exec next dev -p "$PANEL_PORT" > "$work/panel.log" 2>&1) &
+(cd apps/web && node copy-monaco.mjs >/dev/null && exec pnpm exec next dev -p "$PANEL_PORT" > "$work/panel.log" 2>&1) &
 panel_pid=$!
 for _ in $(seq 1 120); do
   curl -sf "http://127.0.0.1:${PANEL_PORT}/api/trpc/auth.branding" >/dev/null 2>&1 && break
