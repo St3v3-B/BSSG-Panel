@@ -1,0 +1,1 @@
+ALTER TABLE "servers" ADD COLUMN "bedrock_allocation_id" integer;

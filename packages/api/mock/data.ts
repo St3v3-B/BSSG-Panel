@@ -31,10 +31,10 @@ export const templates: s.TemplateDetail[] = [
 ];
 
 export const allocations: s.Allocation[] = [
-  { id: 1, nodeId: 1, ip: "203.0.113.10", port: 25565, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", primary: true },
-  { id: 2, nodeId: 1, ip: "203.0.113.10", port: 25566, serverUuid: "3a1d9b7c-5e6f-4a8b-9c0d-112233445566", primary: true },
-  { id: 3, nodeId: 1, ip: "203.0.113.10", port: 25567, serverUuid: null, primary: false },
-  { id: 4, nodeId: 1, ip: "203.0.113.10", port: 25568, serverUuid: null, primary: false },
+  { id: 1, nodeId: 1, ip: "203.0.113.10", port: 25565, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", primary: true, role: "game" },
+  { id: 2, nodeId: 1, ip: "203.0.113.10", port: 25566, serverUuid: "3a1d9b7c-5e6f-4a8b-9c0d-112233445566", primary: true, role: "game" },
+  { id: 3, nodeId: 1, ip: "203.0.113.10", port: 25567, serverUuid: null, primary: false, role: "game" },
+  { id: 4, nodeId: 1, ip: "203.0.113.10", port: 25568, serverUuid: null, primary: false, role: "game" },
 ];
 
 const limits = { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 };
