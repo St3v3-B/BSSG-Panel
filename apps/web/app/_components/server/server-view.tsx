@@ -19,6 +19,7 @@ import { LogViewer, useLogLines } from "@/app/_components/log-viewer";
 import { errorText } from "@/app/_lib/errors";
 import { formatCpuLimit, formatDate, formatMb, isRunning } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
+import { BillingSuspendedNotice } from "@/app/_components/billing/invoice-view";
 
 /** Console-tabblad: game-servers krijgen de console, websites een alleen-lezen logweergave. */
 export function ServerView({ server }: { server: ServerDetail }) {
@@ -45,6 +46,7 @@ export function ServerView({ server }: { server: ServerDetail }) {
           <PowerButtons status={status} pending={live.powerPending} onPower={(a) => void live.power(a).catch(() => {})} />
         )}
       </div>
+      <BillingSuspendedNotice suspended={server.suspended} />
       {live.powerError && (
         <Alert variant="destructive">
           <div>
