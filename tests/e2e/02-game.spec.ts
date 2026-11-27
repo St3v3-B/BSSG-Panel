@@ -1,11 +1,11 @@
-import { asUser, expect, test } from "./support";
+import { adminSession, asUser, expect, test } from "./support";
 import { need } from "./state";
 
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
   // Herstartbaar: een eerdere run kan de server gestopt hebben.
-  const admin = await (await import("../integration/helpers")).adminLogin();
+  const admin = await adminSession();
   await admin.api.servers.power.mutate({ uuid: need("game"), action: "start" }).catch(() => {});
 });
 

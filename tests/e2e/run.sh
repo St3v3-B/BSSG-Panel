@@ -10,6 +10,7 @@ source "$root/tests/lib/env.sh"
 daemon_pid=""
 cleanup_all() {
   [ -n "$daemon_pid" ] && kill "$daemon_pid" 2>/dev/null && wait "$daemon_pid" 2>/dev/null
+  pkill -x -f "$work/panel-daemon" 2>/dev/null
   cleanup
 }
 trap cleanup_all EXIT

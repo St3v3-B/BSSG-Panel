@@ -7,16 +7,16 @@ test("admin server list filters", async ({ page, context }) => {
   await asAdmin(context);
   await page.goto("/admin/servers");
   await expect(page.getByText("E2E sleeper")).toBeVisible();
-  await expect(page.getByText(/E2E site/)).toBeVisible();
+  await expect(page.getByText(/E2E (site|rename)/)).toBeVisible();
   await page.getByPlaceholder("Search by name…").fill("sleeper");
-  await expect(page.getByText(/E2E site/)).toHaveCount(0);
+  await expect(page.getByText(/E2E (site|rename)/)).toHaveCount(0);
   await expect(page.getByText("E2E sleeper")).toBeVisible();
   await page.getByPlaceholder("Search by name…").fill("nonexistent-zzz");
   await expect(page.getByText("No servers match these filters.")).toBeVisible();
   await page.getByPlaceholder("Search by name…").fill("");
   await page.getByLabel(/^Type/).selectOption({ label: "Website" });
   await expect(page.getByText("E2E sleeper")).toHaveCount(0);
-  await expect(page.getByText(/E2E site/)).toBeVisible();
+  await expect(page.getByText(/E2E (site|rename)/)).toBeVisible();
 });
 
 test("suspend and unsuspend a server", async ({ page, context }) => {
@@ -36,32 +36,32 @@ test("suspend and unsuspend a server", async ({ page, context }) => {
 test("users page lists the accounts", async ({ page, context }) => {
   await asAdmin(context);
   await page.goto("/admin/users");
-  await expect(page.getByRole("link", { name: USER.name })).toBeVisible();
-  await expect(page.getByRole("link", { name: "eigenaar" })).toBeVisible();
+  await expect(page.getByTestId("users-table").getByRole("link", { name: USER.name })).toBeVisible();
+  await expect(page.getByTestId("users-table").getByRole("link", { name: "eigenaar" })).toBeVisible();
   await page.getByPlaceholder("Search by name or Discord ID…").fill(USER.name);
-  await expect(page.getByRole("link", { name: "eigenaar" })).toHaveCount(0);
+  await expect(page.getByTestId("users-table").getByRole("link", { name: "eigenaar" })).toHaveCount(0);
 });
 
-test("settings: panel name is saved and shown in the header", async ({ page, context }) => {
+test("settings: panel name is saved and shown in the sidebar", async ({ page, context }) => {
   await asAdmin(context);
   await page.goto("/admin/settings");
   await page.getByLabel("Panel name").fill("E2E Panel");
   await page.getByRole("button", { name: "Save settings" }).click();
   await expect(page.getByText("Settings saved.")).toBeVisible();
   await page.reload();
-  await expect(page.getByRole("banner").getByText("E2E Panel")).toBeVisible();
+  await expect(page.getByTestId("sidebar").getByText("E2E Panel")).toBeVisible();
 });
 
 test("language switch EN to NL persists after reload", async ({ page, context }) => {
   await asUser(context);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "My servers" })).toBeVisible();
-  await page.getByTestId("user-menu").click();
+  await page.getByTestId("sidebar").getByTestId("user-menu").click();
   await page.getByTestId("locale-nl").click();
   await expect(page.getByRole("heading", { name: "Mijn servers" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Mijn servers" })).toBeVisible();
-  await page.getByTestId("user-menu").click();
+  await page.getByTestId("sidebar").getByTestId("user-menu").click();
   await page.getByTestId("locale-en").click();
   await expect(page.getByRole("heading", { name: "My servers" })).toBeVisible();
 });
