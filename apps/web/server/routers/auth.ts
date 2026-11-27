@@ -7,6 +7,7 @@ import { secureFor } from "../context";
 import { getDb, schema } from "../db";
 import { loginUrl } from "../discord";
 import { decrypt, encrypt } from "../lib/crypto";
+import { getLimiter } from "../lib/ratelimit";
 import { generateTotpSecret, otpauthUrl, verifyTotp } from "../lib/totp";
 import { userPublic } from "../servers-data";
 import { clearSessionCookie, deleteSession } from "../session";
@@ -26,9 +27,29 @@ export async function meFor(s: SessionCtx): Promise<Me> {
   return { user: userPublic(u), isAdmin: s.isAdmin, isOwner: s.isOwner, isEmergency: s.isEmergency, totpEnabled: s.totpEnabled, totpVerified: s.totpVerified };
 }
 
-function checkCode(secretEnc: string | null, code: string): boolean {
-  if (!secretEnc) return false;
-  return verifyTotp(decrypt(secretEnc), code);
+export const TOTP_MAX_FAILURES = 5;
+export const TOTP_WINDOW_SECONDS = 600;
+
+/**
+ * Controleert een TOTP-code met een limiet per gebruiker en per IP (5 fouten per 10 minuten, daarna
+ * TOO_MANY_REQUESTS) en weigert hergebruik van dezelfde code binnen zijn geldigheid.
+ */
+async function checkCode(ctx: Ctx, userId: number, secretEnc: string | null, code: string): Promise<boolean> {
+  const l = getLimiter();
+  const keys = [`totp:fail:u:${userId}`, ...(ctx.ip ? [`totp:fail:ip:${ctx.ip}`] : [])];
+  for (const k of keys) if ((await l.get(k)) >= TOTP_MAX_FAILURES) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "TOO_MANY_ATTEMPTS" });
+  const good = !!secretEnc && verifyTotp(decrypt(secretEnc), code);
+  // Dezelfde code werkt maar één keer (venster is +/-1 stap = 90 s).
+  if (good && (await l.hit(`totp:used:${userId}:${code}`, 90)) > 1) {
+    for (const k of keys) await l.hit(k, TOTP_WINDOW_SECONDS);
+    return false;
+  }
+  if (!good) {
+    for (const k of keys) await l.hit(k, TOTP_WINDOW_SECONDS);
+    return false;
+  }
+  await l.reset(keys[0]!);
+  return true;
 }
 
 const invalidCode = () => new TRPCError({ code: "BAD_REQUEST", message: "INVALID_CODE" });
@@ -47,7 +68,7 @@ export const auth: Pick<Implementation["auth"], "me" | "branding" | "discordLogi
     const s = ctx.session!;
     const u = await userRow(s.userId);
     if (!u.totpEnabled) throw new TRPCError({ code: "BAD_REQUEST", message: "TOTP_NOT_ENABLED" });
-    if (!checkCode(u.totpSecretEnc, input.code)) {
+    if (!(await checkCode(ctx, u.id, u.totpSecretEnc, input.code))) {
       await logActivity({ action: "auth.totp.failed", userId: u.id, ip: ctx.ip, ctx });
       throw invalidCode();
     }
@@ -85,7 +106,7 @@ export const account: Pick<Implementation["account"], "get" | "totpSetup" | "tot
     const u = await userRow(s.userId);
     if (u.totpEnabled) throw new TRPCError({ code: "CONFLICT", message: "TOTP_ALREADY_ENABLED" });
     if (!u.totpSecretEnc) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "TOTP_SETUP_FIRST" });
-    if (!checkCode(u.totpSecretEnc, input.code)) throw invalidCode();
+    if (!(await checkCode(ctx, u.id, u.totpSecretEnc, input.code))) throw invalidCode();
     const db = getDb();
     await db.transaction(async (tx) => {
       await tx.update(schema.users).set({ totpEnabled: true }).where(eq(schema.users.id, u.id));
@@ -101,7 +122,7 @@ export const account: Pick<Implementation["account"], "get" | "totpSetup" | "tot
     forbidApiKey(ctx);
     const u = await userRow(ctx.session!.userId);
     if (!u.totpEnabled) throw new TRPCError({ code: "BAD_REQUEST", message: "TOTP_NOT_ENABLED" });
-    if (!checkCode(u.totpSecretEnc, input.code)) throw invalidCode();
+    if (!(await checkCode(ctx, u.id, u.totpSecretEnc, input.code))) throw invalidCode();
     await getDb().update(schema.users).set({ totpEnabled: false, totpSecretEnc: null }).where(eq(schema.users.id, u.id));
     await logActivity({ action: "account.totp.disable", userId: u.id, ip: ctx.ip, ctx });
     return { ok: true as const };
