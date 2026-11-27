@@ -317,7 +317,7 @@ interface UserRow {
 }
 
 /** Gebruikers met de kanalen die ze voor deze gebeurtenis willen. */
-export async function recipients(e: NotifyEvent, t: Target): Promise<Map<number, { row: UserRow; ch: ChannelPrefs }>> {
+export async function recipients(e: NotifyEvent, t: Target): Promise<Map<number, { row: UserRow; ch: ChannelPrefs; key: NotificationEvent }>> {
   const db = getDb();
   const userKey = prefKeyOf(e);
   const adminKey = t.admin ? adminPrefKeyOf(e) : null;
@@ -334,7 +334,7 @@ export async function recipients(e: NotifyEvent, t: Target): Promise<Map<number,
     .select({ id: schema.users.id, blocked: schema.users.blocked, email: schema.users.email, emailVerifiedAt: schema.users.emailVerifiedAt, discordWebhookEnc: schema.users.discordWebhookEnc, notificationPrefs: schema.users.notificationPrefs })
     .from(schema.users)
     .where(inArray(schema.users.id, [...ids]));
-  const out = new Map<number, { row: UserRow; ch: ChannelPrefs }>();
+  const out = new Map<number, { row: UserRow; ch: ChannelPrefs; key: NotificationEvent }>();
   for (const r of rows) {
     if (r.blocked) continue;
     const isAdmin = adminIds.has(r.id);
@@ -347,7 +347,8 @@ export async function recipients(e: NotifyEvent, t: Target): Promise<Map<number,
     };
     if (t.users?.includes(r.id)) add(p[userKey]);
     if (adminKey && isAdmin) add(p[adminKey]);
-    if (ch.panel || ch.discord || ch.email) out.set(r.id, { row: r, ch });
+    const key = t.users?.includes(r.id) || !adminKey ? userKey : adminKey;
+    if (ch.panel || ch.discord || ch.email) out.set(r.id, { row: r, ch, key });
   }
   return out;
 }
@@ -379,9 +380,9 @@ async function deliver(e: NotifyEvent, t: Target, repeats: number): Promise<void
   const serverId = t.server ? ((await db.select({ id: schema.servers.id }).from(schema.servers).where(eq(schema.servers.uuid, t.server.uuid)))[0]?.id ?? null) : null;
   const wantsEmail = [...users.values()].some((u) => u.ch.email && u.row.email && u.row.emailVerifiedAt);
   const smtp = wantsEmail ? await getSmtpConfig().catch(() => null) : null;
-  for (const { row, ch } of users.values()) {
+  for (const { row, ch, key } of users.values()) {
     if (ch.panel) {
-      inbox.push({ userId: row.id, event: prefKeyOf(e), level: m.level, title: m.title, body: clip(plain(m) + (repeats ? ` (${repeats} more since the previous message)` : ""), 1000), serverId, link: m.link });
+      inbox.push({ userId: row.id, event: key, level: m.level, title: m.title, body: clip(plain(m) + (repeats ? ` (${repeats} more since the previous message)` : ""), 1000), serverId, link: m.link });
     }
     if (ch.discord) {
       const h = dec(row.discordWebhookEnc);
