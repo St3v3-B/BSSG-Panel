@@ -1,5 +1,5 @@
 "use client";
-import { Database, FolderOpen, Globe, Network, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
+import { Database, FolderOpen, Globe, Network, PackagePlus, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ALL_PERMISSIONS, type Permission, type ServerDetail } from "@panel/api";
@@ -22,6 +22,7 @@ export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner
   if (has("files.read")) tabs.push({ key: "files", href: `${base}/files`, label: l.files, icon: FolderOpen });
   if ((server.type === "web" || server.domainsAllowed) && has("domain.manage")) tabs.push({ key: "domains", href: `${base}/domains`, label: l.domains, icon: Globe });
   if (server.network?.role === "proxy" && (server.isOwner || ALL_PERMISSIONS.every(has))) tabs.push({ key: "network", href: `${base}/network`, label: l.network, icon: Network });
+  if (server.type === "web" && has("files.write")) tabs.push({ key: "apps", href: `${base}/apps`, label: l.apps, icon: PackagePlus });
   if (has("database.manage")) tabs.push({ key: "databases", href: `${base}/databases`, label: l.databases, icon: Database });
   if (server.isOwner) tabs.push({ key: "users", href: `${base}/users`, label: l.users, icon: Users });
   tabs.push({ key: "settings", href: `${base}/settings`, label: l.settings, icon: Settings });
