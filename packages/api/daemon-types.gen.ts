@@ -613,6 +613,16 @@ export interface components {
                 kick_message: string;
             } | null;
             /**
+             * @description Automatisch herstarten na een crash (null = uit). Een crash is een exit buiten een
+             *     stop-opdracht om (exitcode != 0, OOM-kill, of een exit terwijl de server online hoort
+             *     te zijn). De daemon herstart met backoff (5 s, 15 s, 45 s, ...) en geeft op na
+             *     `max_per_10min` herstarts binnen 10 minuten: de server blijft dan `offline`. Elke crash
+             *     wordt gemeld via `POST /api/remote/servers/{uuid}/event` (panel-remote.yaml).
+             */
+            auto_restart?: {
+                max_per_10min: number;
+            } | null;
+            /**
              * @description Alleen bij POST: niet installeren. PUT installeert nooit; herinstallatie gaat via POST /install.
              * @default false
              */

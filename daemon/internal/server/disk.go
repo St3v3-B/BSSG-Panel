@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"panel/daemon/internal/files"
+	"panel/daemon/internal/panel"
 )
 
 // ErrDiskExceeded: de softe disk-limiet is bereikt (API: 507 bij schrijven, 409 bij start).
@@ -134,6 +135,7 @@ func (s *Server) evaluateDiskLocked() bool {
 		s.diskWarned = true
 		s.publishLocked(Msg{"event": "daemon_message", "level": "warning",
 			"line": fmt.Sprintf("Disk usage %d of %d MB (%d%%). At 100%% the server will be stopped.", mb(n), mb(limit), n*100/limit)})
+		s.m.rep.ReportEvent(s.uuid, panel.Event{Type: "disk_warning", DiskBytes: n, DiskLimitBytes: limit})
 	}
 	if n <= limit {
 		return false
@@ -142,6 +144,7 @@ func (s *Server) evaluateDiskLocked() bool {
 		s.diskExceeded = true
 		s.publishLocked(Msg{"event": "daemon_message", "level": "error",
 			"line": fmt.Sprintf("Disk limit exceeded (%d of %d MB): the server is being stopped and writing is blocked.", mb(n), mb(limit))})
+		s.m.rep.ReportEvent(s.uuid, panel.Event{Type: "disk_exceeded", DiskBytes: n, DiskLimitBytes: limit})
 	}
 	if s.run != nil {
 		if s.diskStopping {

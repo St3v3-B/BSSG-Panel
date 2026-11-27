@@ -3,6 +3,7 @@ import { ShieldCheck, ShieldOff } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { AccountWebhookCard } from "@/app/_components/notifications/webhook-card";
 import { CopyButton } from "@/app/_components/copy-button";
 import { PageHeader } from "@/app/_components/page-header";
 import { QueryError } from "@/app/_components/query-error";
@@ -47,6 +48,7 @@ export default function AccountPage() {
           </CardContent>
         </Card>
         <TotpCard enabled={me.totpEnabled} isAdmin={me.isAdmin} />
+        <AccountWebhookCard />
       </div>
     </div>
   );

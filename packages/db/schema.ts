@@ -61,6 +61,8 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash"),
   createdAt: createdAt(),
   lastLoginAt: ts("last_login_at"),
+  /** Discord-webhook voor eigen meldingen (versleuteld; bevat het token in de URL) */
+  discordWebhookEnc: text("discord_webhook_enc"),
 }, (t) => [
   check("users_discord_or_emergency", sql`${t.discordId} is not null or ${t.isEmergency}`),
   uniqueIndex("users_one_emergency").on(t.isEmergency).where(sql`${t.isEmergency}`),
@@ -175,6 +177,11 @@ export const servers = pgTable("servers", {
   domainsAllowed: boolean("domains_allowed").notNull().default(false),
   status: serverStatus("status").notNull().default("installing"),
   installedAt: ts("installed_at"),
+  /** Automatisch herstarten na een crash; max N herstarts per 10 minuten */
+  autoRestart: boolean("auto_restart").notNull().default(false),
+  autoRestartMax: integer("auto_restart_max").notNull().default(3),
+  /** Discord-webhook voor meldingen over deze server (versleuteld) */
+  discordWebhookEnc: text("discord_webhook_enc"),
   createdAt: createdAt(),
 }, (t) => [index("servers_owner_idx").on(t.ownerId), index("servers_node_idx").on(t.nodeId)]);
 

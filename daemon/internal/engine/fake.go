@@ -148,6 +148,7 @@ type FakeContainer struct {
 	running bool
 	started time.Time
 	exit    int
+	oom     bool
 	exited  chan struct{}
 	stdin   chan string
 	updates []Resources
@@ -177,6 +178,14 @@ func (c *FakeContainer) Exit(code int) {
 	close(c.exited)
 	c.mu.Unlock()
 	c.cond.Broadcast()
+}
+
+// ExitOOM laat de container stoppen alsof de kernel hem doodde (exitcode 137, OOMKilled).
+func (c *FakeContainer) ExitOOM() {
+	c.mu.Lock()
+	c.oom = true
+	c.mu.Unlock()
+	c.Exit(137)
 }
 
 // Exited is gesloten zodra de container gestopt is.
@@ -304,6 +313,7 @@ func (f *Fake) Start(_ context.Context, id string) error {
 	}
 	c.running = true
 	c.started = time.Now()
+	c.oom = false
 	c.exited = make(chan struct{})
 	c.mu.Unlock()
 	b := f.Behavior
@@ -346,7 +356,7 @@ func (f *Fake) Inspect(_ context.Context, id string) (Container, error) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return Container{ID: c.ID, Name: c.Config.Name, Labels: c.Config.Labels, Running: c.running, StartedAt: c.started, ExitCode: c.exit}, nil
+	return Container{ID: c.ID, Name: c.Config.Name, Labels: c.Config.Labels, Running: c.running, StartedAt: c.started, ExitCode: c.exit, OOMKilled: c.oom}, nil
 }
 
 func (f *Fake) List(_ context.Context, labels map[string]string) ([]Container, error) {

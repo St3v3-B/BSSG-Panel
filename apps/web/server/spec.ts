@@ -24,6 +24,8 @@ export interface SpecInput {
   skipInstall?: boolean;
   /** Slaapstand van de server (servers.sleep_enabled / sleep_idle_minutes). */
   sleep?: { enabled: boolean; idleMinutes: number };
+  /** Automatisch herstarten na een crash (servers.auto_restart / auto_restart_max). */
+  autoRestart?: { enabled: boolean; max: number };
 }
 
 const sleepCache = new Map<string, boolean>();
@@ -105,5 +107,6 @@ export function buildServerSpec(i: SpecInput): DaemonServerSpec {
     start_on_install: i.startOnInstall ?? false,
     skip_install: i.skipInstall ?? false,
     sleep: sleepSpec(t, i.sleep),
+    auto_restart: i.autoRestart?.enabled ? { max_per_10min: i.autoRestart.max } : null,
   };
 }
