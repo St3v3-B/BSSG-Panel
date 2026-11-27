@@ -5,7 +5,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PREFIXES = ["/login", "/api/", "/_next/", "/join"];
+const PUBLIC_PREFIXES = ["/login", "/api/", "/_next/", "/join", "/status/", "/verify-email"];
 
 export function authProxy(req: NextRequest): NextResponse {
   if (process.env.PANEL_MOCK === "1") return NextResponse.next();

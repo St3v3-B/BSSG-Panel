@@ -12,6 +12,7 @@ import { ThemeToggle } from "@/app/_components/theme";
 import { Button } from "@/app/_components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/app/_components/ui/dropdown-menu";
 import { displayName, UserAvatar } from "@/app/_components/user-avatar";
+import { NotificationBell } from "@/app/_components/notifications/notification-center";
 import { LOCALE_NAME, LocaleSwitcher } from "@/app/_components/locale-switcher";
 import { useNav, type NavItem, type NavSection } from "@/app/_components/nav-items";
 import { LOCALES, useLocale, useT } from "@/app/_lib/i18n";
@@ -92,10 +93,14 @@ function TopBar({ me, collapsed, onToggle }: { me: Me; collapsed: boolean; onTog
             ))}
           </ol>
         </nav>
-        <div className="ml-auto flex items-center gap-2 md:hidden">
+        <div className="ml-auto flex items-center gap-1 md:hidden">
+          <NotificationBell />
           <UserMenu me={me} />
         </div>
         <div id="topbar-slot" className="ml-auto hidden items-center gap-2 md:flex" />
+        <div className="hidden md:flex">
+          <NotificationBell />
+        </div>
       </div>
     </header>
   );

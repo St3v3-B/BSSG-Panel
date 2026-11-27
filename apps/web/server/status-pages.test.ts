@@ -1,7 +1,9 @@
+import { NextRequest } from "next/server";
 /** Openbare statuspagina's: beheer, rechten, geen gevoelige velden, caching, uptime en spelers. */
 import { eq } from "drizzle-orm";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, schema } from "./db";
+import { authProxy } from "./proxy";
 import { CACHE_MS, invalidateStatus, publicStatus, sampleUptime, statusStats, uptimeFor } from "./status-pages";
 import { GAME_TEMPLATE, OWNER, useHarness, type TestUser } from "./test/harness";
 
@@ -151,5 +153,14 @@ describe("uptime", () => {
     const [row2] = await getDb().select().from(schema.serverUptime).where(eq(schema.serverUptime.serverId, s!.id));
     expect(row2!.totalMinutes).toBe(40);
     await getDb().update(schema.servers).set({ suspendedAt: null }).where(eq(schema.servers.id, s!.id));
+  });
+});
+
+describe("proxy", () => {
+  it("/status/<slug> en /verify-email zijn openbaar; /status-pages niet", () => {
+    const loc = (p: string) => authProxy(new NextRequest(`http://panel.test${p}`)).headers.get("location");
+    expect(loc("/status/smp-status")).toBeNull();
+    expect(loc("/verify-email?token=abc")).toBeNull();
+    expect(loc("/status-pages")).toContain("/login");
   });
 });

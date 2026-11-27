@@ -1,5 +1,5 @@
 "use client";
-import { Activity, Database, FileCode2, LayoutDashboard, Server, Settings, Users, type LucideIcon } from "lucide-react";
+import { Activity, Database, FileCode2, Globe, LayoutDashboard, Server, Settings, Users, type LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { usePhpMyAdmin } from "@/app/_hooks/use-phpmyadmin";
 import { useT } from "@/app/_lib/i18n";
@@ -36,11 +36,13 @@ export function useNav(isAdmin: boolean) {
     mk("/admin/settings/dns-providers", sub.dnsProviders, Settings, under("/admin/settings/dns-providers")),
     mk("/admin/settings/backup-storage", sub.s3Targets, Settings, under("/admin/settings/backup-storage")),
     mk("/admin/settings/image-updates", sub.imageUpdates, Settings, under("/admin/settings/image-updates")),
+    mk("/admin/settings/email", t.notif2.smtpNav, Settings, under("/admin/settings/email")),
     mk("/admin/settings/updates", sub.updates, Settings, under("/admin/settings/updates")),
   ];
   const n = t.admin2.nav;
   const pma = usePhpMyAdmin();
   const panelItems: NavItem[] = [{ ...mk("/", t.nav.myServers, Server, pathname === "/" || under("/servers")), current: pathname === "/" }];
+  panelItems.push(mk("/status-pages", t.statusPage.navTitle, Globe, under("/status-pages")));
   if (pma.info?.visible) {
     panelItems.push(mk("/databases", t.phpmyadmin.nav, Database, under("/databases")));
   }

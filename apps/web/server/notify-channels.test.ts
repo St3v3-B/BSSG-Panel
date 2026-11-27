@@ -87,7 +87,7 @@ const post = (path: string, body: unknown) => new Request(`http://panel.test${pa
 const params = <T>(p: T) => ({ params: Promise.resolve(p) });
 const crash = { type: "crashed", exit_code: 1, oom: false, log_tail: ["<script>boom</script>"], restart: "disabled", restart_attempt: 0 };
 const smtpOn = () => admin.api.admin.smtp.set({ host: "127.0.0.1", port: smtp.port, security: "none", username: "mailer", password: "geheim-wachtwoord", from: "panel@panel.test", fromName: "Test Panel" });
-const tokenFrom = (m: { data: string }) => /verify-email\?token=([A-Za-z0-9_-]+)/.exec(FakeSmtp.decoded(m))![1]!;
+const tokenFrom = (m: Parameters<typeof FakeSmtp.decoded>[0]) => /verify-email\?token=([A-Za-z0-9_-]+)/.exec(FakeSmtp.decoded(m))![1]!;
 
 /** Zet een geverifieerd e-mailadres via de echte flow. */
 async function verifiedEmail(u: TestUser, email: string) {
