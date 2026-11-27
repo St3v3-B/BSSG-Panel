@@ -95,6 +95,7 @@ describe("servers.updateNetwork", () => {
     }
     expect((await vars(proxy)).VELOCITY_FORWARDING_SECRET).toBe(secret);
     expect(r.servers.map((s) => [s.name, s.role, s.restarted])).toEqual([["Lobby Server", "backend", true], ["Survival", "backend", false], ["Proxy", "proxy", true]]);
+    expect(r.servers.every((s) => !s.reloaded)).toBe(true); // eerste keer: nieuwe secret + forwarding-modus, dus herstart
     expect(power(lobby)).toEqual(["restart"]);
     expect(power(survival)).toEqual([]);
     expect(power(proxy)).toEqual(["restart"]);
@@ -113,6 +114,17 @@ describe("servers.updateNetwork", () => {
     expect((await alice.api.servers.get({ uuid: proxy })).variables.find((v) => v.key === "VELOCITY_FORWARDING_SECRET")!.value).toBe(before);
     await getDb().insert(schema.domains).values({ serverId: (await getDb().select().from(schema.servers).where(eq(schema.servers.uuid, proxy)))[0]!.id, hostname: "play.mc.test", protocol: "minecraft" });
     expect((await alice.api.servers.get({ uuid: proxy })).network.connectAddress).toBe("play.mc.test");
+  });
+
+  it("zelfde leden opnieuw opslaan met draaiende proxy: alleen `velocity reload`, niets herstart", async () => {
+    setRunning(proxy, lobby);
+    h.daemon.requests.length = 0;
+    const r = await alice.api.servers.updateNetwork({ uuid: proxy, members: [{ serverUuid: lobby, name: "main", isDefault: true }, { serverUuid: survival, name: "survival", isDefault: false }], restart: true });
+    expect(power(proxy)).toEqual([]);
+    expect(power(lobby)).toEqual([]);
+    expect(r.servers.map((s) => [s.role, s.restarted, s.reloaded])).toEqual([["backend", false, false], ["backend", false, false], ["proxy", false, true]]);
+    const cmds = h.daemon.requests.filter((q) => q.path === `/api/servers/${proxy}/commands`).map((q) => (q.body as { commands: string[] }).commands);
+    expect(cmds).toEqual([["velocity reload"]]);
   });
 
   it("lid verwijderen zet de backend terug en laat de rest staan", async () => {

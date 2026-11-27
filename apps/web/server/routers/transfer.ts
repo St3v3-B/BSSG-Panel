@@ -139,7 +139,7 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
   if (isBackend(b)) {
     try {
       const proxyUuid = await syncProxyAddresses((await fetchServerByUuid(uuid))!);
-      if (proxyUuid) warnings.push(`velocity.toml of proxy ${proxyUuid} updated; restart the proxy to apply`);
+      if (proxyUuid) warnings.push(`velocity.toml of proxy ${proxyUuid} updated (reloaded if running)`);
     } catch (e) {
       warnings.push(`updating velocity.toml failed: ${(e as Error).message}`);
     }

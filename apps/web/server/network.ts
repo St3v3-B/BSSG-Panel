@@ -82,7 +82,7 @@ export async function serverNetwork(b: ServerBundle): Promise<ServerNetwork> {
 
 /**
  * Schrijft de adressen van alle leden van een proxy opnieuw in velocity.toml (bijvoorbeeld nadat een
- * backend naar een andere node is verplaatst). Herstart van de proxy is aan de beheerder.
+ * backend naar een andere node is verplaatst). Een draaiende proxy krijgt `velocity reload`.
  * Geeft de uuid van de proxy terug als er iets is bijgewerkt, anders null.
  */
 export async function syncProxyAddresses(backend: ServerBundle): Promise<string | null> {
@@ -105,5 +105,11 @@ export async function syncProxyAddresses(backend: ServerBundle): Promise<string 
     throw e;
   }
   await call(() => d.writeFile(proxy.server.uuid, "/velocity.toml", applyNetworkToml(toml, list)));
+  // Draait de proxy, dan live herladen (geen herstart: spelers op andere servers blijven verbonden).
+  try {
+    if ((await d.getServer(proxy.server.uuid, 2000)).state === "online") await d.sendCommands(proxy.server.uuid, ["velocity reload"]);
+  } catch {
+    // niet bereikbaar: geldt bij de volgende start
+  }
   return proxy.server.uuid;
 }

@@ -49,7 +49,8 @@ describe("NetworkManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save network" }));
     expect(inputs(bodies, "servers.updateNetwork")).toHaveLength(0); // eerst bevestigen
     const confirm = await screen.findByTestId("network-confirm");
-    expect(confirm.textContent).toContain("Proxy, SMP, Creative World");
+    expect(confirm.textContent).toContain("SMP, Creative World");
+    expect(confirm.textContent).not.toContain("Proxy,");
     fireEvent.click(screen.getByRole("button", { name: "Save and restart" }));
     await waitFor(() => expect(inputs(bodies, "servers.updateNetwork")).toHaveLength(1));
     expect(inputs(bodies, "servers.updateNetwork")[0]).toEqual({
@@ -74,14 +75,14 @@ describe("NetworkManager", () => {
       ...admin,
       patch: (m) => {
         patch([cand(A, "SMP", "smp")])(m);
-        (m.servers as Mutable<typeof m.servers>).updateNetwork = () => ({ servers: [{ uuid: A, name: "SMP", role: "backend", restarted: false, error: null }, { uuid: PROXY, name: "Proxy", role: "proxy", restarted: false, error: "boom" }] });
+        (m.servers as Mutable<typeof m.servers>).updateNetwork = () => ({ servers: [{ uuid: A, name: "SMP", role: "backend", restarted: false, reloaded: false, error: null }, { uuid: PROXY, name: "Proxy", role: "proxy", restarted: false, reloaded: false, error: "boom" }] });
       },
     });
     fireEvent.click(await screen.findByLabelText("Add SMP to the network"));
     fireEvent.click(screen.getByRole("button", { name: "Save network" }));
     fireEvent.click(await screen.findByRole("button", { name: "Save without restarting" }));
     const rows = await findAllByTestId("network-result-row");
-    expect(rows[0]!.textContent).toContain("Not restarted; applies at the next start");
+    expect(rows[0]!.textContent).toContain("Not restarted (unchanged, or not running");
     expect(rows[1]!.textContent).toContain("Restart failed: boom");
   });
 

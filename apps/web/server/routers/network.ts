@@ -122,8 +122,18 @@ export const network: Pick<Implementation["servers"], "networkCandidates" | "upd
       if (e instanceof DaemonHttpError && e.status === 404) throw bad("PROXY_NOT_INSTALLED: velocity.toml not found, wait for the installation to finish", "PRECONDITION_FAILED");
       throw await call(() => Promise.reject(e));
     }
+    const modernBefore = /^\s*player-info-forwarding-mode\s*=\s*"modern"/m.test(toml);
     await call(() => d.writeFile(proxy.server.uuid, TOML_PATH, applyNetworkToml(toml, members.map((m) => ({ name: m.name, address: m.address })))));
-    for (const m of members) await setVariables(m.b, { [FORWARDING_VAR]: "true", [SECRET_VAR]: secret });
+    // Alleen backends waarvan de forwarding-variabelen echt veranderen worden aangeraakt (en herstart).
+    const changed = new Set<number>();
+    for (const m of members) {
+      const cur = await serverVariables(m.b.server.id);
+      if (cur[FORWARDING_VAR] === "true" && cur[SECRET_VAR] === secret) continue;
+      await setVariables(m.b, { [FORWARDING_VAR]: "true", [SECRET_VAR]: secret });
+      changed.add(m.b.server.id);
+    }
+    // Velocity leest secret en forwarding-modus alleen bij de start; de rest (servers, try) kan live herladen.
+    const proxyNeedsRestart = secret !== stored || !modernBefore;
     for (const b of removed) await setVariables(b, { [FORWARDING_VAR]: "false", [SECRET_VAR]: "" });
 
     await db.transaction(async (tx) => {
@@ -151,16 +161,23 @@ export const network: Pick<Implementation["servers"], "networkCandidates" | "upd
     const servers: NetworkUpdateResult["servers"] = [];
     for (const { b, role } of plan) {
       let restarted = false;
+      let reloaded = false;
       let error: string | null = null;
-      if (input.restart && (await isRunning(b))) {
+      const touched = role === "proxy" || role === "removed" || changed.has(b.server.id);
+      if (input.restart && touched && (await isRunning(b))) {
         try {
-          await call(() => daemonFor(b.node).power(b.server.uuid, "restart"));
-          restarted = true;
+          if (role === "proxy" && !proxyNeedsRestart) {
+            await call(() => daemonFor(b.node).sendCommands(b.server.uuid, ["velocity reload"]));
+            reloaded = true;
+          } else {
+            await call(() => daemonFor(b.node).power(b.server.uuid, "restart"));
+            restarted = true;
+          }
         } catch (e) {
           error = e instanceof Error ? e.message : String(e);
         }
       }
-      servers.push({ uuid: b.server.uuid, name: b.server.name, role, restarted, error });
+      servers.push({ uuid: b.server.uuid, name: b.server.name, role, restarted, reloaded, error });
     }
     return { servers };
   },
