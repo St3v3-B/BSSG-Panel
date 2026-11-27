@@ -5,6 +5,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { AccountWebhookCard, AdminWebhookCard, ServerNotificationsCard } from "@/app/_components/notifications/webhook-card";
 import { renderWithTrpc, sessionFor } from "./utils";
 
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => "/", useParams: () => ({}) }));
 beforeAll(() => {
   process.env.NEXT_PUBLIC_PANEL_MOCK = "1";
@@ -43,10 +45,10 @@ describe("Discord-meldingen in de UI", () => {
     renderWithTrpc(<AccountWebhookCard />, {
       ...en,
       patch: (m) => {
-        m.account.testWebhook = () => {
+        (m.account as Mutable<typeof m.account>).testWebhook = () => {
           throw new TRPCError({ code: "BAD_REQUEST", message: "WEBHOOK_FAILED" });
         };
-        m.account.webhook = () => ({ set: true, hint: "…/webhooks/1/…abcd" });
+        (m.account as Mutable<typeof m.account>).webhook = () => ({ set: true, hint: "…/webhooks/1/…abcd" });
       },
     });
     fireEvent.click(await screen.findByRole("button", { name: "Send test message" }));
