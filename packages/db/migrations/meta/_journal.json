@@ -43,6 +43,13 @@
       "when": 1795770521716,
       "tag": "0005_polite_lenny_balinger",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795772217810,
+      "tag": "0006_sparkling_shadow_king",
+      "breakpoints": true
     }
   ]
 }

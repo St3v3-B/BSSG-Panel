@@ -56,6 +56,7 @@ export function createMock(): Implementation {
     admins: ["100000000000000001"],
     settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 } } as s.Settings,
     totpEnabled: new Map<number, boolean>([[1, true]]),
+    quotas: new Map<number, s.QuotaInput>([[2, { maxRamMb: 4096, maxDiskMb: 50_000, maxCpuPct: 300, maxServers: 3, maxDatabases: 2, templateIds: null, nodeIds: null, maxPortsPerServer: 2 }]]),
     nextId: 1000,
   };
   const id = () => ++db.nextId;
@@ -110,6 +111,20 @@ export function createMock(): Implementation {
     lastLoginAt: u.name ? new Date("2026-11-26T08:00:00Z") : null,
     serverCount: db.servers.filter((x) => x.ownerId === u.id).length,
   });
+  const usageOf = (uid: number): s.QuotaUsage => {
+    const own = db.servers.filter((x) => x.ownerId === uid);
+    return { ramMb: own.reduce((a, x) => a + x.limits.ramMb, 0), diskMb: own.reduce((a, x) => a + x.limits.diskMb, 0), cpuPct: own.reduce((a, x) => a + x.limits.cpuPct, 0), servers: own.length, databases: 0 };
+  };
+  const overview = (uid: number): s.QuotaOverview | null => {
+    const q = db.quotas.get(uid);
+    if (!q) return null;
+    return {
+      quota: q,
+      usage: usageOf(uid),
+      templates: db.templates.filter((t) => !q.templateIds || q.templateIds.includes(t.id)).map((t) => ({ id: t.id, name: t.name, type: t.type })),
+      nodes: db.nodes.filter((n) => !q.nodeIds || q.nodeIds.includes(n.id)).map((n) => ({ id: n.id, name: n.name })),
+    };
+  };
   const nodeHealth = (n: s.Node): s.NodeHealth => ({
     nodeId: n.id,
     online: true,
@@ -170,8 +185,27 @@ export function createMock(): Implementation {
       },
       revokeApiKey: ({ input }) => ((db.apiKeys = db.apiKeys.filter((k) => k.id !== input.id)), ok),
       setSftpPassword: () => ok,
+      quota: ({ ctx }) => overview(uid(ctx)),
     },
     servers: {
+      create: ({ input, ctx }) => {
+        const u = uid(ctx);
+        const o = overview(u);
+        if (!o) throw new TRPCError({ code: "FORBIDDEN", message: "NO_QUOTA" });
+        const tpl = o.templates.find((t) => t.id === input.templateId) ?? (() => { throw new TRPCError({ code: "FORBIDDEN", message: "TEMPLATE_NOT_ALLOWED" }); })();
+        if (o.usage.servers + 1 > o.quota.maxServers) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "QUOTA_EXCEEDED: servers" });
+        const base = db.servers.find((x) => x.type === tpl.type) ?? db.servers[0]!;
+        const x = { ...clone(base), uuid: crypto.randomUUID(), name: input.name, ownerId: u, owner: user(u), status: "installing" as const, limits: { ...input.limits, swapMb: 0 } };
+        db.servers.push(x);
+        return detail(x, u);
+      },
+      updateOwnLimits: ({ input }) => ((srv(input.uuid).limits = { ...input.limits, swapMb: 0 }), ok),
+      deleteOwn: ({ input }) => {
+        const x = srv(input.uuid);
+        if (x.name !== input.confirmName) throw new TRPCError({ code: "BAD_REQUEST", message: "NAME_MISMATCH" });
+        db.servers = db.servers.filter((y) => y !== x);
+        return ok;
+      },
       list: ({ ctx }) => {
         const u = uid(ctx);
         return db.servers.filter((x) => x.ownerId === u || u === 1 || db.subusers.some((su) => su.serverUuid === x.uuid && su.userId === u)).map((x) => summary(x, u));
@@ -439,6 +473,16 @@ export function createMock(): Implementation {
         },
         setBlocked: () => ok,
         resetTotp: ({ input }) => (db.totpEnabled.set(input.id, false), ok),
+        getQuota: ({ input }) => db.quotas.get(input.id) ?? null,
+        setQuota: ({ input }) => {
+          const { id: uidIn, ...q } = input;
+          db.quotas.set(uidIn, q);
+          return ok;
+        },
+        clearQuota: ({ input }) => (db.quotas.delete(input.id), ok),
+      },
+      quotas: {
+        usage: ({ input }) => pageOf(db.users.map((u) => ({ user: u, quota: db.quotas.get(u.id) ?? null, usage: usageOf(u.id) })), input.limit),
       },
       admins: {
         list: () =>
