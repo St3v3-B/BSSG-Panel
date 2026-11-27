@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ServerSummary } from "@panel/api";
 import { trpc } from "@/lib/trpc";
 import { CopyButton } from "@/app/_components/copy-button";
+import { ImageUpdateBadge } from "@/app/_components/image-updates";
 import { StatusBadge } from "@/app/_components/status-badge";
 import { Button } from "@/app/_components/ui/button";
 import { Card } from "@/app/_components/ui/card";
@@ -41,7 +42,10 @@ export function ServerCard({ server }: { server: ServerSummary }) {
             </p>
           </div>
         </div>
-        <StatusBadge status={server.status} />
+        <div className="flex flex-col items-end gap-1">
+          <StatusBadge status={server.status} />
+          <ImageUpdateBadge info={server.imageUpdate} />
+        </div>
       </div>
 
       <div className="flex min-h-7 items-center gap-1 text-sm">

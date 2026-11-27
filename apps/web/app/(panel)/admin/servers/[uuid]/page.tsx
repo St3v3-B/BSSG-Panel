@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { DeleteServerCard, DomainsAllowedSection, LimitsCard, MoveNodeCard, OwnerCard, PortsCard, SuspendSection, TemplateSection } from "@/app/_components/admin/server-manage";
 import { QueryError } from "@/app/_components/query-error";
+import { ImageUpdateCard } from "@/app/_components/image-updates";
 import { RenameCard, ReinstallCard, SleepCard, VariablesCard } from "@/app/_components/server/server-settings";
 import { StatusBadge } from "@/app/_components/status-badge";
 import { Badge } from "@/app/_components/ui/badge";
@@ -56,6 +57,7 @@ export default function AdminServerPage() {
           {s.type === "game" && <PortsCard key={`p-${s.allocations.map((a) => a.id).join()}`} server={s} />}
           <MoveNodeCard key={`m-${s.node.id}`} server={s} />
           <VariablesCard server={s} all />
+          <ImageUpdateCard key={`i-${s.imageUpdate.policy}-${s.imageUpdate.available}`} server={s} />
           <SleepCard key={`s-${s.sleep.enabled}-${s.sleep.idleMinutes}`} server={s} />
           <RenameCard key={`n-${s.name}`} server={s} />
           <ReinstallCard server={s} />
