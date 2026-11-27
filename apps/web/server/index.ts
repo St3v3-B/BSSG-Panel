@@ -20,6 +20,8 @@ import { network } from "./routers/network";
 import { bedrock } from "./bedrock";
 import { quotaAccount, quotaAdmin, quotaServers } from "./routers/quotas";
 import { notificationsAccount, notificationsAdmin, notificationsServer } from "./routers/notifications";
+import { inbox, notifyAccount, smtpAdmin, verifyEmail } from "./routers/notify-center";
+import { statusPages } from "./routers/status-pages";
 import { servers } from "./routers/servers";
 import { stats } from "./routers/stats";
 import { subusers } from "./routers/subusers";
@@ -37,7 +39,7 @@ function merge(base: Tree, over: Tree): Tree {
   return out;
 }
 
-const phase1 = { apps, auth, backups, schedules, siteSettings, account: { ...account, ...credentials, ...quotaAccount, ...notificationsAccount }, servers: { ...servers, ...stats, ...network, ...bedrock, ...quotaServers, ...notificationsServer }, files, content, subusers, domains, databases, admin: { ...admin, notifications: notificationsAdmin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders, s3Targets } };
+const phase1 = { inbox, statusPages, apps, auth: { ...auth, verifyEmail }, backups, schedules, siteSettings, account: { ...account, ...credentials, ...quotaAccount, ...notificationsAccount, ...notifyAccount }, servers: { ...servers, ...stats, ...network, ...bedrock, ...quotaServers, ...notificationsServer }, files, content, subusers, domains, databases, admin: { ...admin, notifications: notificationsAdmin, smtp: smtpAdmin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders, s3Targets } };
 
 /** Paden die echt geïmplementeerd zijn (de rest is NOT_IMPLEMENTED). */
 export function implementedPaths(tree: Tree = phase1 as unknown as Tree, prefix = ""): string[] {

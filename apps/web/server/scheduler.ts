@@ -13,6 +13,9 @@ import { call, daemonFor } from "./daemon";
 import { nextRuns } from "./lib/cron";
 import { maybeRunRetention } from "./retention";
 import { monitorTick } from "./monitor";
+import { cleanupOutbox, deliverDue } from "./outbox";
+import { cleanupInbox } from "./routers/notify-center";
+import { cleanupUptime } from "./status-pages";
 import { fetchServerByUuid, type ServerBundle } from "./servers-data";
 import { statsTick } from "./stats-history";
 
@@ -110,7 +113,22 @@ export async function tick(now: Date = new Date()): Promise<number> {
   if (!process.env.VITEST) await monitorTick().catch((e) => console.error("[scheduler] monitor:", e));
   if (!process.env.VITEST) await maybeRunRetention(now).catch((e) => console.error("[scheduler] retention:", e));
   if (!process.env.VITEST) await statsTick().catch((e) => console.error("[scheduler] stats:", e));
+  if (!process.env.VITEST) {
+    // Meldingen die nog (opnieuw) verstuurd moeten worden.
+    await deliverDue().catch((e) => console.error("[scheduler] outbox:", e));
+    await housekeeping(now).catch((e) => console.error("[scheduler] cleanup:", e));
+  }
   return ran;
+}
+
+let lastCleanup = 0;
+/** Eens per uur: oude meldingen, wachtrij-rijen en uptime-metingen opruimen. */
+async function housekeeping(now: Date): Promise<void> {
+  if (now.getTime() - lastCleanup < 3_600_000) return;
+  lastCleanup = now.getTime();
+  await cleanupOutbox(now);
+  await cleanupInbox(now);
+  await cleanupUptime(now);
 }
 
 let timer: ReturnType<typeof setInterval> | null = null;
