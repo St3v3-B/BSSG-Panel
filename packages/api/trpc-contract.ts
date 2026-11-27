@@ -54,6 +54,8 @@ export const contract = {
     /** Noodaccount (fase 4): wachtwoord + verplichte TOTP. Werkt ook als Discord plat ligt. */
     emergencyLogin: mutation("public", z.object({ password: z.string().min(1), code: z.string().regex(/^\d{6}$/) }), s.Ok),
     logout: mutation("pending", none, s.Ok),
+    /** Verificatielink uit de e-mail (/verify-email?token=…); werkt ook zonder sessie. Ongeldig of verlopen → BAD_REQUEST `INVALID_TOKEN`. */
+    verifyEmail: mutation("public", z.object({ token: z.string().min(20).max(200) }), z.object({ ok: z.literal(true), email: z.string() })),
   },
 
   account: {
@@ -88,6 +90,49 @@ export const contract = {
     setWebhook: mutation("user", z.object({ url: s.WebhookUrl.nullable() }), s.WebhookStatus),
     /** Stuurt een testbericht; mislukt het, dan BAD_REQUEST met message `WEBHOOK_FAILED`. */
     testWebhook: mutation("user", none, s.Ok),
+    /** Kanalen per gebeurtenis, e-mailstatus en wat er beschikbaar is. */
+    notificationSettings: query("user", none, s.NotificationSettings),
+    /** Alleen de meegegeven gebeurtenissen veranderen. Admin-gebeurtenissen voor niet-admins worden genegeerd. */
+    setNotificationPrefs: mutation("user", z.object({ prefs: z.partialRecord(s.NotificationEvent, s.ChannelPrefs) }), s.NotificationSettings),
+    /**
+     * E-mailadres zetten: stuurt een verificatielink (24 uur geldig); het adres wordt pas gebruikt na de klik.
+     * `email: null` verwijdert het adres. PRECONDITION_FAILED `SMTP_NOT_CONFIGURED`, TOO_MANY_REQUESTS `RATE_LIMITED`.
+     */
+    setEmail: mutation("user", z.object({ email: s.EmailAddress.nullable() }), s.EmailStatus),
+    resendEmailVerification: mutation("user", none, s.Ok),
+    /** Testmail naar het geverifieerde adres; PRECONDITION_FAILED `EMAIL_NOT_VERIFIED`, BAD_REQUEST `EMAIL_FAILED`. */
+    testEmail: mutation("user", none, s.Ok),
+  },
+
+  /** Meldingen in het panel (bel in de kopbalk). Alleen eigen meldingen. */
+  inbox: {
+    list: query("user", s.PageInput.extend({ unreadOnly: z.boolean().default(false) }), s.page(s.InboxItem)),
+    unreadCount: query("user", none, z.object({ count: z.number().int() })),
+    /** `ids` weggelaten = alles gelezen. */
+    markRead: mutation("user", z.object({ ids: z.array(s.Id).max(200).optional() }), s.Ok),
+  },
+
+  /**
+   * Openbare statuspagina's op /status/<slug>. Een `server`-pagina hoort bij één server (eigenaar zet hem aan
+   * in de serverinstellingen); een `network`-pagina bundelt meerdere eigen servers. Alleen eigen servers
+   * (FORBIDDEN anders); slug bezet → CONFLICT `SLUG_TAKEN`.
+   */
+  statusPages: {
+    list: query("user", none, z.array(s.StatusPage)),
+    create: mutation("user", s.StatusPageInput, s.StatusPage),
+    update: mutation("user", byId.extend(s.StatusPageInput.shape), s.StatusPage),
+    delete: mutation("user", byId, s.Ok),
+    /** Eigen servers die op een netwerkpagina kunnen. */
+    candidates: query("user", none, z.array(s.StatusCandidate)),
+    /** Statuspagina van één server (eigenaar of admin); null = nog nooit aangezet. */
+    serverPage: query("user", server, s.StatusPage.nullable()),
+    setServerPage: mutation(
+      "user",
+      server.extend({ enabled: z.boolean(), slug: s.StatusSlug, title: z.string().trim().min(1).max(100).optional(), showAddress: z.boolean(), showPlayers: z.boolean() }),
+      s.StatusPage,
+    ),
+    /** Zonder login; gecachet (30 s). Uit of onbekend → NOT_FOUND. */
+    public: query("public", z.object({ slug: z.string().max(64) }), s.PublicStatus),
   },
 
   servers: {
@@ -539,6 +584,14 @@ export const contract = {
       status: query("admin", z.object({ refresh: z.boolean().optional() }), s.UpdatesStatus),
       start: mutation("admin", z.object({ ref: z.string().optional(), onlyIfCiGreen: z.boolean() }), z.object({ unit: z.string() })),
       setEnabled: mutation("admin", z.object({ enabled: z.boolean() }), s.Ok),
+    },
+
+    /** SMTP voor e-mailmeldingen (Instellingen > E-mail). Het wachtwoord wordt nooit teruggegeven. */
+    smtp: {
+      get: query("admin", none, s.SmtpSettings),
+      set: mutation("admin", s.SmtpInput, s.SmtpSettings),
+      /** Stuurt een testmail; fouten komen terug in `error` (bv. verbinding geweigerd, login mislukt). */
+      test: mutation("admin", z.object({ to: s.EmailAddress }), z.object({ ok: z.boolean(), error: z.string().nullable() })),
     },
 
     settings: {

@@ -241,6 +241,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/servers/{uuid}/players": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        /**
+         * @description Server-list-ping (Minecraft Java-protocol) naar de primaire allocation van een draaiende
+         *     server, met een timeout van 2 s. Voor de openbare statuspagina; het panel cachet de uitkomst.
+         *     Niet online, geen allocation of geen (geldig) antwoord → 200 met `online: null`.
+         */
+        get: operations["getPlayers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{uuid}/network": {
         parameters: {
             query?: never;
@@ -1007,6 +1030,13 @@ export interface components {
             log_tail: string;
             daemon_version: string;
             daemon_commit?: string;
+        };
+        Players: {
+            /** @description null = geen antwoord op de ping */
+            online: number | null;
+            max: number | null;
+            /** @description versienaam uit het antwoord */
+            version?: string | null;
         };
         ProxyNetwork: {
             members: string[];
@@ -1874,6 +1904,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Stats"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPlayers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Aantal spelers */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Players"];
                 };
             };
             401: components["responses"]["Unauthorized"];

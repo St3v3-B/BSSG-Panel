@@ -64,6 +64,11 @@ export const users = pgTable("users", {
   lastLoginAt: ts("last_login_at"),
   /** Discord-webhook voor eigen meldingen (versleuteld; bevat het token in de URL) */
   discordWebhookEnc: text("discord_webhook_enc"),
+  /** Geverifieerd e-mailadres voor meldingen (null = geen) */
+  email: text("email"),
+  emailVerifiedAt: ts("email_verified_at"),
+  /** Kanalen per gebeurtenis: {server_crashed: {panel, discord, email}, ...}; ontbrekende sleutels = standaard */
+  notificationPrefs: jsonb("notification_prefs").$type<Record<string, { panel: boolean; discord: boolean; email: boolean }>>().notNull().default({}),
 }, (t) => [
   check("users_discord_or_emergency", sql`${t.discordId} is not null or ${t.isEmergency}`),
   uniqueIndex("users_one_emergency").on(t.isEmergency).where(sql`${t.isEmergency}`),
@@ -398,9 +403,90 @@ export const schedules = pgTable("schedules", {
   createdAt: createdAt(),
 });
 
+// ---------- meldingen ----------
+
+/** Verificatielinks voor e-mailadressen; alleen de SHA-256 van het token. */
+export const emailVerifications = pgTable("email_verifications", {
+  id: pk(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: ts("expires_at").notNull(),
+  usedAt: ts("used_at"),
+  createdAt: createdAt(),
+}, (t) => [index("email_verifications_user_idx").on(t.userId)]);
+
+/** Meldingen in het panel (bel in de kopbalk). */
+export const notifications = pgTable("notifications", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  event: text("event").notNull(),
+  level: text("level", { enum: ["info", "success", "warning", "error"] }).notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  serverId: integer("server_id").references(() => servers.id, { onDelete: "set null" }),
+  link: text("link"),
+  readAt: ts("read_at"),
+  createdAt: createdAt(),
+}, (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)]);
+
+/**
+ * Wachtrij voor uitgaande meldingen (e-mail, Discord) met retries. `target_enc` is het adres of de
+ * webhook-URL (versleuteld: een webhook-URL bevat het token). `payload` is het kant-en-klare bericht.
+ */
+export const notificationOutbox = pgTable("notification_outbox", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  channel: text("channel", { enum: ["email", "discord"] }).notNull(),
+  targetEnc: text("target_enc").notNull(),
+  /** SHA-256 van het doel, voor de limiet per ontvanger zonder te ontsleutelen */
+  targetHash: text("target_hash").notNull(),
+  event: text("event").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  status: text("status", { enum: ["pending", "sending", "sent", "failed", "dropped"] }).notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: ts("next_attempt_at").notNull().defaultNow(),
+  lastError: text("last_error"),
+  createdAt: createdAt(),
+  sentAt: ts("sent_at"),
+}, (t) => [index("notification_outbox_due_idx").on(t.status, t.nextAttemptAt), index("notification_outbox_target_idx").on(t.targetHash, t.createdAt)]);
+
+// ---------- statuspagina's ----------
+
+/** Openbare statuspagina op /status/<slug>: één server (`kind = server`) of een netwerk van servers. */
+export const statusPages = pgTable("status_pages", {
+  id: pk(),
+  slug: text("slug").notNull().unique(),
+  ownerId: integer("owner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  kind: text("kind", { enum: ["server", "network"] }).notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  enabled: boolean("enabled").notNull().default(true),
+  /** Toont het adres (ip:poort of domein); standaard uit */
+  showAddress: boolean("show_address").notNull().default(false),
+  showPlayers: boolean("show_players").notNull().default(true),
+  createdAt: createdAt(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("status_pages_owner_idx").on(t.ownerId)]);
+
+export const statusPageServers = pgTable("status_page_servers", {
+  pageId: integer("page_id").notNull().references(() => statusPages.id, { onDelete: "cascade" }),
+  serverId: integer("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  position: integer("position").notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.pageId, t.serverId] }), index("status_page_servers_server_idx").on(t.serverId)]);
+
+/** Beschikbaarheid per server per uur (één meting per minuut): voor uptime 24 u / 7 d. */
+export const serverUptime = pgTable("server_uptime", {
+  serverId: integer("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  hour: ts("hour").notNull(),
+  upMinutes: integer("up_minutes").notNull().default(0),
+  totalMinutes: integer("total_minutes").notNull().default(0),
+  /** Laatst gemeten minuut (0-59): voorkomt dubbel tellen door twee panelprocessen */
+  lastMinute: integer("last_minute").notNull().default(-1),
+}, (t) => [primaryKey({ columns: [t.serverId, t.hour] })]);
+
 // ---------- overig ----------
 
-/** sleutels: panel_name, logo_url, accent_color, default_limits, jwt_signing_key_enc */
+/** sleutels o.a.: panel_name, logo_url, accent_color, default_limits, jwt_signing_key_enc, admin_webhook_enc, smtp (host/poort/beveiliging/gebruiker/afzender), smtp_password_enc */
 export const settings = pgTable("settings", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),
