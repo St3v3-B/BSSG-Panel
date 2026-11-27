@@ -57,7 +57,7 @@ progress() { # progress <state> [message]; never fatal
 }
 die() { printf 'error: %s\n' "$*" >&2; progress failed "$*"; exit 1; }
 
-case "$PANEL_URL" in __PANEL_URL__*) die "unknown panel URL: pass --panel-url" ;; esac
+case "$PANEL_URL" in __PANEL_""URL__*) die "unknown panel URL: pass --panel-url" ;; esac
 [[ "$PANEL_URL" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || die "invalid panel URL: $PANEL_URL"
 
 if [ "$DRY_RUN" = 1 ]; then
