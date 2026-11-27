@@ -167,7 +167,7 @@ func (c *Caddy) syncPolicies(ctx context.Context, dyn map[string]dynRoute) error
 			default:
 				var ok bool
 				if ch, ok = tokenFromPolicy(ours[policyID(d.host)]); !ok {
-					errs = append(errs, fmt.Errorf("proxy: %s: DNS-challenge zonder token in Caddy (Sync nodig)", d.host))
+					errs = append(errs, fmt.Errorf("proxy: %s: DNS challenge without token in Caddy (Sync needed)", d.host))
 					continue
 				}
 			}

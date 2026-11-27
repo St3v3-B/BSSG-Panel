@@ -6,7 +6,7 @@ export { schema };
 export type Db = ReturnType<typeof createDb>;
 
 export function createDb(url = process.env.DATABASE_URL) {
-  if (!url) throw new Error("DATABASE_URL ontbreekt");
+  if (!url) throw new Error("DATABASE_URL is missing");
   const client = postgres(url, { max: 10 });
   return drizzle(client, { schema, casing: "snake_case" });
 }

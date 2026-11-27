@@ -242,11 +242,11 @@ export const admin = {
     const alerts = [
       ...health
         .filter((h) => !h.online)
-        .map((h) => ({ kind: "node_offline" as const, message: `Node ${nodes.find((n) => n.id === h.nodeId)?.name} is niet bereikbaar${h.error ? `: ${h.error}` : ""}`, at: now, serverUuid: null, nodeId: h.nodeId })),
-      ...failed.map((f) => ({ kind: "install_failed" as const, message: `Installatie van ${f.name} mislukt`, at: f.at, serverUuid: f.uuid, nodeId: f.nodeId })),
+        .map((h) => ({ kind: "node_offline" as const, message: `Node ${nodes.find((n) => n.id === h.nodeId)?.name} is unreachable${h.error ? `: ${h.error}` : ""}`, at: now, serverUuid: null, nodeId: h.nodeId })),
+      ...failed.map((f) => ({ kind: "install_failed" as const, message: `Installation of ${f.name} failed`, at: f.at, serverUuid: f.uuid, nodeId: f.nodeId })),
       ...health
         .filter((h) => h.online && h.diskTotalBytes && h.diskFreeBytes !== null && h.diskFreeBytes / h.diskTotalBytes < 0.1)
-        .map((h) => ({ kind: "disk_low" as const, message: `Minder dan 10% schijfruimte vrij op node ${nodes.find((n) => n.id === h.nodeId)?.name}`, at: now, serverUuid: null, nodeId: h.nodeId })),
+        .map((h) => ({ kind: "disk_low" as const, message: `Less than 10% disk space free on node ${nodes.find((n) => n.id === h.nodeId)?.name}`, at: now, serverUuid: null, nodeId: h.nodeId })),
     ];
     return { nodes: health, alerts, serverCount: srv?.n ?? 0, userCount: usr?.n ?? 0 };
   }) satisfies A["dashboard"],

@@ -235,7 +235,7 @@ func (a *API) getRoute(w http.ResponseWriter, r *http.Request) {
 	rt, ok := a.routes.routes[host]
 	a.routes.mu.Unlock()
 	if !ok {
-		writeErr(w, http.StatusNotFound, "not_found", "geen route voor "+host)
+		writeErr(w, http.StatusNotFound, "not_found", "no route for "+host)
 		return
 	}
 	writeJSON(w, http.StatusOK, a.routes.withStatus(r.Context(), rt))
@@ -248,7 +248,7 @@ func (a *API) setRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rt.Host != "" && normHost(rt.Host) != host {
-		writeErr(w, http.StatusBadRequest, "bad_request", "host in body wijkt af van het pad")
+		writeErr(w, http.StatusBadRequest, "bad_request", "host in body differs from the path")
 		return
 	}
 	rt.Host = host
@@ -261,19 +261,19 @@ func (a *API) setRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	rt.ServerUUID = strings.ToLower(rt.ServerUUID)
 	if rt.Port != nil && (*rt.Port < 1 || *rt.Port > 65535) {
-		writeErr(w, http.StatusBadRequest, "bad_request", "port ongeldig")
+		writeErr(w, http.StatusBadRequest, "bad_request", "port invalid")
 		return
 	}
 	if rt.RedirectTo != nil {
 		v := normHost(*rt.RedirectTo)
 		if v != "" && !hostRe.MatchString(v) {
-			writeErr(w, http.StatusBadRequest, "bad_request", "redirect_to ongeldig")
+			writeErr(w, http.StatusBadRequest, "bad_request", "redirect_to invalid")
 			return
 		}
 		rt.RedirectTo = &v
 	}
 	if rt.DNSChallenge != nil && (rt.DNSChallenge.Provider != "cloudflare" || rt.DNSChallenge.APIToken == "") {
-		writeErr(w, http.StatusBadRequest, "bad_request", "dns_challenge ongeldig")
+		writeErr(w, http.StatusBadRequest, "bad_request", "dns_challenge invalid")
 		return
 	}
 	if _, ok := a.mgr.Get(rt.ServerUUID); !ok {
@@ -282,7 +282,7 @@ func (a *API) setRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	if s, _ := a.mgr.Get(rt.ServerUUID); !s.IsWeb() && (rt.RedirectTo == nil || *rt.RedirectTo == "") {
 		if rt.Port == nil {
-			writeErr(w, http.StatusBadRequest, "bad_request", "port is verplicht voor game-servers")
+			writeErr(w, http.StatusBadRequest, "bad_request", "port is required for game servers")
 			return
 		}
 		if err := a.mgr.EnsureGameNetwork(r.Context(), rt.ServerUUID); err != nil {
@@ -292,7 +292,7 @@ func (a *API) setRoute(w http.ResponseWriter, r *http.Request) {
 	}
 	pr, ok := a.routes.toProxy(rt)
 	if !ok {
-		writeErr(w, http.StatusBadRequest, "bad_request", "geen port en de server heeft geen http_port")
+		writeErr(w, http.StatusBadRequest, "bad_request", "no port and the server has no http_port")
 		return
 	}
 	a.routes.mu.Lock()
@@ -325,7 +325,7 @@ func (a *API) removeRoute(w http.ResponseWriter, r *http.Request) {
 	err := a.routes.saveLocked()
 	a.routes.mu.Unlock()
 	if !ok {
-		writeErr(w, http.StatusNotFound, "not_found", "geen route voor "+host)
+		writeErr(w, http.StatusNotFound, "not_found", "no route for "+host)
 		return
 	}
 	if err != nil {

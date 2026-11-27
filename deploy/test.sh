@@ -18,7 +18,7 @@ WORK="$(mktemp -d -t panel-deploy-test-XXXXXX)"
 LABELS=(--label panel.test=true --label "panel.instance=$INSTANCE")
 
 pass() { printf '  ok   %s\n' "$*"; }
-fail() { printf '  FOUT %s\n' "$*" >&2; exit 1; }
+fail() { printf '  ERROR %s\n' "$*" >&2; exit 1; }
 step() { printf '\n== %s\n' "$*"; }
 
 cleanup() {
@@ -30,7 +30,7 @@ cleanup() {
   [ "${#ids[@]}" -gt 0 ] && docker network rm "${ids[@]}" >/dev/null
   mapfile -t ids < <(docker volume ls -q --filter label=panel.test=true --filter "label=panel.instance=$INSTANCE")
   [ "${#ids[@]}" -gt 0 ] && docker volume rm "${ids[@]}" >/dev/null
-  [ "${KEEP_WORK:-0}" = 1 ] && echo "werkmap bewaard: $WORK" || rm -rf "$WORK"
+  [ "${KEEP_WORK:-0}" = 1 ] && echo "work dir kept: $WORK" || rm -rf "$WORK"
 }
 trap cleanup EXIT
 
@@ -50,7 +50,7 @@ pass "deploy/install.sh, deploy/test.sh"
 sc_files=()
 for f in "$WORK"/sc/*.sh; do sc_files+=("/templates/$(basename "$f")"); done
 docker run --rm "${LABELS[@]}" -v "$WORK/sc:/templates:ro" koalaman/shellcheck:stable -s sh "${sc_files[@]}" \
-  || fail "shellcheck install-scripts van templates"
+  || fail "shellcheck install scripts of templates"
 pass "install-scripts in templates/game (POSIX sh)"
 
 # ------------------------------------------------------------------ compose
@@ -74,27 +74,27 @@ check_cfg "services panel, postgres, redis, mariadb, caddy" \
   "['panel','postgres','redis','mariadb','caddy'].every(s=>c.services[s])"
 check_cfg "labels panel.managed/instance op alle services, netwerken en volumes" \
   "[...Object.values(c.services),...Object.values(c.networks),...Object.values(c.volumes)].every(o=>o.labels&&o.labels['panel.managed']==='true'&&o.labels['panel.instance']==='main')"
-check_cfg "panel publiceert alleen 127.0.0.1:3000" \
+check_cfg "panel only publishes 127.0.0.1:3000" \
   "c.services.panel.ports.length===1&&c.services.panel.ports[0].host_ip==='127.0.0.1'&&c.services.panel.ports[0].published==='3000'"
 check_cfg "postgres, redis en mariadb publiceren niets" "!c.services.postgres.ports&&!c.services.redis.ports&&!c.services.mariadb.ports&&!c.services.mariadb.expose"
-check_cfg "mariadb: panel-mariadb, mariadb:11, root-wachtwoord uit env, volume panel-mariadb-data" \
+check_cfg "mariadb: panel-mariadb, mariadb:11, root password from env, volume panel-mariadb-data" \
   "(m=>m.container_name==='panel-mariadb'&&m.image==='mariadb:11'&&m.environment.MARIADB_ROOT_PASSWORD==='testtesttesttest'&&m.volumes.some(v=>v.target==='/var/lib/mysql'&&v.source==='mariadb_data')&&c.volumes.mariadb_data.name==='panel-mariadb-data')(c.services.mariadb)"
-check_cfg "mariadb: niet-root, read-only, caps eruit, no-new-privileges, healthcheck" \
+check_cfg "mariadb: non-root, read-only, caps dropped, no-new-privileges, healthcheck" \
   "(m=>m.user==='999:999'&&m.read_only&&m.cap_drop.includes('ALL')&&m.security_opt.some(o=>o.startsWith('no-new-privileges'))&&m.healthcheck.test.includes('healthcheck.sh'))(c.services.mariadb)"
-check_cfg "netwerk panel-db: intern, alleen mariadb (alias mariadb) — panel en caddy niet" \
+check_cfg "network panel-db: internal, only mariadb (alias mariadb), not panel and caddy" \
   "c.networks.db.name==='panel-db'&&c.networks.db.internal===true&&Object.entries(c.services).filter(([,v])=>v.networks&&'db' in v.networks).map(([k])=>k).join()==='mariadb'&&c.services.mariadb.networks.db.aliases.includes('mariadb')"
-check_cfg "mariadb op panel-backend (panel bereikt hem als mariadb:3306)" "'backend' in c.services.mariadb.networks&&'backend' in c.services.panel.networks"
+check_cfg "mariadb on panel-backend (panel reaches it as mariadb:3306)" "'backend' in c.services.mariadb.networks&&'backend' in c.services.panel.networks"
 if PANEL_ENV_FILE="$TEST_ENV" docker compose --env-file <(grep -v '^MARIADB_ROOT_PASSWORD=' "$TEST_ENV") -f "$DEPLOY/docker-compose.yml" config -q >/dev/null 2>&1; then
-  fail "compose zonder MARIADB_ROOT_PASSWORD zou moeten falen"
+  fail "compose without MARIADB_ROOT_PASSWORD should fail"
 fi
-pass "compose zonder MARIADB_ROOT_PASSWORD faalt (geen leeg rootwachtwoord)"
-check_cfg "caddy publiceert 80 en 443, admin-API (2019) niet" \
+pass "compose without MARIADB_ROOT_PASSWORD fails (no empty root password)"
+check_cfg "caddy publishes 80 and 443, not the admin API (2019)" \
   "(p=>p.some(x=>x.published==='80'&&!x.host_ip)&&p.some(x=>x.published==='443'&&!x.host_ip)&&!p.some(x=>x.target===2019||x.published==='2019'))(c.services.caddy.ports)"
 check_cfg "caddy mount /run/panel, Caddyfile, global.d, /data en /config" \
   "(v=>v.some(x=>x.target==='/run/panel'&&x.source==='/run/panel')&&v.some(x=>x.target==='/etc/caddy/Caddyfile'&&x.source.endsWith('/deploy/caddy/Caddyfile')&&x.read_only)&&v.some(x=>x.target==='/etc/caddy/global.d'&&x.source.endsWith('/deploy/caddy/global.d')&&x.read_only)&&v.some(x=>x.target==='/data'&&x.type==='volume')&&v.some(x=>x.target==='/config'&&x.type==='volume'))(c.services.caddy.volumes)"
-check_cfg "caddy krijgt PANEL_DOMAIN, NODE_DOMAIN, ACME_EMAIL en verder geen geheimen" \
+check_cfg "caddy gets PANEL_DOMAIN, NODE_DOMAIN, ACME_EMAIL and no other secrets" \
   "(e=>e.PANEL_DOMAIN==='panel.test'&&e.NODE_DOMAIN==='node1.test'&&e.ACME_EMAIL==='it@panel.test'&&!('NODE_TOKEN' in e)&&!('PANEL_ENCRYPTION_KEY' in e))(c.services.caddy.environment)"
-check_cfg "caddy zonder --resume (standaardcommando)" "!c.services.caddy.command||!JSON.stringify(c.services.caddy.command).includes('resume')"
+check_cfg "caddy without --resume (default command)" "!c.services.caddy.command||!JSON.stringify(c.services.caddy.command).includes('resume')"
 # Caddyfile van web-hosting valideren met precies deze env en mounts.
 mkdir -p "$WORK/run"
 docker run --rm "${LABELS[@]}" -e PANEL_DOMAIN=panel.test -e NODE_DOMAIN=node1.test -e ACME_EMAIL=it@panel.test \
@@ -102,19 +102,19 @@ docker run --rm "${LABELS[@]}" -e PANEL_DOMAIN=panel.test -e NODE_DOMAIN=node1.t
   -v "$WORK/run:/run/panel" caddy:2 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >"$WORK/caddy-validate.log" 2>&1 \
   && pass "caddy validate (Caddyfile + global.d)" || { cat "$WORK/caddy-validate.log"; fail "caddy validate"; }
 check_cfg "caddy-containernaam = CADDY_CONTAINER (panel-caddy)" "c.services.caddy.container_name==='panel-caddy'"
-check_cfg "panel: env_file ingelezen + NODE_DOMAIN naar host-gateway" \
+check_cfg "panel: env_file read + NODE_DOMAIN to host-gateway" \
   "c.services.panel.extra_hosts.some(h=>/^node1\\.test[:=]host-gateway$/.test(h))&&c.services.panel.environment.NODE_DOMAIN==='node1.test'"
 check_cfg "backend-netwerk is intern" "c.networks.backend.internal===true"
 # shellcheck disable=SC2016
 grep -q '^      - \${PANEL_ENV_FILE:-/etc/panel/panel.env}$' "$DEPLOY/docker-compose.yml" \
-  && pass "env_file standaard /etc/panel/panel.env" || fail "env_file standaard /etc/panel/panel.env"
+  && pass "env_file defaults to /etc/panel/panel.env" || fail "env_file defaults to /etc/panel/panel.env"
 
 # ------------------------------------------------------------------ systemd-unit
 step "systemd-unit"
 UNIT="$DEPLOY/systemd/panel-daemon.service"
 for want in 'EnvironmentFile=/etc/panel/panel.env' 'RuntimeDirectory=panel' 'RuntimeDirectoryPreserve=yes' \
             'Restart=always' 'KillMode=process' 'ExecStart=/usr/local/bin/panel-daemon'; do
-  grep -qx "$want" "$UNIT" && pass "$want" || fail "$want ontbreekt"
+  grep -qx "$want" "$UNIT" && pass "$want" || fail "$want missing"
 done
 if command -v systemd-analyze >/dev/null; then
   mkdir -p "$WORK/unit"
@@ -132,47 +132,47 @@ BIN_STUB="$WORK/panel-daemon-stub"; printf '#!/bin/sh\nexit 0\n' > "$BIN_STUB"; 
 env "${inst_env[@]}" bash "$DEPLOY/install.sh" --dry-run --non-interactive --root "$ROOT" --daemon-bin "$BIN_STUB" \
   > "$WORK/install1.log" 2>&1 || { cat "$WORK/install1.log"; fail "install.sh dry-run"; }
 E="$ROOT/etc/panel/panel.env"
-[ -f "$E" ] && [ "$(stat -c %a "$E")" = 600 ] && pass "panel.env geschreven, chmod 600" || fail "panel.env/chmod"
+[ -f "$E" ] && [ "$(stat -c %a "$E")" = 600 ] && pass "panel.env written, chmod 600" || fail "panel.env/chmod"
 getv() { sed -n "s/^$1=//p" "$E"; }
-[ "$(getv PANEL_DOMAIN)" = panel.test ] && [ "$(getv NODE_DOMAIN)" = node1.test ] && pass "domeinen" || fail "domeinen"
+[ "$(getv PANEL_DOMAIN)" = panel.test ] && [ "$(getv NODE_DOMAIN)" = node1.test ] && pass "domains" || fail "domains"
 [ "$(printf '%s' "$(getv PANEL_ENCRYPTION_KEY)" | base64 -d | wc -c)" = 32 ] && pass "PANEL_ENCRYPTION_KEY 32 bytes" || fail "PANEL_ENCRYPTION_KEY"
-[[ "$(getv NODE_TOKEN)" =~ ^[0-9a-f]{64}$ ]] && pass "NODE_TOKEN gegenereerd" || fail "NODE_TOKEN"
+[[ "$(getv NODE_TOKEN)" =~ ^[0-9a-f]{64}$ ]] && pass "NODE_TOKEN generated" || fail "NODE_TOKEN"
 pw="$(getv POSTGRES_PASSWORD)"
 [ "$pw" != panel ] && [ "$(getv DATABASE_URL)" = "postgres://panel:$pw@postgres:5432/panel" ] \
-  && pass "POSTGRES_PASSWORD gegenereerd en DATABASE_URL past erbij" || fail "postgres-wachtwoord"
-diff <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$DEPLOY/panel.env.example") <(sed -n '/^# --- overig/q; s/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$E") >/dev/null \
-  && pass "zelfde variabelen in dezelfde volgorde als panel.env.example" || fail "variabelen wijken af van panel.env.example"
-[[ "$(getv MARIADB_ROOT_PASSWORD)" =~ ^[0-9a-f]{48}$ ]] && pass "MARIADB_ROOT_PASSWORD gegenereerd" || fail "MARIADB_ROOT_PASSWORD"
-[ -x "$ROOT/usr/local/bin/panel-daemon" ] && pass "daemon geïnstalleerd (stub)" || fail "daemon"
-cmp -s "$UNIT" "$ROOT/etc/systemd/system/panel-daemon.service" && pass "unit geïnstalleerd" || fail "unit"
-grep -q '^\[dry-run\] systemctl restart panel-daemon.service$' "$WORK/install1.log" && pass "systemctl alleen geprint" || fail "systemctl"
+  && pass "POSTGRES_PASSWORD generated and DATABASE_URL matches" || fail "postgres password"
+diff <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$DEPLOY/panel.env.example") <(sed -n '/^# --- other/q; s/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$E") >/dev/null \
+  && pass "same variables in the same order as panel.env.example" || fail "variables differ from panel.env.example"
+[[ "$(getv MARIADB_ROOT_PASSWORD)" =~ ^[0-9a-f]{48}$ ]] && pass "MARIADB_ROOT_PASSWORD generated" || fail "MARIADB_ROOT_PASSWORD"
+[ -x "$ROOT/usr/local/bin/panel-daemon" ] && pass "daemon installed (stub)" || fail "daemon"
+cmp -s "$UNIT" "$ROOT/etc/systemd/system/panel-daemon.service" && pass "unit installed" || fail "unit"
+grep -q '^\[dry-run\] systemctl restart panel-daemon.service$' "$WORK/install1.log" && pass "systemctl only printed" || fail "systemctl"
 [ "$(getv PANEL_URL)" = "http://127.0.0.1:3000" ] && pass "PANEL_URL standaard http://127.0.0.1:3000" || fail "PANEL_URL"
 [ "$(getv CADDY_ADMIN_URL)" = "$(sed -n 's/^CADDY_ADMIN_URL=//p' "$DEPLOY/panel.env.example")" ] \
   && [ "$(getv CADDY_TLS_ADDR)" = "$(sed -n 's/^CADDY_TLS_ADDR=//p' "$DEPLOY/panel.env.example")" ] \
-  && pass "CADDY_ADMIN_URL/CADDY_TLS_ADDR uit het voorbeeld" || fail "CADDY_ADMIN_URL/CADDY_TLS_ADDR"
-grep -q 'docker compose config: in orde' "$WORK/install1.log" && pass "compose config met geschreven env" || fail "compose met geschreven env"
+  && pass "CADDY_ADMIN_URL/CADDY_TLS_ADDR from the example" || fail "CADDY_ADMIN_URL/CADDY_TLS_ADDR"
+grep -q 'docker compose config: OK' "$WORK/install1.log" && pass "compose config with written env" || fail "compose with written env"
 
-# Idempotent: tweede run behoudt alles; een extra sleutel blijft staan.
+# Idempotent: second run keeps everything; an extra key is kept.
 mariadb_pw="$(getv MARIADB_ROOT_PASSWORD)"
-before="$(grep -v '^# /etc/panel' "$E" | sed '/^# --- overig/,$d')"
-echo "MIJN_EIGEN=waarde" >> "$E"
+before="$(grep -v '^# /etc/panel' "$E" | sed '/^# --- other/,$d')"
+echo "MY_OWN=value" >> "$E"
 sed -i 's#^PANEL_URL=.*#PANEL_URL=https://panel.test#; s#^CADDY_TLS_ADDR=.*#CADDY_TLS_ADDR=127.0.0.1:8443#; s#^CADDY_ADMIN_URL=.*#CADDY_ADMIN_URL=#' "$E"
 before="$(printf '%s\n' "$before" | sed 's#^PANEL_URL=.*#PANEL_URL=https://panel.test#; s#^CADDY_TLS_ADDR=.*#CADDY_TLS_ADDR=127.0.0.1:8443#')"
 env "${inst_env[@]}" bash "$DEPLOY/install.sh" --dry-run --non-interactive --root "$ROOT" --daemon-bin "$BIN_STUB" \
-  > "$WORK/install2.log" 2>&1 || { cat "$WORK/install2.log"; fail "install.sh tweede run"; }
-after="$(grep -v '^# /etc/panel' "$E" | grep -v '^MIJN_EIGEN=' | sed '/^# --- overig/,$d')"
-[ "$(printf '%s\n' "$before" | sed '/^$/d')" = "$(printf '%s\n' "$after" | sed '/^$/d')" ] && pass "tweede run: sleutels en waarden behouden" || fail "tweede run wijzigt panel.env"
-grep -qx 'MIJN_EIGEN=waarde' "$E" && pass "onbekende sleutel behouden" || fail "onbekende sleutel weg"
+  > "$WORK/install2.log" 2>&1 || { cat "$WORK/install2.log"; fail "install.sh second run"; }
+after="$(grep -v '^# /etc/panel' "$E" | grep -v '^MY_OWN=' | sed '/^# --- other/,$d')"
+[ "$(printf '%s\n' "$before" | sed '/^$/d')" = "$(printf '%s\n' "$after" | sed '/^$/d')" ] && pass "second run: keys and values kept" || fail "second run changes panel.env"
+grep -qx 'MY_OWN=value' "$E" && pass "unknown key kept" || fail "unknown key lost"
 [ "$(getv MARIADB_ROOT_PASSWORD)" = "$mariadb_pw" ] && [ "$(grep -c '^MARIADB_ROOT_PASSWORD=' "$E")" = 1 ] \
-  && pass "MARIADB_ROOT_PASSWORD behouden (één keer)" || fail "MARIADB_ROOT_PASSWORD gewijzigd of dubbel"
-! grep -q gegenereerd "$WORK/install2.log" && pass "geen nieuwe geheimen bij tweede run" || fail "geheimen opnieuw gegenereerd"
+  && pass "MARIADB_ROOT_PASSWORD kept (only once)" || fail "MARIADB_ROOT_PASSWORD changed or duplicated"
+! grep -q generated "$WORK/install2.log" && pass "no new secrets on second run" || fail "secrets regenerated"
 # Zonder verplichte waarde faalt --non-interactive.
 if env -u PANEL_DOMAIN bash "$DEPLOY/install.sh" --dry-run --non-interactive --root "$WORK/root2" --daemon-bin "$BIN_STUB" >/dev/null 2>&1; then
-  fail "--non-interactive zonder PANEL_DOMAIN zou moeten falen"
+  fail "--non-interactive without PANEL_DOMAIN should fail"
 fi
-pass "--non-interactive zonder verplichte waarden faalt"
+pass "--non-interactive without required values fails"
 env "${inst_env[@]}" PANEL_DOMAIN='bad domain' bash "$DEPLOY/install.sh" --dry-run --non-interactive --root "$WORK/root3" --daemon-bin "$BIN_STUB" >/dev/null 2>&1 \
-  && fail "ongeldig domein geaccepteerd" || pass "ongeldig domein geweigerd"
+  && fail "invalid domain accepted" || pass "invalid domain rejected"
 
 # ------------------------------------------------------------------ template
 step "templates/game"
@@ -182,7 +182,7 @@ step "templates/game"
 # Zoals in compose (zelfde image, user, read-only, tmpfs, caps, command, healthcheck), maar met
 # eigen netwerk/volume/labels. Daarna: een site-achtige container op het interne netwerk maakt
 # als root een database + gebruiker aan en verbindt als die gebruiker.
-step "MariaDB (compose-instellingen in een testcontainer)"
+step "MariaDB (compose settings in a test container)"
 mcfg() { node -e "const c=JSON.parse(require('fs').readFileSync(0,'utf8')).services.mariadb; process.stdout.write(String($1))" <<<"$CFG"; }
 M_IMAGE="$(mcfg c.image)"; M_USER="$(mcfg c.user)"
 mapfile -t M_CMD < <(mcfg "c.command.join('\\n')")
@@ -202,17 +202,17 @@ while [ $(( $(date +%s) - t0 )) -lt 120 ]; do
   if docker exec "$M_NAME" healthcheck.sh --connect --innodb_initialized >/dev/null 2>&1; then healthy=1; break; fi
   sleep 2
 done
-[ "$healthy" = 1 ] || { docker logs --tail 40 "$M_NAME"; fail "MariaDB niet gezond"; }
-pass "MariaDB gezond na $(( $(date +%s) - t0 )) s ($M_IMAGE als $M_USER, read-only rootfs, caps eruit)"
-[ -z "$(docker port "$M_NAME")" ] && pass "geen gepubliceerde poorten" || fail "MariaDB publiceert poorten"
+[ "$healthy" = 1 ] || { docker logs --tail 40 "$M_NAME"; fail "MariaDB not healthy"; }
+pass "MariaDB healthy after $(( $(date +%s) - t0 )) s ($M_IMAGE as $M_USER, read-only rootfs, caps dropped)"
+[ -z "$(docker port "$M_NAME")" ] && pass "no published ports" || fail "MariaDB publishes ports"
 client() { docker run --rm "${LABELS[@]}" --network "$M_NET" --user 999:999 --read-only --cap-drop ALL \
   --security-opt no-new-privileges "$M_IMAGE" mariadb --skip-ssl -h mariadb -P 3306 "$@"; }
 client -uroot -p"$M_PW" -e "CREATE DATABASE s1_test; CREATE USER 'u1_test'@'%' IDENTIFIED BY 'sitepw-12345'; GRANT ALL ON s1_test.* TO 'u1_test'@'%';" \
-  && pass "root via netwerk (host mariadb:3306): database + gebruiker aangemaakt" || fail "root via netwerk"
+  && pass "root via network (host mariadb:3306): database + user created" || fail "root via network"
 [ "$(client -uu1_test -psitepw-12345 -N -e "CREATE TABLE s1_test.t (x INT); INSERT INTO s1_test.t VALUES (42); SELECT x FROM s1_test.t;")" = 42 ] \
-  && pass "sitegebruiker schrijft/leest eigen database" || fail "sitegebruiker"
-client -uu1_test -psitepw-12345 -e "CREATE DATABASE andere" >/dev/null 2>&1 && fail "sitegebruiker mag andere database maken" \
-  || pass "sitegebruiker kan geen andere database maken"
+  && pass "site user writes/reads own database" || fail "site user"
+client -uu1_test -psitepw-12345 -e "CREATE DATABASE andere" >/dev/null 2>&1 && fail "site user may create another database" \
+  || pass "site user cannot create another database"
 [ "$(client -uroot -p"$M_PW" -N -e "SELECT @@character_set_server")" = utf8mb4 ] && pass "utf8mb4" || fail "character set"
 docker rm -f "$M_NAME" >/dev/null
 
@@ -254,7 +254,7 @@ srv_prepare() {
   docker run --rm "${LABELS[@]}" --label panel.role=install --name "panel-test-$INSTANCE-$name-install" \
     --env-file "$dir.env" -v "$dir:/home/container" -v "$dir.install.sh:/install.sh:ro" -w /home/container \
     "$(srv_tpl "$name" get install.image)" /bin/sh /install.sh > "$dir.install.log" 2>&1 \
-    || { tail -30 "$dir.install.log"; fail "$name: install-script"; }
+    || { tail -30 "$dir.install.log"; fail "$name: install script"; }
   chown -R 1000:1000 "$dir"
   pass "$name: install ($(( $(date +%s) - t0 )) s): $(tail -1 "$dir.install.log")"
 }
@@ -280,16 +280,16 @@ srv_start() {
   t0=$(date +%s)
   while :; do
     if node -e "process.exit(new RegExp(process.argv[1],'m').test(require('fs').readFileSync(process.argv[2],'utf8'))?0:1)" "$ready" "$dir.log"; then
-      pass "$name: ready_pattern na $(( $(date +%s) - t0 )) s: $(grep -m1 -E "$ready" "$dir.log" | cut -c1-90)"
+      pass "$name: ready_pattern after $(( $(date +%s) - t0 )) s: $(grep -m1 -E "$ready" "$dir.log" | cut -c1-90)"
       ! grep -qiE 'read-only file system|AccessDeniedException' "$dir.log" \
-        || { grep -iE 'read-only file system|AccessDeniedException' "$dir.log" | head -5; fail "$name: schrijffouten (read-only rootfs)"; }
+        || { grep -iE 'read-only file system|AccessDeniedException' "$dir.log" | head -5; fail "$name: write errors (read-only rootfs)"; }
       return 0
     fi
     kill -0 "$(sv "$name" pid)" 2>/dev/null && [ $(( $(date +%s) - t0 )) -lt 600 ] || break
     sleep 2
   done
   tail -40 "$dir.log"
-  fail "$name: ready_pattern niet gezien ($(docker inspect -f 'exit {{.State.ExitCode}}, OOMKilled {{.State.OOMKilled}}' "panel-test-$INSTANCE-$name" 2>&1))"
+  fail "$name: ready_pattern not seen ($(docker inspect -f 'exit {{.State.ExitCode}}, OOMKilled {{.State.OOMKilled}}' "panel-test-$INSTANCE-$name" 2>&1))"
 }
 
 srv_cmd() { local fd; fd="$(sv "$1" fd)"; printf '%s\n' "$2" >&"$fd"; }
@@ -302,16 +302,16 @@ srv_stop() {
   else docker kill -s "$(srv_tpl "$name" get stop.value)" "panel-test-$INSTANCE-$name" >/dev/null 2>&1 || true; fi
   t0=$(date +%s)
   while kill -0 "$pid" 2>/dev/null && [ $(( $(date +%s) - t0 )) -lt 30 ]; do sleep 1; done
-  kill -0 "$pid" 2>/dev/null && { tail -20 "$(sv "$name" dir).log"; fail "$name: niet gestopt binnen 30 s"; }
+  kill -0 "$pid" 2>/dev/null && { tail -20 "$(sv "$name" dir).log"; fail "$name: not stopped within 30 s"; }
   exec {fd}>&-
   wait "$pid" || true
-  pass "$name: gestopt na $(( $(date +%s) - t0 )) s ($(srv_tpl "$name" get stop.type) $(srv_tpl "$name" get stop.value))"
+  pass "$name: stopped after $(( $(date +%s) - t0 )) s ($(srv_tpl "$name" get stop.type) $(srv_tpl "$name" get stop.value))"
 }
 
 tcp_open() { (exec 4<>"/dev/tcp/$1/$2") 2>/dev/null; }
 mc_checks() { # naam: poort open + server.properties door config_files
   local name="$1" dir port; dir="$(sv "$name" dir)"; port="$(sv "$name" port)"
-  tcp_open "$(sv "$name" ip)" "$port" && pass "$name: poort $port bereikbaar" || fail "$name: poort $port dicht"
+  tcp_open "$(sv "$name" ip)" "$port" && pass "$name: port $port reachable" || fail "$name: port $port closed"
   grep -qx "server-port=$port" "$dir/server.properties" && grep -qx 'server-ip=0.0.0.0' "$dir/server.properties" \
     && pass "$name: server.properties (server-port/server-ip)" || fail "$name: server.properties"
 }
@@ -319,28 +319,28 @@ mc_checks() { # naam: poort open + server.properties door config_files
 if want node; then
   step "node-generic"
   srv_prepare node node-generic 256 127.0.0.1 MAIN_FILE=start.js
-  [ -f "$S_node_dir/index.js" ] && pass "node: voorbeeld-index.js" || fail "node: index.js"
+  [ -f "$S_node_dir/index.js" ] && pass "node: example index.js" || fail "node: index.js"
   # package.json met een dependency: npm install bij de start (read-only rootfs, cache in de map).
   printf '{"name":"t","version":"1.0.0","dependencies":{"ms":"2.1.3"}}\n' > "$S_node_dir/package.json"
   printf 'const ms=require("ms");require("./app.js");console.log("ms ok", ms(60000));\n' > "$S_node_dir/start.js"
   mv "$S_node_dir/index.js" "$S_node_dir/app.js"; chown -R 1000:1000 "$S_node_dir"
   srv_start node
   for _ in $(seq 1 15); do grep -q 'luistert op poort' "$S_node_dir.log" && break; sleep 1; done
-  grep -q 'ms ok 1m' "$S_node_dir.log" && pass "node: npm install + require van een dependency" || { cat "$S_node_dir.log"; fail "node: npm install"; }
-  [ "$(curl -fsS "http://127.0.0.1:$S_node_port/")" = "Hallo van Node.js" ] && pass "node: app op SERVER_PORT bereikbaar" || fail "node: http"
+  grep -q 'ms ok 1m' "$S_node_dir.log" && pass "node: npm install + require of a dependency" || { cat "$S_node_dir.log"; fail "node: npm install"; }
+  [ "$(curl -fsS "http://127.0.0.1:$S_node_port/")" = "Hello from Node.js" ] && pass "node: app reachable on SERVER_PORT" || fail "node: http"
   srv_stop node
 fi
 
 if want java; then
-  step "java-generic (Java 17 via Adoptium, eigen jar)"
+  step "java-generic (Java 17 via Adoptium, own jar)"
   srv_prepare java java-generic 256 127.0.0.1 JAVA_VERSION=17 JAR_FILE=fabric-installer.jar JAR_ARGS=help
-  [ -x "$S_java_dir/.java/bin/java" ] && pass "java: JRE in .java/" || fail "java: geen .java/bin/java"
+  [ -x "$S_java_dir/.java/bin/java" ] && pass "java: JRE in .java/" || fail "java: no .java/bin/java"
   # Een JAR "van de gebruiker": de Fabric-installer (Java 8-bytecode, print help en stopt).
   curl -fsSL -o "$S_java_dir/fabric-installer.jar" "$(curl -fsSL https://meta.fabricmc.net/v2/versions/installer | node -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8"))[0].url)')"
   srv_start java
-  grep -qE '^\[panel\] start .*"17\.' "$S_java_dir.log" && pass "java: draait op Java 17" || { cat "$S_java_dir.log"; fail "java: verkeerde Java-versie"; }
+  grep -qE '^\[panel\] starting .*"17\.' "$S_java_dir.log" && pass "java: runs on Java 17" || { cat "$S_java_dir.log"; fail "java: wrong Java version"; }
   wait "$S_java_pid" || true
-  grep -qi 'fabric' "$S_java_dir.log" && pass "java: jar gestart (help van de installer)" || { cat "$S_java_dir.log"; fail "java: jar"; }
+  grep -qi 'fabric' "$S_java_dir.log" && pass "java: jar started (installer help)" || { cat "$S_java_dir.log"; fail "java: jar"; }
   exec {S_java_fd}>&-
 fi
 
@@ -352,7 +352,7 @@ if want velocity; then
   srv_start velo
   grep -qx "bind = \"0.0.0.0:$S_velo_port\"" "$S_velo_dir/velocity.toml" && grep -qx 'player-info-forwarding-mode = "modern"' "$S_velo_dir/velocity.toml" \
     && pass "velo: velocity.toml (bind, modern forwarding)" || fail "velo: velocity.toml"
-  tcp_open 127.0.0.1 "$S_velo_port" && pass "velo: poort bereikbaar" || fail "velo: poort"
+  tcp_open 127.0.0.1 "$S_velo_port" && pass "velo: port reachable" || fail "velo: port"
   srv_stop velo
 fi
 
@@ -364,11 +364,11 @@ if want paper; then
   srv_start paper
   mc_checks paper
   srv_stop paper
-  grep -qx 'online-mode=true' "$S_paper_dir/server.properties" && pass "paper: online-mode=true (standaard)" || fail "paper: online-mode"
+  grep -qx 'online-mode=true' "$S_paper_dir/server.properties" && pass "paper: online-mode=true (default)" || fail "paper: online-mode"
   # Paper heeft paper-global.yml aangevuld; de waarden van config_files staan er nog.
   node -e 'const y=require(process.argv[2]).parse(require("fs").readFileSync(process.argv[1],"utf8")); process.exit(y.proxies.velocity.enabled===false&&y._version?0:1)' \
     "$S_paper_dir/config/paper-global.yml" "$(cd "$REPO/packages/api" && node -p 'require.resolve("yaml")')" \
-    && pass "paper: config/paper-global.yml aangevuld, velocity uit" || fail "paper: paper-global.yml"
+    && pass "paper: config/paper-global.yml completed, velocity off" || fail "paper: paper-global.yml"
 fi
 
 if want folia; then
@@ -384,7 +384,7 @@ if want fabric; then
   srv_prepare fabric fabric "$MC_MEMORY" 127.0.0.1
   srv_start fabric
   mc_checks fabric
-  grep -q 'Loading Minecraft .* with Fabric Loader' "$S_fabric_dir.log" && pass "fabric: Fabric Loader actief" || fail "fabric: geen Fabric Loader in de log"
+  grep -q 'Loading Minecraft .* with Fabric Loader' "$S_fabric_dir.log" && pass "fabric: Fabric Loader active" || fail "fabric: no Fabric Loader in the log"
   srv_stop fabric
 fi
 
@@ -398,7 +398,7 @@ fi
 if want proxy; then
   PROXY_MC="${PROXY_MC_VERSION:-1.21.11}"   # versie die mineflayer ondersteunt
   PMEM="${PROXY_PAPER_MEMORY:-1280}"   # heap 896 MB (template: RAM min 384 MB)
-  step "Velocity met twee Paper-servers (Paper $PROXY_MC, 2x ${PMEM} MB, Velocity 512 MB)"
+  step "Velocity with two Paper servers (Paper $PROXY_MC, 2x ${PMEM} MB, Velocity 512 MB)"
   SECRET="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
   srv_prepare pa paper "$PMEM" "$GW" MINECRAFT_VERSION="$PROXY_MC" VELOCITY_FORWARDING=true VELOCITY_SECRET="$SECRET"
   # Tweede Paper-server: zelfde installatie (jar niet nog eens downloaden), eigen allocation.
@@ -411,7 +411,7 @@ if want proxy; then
     /^\[/ { skip=0 } !skip { print }' "$S_pv_dir/velocity.toml" > "$S_pv_dir/velocity.toml.new"
   mv "$S_pv_dir/velocity.toml.new" "$S_pv_dir/velocity.toml"
   srv_start pa
-  grep -qx 'online-mode=false' "$S_pa_dir/server.properties" && pass "pa: online-mode uit door VELOCITY_FORWARDING" || fail "pa: online-mode"
+  grep -qx 'online-mode=false' "$S_pa_dir/server.properties" && pass "pa: online-mode off due to VELOCITY_FORWARDING" || fail "pa: online-mode"
   srv_start pb
   srv_start pv
   grep -q 'secret' "$S_pv_dir.log" && grep -i 'secret' "$S_pv_dir.log" | head -3 | sed 's/^/  info /'
@@ -437,14 +437,14 @@ JS
     "cd /tmp && npm i --silent --no-audit --no-fund mineflayer >/dev/null 2>&1 && cp /bot/bot.js . && node bot.js $GW $S_pv_port $PROXY_MC" \
     > "$WORK/bot.log" 2>&1 || true
   sed 's/^/  bot  /' "$WORK/bot.log" | head -12
-  grep -q 'PanelTest joined the game' "$S_pa_dir.log" && pass "speler via Velocity op Paper-server a" \
-    || { tail -15 "$S_pa_dir.log"; tail -15 "$S_pv_dir.log"; fail "speler niet op server a"; }
-  grep -q 'PanelTest joined the game' "$S_pb_dir.log" && pass "met /server naar Paper-server b" \
-    || { tail -15 "$S_pb_dir.log"; tail -15 "$S_pv_dir.log"; fail "speler niet op server b"; }
+  grep -q 'PanelTest joined the game' "$S_pa_dir.log" && pass "player via Velocity on Paper server a" \
+    || { tail -15 "$S_pa_dir.log"; tail -15 "$S_pv_dir.log"; fail "player not on server a"; }
+  grep -q 'PanelTest joined the game' "$S_pb_dir.log" && pass "with /server to Paper server b" \
+    || { tail -15 "$S_pb_dir.log"; tail -15 "$S_pv_dir.log"; fail "player not on server b"; }
   # Modern forwarding: Paper ziet het echte adres van de speler (via Velocity doorgegeven).
   grep -E 'PanelTest\[/[0-9.]+:[0-9]+\] logged in' "$S_pb_dir.log" | head -1 | sed 's/^/  info /'
-  ! grep -qi 'Unable to verify player details' "$S_pa_dir.log" "$S_pb_dir.log" && pass "geen forwarding-fouten op Paper" \
-    || fail "forwarding-fout (Unable to verify player details)"
+  ! grep -qi 'Unable to verify player details' "$S_pa_dir.log" "$S_pb_dir.log" && pass "no forwarding errors on Paper" \
+    || fail "forwarding error (Unable to verify player details)"
   srv_stop pv
   srv_stop pb
   srv_stop pa

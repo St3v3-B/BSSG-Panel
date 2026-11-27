@@ -1,12 +1,12 @@
 schema: 1
 slug: static
-name: Statische website
+name: Static website
 description: >-
-  Statische site met nginx. Zet je bestanden in de map `public` (via SFTP of de
-  filemanager); `index.html` is de startpagina. Eigen nginx-regels (binnen het
-  server-blok) kun je kwijt in `nginx/*.conf`. Caddy regelt HTTPS en het domein.
+  Static site with nginx. Put your files in the `public` folder (via SFTP or the
+  file manager); `index.html` is the start page. Custom nginx rules (inside the
+  server block) go in `nginx/*.conf`. Caddy handles HTTPS and the domain.
 type: web
-version: 4
+version: 5
 image: nginx:1.28-alpine
 # De daemon draait dit als uid 1000 met een read-only rootfs; alleen /home/container en
 # /tmp (tmpfs) zijn schrijfbaar. De hoofdconfig wordt bij elke start opnieuw in /tmp
@@ -49,12 +49,12 @@ startup: |
   }
   EOF
   nginx -t -q -e stderr -c /tmp/nginx/nginx.conf &&
-  echo "nginx klaar op poort 8080" &&
+  echo "nginx ready on port 8080" &&
   exec nginx -e stderr -c /tmp/nginx/nginx.conf -g 'daemon off;'
 stop:
   type: signal
   value: SIGQUIT
-ready_pattern: "^nginx klaar op poort"
+ready_pattern: "^nginx ready on port"
 http_port: 8080
 variables: []
 install:
@@ -155,6 +155,6 @@ install:
     </html>
     EOF
     fi
-    [ -e nginx/README.txt ] || echo "Bestanden *.conf in deze map komen binnen het server-blok van nginx (na een herstart)." > nginx/README.txt
-    echo "Installatie klaar"
+    [ -e nginx/README.txt ] || echo "*.conf files in this folder are included inside the nginx server block (after a restart)." > nginx/README.txt
+    echo "Installation complete"
 config_files: []

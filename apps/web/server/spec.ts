@@ -43,8 +43,8 @@ export function templateSleepCapable(t: Pick<TemplateRow, "id" | "version" | "so
   return v;
 }
 
-export const SLEEP_MOTD = "Server slaapt - verbind om hem te starten";
-export const SLEEP_KICK = "De server wordt gestart, verbind over een minuut opnieuw.";
+export const SLEEP_MOTD = "Server is sleeping - join to start it";
+export const SLEEP_KICK = "The server is starting, please reconnect in a minute.";
 
 /** Spec-veld `sleep`: alleen als aan én de template het ondersteunt. */
 export function sleepSpec(t: Parameters<typeof templateSleepCapable>[0], sleep?: SpecInput["sleep"]): DaemonServerSpec["sleep"] {
@@ -66,19 +66,19 @@ export function validateVariables(vars: TemplateVar[], values: Record<string, st
   for (const [k, val] of Object.entries(values)) {
     const v = byKey.get(k);
     if (!v) {
-      errors.push(`${k}: onbekende variabele`);
+      errors.push(`${k}: unknown variable`);
       continue;
     }
-    if (opts.onlyUserEditable && !v.user_editable) errors.push(`${k}: niet door de gebruiker te wijzigen`);
+    if (opts.onlyUserEditable && !v.user_editable) errors.push(`${k}: cannot be changed by the user`);
     if (val.length > 2000) errors.push(`${k}: te lang`);
     if (v.pattern) {
       let re: RegExp | null = null;
       try {
         re = new RegExp(`^(?:${v.pattern})$`);
       } catch {
-        errors.push(`${k}: patroon in de template is ongeldig`);
+        errors.push(`${k}: pattern in the template is invalid`);
       }
-      if (re && !re.test(val)) errors.push(`${k}: voldoet niet aan ${v.pattern}`);
+      if (re && !re.test(val)) errors.push(`${k}: does not match ${v.pattern}`);
     }
   }
   return errors;

@@ -153,13 +153,13 @@ const (
 func (s *Server) password(meta ssh.ConnMetadata, pw []byte) (*ssh.Permissions, error) {
 	user := meta.User()
 	fail := func(why string) (*ssh.Permissions, error) {
-		s.Log.Info("sftp-login geweigerd", "user", user, "ip", meta.RemoteAddr().String(), "why", why)
+		s.Log.Info("sftp login refused", "user", user, "ip", meta.RemoteAddr().String(), "why", why)
 		time.Sleep(s.FailDelay)
-		return nil, errors.New("toegang geweigerd")
+		return nil, errors.New("access denied")
 	}
 	i := strings.LastIndex(user, ".")
 	if i <= 0 || i == len(user)-1 || len(pw) == 0 || len(pw) > 1024 {
-		return fail("ongeldige gebruikersnaam")
+		return fail("invalid username")
 	}
 	shortID := strings.ToLower(user[i+1:])
 	ip, _, _ := net.SplitHostPort(meta.RemoteAddr().String())
@@ -171,13 +171,13 @@ func (s *Server) password(meta ssh.ConnMetadata, pw []byte) (*ssh.Permissions, e
 	}
 	uuid := strings.ToLower(res.ServerUUID)
 	if !strings.HasPrefix(uuid, shortID) {
-		return fail("server_uuid hoort niet bij de gebruikersnaam")
+		return fail("server_uuid does not match the username")
 	}
 	if _, ok := s.Servers.Get(uuid); !ok {
 		return fail("server niet op deze node")
 	}
 	if !slices.Contains(res.Permissions, "files.read") {
-		return fail("files.read ontbreekt")
+		return fail("files.read missing")
 	}
 	return &ssh.Permissions{Extensions: map[string]string{
 		extUUID: uuid, extPerms: strings.Join(res.Permissions, ","), extUser: res.UserID,

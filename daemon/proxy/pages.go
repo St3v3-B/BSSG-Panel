@@ -19,7 +19,7 @@ var pagesFS embed.FS
 func Page(name string) (string, error) {
 	b, err := pagesFS.ReadFile("pages/" + name + ".html")
 	if err != nil {
-		return "", fmt.Errorf("proxy: geen standaardpagina %q", name)
+		return "", fmt.Errorf("proxy: no default page %q", name)
 	}
 	return string(b), nil
 }
@@ -29,7 +29,7 @@ func placeholderPage(p Placeholder) (string, error) {
 	case PlaceholderInstalling, PlaceholderOffline, PlaceholderDisk, PlaceholderUnavailable:
 		return Page(string(p))
 	}
-	return "", fmt.Errorf("proxy: onbekende Placeholder %q", p)
+	return "", fmt.Errorf("proxy: unknown Placeholder %q", p)
 }
 
 // placeholderHandler is de Caddy-handler die de pagina met status 503 serveert.

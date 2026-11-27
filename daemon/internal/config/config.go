@@ -51,19 +51,19 @@ func Load(getenv func(string) string) (Config, error) {
 	}
 	var errs []error
 	if c.NodeToken == "" {
-		errs = append(errs, errors.New("NODE_TOKEN ontbreekt"))
+		errs = append(errs, errors.New("NODE_TOKEN is missing"))
 	}
 	if c.NodeDomain == "" {
-		errs = append(errs, errors.New("NODE_DOMAIN ontbreekt"))
+		errs = append(errs, errors.New("NODE_DOMAIN is missing"))
 	}
 	if c.PanelURL == "" {
 		if c.PanelDomain == "" {
-			errs = append(errs, errors.New("PANEL_URL of PANEL_DOMAIN ontbreekt"))
+			errs = append(errs, errors.New("PANEL_URL or PANEL_DOMAIN is missing"))
 		} else {
 			c.PanelURL = "https://" + c.PanelDomain
 		}
 	} else if u, err := url.Parse(c.PanelURL); err != nil || u.Host == "" {
-		errs = append(errs, fmt.Errorf("PANEL_URL ongeldig: %q", c.PanelURL))
+		errs = append(errs, fmt.Errorf("PANEL_URL invalid: %q", c.PanelURL))
 	}
 	var err error
 	if c.DaemonPort, err = port(get("DAEMON_PORT", "8080")); err != nil {
@@ -81,7 +81,7 @@ func Load(getenv func(string) string) (Config, error) {
 func port(s string) (int, error) {
 	p, err := strconv.Atoi(s)
 	if err != nil || p < 0 || p > 65535 {
-		return 0, fmt.Errorf("ongeldige poort %q", s)
+		return 0, fmt.Errorf("invalid port %q", s)
 	}
 	return p, nil
 }
@@ -98,7 +98,7 @@ func ParseLabels(s string) (map[string]string, error) {
 		k, v, ok := strings.Cut(part, "=")
 		k = strings.TrimSpace(k)
 		if !ok || k == "" {
-			return nil, fmt.Errorf("ongeldig label %q (verwacht k=v)", part)
+			return nil, fmt.Errorf("invalid label %q (expected k=v)", part)
 		}
 		if k == "panel.managed" || k == "panel.instance" || k == "panel.server_uuid" || k == "panel.role" {
 			return nil, fmt.Errorf("label %q is voorbehouden", k)

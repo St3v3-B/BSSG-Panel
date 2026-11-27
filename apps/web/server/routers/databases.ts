@@ -200,7 +200,7 @@ export async function dropServerDatabases(serverId: number): Promise<string[]> {
     try {
       await dropDatabase(r.h, r.d.name, r.d.username);
     } catch (e) {
-      console.error(`[databases] ${r.d.name} niet verwijderd:`, e);
+      console.error(`[databases] ${r.d.name} not deleted:`, e);
       failed.push(r.d.name);
     }
   }

@@ -301,7 +301,7 @@ func (m *Manager) Recover(ctx context.Context) error {
 	for _, f := range files {
 		var p persisted
 		if err := store.ReadJSON(f, &p); err != nil {
-			m.log.Error("staat lezen mislukt", "file", f, "err", err)
+			m.log.Error("reading state failed", "file", f, "err", err)
 			continue
 		}
 		if !spec.ValidUUID(p.Spec.UUID) {
@@ -347,7 +347,7 @@ func (m *Manager) Recover(ctx context.Context) error {
 				continue
 			}
 			if err := m.eng.Remove(ctx, c.ID); err != nil && !errors.Is(err, engine.ErrNotFound) {
-				m.log.Warn("install-container opruimen mislukt", "container", c.Name, "err", err)
+				m.log.Warn("cleaning up install container failed", "container", c.Name, "err", err)
 			}
 			continue
 		}
@@ -360,7 +360,7 @@ func (m *Manager) Recover(ctx context.Context) error {
 		}
 		att, err := m.eng.AttachStdin(ctx, c.ID)
 		if err != nil {
-			m.log.Error("stdin koppelen mislukt", "uuid", uuid, "err", err)
+			m.log.Error("attaching stdin failed", "uuid", uuid, "err", err)
 			continue
 		}
 		s.mu.Lock()

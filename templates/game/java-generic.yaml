@@ -1,53 +1,53 @@
 schema: 1
 slug: java-generic
-name: Generiek Java
+name: Generic Java
 description: >-
-  Start een eigen JAR (bijvoorbeeld een oudere Minecraft-server of een andere Java-gameserver)
-  met de gekozen Java-versie (8, 11, 17, 21 of 25). Zet de JAR via SFTP of de filemanager in
-  de hoofdmap. Java 25 zit in de image; voor een andere versie haalt de installatie een
-  Eclipse Temurin-JRE (Adoptium, SHA-256 gecontroleerd) naar `.java/` in de servermap (telt
-  mee voor de schijfruimte). Na het wijzigen van de Java-versie opnieuw installeren (je
-  bestanden blijven staan). De server staat online zodra Java start; stoppen gaat met
-  SIGTERM (de JVM sluit netjes af via shutdown-hooks; een Minecraft-server slaat dan op).
-  Heap = 80% van het RAM-limiet.
+  Runs your own JAR (for example an older Minecraft server or another Java game server)
+  with the chosen Java version (8, 11, 17, 21 or 25). Put the JAR in the root directory via
+  SFTP or the file manager. Java 25 is included in the image; for another version the installer
+  fetches an Eclipse Temurin JRE (Adoptium, SHA-256 verified) into `.java/` in the server
+  directory (counts towards disk space). Reinstall after changing the Java version (your
+  files are kept). The server counts as online as soon as Java starts; it is stopped with
+  SIGTERM (the JVM shuts down cleanly via shutdown hooks; a Minecraft server saves first).
+  Heap = 80% of the RAM limit.
 type: game
-version: 1
+version: 2
 # Eén image (Ubuntu + glibc + Java 25); andere versies als JRE in /home/container/.java,
 # omdat image geen variabele kan zijn.
 image: eclipse-temurin:25-jre
 startup: >-
   J=java; [ -x .java/bin/java ] && J=.java/bin/java;
-  [ -f {{JAR_FILE}} ] || { echo "[panel] {{JAR_FILE}} ontbreekt: zet hem in de hoofdmap"; exit 1; };
-  echo "[panel] start {{JAR_FILE}} met $($J -version 2>&1 | head -n 1)";
+  [ -f {{JAR_FILE}} ] || { echo "[panel] {{JAR_FILE}} is missing: put it in the root directory"; exit 1; };
+  echo "[panel] starting {{JAR_FILE}} with $($J -version 2>&1 | head -n 1)";
   exec $J -Xms128M -Xmx$(( {{SERVER_MEMORY}} * 80 / 100 ))M
   -Duser.home=/home/container -Djava.io.tmpdir=/tmp
   {{JAVA_ARGS}} -jar {{JAR_FILE}} {{JAR_ARGS}}
 stop:
   type: signal
   value: SIGTERM
-ready_pattern: "^\\[panel\\] start "
+ready_pattern: "^\\[panel\\] starting "
 variables:
   - key: JAVA_VERSION
-    name: Java-versie
-    description: 8, 11, 17, 21 of 25. Na wijzigen opnieuw installeren.
+    name: Java version
+    description: 8, 11, 17, 21 or 25. Reinstall after changing.
     default: "21"
     user_editable: true
     pattern: "^(8|11|17|21|25)$"
   - key: JAR_FILE
-    name: JAR-bestand
-    description: Naam van de JAR in de hoofdmap.
+    name: JAR file
+    description: Name of the JAR in the root directory.
     default: server.jar
     user_editable: true
     pattern: "^[A-Za-z0-9._-]+\\.jar$"
   - key: JAVA_ARGS
-    name: Extra JVM-opties
-    description: Bijvoorbeeld -XX:+UseG1GC -Dfile.encoding=UTF-8 (geen -Xmx; dat volgt uit het RAM).
+    name: Extra JVM options
+    description: For example -XX:+UseG1GC -Dfile.encoding=UTF-8 (no -Xmx; it follows from the RAM limit).
     default: "-XX:+UseG1GC"
     user_editable: true
     pattern: "^[A-Za-z0-9_=:.,+/ -]*$"
   - key: JAR_ARGS
-    name: Argumenten voor de JAR
-    description: Bijvoorbeeld nogui.
+    name: JAR arguments
+    description: For example nogui.
     default: nogui
     user_editable: true
     pattern: "^[A-Za-z0-9_=:.,+/ -]*$"
@@ -60,16 +60,16 @@ install:
     set -eu
     cd /home/container
     V="${JAVA_VERSION:-21}"
-    case "$V" in 8|11|17|21|25) ;; *) echo "Onbekende Java-versie: $V" >&2; exit 1 ;; esac
+    case "$V" in 8|11|17|21|25) ;; *) echo "Unknown Java version: $V" >&2; exit 1 ;; esac
     if [ "$V" = 25 ]; then
       rm -rf .java .java.part
-      echo "Java 25 uit de image"
+      echo "Java 25 from the image"
     else
       apk add --no-cache curl jq >/dev/null
       case "$(uname -m)" in
         x86_64) ARCH=x64 ;;
         aarch64) ARCH=aarch64 ;;
-        *) echo "Architectuur $(uname -m) niet ondersteund" >&2; exit 1 ;;
+        *) echo "Architecture $(uname -m) not supported" >&2; exit 1 ;;
       esac
       UA="panel-installer/1 (self-hosted panel)"
       JSON=$(curl -fsSL --retry 3 --retry-delay 2 -A "$UA" \
@@ -77,13 +77,13 @@ install:
       URL=$(echo "$JSON" | jq -r '.[0].binary.package.link')
       SHA=$(echo "$JSON" | jq -r '.[0].binary.package.checksum')
       REL=$(echo "$JSON" | jq -r '.[0].release_name')
-      [ "$URL" != "null" ] && [ "$SHA" != "null" ] || { echo "Geen Temurin-JRE $V gevonden" >&2; exit 1; }
+      [ "$URL" != "null" ] && [ "$SHA" != "null" ] || { echo "No Temurin JRE $V found" >&2; exit 1; }
       if [ -f .java/release-name ] && [ "$(cat .java/release-name)" = "$REL" ]; then
-        echo "Java $REL is al geïnstalleerd"
+        echo "Java $REL is already installed"
       else
-        echo "Temurin-JRE $REL downloaden"
+        echo "Downloading Temurin JRE $REL"
         curl -fsSL --retry 3 --retry-delay 2 -A "$UA" -o /tmp/jre.tar.gz "$URL"
-        echo "$SHA  /tmp/jre.tar.gz" | sha256sum -c - >/dev/null || { echo "SHA-256 klopt niet" >&2; exit 1; }
+        echo "$SHA  /tmp/jre.tar.gz" | sha256sum -c - >/dev/null || { echo "SHA-256 mismatch" >&2; exit 1; }
         rm -rf .java.part && mkdir .java.part
         tar -xzf /tmp/jre.tar.gz -C .java.part --strip-components=1
         rm -f /tmp/jre.tar.gz
@@ -91,6 +91,6 @@ install:
         rm -rf .java && mv .java.part .java
       fi
     fi
-    [ -f "$JAR_FILE" ] || echo "Zet $JAR_FILE via SFTP of de filemanager in de hoofdmap." > LEESMIJ.txt
-    echo "Installatie klaar: Java $V"
+    [ -f "$JAR_FILE" ] || echo "Put $JAR_FILE in the root directory via SFTP or the file manager." > README.txt
+    echo "Installation complete: Java $V"
 config_files: []

@@ -21,16 +21,16 @@ import (
 
 // Fouten die de API naar statuscodes vertaalt.
 var (
-	ErrBadPath   = errors.New("ongeldig pad")
+	ErrBadPath   = errors.New("invalid path")
 	ErrEscape    = errors.New("pad wijst buiten de serverdata")
-	ErrNotFound  = errors.New("bestand of map bestaat niet")
-	ErrExists    = errors.New("bestaat al")
-	ErrNotDir    = errors.New("geen map")
-	ErrIsDir     = errors.New("is een map")
-	ErrNotFile   = errors.New("geen gewoon bestand")
+	ErrNotFound  = errors.New("file or directory does not exist")
+	ErrExists    = errors.New("already exists")
+	ErrNotDir    = errors.New("not a directory")
+	ErrIsDir     = errors.New("is a directory")
+	ErrNotFile   = errors.New("not a regular file")
 	ErrDiskFull  = errors.New("disk-limiet bereikt")
-	ErrTooLarge  = errors.New("bestand te groot")
-	ErrBadFormat = errors.New("onbekend archiefformaat")
+	ErrTooLarge  = errors.New("file too large")
+	ErrBadFormat = errors.New("unknown archive format")
 )
 
 // Root is de data-map van een server. Bestanden die de daemon aanmaakt krijgen UID:GID.

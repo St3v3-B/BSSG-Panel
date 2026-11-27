@@ -35,7 +35,7 @@ export async function ensureSigningKey(): Promise<SigningKey> {
   const pem = privateKey.export({ format: "pem", type: "pkcs8" }).toString();
   await db.insert(schema.settings).values({ key: SETTING, value: encrypt(pem) }).onConflictDoNothing();
   const [row] = await db.select().from(schema.settings).where(eq(schema.settings.key, SETTING));
-  if (!row || typeof row.value !== "string") throw new Error("JWT-sleutel ontbreekt in settings");
+  if (!row || typeof row.value !== "string") throw new Error("JWT key missing in settings");
   g.__panelJwtKey = fromPem(decrypt(row.value));
   return g.__panelJwtKey;
 }

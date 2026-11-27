@@ -72,7 +72,7 @@ func (f *Fake) CreateNetwork(_ context.Context, name string, labels map[string]s
 		f.networks = map[string]*FakeNetwork{}
 	}
 	if _, ok := f.networks[name]; ok {
-		return fmt.Errorf("netwerk %s bestaat al", name)
+		return fmt.Errorf("network %s already exists", name)
 	}
 	f.networks[name] = &FakeNetwork{Labels: labels, Internal: internal, Connected: map[string]bool{}}
 	return nil
@@ -86,7 +86,7 @@ func (f *Fake) RemoveNetwork(_ context.Context, name string) error {
 		return ErrNotFound
 	}
 	if len(n.Connected) > 0 {
-		return fmt.Errorf("netwerk %s heeft nog actieve endpoints", name)
+		return fmt.Errorf("network %s still has active endpoints", name)
 	}
 	delete(f.networks, name)
 	return nil
@@ -279,7 +279,7 @@ func (f *Fake) Create(_ context.Context, cfg ContainerConfig) (string, error) {
 		return "", f.FailCreate
 	}
 	if _, ok := f.byName[cfg.Name]; ok {
-		return "", fmt.Errorf("naam %s bestaat al", cfg.Name)
+		return "", fmt.Errorf("name %s already exists", cfg.Name)
 	}
 	f.seq++
 	c := &FakeContainer{ID: fmt.Sprintf("fake%04d", f.seq), Config: cfg, f: f, exited: make(chan struct{}), stdin: make(chan string, 100)}

@@ -1,27 +1,27 @@
-# Caddy-basisconfig
+# Caddy base config
 
-Eigenaar: web-hosting. Caddy is de enige ingang voor HTTP(S) op de node.
+Owner: web-hosting. Caddy is the only entry point for HTTP(S) on the node.
 
-| Bestand | Wat |
+| File | What |
 |---|---|
-| `Caddyfile` | Basisconfig: `$PANEL_DOMAIN` → `panel:3000`, `$NODE_DOMAIN` → daemon-socket, HTTP → HTTPS. Niet per installatie aanpassen. |
-| `global.d/` | Extra globale opties (`*.caddy`). In productie **leeg**. Wordt niet gecommit. |
-| `examples/local-certs.caddy` | `tls internal` voor alles (lokaal testen, geen internet). |
-| `examples/le-staging.caddy` | Let's Encrypt **staging** (echte ACME-flow, onvertrouwd certificaat). |
+| `Caddyfile` | Base config: `$PANEL_DOMAIN` → `panel:3000`, `$NODE_DOMAIN` → daemon socket, HTTP → HTTPS. Do not modify per installation. |
+| `global.d/` | Extra global options (`*.caddy`). **Empty** in production. Not committed. |
+| `examples/local-certs.caddy` | `tls internal` for everything (local testing, no internet). |
+| `examples/le-staging.caddy` | Let's Encrypt **staging** (real ACME flow, untrusted certificate). |
 
-## Hoe de routes werken
+## How the routes work
 
-- **Vast** (in de `Caddyfile`): panel en daemon. Blijven werken als de daemon plat ligt.
-- **Dynamisch** (klantdomeinen): de daemon zet ze via de admin-API (`proxy.NewCaddy`) in de
-  HTTPS-server met de naam `panel` (`servers :443 { name panel }`), als routes met
-  `"@id": "panel-dyn-<host>"` achter de vaste routes. Routes zonder dat prefix raakt de daemon
-  nooit aan. Bij een herstart van Caddy zijn ze weg; de daemon merkt dat via de health-check en
-  zet ze opnieuw (`Sync`). Daarom **geen `--resume`** gebruiken: de `Caddyfile` is bij de start
-  altijd de bron.
-- HTTP → HTTPS (308) en certificaten regelt Caddy zelf (automatic HTTPS), ook voor de
-  dynamische hosts.
+- **Static** (in the `Caddyfile`): panel and daemon. They keep working when the daemon is down.
+- **Dynamic** (customer domains): the daemon adds them via the admin API (`proxy.NewCaddy`) to the
+  HTTPS server named `panel` (`servers :443 { name panel }`), as routes with
+  `"@id": "panel-dyn-<host>"` after the static routes. Routes without that prefix are never
+  touched by the daemon. They are gone after a Caddy restart; the daemon notices through the health check and
+  re-adds them (`Sync`). Therefore **do not use `--resume`**: at startup the `Caddyfile` is
+  always the source of truth.
+- HTTP → HTTPS (308) and certificates are handled by Caddy itself (automatic HTTPS), also for the
+  dynamic hosts.
 
-## In docker-compose (voor templates-ops)
+## In docker-compose (for templates-ops)
 
 ```yaml
 services:
@@ -30,20 +30,20 @@ services:
     image: panel-caddy:local
     container_name: panel-caddy         # = CADDY_CONTAINER in panel.env
     restart: unless-stopped
-    env_file: /etc/panel/panel.env      # gebruikt PANEL_DOMAIN, NODE_DOMAIN, ACME_EMAIL
-    # geen command: het standaardcommando (caddy run --config /etc/caddy/Caddyfile
-    # --adapter caddyfile) is goed; niet --resume toevoegen.
+    env_file: /etc/panel/panel.env      # uses PANEL_DOMAIN, NODE_DOMAIN, ACME_EMAIL
+    # no command: the default command (caddy run --config /etc/caddy/Caddyfile
+    # --adapter caddyfile) is fine; do not add --resume.
     ports:
       - "80:80"
       - "443:443"
-      - "443:443/udp"                   # HTTP/3, optioneel
+      - "443:443/udp"                   # HTTP/3, optional
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy/global.d:/etc/caddy/global.d:ro
-      - /run/panel:/run/panel           # map, niet de socket zelf (die wordt opnieuw gemaakt)
-      - caddy_data:/data                # certificaten + ACME-account: moet blijven bestaan
+      - /run/panel:/run/panel           # the directory, not the socket itself (it gets recreated)
+      - caddy_data:/data                # certificates + ACME account: must persist
       - caddy_config:/config
-    networks: [default]                 # zelfde netwerk als de service `panel`
+    networks: [default]                 # same network as the `panel` service
     labels:
       panel.managed: "true"
       panel.instance: main
@@ -55,57 +55,56 @@ volumes:
     labels: { panel.managed: "true", panel.instance: main }
 ```
 
-Punten die ertoe doen:
+Points that matter:
 
-- **Service `panel`** moet op hetzelfde netwerk zitten en op poort 3000 luisteren
+- **The `panel` service** must be on the same network and listen on port 3000
   (`reverse_proxy panel:3000`).
-- **`/run/panel`** als map mounten. De daemon (systemd, `RuntimeDirectory=panel`) maakt daar
-  `daemon.sock`. Zet in de unit ook **`RuntimeDirectoryPreserve=yes`**: anders verwijdert systemd
-  de map bij een herstart van de daemon en ziet de Caddy-container de nieuwe map (en socket) niet
-  meer tot Caddy zelf herstart.
-- **Socket-rechten**: Caddy draait in de container als root, dus `0660 root:root` is genoeg.
-- **Admin-API** luistert alleen op de unix-socket `/run/panel/caddy-admin.sock` (in de gedeelde
-  map), **niet op TCP en niet publiceren**: Caddy hangt aan site-netwerken en sites mogen er niet
-  bij. De daemon gebruikt `CADDY_ADMIN_URL=unix:///run/panel/caddy-admin.sock` (op de socket doet
-  Caddy geen Host-check). De SSL-controle verbindt met `CADDY_TLS_ADDR` (standaard
+- **Mount `/run/panel`** as a directory. The daemon (systemd, `RuntimeDirectory=panel`) creates
+  `daemon.sock` there. Also set **`RuntimeDirectoryPreserve=yes`** in the unit: otherwise systemd removes
+  the directory when the daemon restarts and the Caddy container no longer sees the new directory (and socket)
+  until Caddy itself restarts.
+- **Socket permissions**: Caddy runs as root in the container, so `0660 root:root` is enough.
+- **The admin API** only listens on the unix socket `/run/panel/caddy-admin.sock` (in the shared
+  directory), **not on TCP and never published**: Caddy is attached to site networks and sites must not
+  reach it. The daemon uses `CADDY_ADMIN_URL=unix:///run/panel/caddy-admin.sock` (on the socket
+  Caddy does no Host check). The SSL check connects to `CADDY_TLS_ADDR` (default
   `127.0.0.1:443`).
-- **Netwerken van sites**: de daemon koppelt `panel-caddy` aan site-netwerken met
-  `panel.managed=true` + `panel.instance=$PANEL_INSTANCE` + `panel.role=site` en koppelt hem los
-  na de laatste route. Andere netwerken (zoals het compose-netwerk met `panel.role=infra`) raakt
-  hij nooit aan.
-- **Panel → daemon**: het panel bereikt `https://$NODE_DOMAIN` via Caddy; geef de panel-container
-  `extra_hosts: ["${NODE_DOMAIN}:host-gateway"]` zodat dat ook zonder externe DNS (hairpin) werkt.
-- `/data` niet weggooien: daar staan de certificaten. Zonder volume vraagt Caddy bij elke
-  herstart nieuwe aan en loop je tegen de rate limits van Let's Encrypt aan.
+- **Site networks**: the daemon attaches `panel-caddy` to site networks with
+  `panel.managed=true` + `panel.instance=$PANEL_INSTANCE` + `panel.role=site` and detaches it
+  after the last route. It never touches other networks (such as the compose network with `panel.role=infra`).
+- **Panel → daemon**: the panel reaches `https://$NODE_DOMAIN` via Caddy; give the panel container
+  `extra_hosts: ["${NODE_DOMAIN}:host-gateway"]` so that this works without external DNS (hairpin) too.
+- Do not throw away `/data`: it holds the certificates. Without a volume Caddy requests new ones on every
+  restart and you run into the Let's Encrypt rate limits.
 
-## Wildcards en de DNS-challenge
+## Wildcards and the DNS challenge
 
-De image wordt gebouwd uit `Dockerfile` (xcaddy, Caddy en `caddy-dns/cloudflare` gepind).
-Een route met `DNSChallenge{Provider: "cloudflare", APIToken}` krijgt een TLS-policy
-`panel-tls-<host>` in `apps/tls/automation/policies` met subjects `*.domein` en `domein`,
-de ACME-issuers (e-mail, CA) van de basisconfig en `challenges.dns.provider`. De router
-zet die policy vóór die van de basisconfig en ruimt hem op bij `RemoveRoute`/`Sync`.
-Het token staat alleen in de Caddy-config (niet in de route, niet in foutmeldingen).
-Testen met de eigen build:
+The image is built from `Dockerfile` (xcaddy, with Caddy and `caddy-dns/cloudflare` pinned).
+A route with `DNSChallenge{Provider: "cloudflare", APIToken}` gets a TLS policy
+`panel-tls-<host>` in `apps/tls/automation/policies` with subjects `*.domain` and `domain`,
+the ACME issuers (email, CA) of the base config and `challenges.dns.provider`. The router
+places that policy before the one from the base config and removes it on `RemoveRoute`/`Sync`.
+The token only lives in the Caddy config (not in the route, not in error messages).
+Test with your own build:
 
 ```sh
 docker build -t panel-caddy-test:web-hosting deploy/caddy
 cd daemon && PANEL_CADDY_IMAGE=panel-caddy-test:web-hosting go test ./proxy -run TestDockerCaddyDNSChallenge -v
 ```
 
-## SSL-status
+## SSL status
 
-`Status` geeft `active` als Caddy een geldig certificaat serveert. Anders kijkt de router
-in Caddy's log (Docker-logs van `CADDY_CONTAINER`, laatste 6 uur): een mislukte poging met
-een DNS- of bereikbaarheidsfout van de CA → `dns_wrong`, een andere fout → `failed` (reden
-in `Error`). Zonder uitsluitsel vergelijkt hij de A/AAAA-records van de host met de IP's
-van deze node (`NODE_DOMAIN` + eigen interfaces): geen record of geen overlap → `dns_wrong`.
-Let op: een host achter de Cloudflare-proxy geeft `dns_wrong` tot er een certificaat is.
+`Status` returns `active` when Caddy serves a valid certificate. Otherwise the router looks
+in Caddy's log (Docker logs of `CADDY_CONTAINER`, last 6 hours): a failed attempt with
+a DNS or reachability error from the CA → `dns_wrong`, any other error → `failed` (reason
+in `Error`). If still inconclusive it compares the A/AAAA records of the host with the IPs
+of this node (`NODE_DOMAIN` + own interfaces): no record or no overlap → `dns_wrong`.
+Note: a host behind the Cloudflare proxy gives `dns_wrong` until a certificate exists.
 
-## Lokaal testen met `tls internal`
+## Local testing with `tls internal`
 
-Op eigen vrije poorten, niet 80/443/2019 (op deze machine draait ander spul); de admin-API
-zit op de socket in `$work/run`:
+On your own free ports, not 80/443/2019 (other things may run on this machine); the admin API
+is on the socket in `$work/run`:
 
 ```sh
 work=$(mktemp -d); mkdir -p "$work/global.d" "$work/run"
@@ -117,32 +116,31 @@ docker run -d --name caddy-test-$$ \
   -v "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" \
   -v "$work/global.d:/etc/caddy/global.d:ro" -v "$work/run:/run/panel" caddy:2
 
-# root van Caddy's interne CA ophalen en het certificaat controleren
+# fetch the root of Caddy's internal CA and check the certificate
 curl -s --unix-socket "$work/run/caddy-admin.sock" http://caddy/pki/ca/local | python3 -c 'import json,sys;print(json.load(sys.stdin)["root_certificate"])' > "$work/root.pem"
 curl -v --cacert "$work/root.pem" --resolve panel.test:10443:127.0.0.1 https://panel.test:10443/
-curl -I --resolve panel.test:10080:127.0.0.1 http://panel.test:10080/   # 308 naar https
+curl -I --resolve panel.test:10080:127.0.0.1 http://panel.test:10080/   # 308 to https
 
 docker rm -f caddy-test-$$
 ```
 
-(Zonder container met netwerk-alias `panel` geeft het panel-domein 502; het certificaat is wel
-geldig.) De Go-tests in `daemon/proxy/caddy_docker_test.go` doen precies dit, met een
-echo-container als panel, een nep-daemon op de socket (incl. websocket) en een site-netwerk:
+(Without a container with network alias `panel` the panel domain returns 502; the certificate is
+valid though.) The Go tests in `daemon/proxy/caddy_docker_test.go` do exactly this, with an
+echo container as panel, a fake daemon on the socket (incl. websocket) and a site network:
 
 ```sh
 cd daemon && go test -run TestDockerCaddy -v ./proxy/
 ```
 
-## Testen met Let's Encrypt staging
+## Testing with Let's Encrypt staging
 
-Kopieer `examples/le-staging.caddy` naar `global.d/` (of mount hem als
-`/etc/caddy/global.d/le-staging.caddy`). Daarvoor moeten de domeinen echt naar de machine wijzen
-en moeten poort 80/443 publiek bereikbaar zijn — op deze machine doet alleen de orchestrator dat.
-Het staging-certificaat is niet vertrouwd (`curl -k` of de staging-root); de SSL-status in het
-panel blijft daardoor `issuing`. Haal het bestand weer weg voor productie en verwijder de
-staging-certificaten uit `/data` (`caddy_data`-volume) als je wisselt.
+Copy `examples/le-staging.caddy` to `global.d/` (or mount it as
+`/etc/caddy/global.d/le-staging.caddy`). For this the domains must really point at the machine
+and ports 80/443 must be publicly reachable. The staging certificate is not trusted (`curl -k` or the staging root); the SSL status in the
+panel therefore stays `issuing`. Remove the file again for production and delete the
+staging certificates from `/data` (`caddy_data` volume) when you switch.
 
-## Controleren
+## Validating
 
 ```sh
 docker run --rm -e PANEL_DOMAIN=panel.test -e NODE_DOMAIN=node1.test -e ACME_EMAIL=a@panel.test \

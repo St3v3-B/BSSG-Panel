@@ -1,54 +1,54 @@
 # deploy/
 
-Installatie van het panel op één machine (panel + node). Eigenaar: templates-ops,
-behalve `caddy/` (web-hosting).
+Installation of the panel on a single machine (panel + node). Owner: templates-ops,
+except `caddy/` (web-hosting).
 
-| Bestand | Wat |
+| File | What |
 |---|---|
-| `install.sh` | installeert alles vanuit deze checkout (zie hieronder) |
-| `docker-compose.yml` | `panel` (Next.js), `postgres:16`, `redis:7`, `mariadb:11` (klantdatabases), `caddy:2` |
-| `panel.Dockerfile` | image van het panel: monorepo bouwen, Next standalone, draait als uid 1000 |
-| `systemd/panel-daemon.service` | de Go-daemon op de host |
-| `panel.env.example` | alle variabelen (contract; namen wijzigt alleen de orchestrator) |
-| `caddy/` | Caddyfile en uitleg (web-hosting) |
-| `test.sh` | tests, raken de echte installatie niet |
+| `install.sh` | installs everything from this checkout (see below) |
+| `docker-compose.yml` | `panel` (Next.js), `postgres:16`, `redis:7`, `mariadb:11` (customer databases), `caddy:2` |
+| `panel.Dockerfile` | panel image: builds the monorepo, Next standalone, runs as uid 1000 |
+| `systemd/panel-daemon.service` | the Go daemon on the host |
+| `panel.env.example` | all variables (contract; only the orchestrator changes names) |
+| `caddy/` | Caddyfile and documentation (web-hosting) |
+| `test.sh` | tests, do not touch the real installation |
 
-## Installeren
+## Installing
 
 ```
 git clone <repo> /opt/panel && cd /opt/panel
 sudo deploy/install.sh
 ```
 
-Vereist: Docker met de compose-plugin, systemd, en Go 1.23+ (of `--daemon-bin PATH` met een
-kant-en-klare `panel-daemon`). Het script
+Requires: Docker with the compose plugin, systemd, and Go 1.23+ (or `--daemon-bin PATH` with a
+prebuilt `panel-daemon`). The script
 
-1. vraagt de verplichte waarden (domeinen, ACME-e-mail, Discord-ID van de eigenaar, Discord
-   OAuth2-app) en schrijft `/etc/panel/panel.env` (chmod 600). Bestaande waarden blijven
-   staan; `PANEL_ENCRYPTION_KEY`, `NODE_TOKEN`, `POSTGRES_PASSWORD` (+ `DATABASE_URL`) en
-   `MARIADB_ROOT_PASSWORD` worden alleen gegenereerd als ze er nog niet zijn. Onbekende sleutels blijven behouden.
-2. bouwt de daemon naar `/usr/local/bin/panel-daemon`,
-3. installeert de unit, `systemctl enable` + `restart panel-daemon`,
+1. asks for the required values (domains, ACME email, Discord ID of the owner, Discord
+   OAuth2 app) and writes `/etc/panel/panel.env` (chmod 600). Existing values are
+   kept; `PANEL_ENCRYPTION_KEY`, `NODE_TOKEN`, `POSTGRES_PASSWORD` (+ `DATABASE_URL`) and
+   `MARIADB_ROOT_PASSWORD` are only generated if they do not exist yet. Unknown keys are preserved.
+2. builds the daemon to `/usr/local/bin/panel-daemon`,
+3. installs the unit, `systemctl enable` + `restart panel-daemon`,
 4. `docker compose up -d --build`.
 
-Opnieuw draaien is veilig (zelfde waarden, herstart van de daemon laat game-servers draaien).
+Running it again is safe (same values; restarting the daemon leaves game servers running).
 
-Zonder vragen:
+Without prompts:
 
 ```
-sudo PANEL_DOMAIN=panel.example.nl NODE_DOMAIN=node1.example.nl ACME_EMAIL=... \
+sudo PANEL_DOMAIN=panel.example.com NODE_DOMAIN=node1.example.com ACME_EMAIL=... \
      OWNER_DISCORD_ID=... DISCORD_CLIENT_ID=... DISCORD_CLIENT_SECRET=... \
      deploy/install.sh --non-interactive
 ```
 
-Een gezette omgevingsvariabele wint van de waarde in een bestaand `panel.env`; dat geldt voor
-alle namen uit `panel.env.example` (let op variabelen als `DATABASE_URL` in je shell).
+A set environment variable wins over the value in an existing `panel.env`; this applies to
+all names in `panel.env.example` (beware of variables such as `DATABASE_URL` in your shell).
 
-Proefdraaien zonder iets te wijzigen: `deploy/install.sh --dry-run [--root DIR]` schrijft
-env, unit en binary onder `DIR` (standaard een tijdelijke map), valideert compose met dat
-env-bestand en print de `systemctl`/`docker compose up`-commando's alleen.
+Dry run without changing anything: `deploy/install.sh --dry-run [--root DIR]` writes
+env, unit and binary under `DIR` (default a temporary directory), validates compose with that
+env file and only prints the `systemctl`/`docker compose up` commands.
 
-## Beheer
+## Management
 
 ```
 cd /opt/panel
@@ -56,94 +56,94 @@ docker compose --env-file /etc/panel/panel.env -f deploy/docker-compose.yml ps|l
 systemctl status panel-daemon; journalctl -u panel-daemon -f
 ```
 
-`--env-file` is nodig voor de `${...}` in de compose-file (domeinen voor Caddy en
-`extra_hosts`, Postgres-wachtwoord). Het panel zelf leest het bestand via `env_file`
-(`PANEL_ENV_FILE`, standaard `/etc/panel/panel.env`; alleen tests zetten hem anders).
+`--env-file` is needed for the `${...}` in the compose file (domains for Caddy and
+`extra_hosts`, Postgres password). The panel itself reads the file via `env_file`
+(`PANEL_ENV_FILE`, default `/etc/panel/panel.env`; only tests set it differently).
 
-Ander domein: env aanpassen, `systemctl restart panel-daemon`, compose `up -d`, en de
-redirect-URI in het Discord-portaal bijwerken.
+Different domain: edit the env, `systemctl restart panel-daemon`, compose `up -d`, and update the
+redirect URI in the Discord portal.
 
-## Hoe de stukken elkaar bereiken
+## How the pieces reach each other
 
 ```
-internet ─► caddy :80/:443 ─► panel:3000              (netwerk panel-frontend)
-                          └─► unix//run/panel/daemon.sock (bind mount van de host)
+internet ─► caddy :80/:443 ─► panel:3000              (network panel-frontend)
+                          └─► unix//run/panel/daemon.sock (bind mount from the host)
 panel ─► DAEMON_URL = https://$NODE_DOMAIN ─► extra_hosts → host-gateway ─► caddy :443 ─► daemon
-panel ─► postgres:5432, redis:6379, mariadb:3306       (netwerk panel-backend, internal)
-site-container ─► mariadb:3306                         (netwerk panel-db, internal; de daemon koppelt sites met een database)
+panel ─► postgres:5432, redis:6379, mariadb:3306       (network panel-backend, internal)
+site container ─► mariadb:3306                         (network panel-db, internal; the daemon attaches sites that have a database)
 daemon (host) ─► Caddy admin unix:///run/panel/caddy-admin.sock, Docker, PANEL_URL (install.sh: http://127.0.0.1:3000)
 ```
 
-- Gepubliceerd: Caddy `80`, `443` (tcp+udp); panel `127.0.0.1:3000`. Niet: de Caddy-admin
-  (unix-socket in `/run/panel`), Postgres, Redis en MariaDB.
-- Alle containers, netwerken en volumes hebben `panel.managed=true`, `panel.instance=main` en
-  `panel.role=infra`. Namen staan vast (`panel-web`, `panel-postgres`, `panel-redis`,
-  `panel-mariadb`, `panel-caddy`, `panel-frontend`, `panel-backend`, `panel-db`, `panel-*-data`), zodat `CADDY_CONTAINER`
-  klopt en `uninstall.sh` (fase 4) ze vindt.
-- `/run/panel` komt van systemd (`RuntimeDirectory=panel`) met `RuntimeDirectoryPreserve=yes`:
-  anders wist systemd de map bij een herstart van de daemon en wijst de bind mount in Caddy
-  naar een verwijderde map (socket onvindbaar tot Caddy herstart). Start Caddy eerder dan de
-  daemon, dan maakt Docker de map aan; systemd neemt hem daarna over.
-- Herstart van de unit: `KillMode=process` stopt alleen de daemon; containers zijn van
-  dockerd, en de daemon stopt ze nooit zelf bij afsluiten.
-- `install.sh` zet `PANEL_URL=http://127.0.0.1:3000` (als hij nog niet gezet is), zodat de
-  daemon het panel zonder externe DNS of hairpin-NAT bereikt. `CADDY_ADMIN_URL` en
-  `CADDY_TLS_ADDR` krijgen de waarden uit het voorbeeld als ze ontbreken of leeg zijn.
+- Published: Caddy `80`, `443` (tcp+udp); panel `127.0.0.1:3000`. Not published: the Caddy admin
+  (unix socket in `/run/panel`), Postgres, Redis and MariaDB.
+- All containers, networks and volumes have `panel.managed=true`, `panel.instance=main` and
+  `panel.role=infra`. Names are fixed (`panel-web`, `panel-postgres`, `panel-redis`,
+  `panel-mariadb`, `panel-caddy`, `panel-frontend`, `panel-backend`, `panel-db`, `panel-*-data`), so that `CADDY_CONTAINER`
+  is correct and `uninstall.sh` (phase 4) finds them.
+- `/run/panel` comes from systemd (`RuntimeDirectory=panel`) with `RuntimeDirectoryPreserve=yes`:
+  otherwise systemd wipes the directory when the daemon restarts and the bind mount in Caddy
+  points at a deleted directory (socket not found until Caddy restarts). Start Caddy before the
+  daemon, then Docker creates the directory; systemd takes it over afterwards.
+- Restarting the unit: `KillMode=process` only stops the daemon; containers belong to
+  dockerd, and the daemon never stops them itself on shutdown.
+- `install.sh` sets `PANEL_URL=http://127.0.0.1:3000` (if not set yet), so that the
+  daemon reaches the panel without external DNS or hairpin NAT. `CADDY_ADMIN_URL` and
+  `CADDY_TLS_ADDR` get the values from the example if they are missing or empty.
 
 ## MariaDB
 
-- `panel-mariadb` (`mariadb:11`), als uid 999 met read-only rootfs, geen capabilities,
+- `panel-mariadb` (`mariadb:11`), as uid 999 with read-only rootfs, no capabilities,
   `utf8mb4`, `--skip-name-resolve`, data in volume `panel-mariadb-data`.
-- Beheer als `root` met `MARIADB_ROOT_PASSWORD` uit `panel.env` (door `install.sh`
-  gegenereerd; geldt alleen bij een lege volume). Het panel bereikt hem als `mariadb:3306`
-  via `panel-backend`; de daemon (host) heeft geen gepubliceerde poort en gebruikt een
-  container op `panel-db` (bv. `mariadb-dump` voor backups).
-- `panel-db` is `internal`: sites met een database worden er door de daemon aan gekoppeld en
-  zien daar alleen MariaDB (host `mariadb` of `panel-mariadb`, poort 3306). Let op: sites op
-  dit netwerk kunnen elkaar ook bereiken; isolatie tussen sites zit in de MariaDB-rechten
-  (eigen gebruiker per database).
+- Manage as `root` with `MARIADB_ROOT_PASSWORD` from `panel.env` (generated by `install.sh`;
+  only applies to an empty volume). The panel reaches it as `mariadb:3306`
+  via `panel-backend`; the daemon (host) has no published port and uses a
+  container on `panel-db` (e.g. `mariadb-dump` for backups).
+- `panel-db` is `internal`: sites with a database are attached to it by the daemon and
+  only see MariaDB there (host `mariadb` or `panel-mariadb`, port 3306). Note: sites on
+  this network can also reach each other; isolation between sites relies on the MariaDB privileges
+  (a separate user per database).
 
-## Aannames over `caddy/` (web-hosting)
+## Assumptions about `caddy/` (web-hosting)
 
-`caddy/Caddyfile` op `/etc/caddy/Caddyfile` en `caddy/global.d/` op `/etc/caddy/global.d`
-(beide read-only; `global.d` is in productie leeg), standaardcommando van `caddy:2` zonder
-`--resume`, volumes op `/data` en `/config`, `/run/panel` als map (daemon-socket én
-admin-socket `caddy-admin.sock`). Caddy krijgt alleen `PANEL_DOMAIN`, `NODE_DOMAIN` en
-`ACME_EMAIL` als env (niet het hele panel.env, dus geen geheimen). Upstreams: `panel:3000` en
-`unix//run/panel/daemon.sock`. `deploy/test.sh` draait `caddy validate` met precies deze env en
+`caddy/Caddyfile` at `/etc/caddy/Caddyfile` and `caddy/global.d/` at `/etc/caddy/global.d`
+(both read-only; `global.d` is empty in production), default command of `caddy:2` without
+`--resume`, volumes at `/data` and `/config`, `/run/panel` as a directory (daemon socket and
+admin socket `caddy-admin.sock`). Caddy only gets `PANEL_DOMAIN`, `NODE_DOMAIN` and
+`ACME_EMAIL` as env (not the whole panel.env, so no secrets). Upstreams: `panel:3000` and
+`unix//run/panel/daemon.sock`. `deploy/test.sh` runs `caddy validate` with exactly this env and
 mounts.
 
-## Testen
+## Testing
 
 ```
-deploy/test.sh              # shellcheck, compose config, unit, install.sh --dry-run, Paper-rooktest
-SKIP_PAPER=1 deploy/test.sh # zonder Paper
+deploy/test.sh              # shellcheck, compose config, unit, install.sh --dry-run, Paper smoke test
+SKIP_PAPER=1 deploy/test.sh # without Paper
 ```
 
-De Paper-rooktest draait het install-script van `templates/game/paper.yaml` in een container
-en start de server zoals de daemon dat doet (uid 1000, read-only rootfs, tmpfs `/tmp`, caps
-eruit, 1280 MB → 1 GB heap) tot `ready_pattern`, controleert de poort, stuurt `stop` en ruimt
-op. Alles met `panel.test=true` + `panel.instance=templates-ops-<pid>`.
+The Paper smoke test runs the install script of `templates/game/paper.yaml` in a container
+and starts the server the way the daemon does (uid 1000, read-only rootfs, tmpfs `/tmp`, caps
+dropped, 1280 MB → 1 GB heap) until `ready_pattern`, checks the port, sends `stop` and cleans
+up. Everything with `panel.test=true` + `panel.instance=templates-ops-<pid>`.
 
-## Velocity met twee Paper-servers
+## Velocity with two Paper servers
 
-Een Velocity-proxy waarop spelers binnenkomen, met twee Paper-servers erachter (bv. `lobby`
-en `survival`). Modern forwarding: Velocity geeft naam, UUID en IP van de speler door,
-ondertekend met een gedeelde secret; zonder die secret kan niemand rechtstreeks inloggen op de
-Paper-servers.
+A Velocity proxy that players connect to, with two Paper servers behind it (e.g. `lobby`
+and `survival`). Modern forwarding: Velocity passes the player's name, UUID and IP on,
+signed with a shared secret; without that secret nobody can log in directly on the
+Paper servers.
 
-1. **Secret kiezen**: 12-128 tekens `A-Z a-z 0-9 _ -`, bv. `openssl rand -hex 24`.
-2. **Velocity-server** maken (template *Velocity*, 512 MB is genoeg). Variabele
-   `VELOCITY_FORWARDING_SECRET` = de secret. (Laat je hem leeg, dan maakt de installatie
-   `forwarding.secret` aan; neem die waarde over.) Deze allocation is het adres dat
-   spelers gebruiken.
-3. **Twee Paper-servers** maken (template *Paper* of *Folia*), elk met een eigen allocation.
-   Per server: `VELOCITY_FORWARDING` = `true` en `VELOCITY_SECRET` = dezelfde secret.
-   Het panel zet dan `config/paper-global.yml` (`proxies.velocity.enabled/secret/online-mode`)
-   en `online-mode=false` in `server.properties` (de proxy controleert de accounts). Gebruik
-   op beide een Minecraft-versie die Velocity ondersteunt (de nieuwste is altijd goed).
-4. **Serverlijst**: open in de filemanager van de Velocity-server `velocity.toml` en zet
-   onder `[servers]` de allocations van de Paper-servers (IP:poort zoals het panel ze toont):
+1. **Pick a secret**: 12-128 characters `A-Z a-z 0-9 _ -`, e.g. `openssl rand -hex 24`.
+2. **Create the Velocity server** (template *Velocity*, 512 MB is enough). Variable
+   `VELOCITY_FORWARDING_SECRET` = the secret. (If you leave it empty, the installer creates
+   `forwarding.secret`; copy that value.) This allocation is the address
+   players use.
+3. **Create two Paper servers** (template *Paper* or *Folia*), each with its own allocation.
+   For each server: `VELOCITY_FORWARDING` = `true` and `VELOCITY_SECRET` = the same secret.
+   The panel then sets `config/paper-global.yml` (`proxies.velocity.enabled/secret/online-mode`)
+   and `online-mode=false` in `server.properties` (the proxy checks the accounts). Use
+   a Minecraft version on both that Velocity supports (the newest is always fine).
+4. **Server list**: in the file manager of the Velocity server open `velocity.toml` and under
+   `[servers]` add the allocations of the Paper servers (IP:port as the panel shows them):
 
    ```toml
    [servers]
@@ -152,15 +152,15 @@ Paper-servers.
    try = ["lobby"]
    ```
 
-   `bind`, `player-info-forwarding-mode = "modern"`, `forwarding-secret-file` en
-   `online-mode` zet het panel bij elke start; de rest van het bestand is van jou.
-5. Start de twee Paper-servers en daarna Velocity. Spelers verbinden met het adres van de
-   Velocity-server, komen op `lobby` en wisselen met `/server survival`.
+   `bind`, `player-info-forwarding-mode = "modern"`, `forwarding-secret-file` and
+   `online-mode` are set by the panel on every start; the rest of the file is yours.
+5. Start the two Paper servers and then Velocity. Players connect to the address of the
+   Velocity server, land on `lobby` and switch with `/server survival`.
 
-Rechtstreeks verbinden met een Paper-server lukt niet: Paper weigert iedereen die niet via
-de proxy met de juiste secret komt. Houd de secret dus geheim. Problemen staan in de console: *"Backend server is online-mode"* in Velocity = `VELOCITY_FORWARDING` staat
-niet aan op die Paper-server; *"Unable to verify player details"* in Paper = de secret
-verschilt.
+Connecting directly to a Paper server does not work: Paper rejects everyone who does not come through
+the proxy with the right secret. So keep the secret private. Problems show up in the console: *"Backend server is online-mode"* in Velocity = `VELOCITY_FORWARDING` is not
+enabled on that Paper server; *"Unable to verify player details"* in Paper = the secret
+differs.
 
-`deploy/test.sh` doet precies dit (stap *Velocity met twee Paper-servers*), met een
-mineflayer-bot die via de proxy op server a inlogt en met `/server b` wisselt.
+`deploy/test.sh` does exactly this (step *Velocity with two Paper servers*), with a
+mineflayer bot that logs in on server a via the proxy and switches with `/server b`.

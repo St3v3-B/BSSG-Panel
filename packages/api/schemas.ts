@@ -9,12 +9,12 @@ import { z } from "zod";
 export const Uuid = z.string().uuid();
 export const Id = z.number().int().positive();
 /** Discord-ID's zijn snowflakes; altijd als string (te groot voor JS-number). */
-export const DiscordId = z.string().regex(/^\d{15,21}$/, "ongeldig Discord-ID");
+export const DiscordId = z.string().regex(/^\d{15,21}$/, "invalid Discord ID");
 export const Hostname = z
   .string()
   .min(3)
   .max(253)
-  .regex(/^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/, "ongeldige hostnaam");
+  .regex(/^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/, "invalid host name");
 
 export const Ok = z.object({ ok: z.literal(true) });
 export type Ok = z.infer<typeof Ok>;

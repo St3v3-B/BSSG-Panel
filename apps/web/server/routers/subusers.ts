@@ -19,7 +19,7 @@ async function resolveUser(who: string) {
   }
   const found = await db.select().from(schema.users).where(sql`lower(${schema.users.name}) = lower(${w})`).limit(2);
   if (found.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "USER_NOT_FOUND" });
-  if (found.length > 1) throw new TRPCError({ code: "CONFLICT", message: "USER_AMBIGUOUS: gebruik het Discord-ID" });
+  if (found.length > 1) throw new TRPCError({ code: "CONFLICT", message: "USER_AMBIGUOUS: use the Discord ID" });
   return found[0]!;
 }
 

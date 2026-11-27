@@ -220,7 +220,7 @@ func TestInstallFailureAndBusy(t *testing.T) {
 	h.waitState(u1, "install_failed", 2*time.Second)
 	waitFor(t, "install-melding", 2*time.Second, func() bool {
 		c := h.panel.Calls("/api/remote/servers/" + u1 + "/install")
-		return len(c) == 1 && c[0].Body["successful"] == false && strings.Contains(c[0].Body["error"].(string), "exitcode 3")
+		return len(c) == 1 && c[0].Body["successful"] == false && strings.Contains(c[0].Body["error"].(string), "code 3")
 	})
 	h.expect("POST", "/api/servers/"+u1+"/power", map[string]string{"action": "start"}, 409)
 

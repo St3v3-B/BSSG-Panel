@@ -15,7 +15,7 @@ export interface HostConn {
 
 const SAFE = /^[A-Za-z0-9_]{1,64}$/;
 const ident = (s: string) => {
-  if (!SAFE.test(s)) throw new Error(`ongeldige naam: ${s}`);
+  if (!SAFE.test(s)) throw new Error(`invalid name: ${s}`);
   return `\`${s}\``;
 };
 

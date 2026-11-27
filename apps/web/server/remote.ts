@@ -34,7 +34,7 @@ export function remoteHandler<P>(fn: (req: Request, node: NodeRow, params: P) =>
     try {
       await ensureBooted();
       const node = await authenticateNode(req);
-      if (!node) return error(401, "unauthorized", "onbekend node-token");
+      if (!node) return error(401, "unauthorized", "unknown node token");
       return await fn(req, node, await ctx.params);
     } catch (e) {
       console.error(`[remote] ${new URL(req.url).pathname}:`, e);

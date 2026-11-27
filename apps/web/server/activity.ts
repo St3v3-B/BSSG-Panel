@@ -24,6 +24,6 @@ export async function logActivity(a: ActivityInput): Promise<void> {
     });
   } catch (e) {
     // Het log mag een geslaagde actie niet laten mislukken.
-    console.error(`[activity] ${a.action} niet gelogd:`, e);
+    console.error(`[activity] ${a.action} not logged:`, e);
   }
 }

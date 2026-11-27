@@ -26,14 +26,14 @@ func CleanRel(p string) (string, error) {
 		return "", errors.New("leeg pad")
 	}
 	if strings.ContainsRune(p, 0) {
-		return "", errors.New("ongeldig teken in pad")
+		return "", errors.New("invalid character in path")
 	}
 	if p == ContainerHome || strings.HasPrefix(p, ContainerHome+"/") {
 		p = strings.TrimPrefix(p, ContainerHome)
 	}
 	c := path.Clean("/" + p)
 	if c == "/" {
-		return "", errors.New("pad wijst naar de hoofdmap")
+		return "", errors.New("path points to the root directory")
 	}
 	return strings.TrimPrefix(c, "/"), nil
 }
@@ -64,11 +64,11 @@ func SafePath(root, rel string, uid, gid int) (string, error) {
 		case err != nil:
 			return "", err
 		case fi.Mode()&os.ModeSymlink != 0:
-			return "", fmt.Errorf("%s is een symlink", rel)
+			return "", fmt.Errorf("%s is a symlink", rel)
 		case !last && !fi.IsDir():
-			return "", fmt.Errorf("%s: geen map", strings.Join(parts[:i+1], "/"))
+			return "", fmt.Errorf("%s: not a directory", strings.Join(parts[:i+1], "/"))
 		case last && fi.IsDir():
-			return "", fmt.Errorf("%s is een map", rel)
+			return "", fmt.Errorf("%s is a directory", rel)
 		}
 	}
 	return cur, nil
@@ -192,7 +192,7 @@ func UpdateYAML(old []byte, set map[string]string) ([]byte, error) {
 		doc = yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{Kind: yaml.MappingNode}}}
 	}
 	if len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
-		return nil, errors.New("document is geen mapping")
+		return nil, errors.New("document is not a mapping")
 	}
 	for _, k := range sortedKeys(set) {
 		node := doc.Content[0]

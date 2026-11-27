@@ -39,11 +39,11 @@ func (m *Manager) ensureSiteNetwork(ctx context.Context, uuid string) error {
 	case err != nil:
 		return err
 	case !m.ours(labels):
-		return fmt.Errorf("netwerk %s bestaat maar is niet van deze daemon", name)
+		return fmt.Errorf("network %s exists but does not belong to this daemon", name)
 	}
 	if _, err := m.eng.Inspect(ctx, m.cfg.MariaDB); err == nil {
 		if err := m.eng.ConnectNetwork(ctx, name, m.cfg.MariaDB); err != nil {
-			m.log.Warn("MariaDB aan site-netwerk koppelen mislukt", "network", name, "err", err)
+			m.log.Warn("attaching MariaDB to site network failed", "network", name, "err", err)
 		}
 	}
 	return nil
@@ -62,7 +62,7 @@ func (m *Manager) EnsureGameNetwork(ctx context.Context, uuid string) error {
 	case err != nil:
 		return err
 	case !m.ours(labels):
-		return fmt.Errorf("netwerk %s bestaat maar is niet van deze daemon", name)
+		return fmt.Errorf("network %s exists but is not managed by this daemon", name)
 	}
 	return m.connectGameContainer(ctx, uuid)
 }
@@ -82,7 +82,7 @@ func (m *Manager) connectGameContainer(ctx context.Context, uuid string) error {
 		return nil
 	}
 	if err := m.eng.ConnectNetwork(ctx, name, ContainerName(uuid)); err != nil && !errors.Is(err, engine.ErrNotFound) {
-		return fmt.Errorf("container aan %s koppelen: %w", name, err)
+		return fmt.Errorf("connecting container to %s: %w", name, err)
 	}
 	return nil
 }
@@ -103,7 +103,7 @@ func (m *Manager) removeSiteNetwork(ctx context.Context, uuid string, web bool) 
 	if !web {
 		_ = m.eng.DisconnectNetwork(ctx, name, ContainerName(uuid))
 	} else if err := m.eng.DisconnectNetwork(ctx, name, m.cfg.MariaDB); err != nil && !errors.Is(err, engine.ErrNotFound) {
-		m.log.Warn("MariaDB loskoppelen mislukt", "network", name, "err", err)
+		m.log.Warn("detaching MariaDB failed", "network", name, "err", err)
 	}
 	if err := m.eng.RemoveNetwork(ctx, name); err != nil && !errors.Is(err, engine.ErrNotFound) {
 		return fmt.Errorf("netwerk %s verwijderen: %w", name, err)

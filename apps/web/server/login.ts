@@ -27,7 +27,7 @@ export async function loginWithProfile(p: DiscordProfile, req: Request, via: "di
       set: { name: p.name, avatarUrl: p.avatarUrl ?? sql`${schema.users.avatarUrl}` },
     })
     .returning();
-  if (!user) throw new Error("gebruiker niet aangemaakt");
+  if (!user) throw new Error("user not created");
   if (user.blocked) {
     await logActivity({ action: "auth.login.blocked", userId: user.id, metadata: { via }, ip });
     return { ok: false, reason: "blocked" };

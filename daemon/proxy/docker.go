@@ -44,14 +44,14 @@ func (c *Caddy) checkNetwork(ctx context.Context, r Route) error {
 		return nil
 	}
 	if c.cfg.CaddyContainer == "" || c.docker == nil {
-		return fmt.Errorf("proxy: %s: netwerk %q gevraagd maar CADDY_CONTAINER is niet ingesteld", r.Host, r.Upstream.Network)
+		return fmt.Errorf("proxy: %s: network %q requested but CADDY_CONTAINER is not set", r.Host, r.Upstream.Network)
 	}
 	n, err := c.docker.Network(ctx, r.Upstream.Network)
 	if err != nil {
 		return fmt.Errorf("proxy: %s: %w", r.Host, err)
 	}
 	if !c.siteNetwork(n) {
-		return fmt.Errorf("proxy: %s: netwerk %q is geen site-netwerk van deze panel-instance (labels panel.managed, panel.instance, panel.role=site)", r.Host, r.Upstream.Network)
+		return fmt.Errorf("proxy: %s: netwerk %q is not a site network of this panel instance (labels panel.managed, panel.instance, panel.role=site)", r.Host, r.Upstream.Network)
 	}
 	return nil
 }
@@ -68,7 +68,7 @@ func (c *Caddy) connectNetworks(ctx context.Context, dyn map[string]dynRoute) (m
 	}
 	if len(names) == 0 || c.docker == nil || c.cfg.CaddyContainer == "" {
 		if len(names) > 0 {
-			return keep, errors.New("proxy: routes met netwerk maar CADDY_CONTAINER is niet ingesteld")
+			return keep, errors.New("proxy: routes with network but CADDY_CONTAINER is not set")
 		}
 		return keep, nil
 	}
@@ -85,7 +85,7 @@ func (c *Caddy) connectNetworks(ctx context.Context, dyn map[string]dynRoute) (m
 		}
 		keep[n.ID] = true // ook bij een fout hieronder niet loskoppelen
 		if !c.siteNetwork(n) {
-			errs = append(errs, fmt.Errorf("proxy: netwerk %q is geen site-netwerk van deze panel-instance; niet gekoppeld", name))
+			errs = append(errs, fmt.Errorf("proxy: netwerk %q is not a site network of this panel instance; not attached", name))
 			continue
 		}
 		if _, ok := have[n.ID]; ok {
@@ -159,7 +159,7 @@ func NewDockerAPI(host string) (*DockerAPI, error) {
 	case "tcp", "http":
 		base = "http://" + u.Host
 	default:
-		return nil, fmt.Errorf("proxy: DOCKER_HOST-schema %q niet ondersteund", u.Scheme)
+		return nil, fmt.Errorf("proxy: DOCKER_HOST scheme %q not supported", u.Scheme)
 	}
 	return &DockerAPI{base: base, hc: &http.Client{Transport: tr, Timeout: 30 * time.Second}}, nil
 }
@@ -254,7 +254,7 @@ func (d *DockerAPI) ContainerLogs(ctx context.Context, container string, since t
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("proxy: Docker-logs van %s: %s", container, resp.Status)
+		return nil, fmt.Errorf("proxy: Docker logs of %s: %s", container, resp.Status)
 	}
 	return demuxLogs(b), nil
 }

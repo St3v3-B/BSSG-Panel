@@ -106,7 +106,7 @@ export class MockSocket implements SocketLike {
   }
 
   send(data: string): void {
-    if (this.readyState !== SOCKET_OPEN) throw new Error("socket is niet open");
+    if (this.readyState !== SOCKET_OPEN) throw new Error("socket is not open");
     const msg = JSON.parse(data) as WsClientMessage;
     if (msg.event === "auth") return this.auth(msg.token);
     if (!this.authed) return;
@@ -133,7 +133,7 @@ export class MockSocket implements SocketLike {
     if (!this.authed) return;
     const step = (ms: number) => ms / this.o.speed;
     if (action === "kill") {
-      this.daemon("warning", "Server is geforceerd gestopt (kill).");
+      this.daemon("warning", "Server was forcibly stopped (kill).");
       return this.setStatus("offline");
     }
     if (action === "stop" || action === "restart") {
@@ -153,11 +153,11 @@ export class MockSocket implements SocketLike {
         return;
       }
     }
-    if (this.status === "disk_exceeded") return this.error("Starten geweigerd: de schijflimiet is bereikt.");
+    if (this.status === "disk_exceeded") return this.error("Start refused: the disk limit has been reached.");
     if (this.status === "online" || this.status === "starting") return;
     this.setStatus("starting");
     this.startedAt = Date.now();
-    this.daemon("info", "Container wordt gestart…");
+    this.daemon("info", "Starting container…");
     this.startup.forEach((l, i) => this.later(step(150 + i * 120), () => this.out(this.web ? l : info(l))));
     this.later(step(150 + this.startup.length * 120 + 200), () => {
       if (!this.web) this.out(info(`Done (${(2 + Math.random() * 2).toFixed(3)}s)! For help, type "help"`));
@@ -177,7 +177,7 @@ export class MockSocket implements SocketLike {
   private auth(token: string) {
     if (!token) {
       this.error("token ontbreekt");
-      return this.close(CLOSE_TOKEN_INVALID, "token ongeldig");
+      return this.close(CLOSE_TOKEN_INVALID, "token invalid");
     }
     const fresh = !this.authed;
     this.authed = true;
@@ -189,13 +189,13 @@ export class MockSocket implements SocketLike {
       (this.web ? ["Installatie gestart", "public/ aangemaakt", "index.html geplaatst"] : ["Installatie gestart", "Paper 1.21.4 downloaden…", "server.jar opgeslagen (48 MB)", "eula.txt aangemaakt"]).forEach((l) =>
         this.emit({ event: "install_output", line: l }),
       );
-      if (this.status === "install_failed") this.emit({ event: "install_output", line: "FOUT: install-script stopte met code 1" });
+      if (this.status === "install_failed") this.emit({ event: "install_output", line: "ERROR: install script exited with code 1" });
     } else if (this.status === "online" || this.status === "starting") {
       for (const l of this.startup) this.out(this.web ? l : info(l));
       if (!this.web) this.out(info('Done (3.214s)! For help, type "help"'));
-      this.out(this.web ? "[mock] Dit zijn nep-logs: er draait geen daemon in mock-modus." : info("[mock] Dit is een nep-console: er draait geen daemon in mock-modus."));
+      this.out(this.web ? "[mock] These are fake logs: no daemon is running in mock mode." : info("[mock] This is a fake console: no daemon is running in mock mode."));
     } else {
-      this.out(info("[mock] Server staat uit. Start hem met de knop hierboven."));
+      this.out(info("[mock] Server is off. Start it with the button above."));
     }
     this.emit({ event: "status", state: this.status === "unknown" ? "offline" : this.status });
     this.syncLoops();
@@ -218,7 +218,7 @@ export class MockSocket implements SocketLike {
 
   private command(cmd: string) {
     if (!this.o.permissions.includes("console.write") && this.o.permissions.length) return this.error("recht console.write ontbreekt");
-    if (this.status !== "online") return this.error("De server draait niet.");
+    if (this.status !== "online") return this.error("The server is not running.");
     const c = cmd.trim().replace(/^\//, "");
     const [name] = c.split(/\s+/);
     switch (name) {

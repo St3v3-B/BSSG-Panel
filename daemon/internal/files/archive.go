@@ -172,7 +172,7 @@ func addTree(tw *tar.Writer, dirfd int, name, arcName, skipRel, rel string, dept
 		}
 		_, err = io.CopyN(tw, f, st.Size)
 		if errors.Is(err, io.EOF) {
-			return fmt.Errorf("%s werd kleiner tijdens het inpakken", arcName)
+			return fmt.Errorf("%s shrank while being archived", arcName)
 		}
 		return err
 	}

@@ -129,7 +129,7 @@ func (c *Caddy) dnsMismatch(ctx context.Context, host string) (string, bool) {
 	addrs, err := c.res.LookupIPAddr(ctx, host)
 	var de *net.DNSError
 	if err != nil && errors.As(err, &de) && de.IsNotFound {
-		return fmt.Sprintf("%s heeft geen A- of AAAA-record; laat het naar deze server wijzen (%s)", host, ipList(node)), true
+		return fmt.Sprintf("%s has no A or AAAA record; point it to this server (%s)", host, ipList(node)), true
 	}
 	if err != nil || len(addrs) == 0 {
 		return "", false
@@ -143,7 +143,7 @@ func (c *Caddy) dnsMismatch(ctx context.Context, host string) (string, bool) {
 			}
 		}
 	}
-	return fmt.Sprintf("DNS van %s wijst naar %s, niet naar deze server (%s)", host, ipList(got), ipList(node)), true
+	return fmt.Sprintf("DNS of %s points to %s, not to this server (%s)", host, ipList(got), ipList(node)), true
 }
 
 func (c *Caddy) ownIPs(ctx context.Context) []net.IP {

@@ -121,7 +121,7 @@ func adminClient(adminURL string, hc *http.Client) (string, *http.Client, error)
 		}
 		return strings.TrimRight(adminURL, "/"), hc, nil
 	}
-	return "", nil, fmt.Errorf("proxy: ongeldige Caddy admin-URL %q (verwacht unix:///pad/naar.sock of http://host:poort)", adminURL)
+	return "", nil, fmt.Errorf("proxy: invalid Caddy admin URL %q (expected unix:///path/to.sock or http://host:port)", adminURL)
 }
 
 // NewCaddy maakt de echte Router tegen de Caddy admin-API (cfg.AdminURL).
@@ -204,15 +204,15 @@ func normRoute(r Route) (Route, error) {
 	r.Host = h
 	// Wildcard volgt uit de hostnaam ("*.example.nl"); Wildcard=true zonder "*." is fout.
 	if r.Wildcard && !strings.HasPrefix(h, "*.") {
-		return r, fmt.Errorf("proxy: %s: Wildcard=true maar de hostnaam begint niet met \"*.\"", h)
+		return r, fmt.Errorf("proxy: %s: Wildcard=true but the host name does not start with \"*.\"", h)
 	}
 	r.Wildcard = strings.HasPrefix(h, "*.")
 	if d := r.DNSChallenge; d != nil {
 		if d.Provider != "cloudflare" {
-			return r, fmt.Errorf("proxy: %s: DNS-provider %q niet ondersteund (alleen cloudflare)", h, d.Provider)
+			return r, fmt.Errorf("proxy: %s: DNS provider %q not supported (only cloudflare)", h, d.Provider)
 		}
 		if !tokenRe.MatchString(d.APIToken) {
-			return r, fmt.Errorf("proxy: %s: ongeldig of leeg DNS-API-token", h)
+			return r, fmt.Errorf("proxy: %s: invalid or empty DNS API token", h)
 		}
 	}
 	if r.RedirectTo != "" {
@@ -221,7 +221,7 @@ func normRoute(r Route) (Route, error) {
 			return r, fmt.Errorf("proxy: %s: ongeldige RedirectTo %q", h, r.RedirectTo)
 		}
 		if t == h {
-			return r, fmt.Errorf("proxy: %s: redirect naar zichzelf", h)
+			return r, fmt.Errorf("proxy: %s: redirect to itself", h)
 		}
 		r.RedirectTo = t
 		r.Upstream = Upstream{}
@@ -243,7 +243,7 @@ func normRoute(r Route) (Route, error) {
 		return r, fmt.Errorf("proxy: %s: ongeldige upstream-poort %d", h, u.Port)
 	}
 	if u.Network != "" && !plainRe.MatchString(u.Network) {
-		return r, fmt.Errorf("proxy: %s: ongeldig netwerk %q", h, u.Network)
+		return r, fmt.Errorf("proxy: %s: invalid network %q", h, u.Network)
 	}
 	return r, nil
 }
@@ -465,7 +465,7 @@ func (c *Caddy) getRoutes(ctx context.Context) ([]any, string, error) {
 		return nil, "", fmt.Errorf("proxy: Caddy-routes onleesbaar: %w", err)
 	}
 	if routes == nil {
-		return nil, "", fmt.Errorf("proxy: server %q heeft geen routes in de Caddy-config (basisconfig niet geladen?)", c.server)
+		return nil, "", fmt.Errorf("proxy: server %q has no routes in the Caddy config (base config not loaded?)", c.server)
 	}
 	return routes, resp.Header.Get("Etag"), nil
 }
@@ -545,7 +545,7 @@ func (c *Caddy) SetRoute(ctx context.Context, r Route) error {
 	}
 	return c.apply(ctx, func(dyn map[string]dynRoute, fixedHosts map[string]bool) error {
 		if fixedHosts[r.Host] {
-			return fmt.Errorf("proxy: %s hoort bij een vaste route", r.Host)
+			return fmt.Errorf("proxy: %s belongs to a static route", r.Host)
 		}
 		dyn[d.id] = d
 		return nil
@@ -594,7 +594,7 @@ func (c *Caddy) Sync(ctx context.Context, routes []Route) error {
 		}
 		for id, d := range want {
 			if fixedHosts[d.host] {
-				errs = append(errs, fmt.Errorf("proxy: %s hoort bij een vaste route", d.host))
+				errs = append(errs, fmt.Errorf("proxy: %s belongs to a static route", d.host))
 				continue
 			}
 			dyn[id] = d
@@ -646,7 +646,7 @@ func (c *Caddy) Healthy(ctx context.Context) error {
 	}
 	if missing > 0 {
 		c.expected = map[string]bool{}
-		return fmt.Errorf("proxy: %d dynamische route(s) ontbreken in Caddy (herstart?); Sync nodig", missing)
+		return fmt.Errorf("proxy: %d dynamic route(s) missing in Caddy (restarted?); Sync needed", missing)
 	}
 	return nil
 }

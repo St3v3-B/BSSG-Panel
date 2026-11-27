@@ -49,7 +49,7 @@ func TestDNSMismatch(t *testing.T) {
 	if msg, wrong := c.dnsMismatch(ctx, "fout.test"); !wrong || !strings.Contains(msg, "198.51.100.1") || !strings.Contains(msg, "192.0.2.10") {
 		t.Errorf("%v %q", wrong, msg)
 	}
-	if msg, wrong := c.dnsMismatch(ctx, "weg.test"); !wrong || !strings.Contains(msg, "geen A- of AAAA-record") {
+	if msg, wrong := c.dnsMismatch(ctx, "weg.test"); !wrong || !strings.Contains(msg, "no A or AAAA record") {
 		t.Errorf("%v %q", wrong, msg)
 	}
 }

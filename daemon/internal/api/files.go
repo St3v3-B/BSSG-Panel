@@ -35,7 +35,7 @@ func fileErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, files.ErrTooLarge):
 		writeErr(w, http.StatusRequestEntityTooLarge, "too_large", err.Error())
 	case errors.Is(err, files.ErrDiskFull), errors.Is(err, server.ErrDiskExceeded):
-		writeErr(w, http.StatusInsufficientStorage, "disk_exceeded", "disk-limiet van de server bereikt")
+		writeErr(w, http.StatusInsufficientStorage, "disk_exceeded", "server disk limit reached")
 	default:
 		writeErr(w, http.StatusInternalServerError, "internal", err.Error())
 	}
@@ -275,25 +275,25 @@ func preflight(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.Stat
 func (a *API) transferAuth(w http.ResponseWriter, r *http.Request, perm string) (*server.Server, *auth.Claims, bool) {
 	tok := r.URL.Query().Get("token")
 	if tok == "" {
-		writeErr(w, http.StatusUnauthorized, "unauthorized", "token ontbreekt")
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "token missing")
 		return nil, nil, false
 	}
 	claims, err := a.jwt.Verify(r.Context(), tok)
 	if err != nil || claims.ID == "" || !strings.EqualFold(claims.ServerUUID, r.PathValue("uuid")) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized", "token ongeldig")
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "token invalid")
 		return nil, nil, false
 	}
 	if !claims.Has(perm) {
-		writeErr(w, http.StatusForbidden, "forbidden", perm+" ontbreekt")
+		writeErr(w, http.StatusForbidden, "forbidden", perm+" missing")
 		return nil, nil, false
 	}
 	if !a.jti.use(claims.ID, claims.ExpiresAt.Time) {
-		writeErr(w, http.StatusUnauthorized, "unauthorized", "token is al gebruikt")
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "token already used")
 		return nil, nil, false
 	}
 	s, ok := a.mgr.Get(r.PathValue("uuid"))
 	if !ok {
-		writeErr(w, http.StatusNotFound, "not_found", "server onbekend op deze node")
+		writeErr(w, http.StatusNotFound, "not_found", "server unknown on this node")
 		return nil, nil, false
 	}
 	return s, claims, true
@@ -358,7 +358,7 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request) {
 		name = path.Base(strings.ReplaceAll(name, "\\", "/"))
 		if name == "." || name == ".." || name == "/" {
 			part.Close()
-			writeErr(w, http.StatusBadRequest, "bad_path", "ongeldige bestandsnaam")
+			writeErr(w, http.StatusBadRequest, "bad_path", "invalid file name")
 			return
 		}
 		target := files.APIPath(dir) + "/" + name
@@ -374,7 +374,7 @@ func (a *API) upload(w http.ResponseWriter, r *http.Request) {
 		n++
 	}
 	if n == 0 {
-		writeErr(w, http.StatusBadRequest, "bad_request", "geen bestanden in files")
+		writeErr(w, http.StatusBadRequest, "bad_request", "no files in files")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

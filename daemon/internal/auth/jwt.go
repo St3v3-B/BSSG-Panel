@@ -103,7 +103,7 @@ func (v *Verifier) key(ctx context.Context, kid string) (ed25519.PublicKey, erro
 			return k, nil
 		}
 	}
-	return nil, fmt.Errorf("onbekende kid %q", kid)
+	return nil, fmt.Errorf("unknown kid %q", kid)
 }
 
 // Verify controleert handtekening, alg, aud, exp en de maximale levensduur.
@@ -124,7 +124,7 @@ func (v *Verifier) Verify(ctx context.Context, token string) (*Claims, error) {
 		return nil, err
 	}
 	if claims.ServerUUID == "" {
-		return nil, errors.New("server_uuid ontbreekt")
+		return nil, errors.New("server_uuid is missing")
 	}
 	if claims.ExpiresAt.Sub(v.Now()) > MaxLifetime {
 		return nil, errors.New("token is te lang geldig")

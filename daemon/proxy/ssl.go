@@ -30,7 +30,7 @@ func (c *Caddy) checkTLS(ctx context.Context, host string) (SSLStatus, string) {
 	defer cancel()
 	raw, err := (&net.Dialer{}).DialContext(ctx, "tcp", c.tlsAddr)
 	if err != nil {
-		return SSLPending, fmt.Sprintf("Caddy niet bereikbaar op %s: %v", c.tlsAddr, err)
+		return SSLPending, fmt.Sprintf("Caddy not reachable at %s: %v", c.tlsAddr, err)
 	}
 	defer raw.Close()
 	conn := tls.Client(raw, &tls.Config{
@@ -39,7 +39,7 @@ func (c *Caddy) checkTLS(ctx context.Context, host string) (SSLStatus, string) {
 		NextProtos:         []string{"http/1.1"},
 	})
 	if err := conn.HandshakeContext(ctx); err != nil {
-		return SSLIssuing, "nog geen certificaat: " + err.Error()
+		return SSLIssuing, "no certificate yet: " + err.Error()
 	}
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
@@ -56,7 +56,7 @@ func (c *Caddy) checkTLS(ctx context.Context, host string) (SSLStatus, string) {
 		}
 	}
 	if err != nil {
-		return SSLIssuing, "certificaat nog niet geldig: " + err.Error()
+		return SSLIssuing, "certificate not valid yet: " + err.Error()
 	}
 	return SSLActive, ""
 }

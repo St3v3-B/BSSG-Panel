@@ -1,11 +1,11 @@
 schema: 1
 slug: adminer
-name: Adminer (databasebeheer)
+name: Adminer (database management)
 description: >-
-  Adminer 4 voor het beheren van je MariaDB-databases. De server staat standaard op
-  `panel-mariadb`; log in met de gebruiker en het wachtwoord van je database.
+  Adminer 4 for managing your MariaDB databases. The server defaults to
+  `panel-mariadb`; log in with the user and password of your database.
 type: web
-version: 1
+version: 2
 image: adminer:4
 # Zonder het entrypoint van de image (dat schrijft in /var/www/html, read-only hier).
 # Sessies in de tmpfs /tmp; de ingebouwde PHP-server met meerdere workers. De shell
@@ -28,8 +28,8 @@ ready_pattern: "Development Server \\(http://0\\.0\\.0\\.0:8080\\) started"
 http_port: 8080
 variables:
   - key: ADMINER_DEFAULT_SERVER
-    name: Databaseserver
-    description: Standaardserver in het inlogscherm.
+    name: Database server
+    description: Default server on the login screen.
     default: panel-mariadb
     user_editable: false
 install:

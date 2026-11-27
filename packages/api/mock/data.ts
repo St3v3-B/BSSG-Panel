@@ -20,14 +20,14 @@ export const templates: s.TemplateDetail[] = [
     name: "Paper",
     type: "game",
     version: 1,
-    description: "Paper Minecraft-server",
+    description: "Paper Minecraft server",
     serverCount: 2,
     yaml: "schema: 1\nslug: paper\n# zie templates/game/paper.yaml\n",
     variables: [
-      { key: "MINECRAFT_VERSION", name: "Minecraft-versie", description: "bv. 1.21.4 of latest", default: "latest", userEditable: true, pattern: "^(latest|\\d+\\.\\d+(\\.\\d+)?)$" },
+      { key: "MINECRAFT_VERSION", name: "Minecraft version", description: "e.g. 1.21.4 or latest", default: "latest", userEditable: true, pattern: "^(latest|\\d+\\.\\d+(\\.\\d+)?)$" },
     ],
   },
-  { id: 2, slug: "static", name: "Statische site", type: "web", version: 1, description: "nginx", serverCount: 1, yaml: "schema: 1\nslug: static\n", variables: [] },
+  { id: 2, slug: "static", name: "Static site", type: "web", version: 1, description: "nginx", serverCount: 1, yaml: "schema: 1\nslug: static\n", variables: [] },
 ];
 
 export const allocations: s.Allocation[] = [
@@ -55,7 +55,7 @@ export const servers: (s.ServerDetail & { ownerId: number })[] = [
     ownerId: 1,
     permissions: [],
     allocations: [allocations[0]!],
-    variables: [{ key: "MINECRAFT_VERSION", name: "Minecraft-versie", description: null, value: "1.21.4", default: "latest", userEditable: true, pattern: null }],
+    variables: [{ key: "MINECRAFT_VERSION", name: "Minecraft version", description: null, value: "1.21.4", default: "latest", userEditable: true, pattern: null }],
     node: { id: 1, name: "node1", fqdn: "node1.test" },
     sftp: { host: "node1.test", port: 2022, username: "steve.8f6c1a2e" },
     suspended: null,
@@ -94,7 +94,7 @@ export const servers: (s.ServerDetail & { ownerId: number })[] = [
     name: "blokgenoten.test",
     type: "web",
     status: "installing",
-    templateName: "Statische site",
+    templateName: "Static site",
     nodeName: "node1",
     primaryAddress: "blokgenoten.test",
     limits: { cpuPct: 100, ramMb: 256, swapMb: 0, diskMb: 2000 },
@@ -131,11 +131,11 @@ export const fileContents: Record<string, string> = {
 };
 
 export const backups: s.Backup[] = [
-  { id: 1, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", name: "dagelijks 2026-11-26", sizeBytes: 812_000_000, sha256: "a".repeat(64), status: "completed", includesDatabases: false, createdAt: d("2026-11-26T03:00:00Z"), completedAt: d("2026-11-26T03:04:10Z") },
+  { id: 1, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", name: "daily 2026-11-26", sizeBytes: 812_000_000, sha256: "a".repeat(64), status: "completed", includesDatabases: false, createdAt: d("2026-11-26T03:00:00Z"), completedAt: d("2026-11-26T03:04:10Z") },
 ];
 
 export const schedules: s.Schedule[] = [
-  { id: 1, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", name: "Dagelijkse herstart", cron: "0 5 * * *", action: "restart", payload: null, active: true, lastRunAt: d("2026-11-26T04:00:00Z"), nextRunAt: d("2026-11-27T04:00:00Z"), lastResult: "ok" },
+  { id: 1, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", name: "Daily restart", cron: "0 5 * * *", action: "restart", payload: null, active: true, lastRunAt: d("2026-11-26T04:00:00Z"), nextRunAt: d("2026-11-27T04:00:00Z"), lastResult: "ok" },
 ];
 
 export const activity: s.ActivityEntry[] = [

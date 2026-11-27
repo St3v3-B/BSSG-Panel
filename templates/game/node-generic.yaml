@@ -1,15 +1,15 @@
 schema: 1
 slug: node-generic
-name: Generiek Node.js
+name: Generic Node.js
 description: >-
-  Start een eigen Node.js-app (bijvoorbeeld een Discord-bot) met Node.js 24 (LTS). Zet je
-  code via SFTP of de filemanager in de hoofdmap. Met een package.json draait bij elke start
-  `npm ci` (met package-lock.json) of `npm install`, zonder devDependencies; uit te zetten
-  met `AUTO_INSTALL=false`. De server staat online zodra Node start. Stoppen gaat met
-  SIGTERM: heeft je app geen eigen SIGTERM-handler, dan sluit Node direct af. De app krijgt
-  de poort in `SERVER_PORT` (luister op 0.0.0.0).
+  Runs your own Node.js app (for example a Discord bot) with Node.js 24 (LTS). Put your
+  code in the root directory via SFTP or the file manager. With a package.json, every start
+  runs `npm ci` (with package-lock.json) or `npm install`, without devDependencies; turn this off
+  with `AUTO_INSTALL=false`. The server counts as online as soon as Node starts. It is stopped with
+  SIGTERM: if your app has no SIGTERM handler of its own, Node exits immediately. The app gets
+  its port in `SERVER_PORT` (listen on 0.0.0.0).
 type: game
-version: 1
+version: 2
 image: node:24-alpine
 # HOME en de npm-cache in /home/container: de rootfs is read-only. De --import zorgt dat
 # SIGTERM werkt, ook als Node PID 1 is (dan negeert de kernel het zonder handler).
@@ -17,30 +17,30 @@ startup: >-
   export HOME=/home/container npm_config_cache=/home/container/.npm npm_config_update_notifier=false NODE_ENV=production;
   if [ "{{AUTO_INSTALL}}" = true ] && [ -f package.json ]; then
   if [ -f package-lock.json ]; then npm ci --omit=dev --no-audit --no-fund; else npm install --omit=dev --no-audit --no-fund; fi || exit 1; fi;
-  [ -f {{MAIN_FILE}} ] || { echo "[panel] {{MAIN_FILE}} ontbreekt: zet je code in de hoofdmap"; exit 1; };
-  echo "[panel] start {{MAIN_FILE}} met Node $(node --version)";
+  [ -f {{MAIN_FILE}} ] || { echo "[panel] {{MAIN_FILE}} is missing: put your code in the root directory"; exit 1; };
+  echo "[panel] starting {{MAIN_FILE}} with Node $(node --version)";
   exec node --import 'data:text/javascript,process.once("SIGTERM",()=>{if(!process.listenerCount("SIGTERM"))process.exit(143)})'
   {{NODE_ARGS}} {{MAIN_FILE}}
 stop:
   type: signal
   value: SIGTERM
-ready_pattern: "^\\[panel\\] start "
+ready_pattern: "^\\[panel\\] starting "
 variables:
   - key: MAIN_FILE
-    name: Startbestand
-    description: Het bestand dat Node start, bijvoorbeeld index.js of dist/bot.mjs.
+    name: Start file
+    description: The file Node runs, for example index.js or dist/bot.mjs.
     default: index.js
     user_editable: true
     pattern: "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*\\.(js|mjs|cjs)$"
   - key: AUTO_INSTALL
-    name: Dependencies installeren
-    description: "`true` = bij elke start npm ci/install als er een package.json is."
+    name: Install dependencies
+    description: "`true` = run npm ci/install on every start if a package.json exists."
     default: "true"
     user_editable: true
     pattern: "^(true|false)$"
   - key: NODE_ARGS
-    name: Extra Node-opties
-    description: Bijvoorbeeld --enable-source-maps.
+    name: Extra Node options
+    description: For example --enable-source-maps.
     default: ""
     user_editable: true
     pattern: "^[A-Za-z0-9_=:.,+/ -]*$"
@@ -53,14 +53,14 @@ install:
     cd /home/container
     if [ ! -f package.json ] && [ ! -f index.js ]; then
       cat > index.js <<'EOF'
-    // Voorbeeld: vervang dit door je eigen app (via SFTP of de filemanager).
+    // Example: replace this with your own app (via SFTP or the file manager).
     const http = require("node:http");
     const port = Number(process.env.SERVER_PORT || 3000);
-    http.createServer((req, res) => res.end("Hallo van Node.js\n")).listen(port, "0.0.0.0", () => {
-      console.log(`luistert op poort ${port}`);
+    http.createServer((req, res) => res.end("Hello from Node.js\n")).listen(port, "0.0.0.0", () => {
+      console.log(`listening on port ${port}`);
     });
     EOF
-      echo "Voorbeeld index.js gemaakt"
+      echo "Example index.js created"
     fi
-    echo "Installatie klaar"
+    echo "Installation complete"
 config_files: []
