@@ -154,7 +154,7 @@ async function hostWithCount(id: number) {
   return toHost(r.h, r.n);
 }
 
-const toHost = (h: HostRow, n: number) => ({ id: h.id, name: h.name, host: h.host, port: h.port, adminUser: h.adminUser, nodeId: h.nodeId, databaseCount: Number(n) });
+const toHost = (h: HostRow, n: number) => ({ id: h.id, name: h.name, host: h.host, port: h.port, adminUser: h.adminUser, nodeId: h.nodeId, daemonManaged: h.daemonManaged, databaseCount: Number(n) });
 const uid = (ctx: Ctx) => ctx.session!.userId;
 
 export const databaseHosts: Implementation["admin"]["databaseHosts"] = {

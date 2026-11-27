@@ -291,6 +291,11 @@ export interface operations {
                     version: string;
                     /** @enum {string} */
                     disk_quota_mode: "soft" | "xfs";
+                    /**
+                     * @description De node heeft een bereikbare lokale MariaDB (panel-mariadb). Het panel registreert dan een
+                     *     daemon-beheerde `database_hosts`-rij voor de node. De daemon meldt zich opnieuw (hello) als dit verandert.
+                     */
+                    has_mariadb?: boolean;
                 };
             };
         };
