@@ -57,7 +57,7 @@ export default function AdminServerPage() {
           <MoveNodeCard key={`m-${s.node.id}`} server={s} />
           <VariablesCard server={s} all />
           <SleepCard key={`s-${s.sleep.enabled}-${s.sleep.idleMinutes}`} server={s} />
-          <RenameCard key={`n-${s.name}`} server={s} />
+          <RenameCard server={s} />
           <ReinstallCard server={s} />
           <DeleteServerCard server={s} onDeleted={() => router.push("/admin/servers")} />
         </>
