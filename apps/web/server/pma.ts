@@ -107,6 +107,17 @@ export async function pmaAccess(userId: number, admin: boolean): Promise<PmaAcce
 
 // ---------- exchange ----------
 
+/** Per gebruiker één sync tegelijk (DROP + CREATE van hetzelfde account mag niet door elkaar lopen). */
+const syncing = new Map<number, Promise<unknown>>();
+function serialized<T>(userId: number, fn: () => Promise<T>): Promise<T> {
+  const run = (syncing.get(userId) ?? Promise.resolve()).catch(() => {}).then(fn);
+  const tail = run.finally(() => {
+    if (syncing.get(userId) === tail) syncing.delete(userId);
+  });
+  syncing.set(userId, tail);
+  return run;
+}
+
 const clientIp = (req: Request) => (req.headers.get("x-forwarded-for")?.split(",")[0] ?? req.headers.get("x-real-ip") ?? "unknown").trim();
 
 /** POST /api/pma/exchange {token} met Bearer PMA_SHARED_SECRET -> {user, password}. */
@@ -124,19 +135,22 @@ export async function pmaExchange(req: Request): Promise<Response> {
     if (!data) return error(401, "invalid_token");
     const [u] = await getDb().select({ id: schema.users.id, blocked: schema.users.blocked }).from(schema.users).where(eq(schema.users.id, data.userId));
     if (!u || u.blocked) return error(401, "invalid_token");
-    const access = await pmaAccess(u.id, data.admin);
-    if (!data.admin && access.local.length === 0) return error(403, "no_databases");
     const [node] = await getDb().select().from(schema.nodes).where(eq(schema.nodes.isLocal, true));
     if (!node) return error(503, "no_local_node");
     const user = pmaUsername(u.id);
     const password = randomBytes(24).toString("base64url");
-    try {
-      await daemonFor(node).dbSyncPmaUser(user, password, access.local);
-    } catch (e) {
-      console.error("[pma] sync failed:", e);
-      return error(e instanceof DaemonUnreachableError ? 503 : 502, "database_unavailable");
-    }
-    return json(200, { user, password });
+    return await serialized(u.id, async () => {
+      // Grants worden binnen de serialisatie berekend, zodat de laatste exchange ook de laatste stand krijgt.
+      const access = await pmaAccess(u.id, data.admin);
+      if (!data.admin && access.local.length === 0) return error(403, "no_databases");
+      try {
+        await daemonFor(node).dbSyncPmaUser(user, password, access.local);
+      } catch (e) {
+        console.error("[pma] sync failed:", e);
+        return error(e instanceof DaemonUnreachableError ? 503 : 502, "database_unavailable");
+      }
+      return json(200, { user, password });
+    });
   } catch (e) {
     console.error("[pma] exchange:", e);
     return error(500, "internal");

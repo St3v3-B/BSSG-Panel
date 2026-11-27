@@ -273,3 +273,22 @@ describe("rechten op een echte MariaDB", () => {
     expect(await visible(a.user, a.password)).toEqual(["sa_site"]);
   });
 });
+
+describe("gelijktijdige exchanges", () => {
+  it("lopen per gebruiker na elkaar; alleen het laatste wachtwoord werkt", async () => {
+    const tokens = await Promise.all([1, 2, 3, 4].map(async () => tokenOf((await alice.api.databases.phpMyAdminUrl()).url)));
+    const res = await Promise.all(tokens.map((t) => exchange(t)));
+    expect(res.map((r) => r.status)).toEqual([200, 200, 200, 200]);
+    const creds = (await Promise.all(res.map((r) => r.json()))) as Array<{ user: string; password: string }>;
+    const working: string[] = [];
+    for (const c of creds) {
+      try {
+        await visible(c.user, c.password);
+        working.push(c.password);
+      } catch {}
+    }
+    // Precies één account-wachtwoord is nog geldig (het laatst gesyncte); er is dus nooit een half kapot account.
+    expect(working).toHaveLength(1);
+    expect(h.daemon.pmaUsers.get(`pma_u${alice.id}`)!.password).toBe(working[0]);
+  });
+});

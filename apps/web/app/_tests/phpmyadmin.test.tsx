@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TRPCError } from "@trpc/server";
-import type { Me } from "@panel/api";
+import type { Implementation, Me } from "@panel/api";
 import { AppShell } from "@/app/_components/app-shell";
 import { DatabaseManager } from "@/app/_components/databases/database-manager";
 import { renderWithTrpc, sessionFor } from "./utils";
@@ -16,6 +16,8 @@ afterEach(() => {
 
 const SITE = "c0ffee00-1234-4abc-8def-0123456789ab";
 const URL_ = "https://panel.test/phpmyadmin/signon.php?token=abc";
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
+const writable = (m: Implementation) => m.databases as Mutable<Implementation["databases"]>;
 const me = { user: { id: 1, discordId: "100000000000000001", name: "Tester", avatarUrl: null }, isAdmin: false } as unknown as Me;
 
 /** Nep-venster dat window.open teruggeeft. */
@@ -27,7 +29,7 @@ function fakeWindow() {
 describe("phpMyAdmin in de zijbalk", () => {
   it("toont het item (EN-tekst, extern) als de gebruiker databases heeft", async () => {
     localStorage.setItem("panel.sidebar.collapsed", "0"); // uitgeklapt zodat het label zichtbaar is
-    renderWithTrpc(<AppShell me={me}>x</AppShell>, { session: sessionFor("user"), locale: "en", patch: (m) => (m.databases.phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: false })) });
+    renderWithTrpc(<AppShell me={me}>x</AppShell>, { session: sessionFor("user"), locale: "en", patch: (m) => (writable(m).phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: false })) });
     const btns = await screen.findAllByTestId("nav-phpmyadmin");
     expect(btns[0]!.textContent).toContain("phpMyAdmin");
     expect(btns[0]!.querySelector("svg.lucide-external-link")).toBeTruthy();
@@ -36,7 +38,7 @@ describe("phpMyAdmin in de zijbalk", () => {
   });
 
   it("verbergt het item zonder databases", async () => {
-    const { calls } = renderWithTrpc(<AppShell me={me}>x</AppShell>, { session: sessionFor("user"), patch: (m) => (m.databases.phpMyAdminInfo = () => ({ visible: false, hasRemoteDatabases: false })) });
+    const { calls } = renderWithTrpc(<AppShell me={me}>x</AppShell>, { session: sessionFor("user"), patch: (m) => (writable(m).phpMyAdminInfo = () => ({ visible: false, hasRemoteDatabases: false })) });
     await waitFor(() => expect(calls.some((c) => c.includes("databases.phpMyAdminInfo"))).toBe(true));
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByTestId("nav-phpmyadmin")).toBeNull();
@@ -49,8 +51,8 @@ describe("phpMyAdmin in de zijbalk", () => {
     renderWithTrpc(<AppShell me={me}>x</AppShell>, {
       session: sessionFor("user"),
       patch: (m) => {
-        m.databases.phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: false });
-        m.databases.phpMyAdminUrl = () => (mutated++, { url: URL_ });
+        writable(m).phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: false });
+        writable(m).phpMyAdminUrl = () => (mutated++, { url: URL_ });
       },
     });
     const btn = (await screen.findAllByTestId("nav-phpmyadmin"))[0]!;
@@ -70,8 +72,8 @@ describe("phpMyAdmin in de zijbalk", () => {
       session: sessionFor("user"),
       locale: "en",
       patch: (m) => {
-        m.databases.phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: false });
-        m.databases.phpMyAdminUrl = () => {
+        writable(m).phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: false });
+        writable(m).phpMyAdminUrl = () => {
           throw new TRPCError({ code: "FORBIDDEN", message: "NO_DATABASES" });
         };
       },
@@ -91,8 +93,8 @@ describe("phpMyAdmin in de zijbalk", () => {
       renderWithTrpc(<AppShell me={me}>x</AppShell>, {
         session: sessionFor("user"),
         patch: (m) => {
-          m.databases.phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: false });
-          m.databases.phpMyAdminUrl = () => ({ url: URL_ });
+          writable(m).phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: false });
+          writable(m).phpMyAdminUrl = () => ({ url: URL_ });
         },
       });
       fireEvent.click((await screen.findAllByTestId("nav-phpmyadmin"))[0]!);
@@ -107,7 +109,7 @@ describe("Open in phpMyAdmin op het databasescherm", () => {
   it("knop met uitleg; opent via dezelfde flow", async () => {
     const w = fakeWindow();
     vi.spyOn(window, "open").mockReturnValue(w as unknown as Window);
-    renderWithTrpc(<DatabaseManager uuid={SITE} />, { session: sessionFor("user"), locale: "en", patch: (m) => (m.databases.phpMyAdminUrl = () => ({ url: URL_ })) });
+    renderWithTrpc(<DatabaseManager uuid={SITE} />, { session: sessionFor("user"), locale: "en", patch: (m) => (writable(m).phpMyAdminUrl = () => ({ url: URL_ })) });
     const btn = await screen.findByTestId("open-phpmyadmin");
     expect(btn.textContent).toContain("Open in phpMyAdmin");
     fireEvent.click(btn);
@@ -115,13 +117,13 @@ describe("Open in phpMyAdmin op het databasescherm", () => {
   });
 
   it("meldt dat databases op andere nodes er niet in staan", async () => {
-    renderWithTrpc(<DatabaseManager uuid={SITE} />, { session: sessionFor("user"), locale: "en", patch: (m) => (m.databases.phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: true })) });
+    renderWithTrpc(<DatabaseManager uuid={SITE} />, { session: sessionFor("user"), locale: "en", patch: (m) => (writable(m).phpMyAdminInfo = () => ({ visible: true, hasRemoteDatabases: true })) });
     await screen.findByTestId("open-phpmyadmin");
     expect(screen.getByTestId("phpmyadmin-card").textContent).toContain("other nodes");
   });
 
   it("geen knop als phpMyAdmin uit staat", async () => {
-    renderWithTrpc(<DatabaseManager uuid={SITE} />, { session: sessionFor("user"), patch: (m) => (m.databases.phpMyAdminInfo = () => ({ visible: false, hasRemoteDatabases: false })) });
+    renderWithTrpc(<DatabaseManager uuid={SITE} />, { session: sessionFor("user"), patch: (m) => (writable(m).phpMyAdminInfo = () => ({ visible: false, hasRemoteDatabases: false })) });
     await screen.findAllByTestId("database-card");
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.queryByTestId("open-phpmyadmin")).toBeNull();
