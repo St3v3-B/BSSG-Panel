@@ -243,6 +243,7 @@ export function createMock(): Implementation {
           : { supported: false, kind: null, directory: null, loaders: [], sources: [], gameVersion: null, modpacks: false };
       },
       search: ({ input }) => {
+        if (input.modpacks) return { hits: [{ source: "modrinth" as const, projectId: "cool-pack", name: "Cool Pack", description: "A Fabric modpack", author: "someone", downloads: 1000, iconUrl: null, url: "https://modrinth.com/modpack/cool-pack" }], total: 1 };
         const hits = MOCK_HITS.filter((h) => h.source === input.source && h.name.toLowerCase().includes(input.query.toLowerCase()));
         return { hits, total: hits.length };
       },

@@ -134,7 +134,7 @@ export const contract = {
    */
   content: {
     info: query("user", server, s.ContentInfo),
-    search: query("user", server.extend({ source: s.ContentSource, query: z.string().max(100).default(""), offset: z.number().int().min(0).max(10000).default(0) }), s.ContentSearchResult),
+    search: query("user", server.extend({ source: s.ContentSource, query: z.string().max(100).default(""), offset: z.number().int().min(0).max(10000).default(0), /** Zoek modpacks (Modrinth, alleen Fabric) in plaats van mods/plugins. */ modpacks: z.boolean().default(false) }), s.ContentSearchResult),
     /** Nieuwste compatibele versie van het project (of `versionId`) plus verplichte afhankelijkheden. */
     resolve: query("user", server.extend({ source: s.ContentSource, projectId: z.string().min(1).max(100), versionId: z.string().min(1).max(100).optional() }), s.ContentResolved),
     /** Installeert (optioneel met verplichte afhankelijkheden) en geeft alle nieuw geïnstalleerde items terug. */
