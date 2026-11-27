@@ -37,7 +37,7 @@ export default function AdminServerPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <h1 className="flex flex-wrap items-center gap-3 text-2xl font-semibold tracking-tight">
-                {s.name} <StatusBadge status={s.status} />
+                {s.name} <StatusBadge status={s.status} lastSeenAt={s.lastSeenAt} />
                 {s.suspended && <Badge variant="warning">{t.admin2.list.suspended}</Badge>}
               </h1>
               <p className="text-sm text-muted-foreground">

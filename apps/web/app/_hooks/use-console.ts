@@ -1,4 +1,5 @@
 "use client";
+import { applyOptimisticPower } from "@/app/_lib/optimistic-power";
 import type { PowerAction, ServerDetail, ServerStatus, Stats } from "@panel/api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
@@ -42,6 +43,8 @@ export function useConsole(server: ServerDetail | undefined, handlers: ConsoleHa
   const tokenMut = trpc.servers.consoleToken.useMutation();
   const commandMut = trpc.servers.sendCommand.useMutation();
   const powerMut = trpc.servers.power.useMutation({
+    onMutate: ({ uuid, action }) => applyOptimisticPower(utils, uuid, action),
+    onError: (_e, _v, rollback) => rollback?.(),
     onSettled: () => {
       if (server) void utils.servers.get.invalidate({ uuid: server.uuid });
       void utils.servers.list.invalidate();

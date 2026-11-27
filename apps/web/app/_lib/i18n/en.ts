@@ -4,6 +4,8 @@
  */
 export const en = {
   common: {
+    lastSeen: (when: string) => `Last seen ${when}`,
+    neverSeen: "Never reached yet",
     loading: "Loading…",
     cancel: "Cancel",
     save: "Save",
@@ -41,6 +43,9 @@ export const en = {
     closeMenu: "Close menu",
     adminSection: "Administration",
     panelSection: "Panel",
+    expandSidebar: "Expand sidebar",
+    collapseSidebar: "Collapse sidebar",
+    breadcrumb: "Breadcrumb",
   },
   theme: { toLight: "Switch to light theme", toDark: "Switch to dark theme", label: "Theme" },
   notFound: { title: "This page doesn't exist", back: "Back to overview" },

@@ -3,6 +3,8 @@ import type { Dict } from "./en";
 
 export const nl: Dict = {
   common: {
+    lastSeen: (when: string) => `Laatst gezien ${when}`,
+    neverSeen: "Nog nooit bereikt",
     loading: "Laden…",
     cancel: "Annuleren",
     save: "Opslaan",
@@ -40,6 +42,9 @@ export const nl: Dict = {
     closeMenu: "Menu sluiten",
     adminSection: "Beheer",
     panelSection: "Panel",
+    expandSidebar: "Zijbalk uitklappen",
+    collapseSidebar: "Zijbalk inklappen",
+    breadcrumb: "Kruimelpad",
   },
   theme: { toLight: "Naar licht thema", toDark: "Naar donker thema", label: "Thema" },
   notFound: { title: "Deze pagina bestaat niet", back: "Naar het overzicht" },

@@ -213,7 +213,7 @@ export const servers = pgTable("servers", {
   /** Discord-webhook voor meldingen over deze server (versleuteld) */
   discordWebhookEnc: text("discord_webhook_enc"),
   createdAt: createdAt(),
-}, (t) => [index("servers_owner_idx").on(t.ownerId), index("servers_node_idx").on(t.nodeId)]);
+}, (t) => [index("servers_owner_idx").on(t.ownerId), index("servers_node_idx").on(t.nodeId), index("servers_status_idx").on(t.status)]);
 
 export const allocations = pgTable("allocations", {
   id: pk(),
@@ -225,6 +225,7 @@ export const allocations = pgTable("allocations", {
   isPrimary: boolean("is_primary").notNull().default(false),
 }, (t) => [
   uniqueIndex("allocations_node_ip_port").on(t.nodeId, t.ip, t.port),
+  index("allocations_server_idx").on(t.serverId),
   check("allocations_port_range", sql`${t.port} between 1 and 65535`),
 ]);
 
@@ -239,7 +240,7 @@ export const subusers = pgTable("subusers", {
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   permissions: text("permissions").array().notNull().default(sql`'{}'::text[]`),
   createdAt: createdAt(),
-}, (t) => [primaryKey({ columns: [t.serverId, t.userId] })]);
+}, (t) => [primaryKey({ columns: [t.serverId, t.userId] }), index("subusers_user_idx").on(t.userId)]);
 
 export const sftpCredentials = pgTable("sftp_credentials", {
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -275,7 +276,7 @@ export const domains = pgTable("domains", {
   lastCheck: jsonb("last_check"),
   lastCheckedAt: ts("last_checked_at"),
   createdAt: createdAt(),
-});
+}, (t) => [index("domains_server_idx").on(t.serverId)]);
 
 /** Backend-servers achter een proxy (Minecraft-netwerk). Een backend hoort bij hooguit één proxy; positie 0 = standaardserver. */
 export const networkMembers = pgTable("network_members", {
@@ -321,7 +322,7 @@ export const databases = pgTable("databases", {
   username: text("username").notNull(),
   passwordEnc: text("password_enc").notNull(),
   createdAt: createdAt(),
-}, (t) => [uniqueIndex("databases_host_name").on(t.hostId, t.name)]);
+}, (t) => [uniqueIndex("databases_host_name").on(t.hostId, t.name), index("databases_server_idx").on(t.serverId)]);
 
 // ---------- one-click apps ----------
 

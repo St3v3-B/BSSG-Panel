@@ -5,6 +5,7 @@ import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { apiKeyOf } from "./apikey";
 import { getDb, schema } from "./db";
+import { getNodesLive, resolveStatus } from "./node-cache";
 import { getImageUpdateSettings } from "./settings";
 import { templateSleepCapable } from "./spec";
 
@@ -74,7 +75,7 @@ export function imageInfo(b: ServerBundle): ImageUpdateInfo {
   };
 }
 
-export function toSummary(b: ServerBundle, viewerId: number, status?: ServerStatus): ServerSummary {
+export function toSummary(b: ServerBundle, viewerId: number, status?: ServerStatus, lastSeenAt?: Date | null): ServerSummary {
   const primary = b.allocations[0];
   return {
     uuid: b.server.uuid,
@@ -90,6 +91,7 @@ export function toSummary(b: ServerBundle, viewerId: number, status?: ServerStat
     owner: userPublic(b.owner),
     suspended: b.server.suspendedAt ? { reason: b.server.suspendedReason, at: b.server.suspendedAt } : null,
     imageUpdate: imageInfo(b),
+    lastSeenAt: lastSeenAt ?? null,
   };
 }
 
@@ -104,11 +106,11 @@ export function toDetail(
   viewer: { id: number; name: string | null; discordId: string | null },
   permissions: Permission[],
   storedVariables: Record<string, string>,
-  live?: { status?: ServerStatus; installedAt?: Date | null },
+  live?: { status?: ServerStatus; installedAt?: Date | null; lastSeenAt?: Date | null },
   network?: ServerNetwork,
 ): ServerDetail {
   return {
-    ...toSummary(b, viewer.id, live?.status),
+    ...toSummary(b, viewer.id, live?.status, live?.lastSeenAt),
     permissions,
     allocations: b.allocations.map((a, i) => ({ id: a.id, nodeId: a.nodeId, ip: a.ip, port: a.port, serverUuid: b.server.uuid, primary: i === 0, role: a.id === b.server.bedrockAllocationId ? "bedrock" as const : "game" as const })),
     variables: b.template.variables.map((v) => ({
@@ -201,4 +203,15 @@ export async function requireServer(ctx: Ctx, uuid: string, need: Permission | "
   }
   if (!a.permissions.includes(need)) throw new TRPCError({ code: "FORBIDDEN", message: `MISSING_PERMISSION: ${need}` });
   return a;
+}
+
+// ---------- live status (uit de cache van de node-monitor, nooit een daemon-aanroep) ----------
+
+export interface LiveView { status: ServerStatus; lastSeenAt: Date | null; installedAt: Date | null }
+
+/** Status per server-uuid uit de cache; node onbekend -> DB-status, node te lang weg -> `unknown`. */
+export async function liveViews(rows: ServerBundle[]): Promise<Map<string, LiveView>> {
+  const lives = await getNodesLive(rows.map((b) => b.node.id));
+  const now = Date.now();
+  return new Map(rows.map((b) => [b.server.uuid, resolveStatus(lives.get(b.node.id) ?? null, b.server.uuid, b.server.status, now)]));
 }

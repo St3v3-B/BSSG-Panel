@@ -1,6 +1,5 @@
 "use client";
 import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { z } from "zod";
 import type { DatabaseHost } from "@panel/api/schemas";
@@ -18,27 +17,6 @@ import { useT } from "@/app/_lib/i18n";
 import { cn } from "@/lib/utils";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
-
-/** Tabbladen boven de drie instellingenschermen. */
-export function SettingsTabs({ current }: { current: "general" | "db" | "dns" | "s3" | "images" }) {
-  const t = useT().admin2.sub;
-  const tabs = [
-    { k: "general", href: "/admin/settings", label: t.general },
-    { k: "db", href: "/admin/settings/database-hosts", label: t.databaseHosts },
-    { k: "dns", href: "/admin/settings/dns-providers", label: t.dnsProviders },
-    { k: "s3", href: "/admin/settings/backup-storage", label: t.s3Targets },
-    { k: "images", href: "/admin/settings/image-updates", label: t.imageUpdates },
-  ] as const;
-  return (
-    <nav className="scrollbar-none -mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-border px-4 text-sm sm:mx-0 sm:px-0" aria-label="settings">
-      {tabs.map((x) => (
-        <Link key={x.k} href={x.href} className={cn("-mb-px whitespace-nowrap border-b-2 px-3 py-2.5", x.k === current ? "border-primary font-medium" : "border-transparent text-muted-foreground hover:text-foreground")}>
-          {x.label}
-        </Link>
-      ))}
-    </nav>
-  );
-}
 
 export function SettingsAdmin() {
   const t = useT();

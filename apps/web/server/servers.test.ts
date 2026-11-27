@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { getDb, schema } from "./db";
 import { getSigningKey, verifyJwt } from "./lib/jwt";
+import { pollAllNow } from "./node-cache";
 import { OWNER, useHarness, type TestUser } from "./test/harness";
 
 const h = useHarness();
@@ -51,6 +52,7 @@ describe("servers.list / get", () => {
 
   it("get: live status van de daemon en terugschrijven naar de database", async () => {
     setState("online");
+    await pollAllNow();
     const d = await player.api.servers.get({ uuid });
     expect(d.status).toBe("online");
     expect(d.permissions).toHaveLength(10);
@@ -60,18 +62,32 @@ describe("servers.list / get", () => {
     expect(row!.status).toBe("online");
   });
 
-  it("get/list: status unknown als de daemon niet antwoordt (korte timeout), DB blijft staan", async () => {
-    h.daemon.mode = "hang";
-    const t = Date.now();
+  it("get/list: daemon hangt -> laatste bekende status, pas na de drempel `unknown`; nooit wachten op de daemon", async () => {
+    process.env.NODE_POLL_TIMEOUT_MS = "150";
+    process.env.NODE_STALE_AFTER_MS = "400";
     try {
+      setState("online");
+      await pollAllNow();
+      h.daemon.mode = "hang";
+      await pollAllNow(); // mislukt na 150 ms; de cache blijft
+      const t = Date.now();
+      expect((await player.api.servers.get({ uuid })).status).toBe("online");
+      expect((await player.api.servers.list())[0]!.status).toBe("online");
+      expect(Date.now() - t).toBeLessThan(500);
+      await new Promise((r) => setTimeout(r, 450));
+      const t2 = Date.now();
       const d = await player.api.servers.get({ uuid });
       expect(d.status).toBe("unknown");
+      expect(d.lastSeenAt).toBeInstanceOf(Date);
       expect((await player.api.servers.list())[0]!.status).toBe("unknown");
-      expect(Date.now() - t).toBeLessThan(5000);
+      expect(Date.now() - t2).toBeLessThan(500);
       const [row] = await getDb().select().from(schema.servers).where(eq(schema.servers.uuid, uuid));
       expect(row!.status).toBe("online");
     } finally {
       h.daemon.mode = "ok";
+      delete process.env.NODE_POLL_TIMEOUT_MS;
+      delete process.env.NODE_STALE_AFTER_MS;
+      await pollAllNow();
     }
   });
 
