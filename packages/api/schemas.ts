@@ -337,6 +337,64 @@ export const Database = z.object({
 });
 export type Database = z.infer<typeof Database>;
 
+// ---------- one-click apps ----------
+
+export const AppId = z.string().regex(/^[a-z0-9-]{2,32}$/);
+export const AppSummary = z.object({
+  id: AppId,
+  name: z.string(),
+  description: z.string(),
+  homepage: z.string(),
+  requiresDatabase: z.boolean(),
+  /** Kan de installatie een beheerder aanmaken (gebruikersnaam + e-mail, gegenereerd wachtwoord)? */
+  supportsAdmin: z.boolean(),
+  downloadMb: z.number(),
+  /** false als de template van deze site het niet aankan (bv. geen PHP). */
+  compatible: z.boolean(),
+  incompatibleReason: z.string().nullable(),
+});
+export type AppSummary = z.infer<typeof AppSummary>;
+
+export const AppPreflight = z.object({
+  /** public/ bestaat niet of bevat alleen de standaardpagina. */
+  publicEmpty: z.boolean(),
+  entries: z.number().int(),
+});
+export type AppPreflight = z.infer<typeof AppPreflight>;
+
+export const AppStepStatus = z.enum(["pending", "running", "done", "failed"]);
+export const AppStep = z.object({ key: z.string(), status: AppStepStatus });
+export type AppStep = z.infer<typeof AppStep>;
+
+export const AppJobResult = z.object({
+  version: z.string(),
+  siteUrl: z.string().nullable(),
+  adminUrl: z.string().nullable(),
+  adminUsername: z.string().nullable(),
+  /** Alleen bij de eerste keer dat de afgeronde job wordt opgehaald; daarna null. */
+  adminPassword: z.string().nullable(),
+  databaseName: z.string().nullable(),
+  /** Sleutels voor vervolgstappen in de UI (bv. "finish_in_browser"). */
+  notes: z.array(z.string()),
+});
+export type AppJobResult = z.infer<typeof AppJobResult>;
+
+export const AppJob = z.object({
+  id: Id,
+  serverUuid: Uuid,
+  appId: AppId,
+  appName: z.string(),
+  status: z.enum(["running", "succeeded", "failed"]),
+  steps: z.array(AppStep),
+  /** Foutcode (bv. CHECKSUM_MISMATCH, PUBLIC_NOT_EMPTY, DOWNLOAD_FAILED) met uitleg. */
+  errorCode: z.string().nullable(),
+  error: z.string().nullable(),
+  result: AppJobResult.nullable(),
+  startedAt: z.date(),
+  finishedAt: z.date().nullable(),
+});
+export type AppJob = z.infer<typeof AppJob>;
+
 // ---------- backups ----------
 
 export const BackupStatus = z.enum(["pending", "running", "completed", "failed", "restoring"]);

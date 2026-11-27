@@ -162,6 +162,17 @@ export function createMock(): Implementation {
   const database = (dbId: number, serverUuid: string, name: string): s.Database => ({
     id: dbId, serverUuid, hostId: 1, hostName: "mariadb", host: "203.0.113.10", port: 3306, name: `s${dbId}_${name}`, username: `u${dbId}_${name}`.slice(0, 32), password: "mock-password", adminerUrl: "https://adminer.test",
   });
+  const appJobs: s.AppJob[] = [];
+  const mockJob = (uuid: string, appId: string, adminUser: string | null): s.AppJob => {
+    const steps = ["download", "verify", "extract", "database", "configure", "finish"].map((key) => ({ key, status: "done" as const }));
+    const job: s.AppJob = {
+      id: id(), serverUuid: uuid, appId, appName: ({ wordpress: "WordPress", grav: "Grav", nextcloud: "Nextcloud" } as Record<string, string>)[appId] ?? appId, status: "succeeded", steps, errorCode: null, error: null,
+      result: { version: "6.8", siteUrl: "https://mock.example.test", adminUrl: "https://mock.example.test/wp-admin/", adminUsername: adminUser, adminPassword: adminUser ? "mock-admin-password" : null, databaseName: "mock_db", notes: [] },
+      startedAt: new Date(), finishedAt: new Date(),
+    };
+    appJobs.unshift(job);
+    return job;
+  };
   const databases: s.Database[] = [database(1, data.servers[2]!.uuid, "wordpress")];
 
   return {
@@ -362,6 +373,17 @@ export function createMock(): Implementation {
         return x;
       },
       delete: () => ok,
+    },
+    apps: {
+      catalog: () => [
+        { id: "wordpress", name: "WordPress", description: "The most popular CMS and blog platform.", homepage: "https://wordpress.org", requiresDatabase: true, supportsAdmin: true, downloadMb: 35, compatible: true, incompatibleReason: null },
+        { id: "grav", name: "Grav", description: "Fast flat-file CMS without a database.", homepage: "https://getgrav.org", requiresDatabase: false, supportsAdmin: false, downloadMb: 23, compatible: true, incompatibleReason: null },
+        { id: "nextcloud", name: "Nextcloud", description: "Your own cloud storage, calendar and contacts.", homepage: "https://nextcloud.com", requiresDatabase: true, supportsAdmin: true, downloadMb: 296, compatible: true, incompatibleReason: null },
+      ],
+      check: () => ({ publicEmpty: true, entries: 1 }),
+      install: ({ input }) => mockJob(input.uuid, input.appId, input.admin?.username ?? null),
+      job: ({ input }) => appJobs.find((j) => j.id === input.id) ?? notFound("job"),
+      jobs: ({ input }) => appJobs.filter((j) => j.serverUuid === input.uuid),
     },
     backups: {
       list: ({ input }) => db.backups.filter((b) => b.serverUuid === input.uuid),

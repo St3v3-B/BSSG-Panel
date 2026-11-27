@@ -36,6 +36,9 @@ export const PHASE3 = [
   "admin.databaseHosts.list", "admin.databaseHosts.create", "admin.databaseHosts.update", "admin.databaseHosts.delete", "admin.databaseHosts.test",
 ];
 
+/** One-click apps. */
+export const APPS = ["apps.catalog", "apps.check", "apps.install", "apps.job", "apps.jobs"];
+
 /** Fase 4: backups, schema's en S3-doelen. */
 export const PHASE4 = [
   "backups.list", "backups.create", "backups.restore", "backups.delete", "backups.downloadUrl",
@@ -54,7 +57,7 @@ export const QUOTA = ["account.quota", "servers.create", "servers.updateOwnLimit
 describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...ADMIN2, ...QUOTA, ...CONTENT];
+    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS];
     for (const p of all) expect(contract.has(p), p).toBe(true);
     expect(implementedPaths().sort()).toEqual(all.sort());
   });

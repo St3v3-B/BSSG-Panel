@@ -284,6 +284,23 @@ export const databases = pgTable("databases", {
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("databases_host_name").on(t.hostId, t.name)]);
 
+// ---------- one-click apps ----------
+
+export const appInstalls = pgTable("app_installs", {
+  id: pk(),
+  serverId: integer("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+  appId: text("app_id").notNull(),
+  status: text("status", { enum: ["running", "succeeded", "failed"] }).notNull().default("running"),
+  steps: jsonb("steps").$type<Array<{ key: string; status: "pending" | "running" | "done" | "failed" }>>().notNull().default([]),
+  errorCode: text("error_code"),
+  error: text("error"),
+  /** Versleuteld JSON-resultaat (bevat het eenmalige beheerderswachtwoord tot het is opgehaald). */
+  resultEnc: text("result_enc"),
+  createdAt: createdAt(),
+  finishedAt: ts("finished_at"),
+}, (t) => [index("app_installs_server").on(t.serverId)]);
+
 // ---------- backups en schema's ----------
 
 export const backups = pgTable("backups", {
