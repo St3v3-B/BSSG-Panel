@@ -164,3 +164,34 @@ differs.
 
 `deploy/test.sh` does exactly this (step *Velocity with two Paper servers*), with a
 mineflayer bot that logs in on server a via the proxy and switches with `/server b`.
+
+## Node toevoegen met één regel (join)
+
+Admin > Nodes > Add node toont `curl -fsSL https://<PANEL_DOMAIN>/join | sudo bash -s -- <code>`.
+
+- De code is willekeurig (192 bit), een uur geldig, eenmalig en staat alleen als SHA-256 in de database. Het
+  node-token zit niet in het commando: het script ruilt de code via `POST /api/join/exchange` in voor token en
+  configuratie (panel-URL, node-domein, ACME-mail, poorten, `supports_domains`, `public_port`).
+- `GET /join` is `deploy/join/join.sh` (geen geheimen; alleen de panel-URL wordt ingevuld). Het script: controleert
+  OS/arch (amd64/arm64), vraagt (of `--yes`) om Docker te installeren (get.docker.com), wacht tot het node-domein naar
+  het gemelde IPv4 wijst (Cloudflare-zone gekoppeld: het panel maakt het A-record zelf; anders toont het panel het exacte
+  record), downloadt de daemon van `/join/daemon/<arch>` en controleert `.sha256`, haalt `/join/files.tar.gz`
+  (compose, Caddy-build, systemd-unit), schrijft `/etc/panel/panel.env`, start MariaDB (+ Caddy) en de daemon, opent
+  ufw-poorten na bevestiging en meldt voortgang via `/api/join/progress` (node-token). Het panel-image bouwt de
+  daemon (amd64+arm64) en het bestandspakket uit dezelfde commit (`panel.Dockerfile`).
+- `--dry-run [--root DIR]` schrijft alleen naar DIR en print systeemcommando's; `--uninstall [--purge]` verwijdert de node
+  (weigert op een machine met `panel-web` of zonder env-bestand van het join-script).
+- "Update daemon" (node-pagina) roept `POST /api/update` op de node aan (node-token): de daemon haalt de binary van het
+  panel, controleert de sha256 en herstart via systemd.
+
+### Domeinondersteuning per node
+
+- **Aan** (standaard): Caddy op 80/443 (compose-profiel `caddy`), node-domein op 443; websites en domeinen voor
+  gameservers mogelijk.
+- **Uit**: geen Caddy en niets op 80/443. De daemon luistert zelf met TLS op `DAEMON_TLS_PORT` (= `public_port`,
+  standaard 8443) en haalt een Let's Encrypt-certificaat met DNS-01 (`ACME_DIRECTORY` voor staging). De TXT-records
+  `_acme-challenge.<node-domein>` zet het **panel** (`POST /api/remote/acme/dns`, alleen voor het eigen node-domein) via
+  de gekoppelde Cloudflare-zone, dus het Cloudflare-token verlaat het panel nooit. Een zone die het node-domein dekt is
+  daarom vereist. Het panel bouwt console-, upload- en daemon-URL's met die poort. Websites, `domains.add`, het
+  "domeinen toestaan" van gameservers, wijzigen van template en verplaatsen (transfer) naar zo'n node worden geweigerd
+  (`NODE_HAS_NO_DOMAINS`). Aan -> uit kan alleen zonder websites/domeinen op de node (`NODE_HAS_DOMAINS`).

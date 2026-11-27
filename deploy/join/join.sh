@@ -92,9 +92,10 @@ if [ "$UNINSTALL" = 1 ]; then
   if [ "$DRY_RUN" = 0 ] && command -v docker >/dev/null && docker ps -a --format '{{.Names}}' | grep -qx panel-web; then
     die "this machine runs the panel itself (container panel-web): refusing to uninstall"
   fi
-  [ -f "$ENV_FILE" ] && grep -q "^$MARKER" "$ENV_FILE" || die "$ENV_FILE is missing or was not written by the join script: refusing to uninstall"
+  { [ -f "$ENV_FILE" ] && grep -q "^$MARKER" "$ENV_FILE"; } || die "$ENV_FILE is missing or was not written by the join script: refusing to uninstall"
   log "removing the node (daemon, Caddy, MariaDB containers)"
-  [ ! -f "$INSTALL_DIR/docker-compose.node.yml" ] || run env PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES=caddy docker compose --env-file "$ENV_FILE" -f "$INSTALL_DIR/docker-compose.node.yml" down $([ "$PURGE" = 1 ] && echo -v)
+  down_args=(down); [ "$PURGE" = 1 ] && down_args+=(-v)
+  if [ -f "$INSTALL_DIR/docker-compose.node.yml" ]; then run env PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES=caddy docker compose --env-file "$ENV_FILE" -f "$INSTALL_DIR/docker-compose.node.yml" "${down_args[@]}"; fi
   run systemctl disable --now panel-daemon.service || true
   run rm -f "$UNIT_DST" "$BIN_DST"
   run systemctl daemon-reload
@@ -113,7 +114,11 @@ case "$(uname -m)" in x86_64|amd64) ARCH=amd64 ;; aarch64|arm64) ARCH=arm64 ;; *
 command -v curl >/dev/null || die "curl is missing"
 command -v sha256sum >/dev/null || die "sha256sum is missing"
 if [ "$DRY_RUN" = 0 ]; then command -v systemctl >/dev/null || die "systemd (systemctl) is required"; fi
-[ -r /etc/os-release ] && . /etc/os-release && log "OS: ${PRETTY_NAME:-unknown}, $ARCH"
+if [ -r /etc/os-release ]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  log "OS: ${PRETTY_NAME:-unknown}, $ARCH"
+fi
 
 detect_ip() {
   local u ip
@@ -169,7 +174,7 @@ resolves() { getent ahostsv4 "$NODE_DOMAIN" 2>/dev/null | awk '{print $1}' | gre
 if [ "$SKIP_WAIT" = 1 ] || [ "$DRY_RUN" = 1 ]; then
   log "(not waiting for DNS: $NODE_DOMAIN must point to $IP)"
 elif ! resolves; then
-  [ "$DNS_MODE" = cloudflare ] && log "the panel created the DNS record; waiting for it to propagate" || log "create this DNS record, I wait until it resolves:  $NODE_DOMAIN  A  $IP  (not proxied)"
+  if [ "$DNS_MODE" = cloudflare ]; then log "the panel created the DNS record; waiting for it to propagate"; else log "create this DNS record, I wait until it resolves:  $NODE_DOMAIN  A  $IP  (not proxied)"; fi
   for _ in $(seq 1 360); do resolves && break; sleep 5; done
   resolves || die "$NODE_DOMAIN does not resolve to $IP after 30 minutes"
 fi

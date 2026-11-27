@@ -378,8 +378,8 @@ install_unit() {
 # Wacht tot het panel (container panel-web) healthy is; anders een waarschuwing (de daemon herhaalt zijn hello toch).
 wait_panel_healthy() {
   if [ "$DRY_RUN" = 1 ]; then printf '[dry-run] wait until panel-web is healthy\n'; return 0; fi
-  local i st
-  for i in $(seq 1 60); do
+  local st
+  for _ in $(seq 1 60); do
     st="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' panel-web 2>/dev/null || true)"
     case "$st" in healthy|running) return 0 ;; esac
     sleep 3

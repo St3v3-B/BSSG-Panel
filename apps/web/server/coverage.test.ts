@@ -57,12 +57,14 @@ export const ADMIN2 = ["admin.servers.setSuspended", "admin.servers.changeTempla
 export const CONTENT = ["content.info", "content.search", "content.resolve", "content.install", "content.list", "content.checkUpdates", "content.update", "content.uninstall", "content.importModpack", "content.versionOptions"];
 /** Quota's per gebruiker. */
 export const NOTIFY = ["account.webhook", "account.setWebhook", "account.testWebhook", "servers.notifications", "servers.updateNotifications", "servers.testWebhook", "admin.notifications.get", "admin.notifications.set", "admin.notifications.test"];
+/** Node-join: join-codes, voortgang, daemon bijwerken. */
+export const NODE_JOIN = ["admin.nodes.createJoin", "admin.nodes.joinCommand", "admin.nodes.joinStatus", "admin.nodes.updateDaemon", "admin.nodes.uninstallCommand"];
 export const QUOTA = ["account.quota", "servers.create", "servers.updateOwnLimits", "servers.deleteOwn", "admin.users.getQuota", "admin.users.setQuota", "admin.users.clearQuota", "admin.quotas.usage"];
 
 describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS];
+    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN];
     for (const p of all) expect(contract.has(p), p).toBe(true);
     expect(implementedPaths().sort()).toEqual(all.sort());
   });

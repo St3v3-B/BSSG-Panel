@@ -44,7 +44,7 @@ for f in "$REPO"/templates/game/*.yaml; do
 done
 docker run --rm "${LABELS[@]}" \
   -v "$DEPLOY:/deploy:ro" -v "$WORK/sc:/templates:ro" \
-  koalaman/shellcheck:stable -x /deploy/install.sh /deploy/test.sh \
+  koalaman/shellcheck:stable -x /deploy/install.sh /deploy/test.sh /deploy/join/join.sh \
   || fail "shellcheck deploy/*.sh"
 pass "deploy/install.sh, deploy/test.sh"
 sc_files=()
