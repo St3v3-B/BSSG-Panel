@@ -19,6 +19,7 @@ ts:
 	pnpm -r --if-present test
 
 go:
+	bash scripts/cleanup-test-networks.sh
 	cd daemon && bash ../scripts/gofmt-check.sh
 	cd daemon && $(GO) vet ./...
 	cd daemon && $(GO) build -o bin/panel-daemon ./cmd/panel-daemon
