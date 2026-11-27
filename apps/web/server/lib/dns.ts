@@ -9,6 +9,8 @@ export interface DnsLookup {
   aaaa(name: string): Promise<string[]>;
   cname(name: string): Promise<string[]>;
   ns(name: string): Promise<string[]>;
+  /** SRV-records als "prio weight port target" (target zonder punt). */
+  srv(name: string): Promise<string[]>;
 }
 
 const RESOLVERS = ["1.1.1.1", "8.8.8.8"];
@@ -34,6 +36,7 @@ export const publicDns: DnsLookup = {
   aaaa: (n) => both((r) => r.resolve6(n)),
   cname: (n) => both((r) => r.resolveCname(n)),
   ns: (n) => both((r) => r.resolveNs(n)),
+  srv: (n) => both(async (r) => (await r.resolveSrv(n)).map((x) => `${x.priority} ${x.weight} ${x.port} ${x.name}`)),
 };
 
 let current: DnsLookup = publicDns;
@@ -91,7 +94,7 @@ export function apexOf(hostname: string): string {
 // ---------- check ----------
 
 export interface RecordCheck {
-  type: "A" | "AAAA" | "CNAME" | "TXT";
+  type: "A" | "AAAA" | "CNAME" | "TXT" | "SRV";
   name: string;
   expected: string | null;
   actual: string[];
@@ -134,4 +137,23 @@ export async function checkDomain(hostname: string, targetIp: string, l: DnsLook
     if (isApex) warnings.push("cname_at_apex");
   }
   return { records, nameservers, provider: detectProvider(nameservers), warnings, dnsStatus: aStatus };
+}
+
+/** Naam van het SRV-record t.o.v. de apex ("@"-stijl): `_minecraft._tcp` of `_minecraft._tcp.play`. */
+export function srvName(hostname: string): string {
+  const host = hostname.replace(/^\*\./, "");
+  const apex = apexOf(host);
+  return host === apex ? "_minecraft._tcp" : `_minecraft._tcp.${host.slice(0, -(apex.length + 1))}`;
+}
+
+/** A-controle plus het SRV-record `_minecraft._tcp.<host>` → `0 5 <port> <host>`. */
+export async function checkMinecraftDomain(hostname: string, targetIp: string, port: number, l: DnsLookup = dns()): Promise<CheckResult> {
+  const r = await checkDomain(hostname, targetIp, l);
+  const host = hostname.toLowerCase();
+  const expected = `0 5 ${port} ${host}`;
+  const actual = await l.srv(`_minecraft._tcp.${host}`);
+  const status: RecordCheck["status"] = actual.length === 0 ? "missing" : actual.includes(expected) ? "ok" : "wrong_ip";
+  r.records.push({ type: "SRV", name: srvName(host), expected, actual, status });
+  if (r.dnsStatus === "ok" && status !== "ok") r.dnsStatus = status === "missing" ? "missing" : "wrong_ip";
+  return r;
 }

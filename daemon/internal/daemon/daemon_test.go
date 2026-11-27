@@ -550,3 +550,42 @@ func TestRoutes(t *testing.T) {
 func websocketDial(url string, h http.Header) (*websocket.Conn, *http.Response, error) {
 	return websocket.DefaultDialer.Dial(url, h)
 }
+
+// TestGameRoute: http-route op een game-server (bv. BlueMap): netwerk panel-site-<uuid> met
+// role=site, container gekoppeld (ook na herstart van de server), geen placeholder, opruimen bij delete.
+func TestGameRoute(t *testing.T) {
+	eng := engine.NewFake()
+	router := proxy.NewFake()
+	h := newHarness(t, eng, router, nil, t.TempDir(), nil, "")
+	u := "0b7c2d1e-1111-4222-8333-000000000009"
+	gs := testSpec(u)
+	gs["skip_install"] = true
+	h.expect("POST", "/api/servers", gs, 202)
+	h.expect("POST", "/api/servers/"+u+"/power", map[string]string{"action": "start"}, 202)
+	h.waitState(u, "online", 10*time.Second)
+	netName := "panel-site-" + u
+	if eng.Network(netName) != nil {
+		t.Fatal("netwerk bestaat al voor er een route is")
+	}
+	h.expect("PUT", "/api/routes/map.test", map[string]any{"server_uuid": u}, 400) // port verplicht
+	h.expect("PUT", "/api/routes/map.test", map[string]any{"server_uuid": u, "port": 8123}, 200)
+	n := eng.Network(netName)
+	if n == nil || n.Labels["panel.role"] != "site" || n.Labels["panel.managed"] != "true" || n.Internal || !n.Connected["panel-"+u] {
+		t.Fatalf("netwerk: %+v", n)
+	}
+	rs := router.Routes()
+	if len(rs) != 1 || rs[0].Upstream.Container != "panel-"+u || rs[0].Upstream.Network != netName || rs[0].Upstream.Port != 8123 || rs[0].Placeholder != proxy.PlaceholderNone {
+		t.Fatalf("%+v", rs)
+	}
+	// herstart: de nieuwe container hangt weer aan het netwerk
+	h.expect("POST", "/api/servers/"+u+"/power", map[string]string{"action": "restart"}, 202)
+	time.Sleep(300 * time.Millisecond)
+	h.waitState(u, "online", 10*time.Second)
+	if n := eng.Network(netName); n == nil || !n.Connected["panel-"+u] {
+		t.Fatalf("na herstart niet gekoppeld: %+v", n)
+	}
+	h.expect("DELETE", "/api/servers/"+u, nil, 204)
+	if len(router.Routes()) != 0 || eng.Network(netName) != nil {
+		t.Fatal("route/netwerk niet opgeruimd")
+	}
+}

@@ -209,7 +209,7 @@ export function createMock(): Implementation {
     domains: {
       list: ({ input }) => db.domains.filter((x) => x.serverUuid === input.uuid),
       add: ({ input }) => {
-        const dom: s.Domain = { id: id(), serverUuid: input.uuid, hostname: input.hostname, targetPort: input.targetPort, redirectTo: input.redirectTo, wildcard: input.wildcard, dnsProviderId: input.dnsProviderId, sslStatus: "pending", dnsStatus: "unchecked", lastCheckedAt: null };
+        const dom: s.Domain = { id: id(), serverUuid: input.uuid, hostname: input.hostname, protocol: input.protocol, targetPort: input.targetPort, redirectTo: input.redirectTo, wildcard: input.wildcard, dnsProviderId: input.dnsProviderId, sslStatus: "pending", dnsStatus: "unchecked", lastCheckedAt: null };
         db.domains.push(dom);
         return dom;
       },
@@ -342,6 +342,7 @@ export function createMock(): Implementation {
             variables: t.variables.map((v) => ({ ...v, value: input.variables[v.key] ?? v.default })),
             node: { id: 1, name: "node1", fqdn: "node1.test" }, sftp: { host: "node1.test", port: 2022, username: `${owner.name ?? owner.discordId}.${uuid.slice(0, 8)}` },
             suspended: null,
+            domainsAllowed: t.type === "web",
             sleep: { supported: t.type === "game", enabled: false, idleMinutes: 10 },
             installedAt: null, createdAt: new Date(),
           };
@@ -358,6 +359,7 @@ export function createMock(): Implementation {
         updateAllocations: () => ok,
         delete: ({ input }) => ((db.servers = db.servers.filter((x) => x.uuid !== input.uuid)), ok),
         transfer: () => ok,
+        setDomainsAllowed: ({ input }) => (((srv(input.uuid) as { domainsAllowed?: boolean }).domainsAllowed = input.allowed), ok),
         setSuspended: ({ input }) => {
           const x = srv(input.uuid);
           (x as { suspended: s.ServerSummary["suspended"] }).suspended = input.suspended ? { reason: input.reason, at: new Date() } : null;

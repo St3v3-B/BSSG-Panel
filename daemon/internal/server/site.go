@@ -49,8 +49,27 @@ func (m *Manager) ensureSiteNetwork(ctx context.Context, uuid string) error {
 	return nil
 }
 
-// removeSiteNetwork koppelt MariaDB los en verwijdert het netwerk (alleen als het van ons is).
-func (m *Manager) removeSiteNetwork(ctx context.Context, uuid string) error {
+// EnsureGameNetwork maakt panel-site-<uuid> voor een game-server met een http-route (zonder
+// MariaDB) en koppelt de container als die draait. Aangeroepen bij het zetten van een route.
+func (m *Manager) EnsureGameNetwork(ctx context.Context, uuid string) error {
+	name := SiteNetwork(uuid)
+	labels, err := m.eng.NetworkLabels(ctx, name)
+	switch {
+	case errors.Is(err, engine.ErrNotFound):
+		if err := m.eng.CreateNetwork(ctx, name, m.labels(uuid, RoleSite), false); err != nil {
+			return fmt.Errorf("netwerk %s aanmaken: %w", name, err)
+		}
+	case err != nil:
+		return err
+	case !m.ours(labels):
+		return fmt.Errorf("netwerk %s bestaat maar is niet van deze daemon", name)
+	}
+	return m.connectGameContainer(ctx, uuid)
+}
+
+// connectGameContainer koppelt de servercontainer aan zijn site-netwerk, als dat netwerk
+// (van ons) bestaat en de container draait. Aangeroepen na elke (her)start.
+func (m *Manager) connectGameContainer(ctx context.Context, uuid string) error {
 	name := SiteNetwork(uuid)
 	labels, err := m.eng.NetworkLabels(ctx, name)
 	if errors.Is(err, engine.ErrNotFound) {
@@ -62,7 +81,28 @@ func (m *Manager) removeSiteNetwork(ctx context.Context, uuid string) error {
 	if !m.ours(labels) {
 		return nil
 	}
-	if err := m.eng.DisconnectNetwork(ctx, name, m.cfg.MariaDB); err != nil && !errors.Is(err, engine.ErrNotFound) {
+	if err := m.eng.ConnectNetwork(ctx, name, ContainerName(uuid)); err != nil && !errors.Is(err, engine.ErrNotFound) {
+		return fmt.Errorf("container aan %s koppelen: %w", name, err)
+	}
+	return nil
+}
+
+// removeSiteNetwork koppelt MariaDB los (alleen websites) en verwijdert het netwerk (alleen als het van ons is).
+func (m *Manager) removeSiteNetwork(ctx context.Context, uuid string, web bool) error {
+	name := SiteNetwork(uuid)
+	labels, err := m.eng.NetworkLabels(ctx, name)
+	if errors.Is(err, engine.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !m.ours(labels) {
+		return nil
+	}
+	if !web {
+		_ = m.eng.DisconnectNetwork(ctx, name, ContainerName(uuid))
+	} else if err := m.eng.DisconnectNetwork(ctx, name, m.cfg.MariaDB); err != nil && !errors.Is(err, engine.ErrNotFound) {
 		m.log.Warn("MariaDB loskoppelen mislukt", "network", name, "err", err)
 	}
 	if err := m.eng.RemoveNetwork(ctx, name); err != nil && !errors.Is(err, engine.ErrNotFound) {

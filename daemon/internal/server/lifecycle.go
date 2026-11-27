@@ -242,6 +242,11 @@ func (s *Server) launch(sp spec.ServerSpec) error {
 		_ = eng.Remove(context.Background(), id)
 		return fmt.Errorf("container starten: %w", err)
 	}
+	if sp.Type != "web" {
+		if err := s.m.connectGameContainer(ctx, sp.UUID); err != nil {
+			s.DaemonMessage("warning", err.Error())
+		}
+	}
 	info, err := eng.Inspect(ctx, id)
 	if err != nil {
 		info.StartedAt = time.Now()
@@ -582,8 +587,8 @@ func (s *Server) destroy() error {
 			return fmt.Errorf("container %s verwijderen: %w", n, err)
 		}
 	}
-	if s.IsWeb() {
-		if err := s.m.removeSiteNetwork(ctx, s.uuid); err != nil {
+	{
+		if err := s.m.removeSiteNetwork(ctx, s.uuid, s.IsWeb()); err != nil {
 			s.m.log.Warn("site-netwerk opruimen", "uuid", s.uuid, "err", err)
 		}
 	}

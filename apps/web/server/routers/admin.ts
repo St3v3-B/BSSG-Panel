@@ -443,6 +443,20 @@ export const admin = {
       return ok;
     },
 
+    setDomainsAllowed: async ({ input, ctx }) => {
+      const b = await mustServer(input.uuid);
+      if (b.server.type === "web") throw bad("NOT_A_GAME_SERVER");
+      const db = getDb();
+      if (!input.allowed) {
+        // Uitzetten: bestaande domeinen en hun routes verdwijnen.
+        await removeServerRoutes(b.server.id, b.node);
+        await db.delete(schema.domains).where(eq(schema.domains.serverId, b.server.id));
+      }
+      await db.update(schema.servers).set({ domainsAllowed: input.allowed }).where(eq(schema.servers.id, b.server.id));
+      await logActivity({ action: input.allowed ? "admin.server.domains_allow" : "admin.server.domains_disallow", userId: uid(ctx), serverId: b.server.id, metadata: { serverUuid: b.server.uuid }, ip: ctx.ip, ctx });
+      return ok;
+    },
+
     setSuspended: async ({ input, ctx }) => {
       const b = await mustServer(input.uuid);
       if (input.suspended) {

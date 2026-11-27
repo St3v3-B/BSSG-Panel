@@ -4,14 +4,14 @@
  */
 import type { Ctx, DaemonRoute, DnsCheck, Implementation, SslStatus } from "@panel/api";
 import { TRPCError } from "@trpc/server";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { logActivity } from "../activity";
 import { call, DaemonHttpError, daemonFor, toTrpcError, type NodeRef } from "../daemon";
 import { getDb, schema } from "../db";
 import { getEnv } from "../env";
 import { decrypt } from "../lib/crypto";
-import { CloudflareError, setARecord, zoneFor } from "../lib/cloudflare";
-import { checkDomain, dns } from "../lib/dns";
+import { CloudflareError, setARecord, setSrvRecord, zoneFor } from "../lib/cloudflare";
+import { checkDomain, checkMinecraftDomain, dns } from "../lib/dns";
 import { zonesOrThrow } from "./dns-providers";
 import { requireServer, type ServerAccess } from "../servers-data";
 
@@ -22,6 +22,7 @@ const toDomain = (d: DomainRow, serverUuid: string) => ({
   id: d.id,
   serverUuid,
   hostname: d.hostname,
+  protocol: (d.protocol === "minecraft" ? "minecraft" : "http") as "http" | "minecraft",
   targetPort: d.targetPort,
   redirectTo: d.redirectTo,
   wildcard: d.wildcard,
@@ -68,13 +69,13 @@ export async function nodeIp(node: NodeRef): Promise<string> {
 }
 export const resetNodeIpCache = () => ipCache.clear();
 
-function assertWeb(a: ServerAccess) {
-  if (a.bundle.server.type !== "web") throw new TRPCError({ code: "BAD_REQUEST", message: "NOT_A_WEBSITE" });
-}
+const isMc = (d: Pick<DomainRow, "protocol">) => d.protocol === "minecraft";
+const primaryPort = (a: ServerAccess) => a.bundle.allocations[0]?.port ?? null;
 
 async function runCheck(d: DomainRow, a: ServerAccess): Promise<DnsCheck> {
   const ip = await nodeIp(a.bundle.node);
-  const r = await checkDomain(d.hostname, ip);
+  const port = primaryPort(a);
+  const r = isMc(d) && port ? await checkMinecraftDomain(d.hostname, ip, port) : await checkDomain(d.hostname, ip);
   const checkedAt = new Date();
   const result: DnsCheck = { domainId: d.id, records: r.records, nameservers: r.nameservers, provider: r.provider, warnings: r.warnings, checkedAt };
   await getDb()
@@ -90,11 +91,11 @@ export const domains: Implementation["domains"] = {
     const db = getDb();
     const rows = await db.select().from(schema.domains).where(eq(schema.domains.serverId, a.bundle.server.id)).orderBy(asc(schema.domains.id));
     // SSL-status live uit de daemon; onbereikbaar → laatst bekende.
-    if (rows.length) {
+    if (rows.some((d) => !isMc(d))) {
       try {
         const routes = await daemonFor(a.bundle.node).routes(2000);
         const ssl = new Map(routes.map((r) => [r.host, r.ssl_status as SslStatus]));
-        for (const d of rows) {
+        for (const d of rows.filter((d) => !isMc(d))) {
           const st = ssl.get(routeHost(d));
           if (st && st !== d.sslStatus) {
             d.sslStatus = st;
@@ -110,7 +111,18 @@ export const domains: Implementation["domains"] = {
 
   add: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "domain.manage");
-    assertWeb(a);
+    const isWeb = a.bundle.server.type === "web";
+    if (isWeb && input.protocol !== "http") throw new TRPCError({ code: "BAD_REQUEST", message: "PROTOCOL_NOT_ALLOWED" });
+    if (!isWeb && !a.bundle.server.domainsAllowed) throw new TRPCError({ code: "FORBIDDEN", message: "DOMAINS_NOT_ALLOWED" });
+    const mc = input.protocol === "minecraft";
+    if (mc) {
+      if (input.targetPort !== null || input.redirectTo || input.wildcard || input.hostname.startsWith("*.")) throw new TRPCError({ code: "BAD_REQUEST", message: "MINECRAFT_DOMAIN_OPTIONS" });
+      if (primaryPort(a) === null) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_ALLOCATION" });
+      const [existing] = await getDb().select({ id: schema.domains.id }).from(schema.domains).where(and(eq(schema.domains.serverId, a.bundle.server.id), eq(schema.domains.protocol, "minecraft")));
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "MINECRAFT_DOMAIN_EXISTS" });
+    } else if (!isWeb && input.targetPort === null && !input.redirectTo) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "PORT_REQUIRED" });
+    }
     // "*.x" als hostnaam betekent wildcard op x; opgeslagen zonder "*.".
     const wildcard = input.wildcard || input.hostname.startsWith("*.");
     const hostname = input.hostname.toLowerCase().replace(/^\*\./, "");
@@ -121,20 +133,22 @@ export const domains: Implementation["domains"] = {
     if (input.redirectTo && input.redirectTo === hostname) throw new TRPCError({ code: "BAD_REQUEST", message: "REDIRECT_TO_SELF" });
     const [dup] = await getDb().select({ id: schema.domains.id }).from(schema.domains).where(eq(schema.domains.hostname, hostname));
     if (dup) throw new TRPCError({ code: "CONFLICT", message: "DOMAIN_TAKEN" });
-    const fields = { hostname, targetPort: input.targetPort, redirectTo: input.redirectTo, wildcard, dnsProviderId: input.dnsProviderId };
-    const route = await routeFor(fields, input.uuid);
-    const res = await call(() => daemonFor(a.bundle.node).putRoute(route));
+    const fields = { hostname, protocol: input.protocol, targetPort: input.targetPort, redirectTo: input.redirectTo, wildcard, dnsProviderId: input.dnsProviderId };
+    // Minecraft: geen Caddy-route, alleen DNS (A + SRV).
+    const res = mc ? null : await call(async () => daemonFor(a.bundle.node).putRoute(await routeFor(fields, input.uuid)));
     const [row] = await getDb()
       .insert(schema.domains)
       .values({ serverId: a.bundle.server.id, ...fields, sslStatus: (res?.ssl_status as SslStatus) ?? "pending" })
       .returning();
-    await logActivity({ action: "server.domain.add", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname, redirectTo: input.redirectTo }, ip: ctx.ip, ctx });
+    await logActivity({ action: "server.domain.add", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname, redirectTo: input.redirectTo, protocol: input.protocol }, ip: ctx.ip, ctx });
     return toDomain(row!, input.uuid);
   },
 
   update: async ({ input, ctx }) => {
     const { d, a } = await domainById(ctx, input.id, "domain.manage");
     if (input.redirectTo && input.redirectTo === d.hostname) throw new TRPCError({ code: "BAD_REQUEST", message: "REDIRECT_TO_SELF" });
+    if (isMc(d)) throw new TRPCError({ code: "BAD_REQUEST", message: "MINECRAFT_DOMAIN_OPTIONS" });
+    if (a.bundle.server.type !== "web" && input.targetPort === null && !input.redirectTo) throw new TRPCError({ code: "BAD_REQUEST", message: "PORT_REQUIRED" });
     const next = { ...d, targetPort: input.targetPort, redirectTo: input.redirectTo };
     const res = await call(async () => daemonFor(a.bundle.node).putRoute(await routeFor(next, a.bundle.server.uuid)));
     const [row] = await getDb()
@@ -148,10 +162,12 @@ export const domains: Implementation["domains"] = {
 
   remove: async ({ input, ctx }) => {
     const { d, a } = await domainById(ctx, input.id, "domain.manage");
-    try {
-      await daemonFor(a.bundle.node).deleteRoute(routeHost(d));
-    } catch (e) {
-      if (!(e instanceof DaemonHttpError && e.status === 404)) throw toTrpcError(e);
+    if (!isMc(d)) {
+      try {
+        await daemonFor(a.bundle.node).deleteRoute(routeHost(d));
+      } catch (e) {
+        if (!(e instanceof DaemonHttpError && e.status === 404)) throw toTrpcError(e);
+      }
     }
     await getDb().delete(schema.domains).where(eq(schema.domains.id, d.id));
     await logActivity({ action: "server.domain.remove", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname: d.hostname }, ip: ctx.ip, ctx });
@@ -189,6 +205,8 @@ export const domains: Implementation["domains"] = {
     const changes: Record<string, unknown> = {};
     try {
       for (const n of names) changes[n] = await setARecord(token, zone.id, n, ip);
+      const port = primaryPort(a);
+      if (isMc(d) && port) changes[`_minecraft._tcp.${d.hostname}`] = await setSrvRecord(token, zone.id, `_minecraft._tcp.${d.hostname}`, port, d.hostname);
     } catch (e) {
       if (e instanceof CloudflareError) throw new TRPCError({ code: "BAD_GATEWAY", message: `CLOUDFLARE_ERROR: ${e.message}` });
       throw e;
@@ -206,5 +224,5 @@ export const domains: Implementation["domains"] = {
 /** Bij het verwijderen van een server: alle routes weg (best effort). */
 export async function removeServerRoutes(serverId: number, node: NodeRef): Promise<void> {
   const rows = await getDb().select().from(schema.domains).where(eq(schema.domains.serverId, serverId));
-  for (const d of rows) await daemonFor(node).deleteRoute(routeHost(d)).catch(() => {});
+  for (const d of rows.filter((d) => !isMc(d))) await daemonFor(node).deleteRoute(routeHost(d)).catch(() => {});
 }

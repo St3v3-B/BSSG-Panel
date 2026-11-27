@@ -63,6 +63,7 @@ interface CfRecord {
   name: string;
   content: string;
   proxied?: boolean;
+  data?: { priority?: number; weight?: number; port?: number; target?: string };
 }
 
 /**
@@ -92,6 +93,30 @@ export async function setARecord(token: string, zoneId: string, name: string, ip
       await cf(token, "DELETE", `/zones/${zoneId}/dns_records/${x.id}`);
       stats.deleted++;
     }
+  }
+  return stats;
+}
+
+/** Zorgt voor precies één SRV-record `name` → `0 5 <port> <target>`. */
+export async function setSrvRecord(token: string, zoneId: string, name: string, port: number, target: string): Promise<{ created: number; updated: number; deleted: number }> {
+  const r = await cf<CfRecord[]>(token, "GET", `/zones/${zoneId}/dns_records?per_page=100&name=${encodeURIComponent(name)}`);
+  const recs = r.result.filter((x) => x.name === name && x.type === "SRV");
+  const stats = { created: 0, updated: 0, deleted: 0 };
+  const data = { priority: 0, weight: 5, port, target };
+  const body = { type: "SRV", name, ttl: 1, data };
+  if (recs.length === 0) {
+    await cf(token, "POST", `/zones/${zoneId}/dns_records`, body);
+    stats.created++;
+    return stats;
+  }
+  const d = recs[0]!.data;
+  if (!d || d.priority !== 0 || d.weight !== 5 || d.port !== port || d.target?.replace(/\.$/, "") !== target) {
+    await cf(token, "PUT", `/zones/${zoneId}/dns_records/${recs[0]!.id}`, body);
+    stats.updated++;
+  }
+  for (const x of recs.slice(1)) {
+    await cf(token, "DELETE", `/zones/${zoneId}/dns_records/${x.id}`);
+    stats.deleted++;
   }
   return stats;
 }

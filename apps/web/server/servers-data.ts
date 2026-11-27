@@ -101,6 +101,7 @@ export function toDetail(
     })),
     node: { id: b.node.id, name: b.node.name, fqdn: b.node.fqdn },
     sftp: { host: b.node.fqdn, port: b.node.sftpPort, username: sftpUsername(viewer.name, viewer.discordId, b.server.uuid) },
+    domainsAllowed: b.server.type === "web" || b.server.domainsAllowed,
     sleep: { supported: templateSleepCapable(b.template), enabled: b.server.sleepEnabled, idleMinutes: b.server.sleepIdleMinutes },
     installedAt: live?.installedAt !== undefined ? live.installedAt : b.server.installedAt,
     createdAt: b.server.createdAt,

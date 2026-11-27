@@ -17,12 +17,14 @@ let admin: TestUser, player: TestUser, sub: TestUser;
 let uuid = "";
 
 /** Nep-DNS: records per naam. */
+const srvZone: Record<string, string[]> = {};
 const zone: Record<string, Partial<Record<"a" | "aaaa" | "cname" | "ns", string[]>>> = {};
 const fakeDns: DnsLookup = {
   a: async (n) => zone[n]?.a ?? [],
   aaaa: async (n) => zone[n]?.aaaa ?? [],
   cname: async (n) => zone[n]?.cname ?? [],
   ns: async (n) => zone[n]?.ns ?? [],
+  srv: async (n) => srvZone[n] ?? [],
 };
 
 /** Nep-Cloudflare-API. */

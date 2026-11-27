@@ -117,7 +117,8 @@ export const contract = {
       "user",
       server.extend({
         hostname: s.Hostname,
-        targetPort: z.number().int().nullable().default(null),
+        protocol: z.enum(["http", "minecraft"]).default("http"),
+        targetPort: z.number().int().min(1).max(65535).nullable().default(null),
         redirectTo: s.Hostname.nullable().default(null),
         wildcard: z.boolean().default(false),
         dnsProviderId: s.Id.nullable().default(null),
@@ -223,6 +224,8 @@ export const contract = {
       /** Verplaatsen naar een andere node (na v1-fase 4, contract staat alvast). */
       transfer: mutation("admin", server.extend({ nodeId: s.Id }), s.Ok),
       /** Opschorten stopt de server; eigenaar en subusers kunnen dan niet starten, schrijven of SFTP'en. Admins wel. */
+      /** Domeinen koppelen aan een game-server toestaan (bv. play.example.com of map.example.com). */
+      setDomainsAllowed: mutation("admin", server.extend({ allowed: z.boolean() }), s.Ok),
       setSuspended: mutation("admin", server.extend({ suspended: z.boolean(), reason: z.string().max(500).nullable().default(null) }), s.Ok),
       /** Andere template (zelfde type). Variabelen die de nieuwe template ook kent blijven; reinstall=true draait het install-script. */
       changeTemplate: mutation("admin", server.extend({ templateId: s.Id, reinstall: z.boolean().default(false) }), s.Ok),
