@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AppJob } from "@panel/api";
+import type { AppJob, AppSummary } from "@panel/api";
 import { AppsManager } from "@/app/_components/apps/apps-manager";
 import { serverTabs } from "@/app/_components/server/server-tabs";
 import { renderWithTrpc, sessionFor } from "./utils";
@@ -41,7 +41,7 @@ describe("AppsManager", () => {
       patch: (m) => {
         const a = m.apps as Mutable<typeof m.apps>;
         const orig = a.catalog;
-        a.catalog = (o) => (orig(o) as ReturnType<typeof orig> & unknown[]).map((x, i) => (i === 2 ? { ...x, compatible: false, incompatibleReason: "no php" } : x)) as never;
+        a.catalog = (o) => (orig(o) as AppSummary[]).map((x, i) => (i === 2 ? { ...x, compatible: false, incompatibleReason: "no php" } : x)) as never;
       },
     });
     const cards = await screen.findAllByTestId("app-card");
