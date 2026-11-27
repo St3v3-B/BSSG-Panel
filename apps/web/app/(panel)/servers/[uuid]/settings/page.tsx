@@ -1,6 +1,8 @@
 "use client";
 import { trpc } from "@/lib/trpc";
 import { DeleteOwnCard, OwnLimitsCard } from "@/app/_components/quota/own-server-cards";
+import { PhpSettingsCard } from "@/app/_components/server/php-settings-card";
+import { ServerNotificationsCard } from "@/app/_components/notifications/webhook-card";
 import { NoPermission } from "@/app/_components/server/no-permission";
 import { RenameCard, ReinstallCard, SleepCard, VariablesCard } from "@/app/_components/server/server-settings";
 import { SftpCard } from "@/app/_components/server/sftp-card";
@@ -20,7 +22,9 @@ export default function ServerSettingsPage() {
     <div className="max-w-3xl space-y-6">
       {manage && <RenameCard server={s} />}
       {manage && s.type === "game" && <VariablesCard server={s} />}
+      {manage && s.type === "web" && <PhpSettingsCard uuid={s.uuid} />}
       {manage && <SleepCard key={`s-${s.sleep.enabled}-${s.sleep.idleMinutes}`} server={s} />}
+      {manage && <ServerNotificationsCard uuid={s.uuid} />}
       {perms.includes("files.read") || perms.includes("files.write") ? (
         <SftpCard uuid={s.uuid} />
       ) : (

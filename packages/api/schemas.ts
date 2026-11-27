@@ -414,18 +414,20 @@ export type Backup = z.infer<typeof Backup>;
 
 // ---------- schema's ----------
 
-export const ScheduleAction = z.enum(["restart", "command", "backup"]);
+export const ScheduleAction = z.enum(["restart", "command", "backup", "exec"]);
 export const Schedule = z.object({
   id: Id,
   serverUuid: Uuid,
   name: z.string(),
   cron: z.string(), // 5 velden, tijdzone Europe/Amsterdam
   action: ScheduleAction,
-  payload: z.string().nullable(), // commando bij action=command
+  payload: z.string().nullable(), // commando bij action=command of exec
   active: z.boolean(),
   lastRunAt: z.date().nullable(),
   nextRunAt: z.date().nullable(),
   lastResult: z.string().nullable(),
+  /** Laatste 4 KiB uitvoer van de laatste run (alleen action=exec). */
+  lastOutput: z.string().nullable(),
 });
 export type Schedule = z.infer<typeof Schedule>;
 
@@ -436,6 +438,37 @@ export const ScheduleInput = z.object({
   payload: z.string().max(1000).nullable(),
   active: z.boolean(),
 });
+
+// ---------- website-instellingen (PHP) ----------
+
+export const PhpExtension = z.enum(["gd", "intl", "exif", "mysqli"]);
+export const PhpSettings = z.object({
+  /** memory_limit in MB; maximaal het RAM-limiet van de site. */
+  memoryLimitMb: z.number().int().min(32).max(32768),
+  /** upload_max_filesize = post_max_size = nginx client_max_body_size, in MB. */
+  uploadMaxMb: z.number().int().min(1).max(4096),
+  maxExecutionTime: z.number().int().min(1).max(300),
+  maxInputVars: z.number().int().min(100).max(100000),
+  displayErrors: z.boolean(),
+  /** IANA-naam, bv. Europe/Amsterdam. */
+  timezone: z.string().min(1).max(64),
+  opcache: z.boolean(),
+  /** Door de template gebouwde extensies die uit staan. */
+  disabledExtensions: z.array(PhpExtension),
+});
+export type PhpSettings = z.infer<typeof PhpSettings>;
+
+export const PhpSettingsInfo = z.object({
+  /** Effectieve waarden: de beheerde ini, anders de standaardwaarden van de template. */
+  settings: PhpSettings,
+  defaults: PhpSettings,
+  /** Het beheerde bestand (php/00-panel.ini) bestaat. */
+  managed: z.boolean(),
+  /** RAM-limiet van de site (MB): bovengrens voor memory_limit. */
+  ramLimitMb: z.number().int(),
+  extensions: z.array(PhpExtension),
+});
+export type PhpSettingsInfo = z.infer<typeof PhpSettingsInfo>;
 
 // ---------- subusers ----------
 
@@ -569,6 +602,22 @@ export const DnsProvider = z.object({
   name: z.string(),
   zones: z.array(z.object({ id: z.string(), name: z.string() })),
 });
+
+/** Alleen echte Discord-webhooks (https://discord.com|discordapp.com/api[/vN]/webhooks/<id>/<token>). */
+export const DISCORD_WEBHOOK_RE = /^https:\/\/(?:discord|discordapp)\.com\/api(?:\/v\d+)?\/webhooks\/\d{5,25}\/[A-Za-z0-9_-]{20,200}$/;
+export const WebhookUrl = z.string().trim().max(300).regex(DISCORD_WEBHOOK_RE, "INVALID_WEBHOOK_URL");
+
+/** Nooit de volledige URL teruggeven (het token zit erin): alleen of hij gezet is en een hint. */
+export const WebhookStatus = z.object({ set: z.boolean(), hint: z.string().nullable() });
+export type WebhookStatus = z.infer<typeof WebhookStatus>;
+
+export const ServerNotifications = z.object({
+  webhook: WebhookStatus,
+  autoRestart: z.boolean(),
+  /** Max herstarts per 10 minuten (1-20). */
+  autoRestartMax: z.number().int().min(1).max(20),
+});
+export type ServerNotifications = z.infer<typeof ServerNotifications>;
 
 export const Settings = Branding.extend({
   defaultLimits: Limits,

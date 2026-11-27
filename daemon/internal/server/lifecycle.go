@@ -126,6 +126,7 @@ func chownTree(root string, uid, gid int) error {
 // Power voert start/stop/restart/kill uit. De statuscontrole is synchroon; de actie zelf
 // loopt op de achtergrond (202 in de API).
 func (s *Server) Power(action string) error {
+	s.cancelAutoRestart()
 	s.mu.Lock()
 	st := s.state
 	installing := s.installing
@@ -289,6 +290,10 @@ func (s *Server) attachRun(id string, att engine.Attachment, startedAt time.Time
 		if runCtx.Err() != nil {
 			return // daemon stopt of server verwijderd: container met rust laten
 		}
+		oom := false
+		if info, ierr := s.m.eng.Inspect(s.ctx, id); ierr == nil {
+			oom = info.OOMKilled
+		}
 		select {
 		case <-logsDone:
 		case <-time.After(2 * time.Second):
@@ -296,11 +301,17 @@ func (s *Server) attachRun(id string, att engine.Attachment, startedAt time.Time
 		cancel()
 		att.Close()
 		s.mu.Lock()
+		var crashTail []string
+		crashed := false
 		if s.run == r {
 			s.run = nil
 			s.startedAt = nil
 			s.sample = engine.StatsSample{}
 			wasStopping := s.state == StateStopping
+			crashed = isCrash(wasStopping, s.sleepPending, s.diskExceeded, s.deleted, code, err, oom)
+			if crashed {
+				crashTail = s.console.Last(crashLogLines)
+			}
 			if s.diskExceeded {
 				s.setStateLocked(StateDiskExceeded)
 			} else if s.sleepPending {
@@ -313,6 +324,9 @@ func (s *Server) attachRun(id string, att engine.Attachment, startedAt time.Time
 			}
 		}
 		s.mu.Unlock()
+		if crashed {
+			s.onCrash(code, oom, crashTail, t)
+		}
 	}()
 	return r
 }

@@ -15,7 +15,7 @@ import { getDb, schema } from "../db";
 import { applyNetworkToml } from "../lib/velocity-toml";
 import { FORWARDING_VAR, PROXY_SECRET_VAR, SECRET_VAR, allocationAddress, isBackend, isProxy, proxyMembers, suggestNames } from "../network";
 import { buildServerSpec } from "../spec";
-import { fetchServerByUuid, fetchServers, isFullAdmin, limitsOf, requireServer, serverVariables, sleepOf, type ServerBundle } from "../servers-data";
+import { fetchServerByUuid, fetchServers, isFullAdmin, limitsOf, requireServer, serverVariables, sleepOf, autoRestartOf, type ServerBundle } from "../servers-data";
 
 const TOML_PATH = "/velocity.toml";
 const bad = (message: string, code: "BAD_REQUEST" | "FORBIDDEN" | "CONFLICT" | "NOT_FOUND" | "PRECONDITION_FAILED" = "BAD_REQUEST") => new TRPCError({ code, message });
@@ -23,7 +23,7 @@ const bad = (message: string, code: "BAD_REQUEST" | "FORBIDDEN" | "CONFLICT" | "
 /** Variabelen van een server bijwerken: daemon-spec (zonder install), dan database. Effect bij de volgende start. */
 export async function setVariables(b: ServerBundle, vars: Record<string, string>) {
   const merged = { ...(await serverVariables(b.server.id)), ...vars };
-  const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: merged, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server) });
+  const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: merged, limits: limitsOf(b.server), allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server) });
   await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
   await getDb()
     .insert(schema.serverVariables)

@@ -112,6 +112,7 @@ describe("admin.servers", () => {
       install: { image: "alpine:3.20", script: "#!/bin/sh\necho install\n" },
       config_files: [{ path: "server.properties", format: "properties", set: { "server-port": "{{SERVER_PORT}}" } }],
       start_on_install: true,
+      auto_restart: null,
       skip_install: false,
       sleep: null,
     });
