@@ -1,10 +1,11 @@
 /** Servers ophalen met alles wat ServerSummary/ServerDetail nodig heeft, plus rechten. */
-import { ALL_PERMISSIONS, type Ctx, type Permission, type ServerDetail, type ServerNetwork, type ServerStatus, type ServerSummary, type UserPublic } from "@panel/api";
+import { ALL_PERMISSIONS, type ImageUpdateInfo, type Ctx, type Permission, type ServerDetail, type ServerNetwork, type ServerStatus, type ServerSummary, type UserPublic } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { apiKeyOf } from "./apikey";
 import { getDb, schema } from "./db";
+import { getImageUpdateSettings } from "./settings";
 import { templateSleepCapable } from "./spec";
 
 type UserRow = typeof schema.users.$inferSelect;
@@ -35,8 +36,10 @@ export async function fetchServers(where: SQL | undefined, opts: { orderBy?: "na
   const doms = ids.length
     ? await db.select({ serverId: schema.domains.serverId, hostname: schema.domains.hostname }).from(schema.domains).where(inArray(schema.domains.serverId, ids)).orderBy(asc(schema.domains.id))
     : [];
+  const defaultImagePolicy = (await getImageUpdateSettings()).defaultPolicy;
   return rows.map((r) => ({
     ...r,
+    defaultImagePolicy,
     allocations: allocs.filter((a) => a.serverId === r.server.id).sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.port - b.port),
     domains: doms.filter((d) => d.serverId === r.server.id).map((d) => d.hostname),
   }));
@@ -55,6 +58,21 @@ export function limitsOf(s: ServerBundle["server"]) {
   return { cpuPct: s.cpuPct, ramMb: s.ramMb, swapMb: s.swapMb, diskMb: s.diskMb };
 }
 
+export const imagePolicyOf = (s: ServerBundle["server"]) =>
+  s.imageUpdatePolicy === "auto" || s.imageUpdatePolicy === "notify" || s.imageUpdatePolicy === "off" ? s.imageUpdatePolicy : null;
+
+export function imageInfo(b: ServerBundle): ImageUpdateInfo {
+  const s = b.server;
+  const policy = imagePolicyOf(s);
+  return {
+    policy,
+    effectivePolicy: policy ?? b.defaultImagePolicy,
+    available: s.imageUpdateAvailable,
+    reinstallRequired: s.imageReinstallRequired,
+    checkedAt: s.imageCheckedAt,
+  };
+}
+
 export function toSummary(b: ServerBundle, viewerId: number, status?: ServerStatus): ServerSummary {
   const primary = b.allocations[0];
   return {
@@ -70,6 +88,7 @@ export function toSummary(b: ServerBundle, viewerId: number, status?: ServerStat
     isOwner: b.server.ownerId === viewerId,
     owner: userPublic(b.owner),
     suspended: b.server.suspendedAt ? { reason: b.server.suspendedReason, at: b.server.suspendedAt } : null,
+    imageUpdate: imageInfo(b),
   };
 }
 

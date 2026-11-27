@@ -24,6 +24,8 @@ export interface SpecInput {
   skipInstall?: boolean;
   /** Slaapstand van de server (servers.sleep_enabled / sleep_idle_minutes). */
   sleep?: { enabled: boolean; idleMinutes: number };
+  /** Beleid voor image-updates: null = globale standaard; weggelaten = de daemon houdt de bestaande keuze. */
+  imagePolicy?: "auto" | "notify" | "off" | null;
 }
 
 const sleepCache = new Map<string, boolean>();
@@ -41,6 +43,26 @@ export function templateSleepCapable(t: Pick<TemplateRow, "id" | "version" | "so
     sleepCache.set(k, v);
   }
   return v;
+}
+
+const versionEnvCache = new Map<string, string | null>();
+/** `image_version_env` uit de template-YAML (gecachet per template-id + versie). */
+export function templateImageVersionEnv(t: Pick<TemplateRow, "id" | "version" | "sourceYaml">): string | null {
+  const k = `${t.id}:${t.version}`;
+  let v = versionEnvCache.get(k);
+  if (v === undefined) {
+    const r = parseTemplate(t.sourceYaml);
+    v = r.ok ? (r.spec.image_version_env ?? null) : null;
+    versionEnvCache.set(k, v);
+  }
+  return v;
+}
+
+/** Spec-veld `image_update`; zonder keuze (undefined) stuurt het panel geen policy mee. */
+export function imageUpdateSpec(t: Parameters<typeof templateImageVersionEnv>[0], policy: SpecInput["imagePolicy"]): DaemonServerSpec["image_update"] {
+  const out: { policy?: string; version_env: string | null } = { version_env: templateImageVersionEnv(t) };
+  if (policy !== undefined) out.policy = policy ?? "default";
+  return out as DaemonServerSpec["image_update"];
 }
 
 export const SLEEP_MOTD = "Server is sleeping - join to start it";
@@ -105,5 +127,6 @@ export function buildServerSpec(i: SpecInput): DaemonServerSpec {
     start_on_install: i.startOnInstall ?? false,
     skip_install: i.skipInstall ?? false,
     sleep: sleepSpec(t, i.sleep),
+    image_update: imageUpdateSpec(t, i.imagePolicy),
   };
 }

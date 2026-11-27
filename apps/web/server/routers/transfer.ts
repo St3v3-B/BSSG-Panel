@@ -18,7 +18,7 @@ import { logActivity } from "../activity";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema } from "../db";
 import { buildServerSpec } from "../spec";
-import { fetchServerByUuid, limitsOf, serverVariables, sleepOf } from "../servers-data";
+import { fetchServerByUuid, imagePolicyOf, limitsOf, serverVariables, sleepOf } from "../servers-data";
 import { assignAllocations, checkAllocations, nodeById } from "./admin";
 import { isMc, routeFor } from "./domains";
 
@@ -100,6 +100,7 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
       skipInstall: true,
       startOnInstall: false,
       sleep: sleepOf(b.server),
+      imagePolicy: imagePolicyOf(b.server),
     });
     await call(() => dst.createServer(spec));
     targetCreated = true;

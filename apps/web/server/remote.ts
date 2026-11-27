@@ -13,6 +13,7 @@ import { getDb, schema } from "./db";
 import { safeEqual, sha256 } from "./lib/crypto";
 import { jwks } from "./lib/jwt";
 import { getLimiter } from "./lib/ratelimit";
+import { logImageUpdate, remoteImageSettings, storeImageReport } from "./image-updates";
 import { sftpUsername } from "./servers-data";
 
 type NodeRow = typeof schema.nodes.$inferSelect;
@@ -100,6 +101,37 @@ export const reportStatus = remoteHandler<{ uuid: string }>(async (req, node, { 
   const s = await serverOnNode(uuid, node);
   if (!s) return error(404, "not_found");
   await getDb().update(schema.servers).set({ status: b.state as ServerStatus }).where(eq(schema.servers.id, s.id));
+  return noContent();
+});
+
+// ---------- image-updates ----------
+
+export const getImageUpdateSettings = remoteHandler(async () => json(200, await remoteImageSettings()));
+
+export const reportImages = remoteHandler(async (req, node) => {
+  const b = await body(
+    req,
+    z.object({
+      servers: z.array(z.object({ uuid: Uuid, update_available: z.boolean(), reinstall_required: z.boolean(), checked_at: z.string().datetime({ offset: true }) }).passthrough()).max(5000),
+    }),
+  );
+  if (!b) return error(400, "bad_request");
+  // Alleen servers van deze node.
+  const mine = new Set((await getDb().select({ uuid: schema.servers.uuid }).from(schema.servers).where(eq(schema.servers.nodeId, node.id))).map((r) => r.uuid));
+  await storeImageReport(b.servers.filter((s) => mine.has(s.uuid)));
+  return noContent();
+});
+
+export const reportImageUpdate = remoteHandler<{ uuid: string }>(async (req, node, { uuid }) => {
+  const b = await body(
+    req,
+    z.object({ successful: z.boolean(), mode: z.enum(["auto", "manual"]), from_image_id: z.string().nullish(), to_image_id: z.string().nullish(), error: z.string().nullish() }),
+  );
+  if (!b) return error(400, "bad_request");
+  const s = await serverOnNode(uuid, node);
+  if (!s) return error(404, "not_found");
+  if (b.successful) await getDb().update(schema.servers).set({ imageUpdateAvailable: false, imageReinstallRequired: false }).where(eq(schema.servers.id, s.id));
+  await logImageUpdate(s.id, b);
   return noContent();
 });
 

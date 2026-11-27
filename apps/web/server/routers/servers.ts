@@ -10,7 +10,7 @@ import { signBrowserJwt } from "../lib/jwt";
 import { buildServerSpec, templateSleepCapable, validateVariables } from "../spec";
 import { serverNetwork } from "../network";
 import { forbidApiKey } from "../apikey";
-import { fetchServers, limitsOf, sleepOf, requireServer, isSuspendedFor, serverVariables, toDetail, toSummary, type ServerBundle } from "../servers-data";
+import { fetchServers, imagePolicyOf, limitsOf, sleepOf, requireServer, isSuspendedFor, serverVariables, toDetail, toSummary, type ServerBundle } from "../servers-data";
 
 const ok = { ok: true as const };
 const LIVE_TIMEOUT_MS = 1500;
@@ -24,6 +24,7 @@ export async function currentSpec(b: ServerBundle, opts: { startOnInstall?: bool
     limits: limitsOf(b.server),
     allocations: b.allocations,
     sleep: sleepOf(b.server),
+    imagePolicy: imagePolicyOf(b.server),
     ...opts,
   });
 }
@@ -74,7 +75,7 @@ export async function liveStatuses(rows: ServerBundle[]): Promise<Map<string, Se
 
 export const servers: Pick<
   Implementation["servers"],
-  "list" | "get" | "stats" | "power" | "sendCommand" | "consoleToken" | "rename" | "updateVariables" | "reinstall" | "activity" | "updateSleep"
+  "list" | "get" | "stats" | "power" | "sendCommand" | "consoleToken" | "rename" | "updateVariables" | "reinstall" | "activity" | "updateSleep" | "updateImagePolicy" | "updateImageNow"
 > = {
   list: async ({ ctx }) => {
     const uid = ctx.session!.userId;
@@ -181,6 +182,25 @@ export const servers: Pick<
     await call(async () => daemonFor(b.node).updateServer(b.server.uuid, await currentSpec({ ...b, server: next }, { skipInstall: true })));
     await getDb().update(schema.servers).set({ sleepEnabled: input.enabled, sleepIdleMinutes: input.idleMinutes }).where(eq(schema.servers.id, b.server.id));
     await logActivity({ action: "server.sleep.update", userId: ctx.session!.userId, serverId: b.server.id, metadata: { enabled: input.enabled, idleMinutes: input.idleMinutes }, ip: ctx.ip, ctx });
+    return ok;
+  },
+
+  updateImagePolicy: async ({ input, ctx }) => {
+    forbidApiKey(ctx);
+    const a = await requireServer(ctx, input.uuid, "owner", { mutates: true });
+    const b = a.bundle;
+    const next = { ...b.server, imageUpdatePolicy: input.policy };
+    await call(async () => daemonFor(b.node).updateServer(b.server.uuid, await currentSpec({ ...b, server: next }, { skipInstall: true })));
+    await getDb().update(schema.servers).set({ imageUpdatePolicy: input.policy }).where(eq(schema.servers.id, b.server.id));
+    await logActivity({ action: "server.image.policy", userId: ctx.session!.userId, serverId: b.server.id, metadata: { policy: input.policy ?? "default" }, ip: ctx.ip, ctx });
+    return ok;
+  },
+
+  updateImageNow: async ({ input, ctx }) => {
+    forbidApiKey(ctx);
+    const a = await requireServer(ctx, input.uuid, "owner", { mutates: true });
+    await call(() => daemonFor(a.bundle.node).updateServerImage(input.uuid));
+    await logActivity({ action: "server.image.update.requested", userId: ctx.session!.userId, serverId: a.bundle.server.id, ip: ctx.ip, ctx });
     return ok;
   },
 

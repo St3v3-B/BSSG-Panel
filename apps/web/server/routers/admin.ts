@@ -12,7 +12,8 @@ import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema, type Db } from "../db";
 import { getEnv } from "../env";
 import { buildServerSpec, validateVariables } from "../spec";
-import { fetchServerByUuid, fetchServers, limitsOf, sleepOf, serverVariables, toDetail, toSummary, userPublic, type ServerBundle } from "../servers-data";
+import { fetchServerByUuid, fetchServers, imagePolicyOf, limitsOf, sleepOf, serverVariables, toDetail, toSummary, userPublic, type ServerBundle } from "../servers-data";
+import { adminImageRows, checkAllNodes } from "../image-updates";
 import { getSettings } from "../settings";
 import { templateRow } from "../templates";
 import type { Ctx } from "@panel/api";
@@ -269,6 +270,15 @@ export const admin = {
     return { nodes: health, alerts, serverCount: srv?.n ?? 0, userCount: usr?.n ?? 0 };
   }) satisfies A["dashboard"],
 
+  imageUpdates: {
+    list: async () => adminImageRows(),
+    checkNow: async ({ ctx }) => {
+      await checkAllNodes();
+      await logActivity({ action: "admin.image.check", userId: uid(ctx), ip: ctx.ip, ctx });
+      return { ok: true as const };
+    },
+  } satisfies A["imageUpdates"],
+
   nodes: {
     list: async () => (await getDb().select().from(schema.nodes).orderBy(asc(schema.nodes.id))).map(nodeOut),
     get: async ({ input }) => {
@@ -398,7 +408,7 @@ export const admin = {
 
     updateLimits: async ({ input, ctx }) => {
       const b = await mustServer(input.uuid);
-      const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: await serverVariables(b.server.id), limits: input.limits, allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server) });
+      const spec = buildServerSpec({ uuid: b.server.uuid, template: b.template, variables: await serverVariables(b.server.id), limits: input.limits, allocations: b.allocations, skipInstall: true, sleep: sleepOf(b.server), imagePolicy: imagePolicyOf(b.server) });
       await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
       await getDb()
         .update(schema.servers)
@@ -436,6 +446,7 @@ export const admin = {
           allocations: allocs.map((a, i) => ({ ip: a.ip, port: a.port, isPrimary: i === 0 })),
           skipInstall: true,
           sleep: sleepOf(b.server),
+          imagePolicy: imagePolicyOf(b.server),
         });
         // Binnen de transactie: faalt de daemon, dan blijft de database ongewijzigd.
         await call(() => daemonFor(b.node).updateServer(b.server.uuid, spec));
@@ -684,6 +695,10 @@ export const admin = {
         const l = input.defaultLimits;
         if (l.cpuPct < 0 || l.ramMb < 0 || l.swapMb < 0 || l.diskMb < 0) throw bad("INVALID_LIMITS");
         pairs.push(["default_limits", l]);
+      }
+      if (input.imageUpdates !== undefined) {
+        const iu = input.imageUpdates;
+        pairs.push(["image_update_default_policy", iu.defaultPolicy], ["image_update_window", { start: iu.windowStart, end: iu.windowEnd }]);
       }
       for (const [key, value] of pairs) {
         await getDb().insert(schema.settings).values({ key, value }).onConflictDoUpdate({ target: schema.settings.key, set: { value } });
