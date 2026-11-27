@@ -658,6 +658,13 @@ export const nl: Dict = {
     restoreConfirm: "Ja, herstellen",
     restoreStarted: "Herstel gestart. De server is gestopt en start weer als hij draaide.",
     deleteWarn: "Deze backup definitief verwijderen uit de opslag?",
+    phase: { preparing: "Voorbereiden", dumping: "Databases exporteren", archiving: "Uploaden", stopping: "Server stoppen", downloading: "Downloaden en uitpakken", applying: "Data terugzetten", finishing: "Afronden", done: "Klaar", failed: "Mislukt", cancelled: "Geannuleerd" },
+    progressOf: (done: string, total: string) => `${done} van ${total}`,
+    etaLeft: (d: string) => `nog ongeveer ${d}`,
+    cancel: "Annuleren",
+    cancelRestoreHint: "Nu annuleren laat de huidige bestanden ongemoeid.",
+    cancelled: "Geannuleerd",
+    cancelling: "Annuleren…",
   },
   schedules: {
     noAccess: "Je hebt geen rechten voor de schema's van deze server.",

@@ -659,6 +659,13 @@ export const en = {
     restoreConfirm: "Yes, restore",
     restoreStarted: "Restore started. The server is stopped and starts again if it was running.",
     deleteWarn: "Permanently delete this backup from the storage?",
+    phase: { preparing: "Preparing", dumping: "Dumping databases", archiving: "Uploading", stopping: "Stopping the server", downloading: "Downloading and unpacking", applying: "Putting the data in place", finishing: "Finishing", done: "Done", failed: "Failed", cancelled: "Cancelled" },
+    progressOf: (done: string, total: string) => `${done} of ${total}`,
+    etaLeft: (d: string) => `about ${d} left`,
+    cancel: "Cancel",
+    cancelRestoreHint: "Cancelling now leaves the current files untouched.",
+    cancelled: "Cancelled",
+    cancelling: "Cancelling…",
   },
   schedules: {
     noAccess: "You don't have permission to manage this server's schedules.",

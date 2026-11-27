@@ -1,7 +1,7 @@
 "use client";
-import { Archive, Database as DbIcon, Download, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Archive, Database as DbIcon, Download, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Backup, Permission } from "@panel/api";
+import type { Backup, BackupProgress, Permission } from "@panel/api";
 import { trpc } from "@/lib/trpc";
 import { QueryError } from "@/app/_components/query-error";
 import { Alert } from "@/app/_components/ui/alert";
@@ -26,6 +26,10 @@ export function BackupManager({ uuid, permissions }: { uuid: string; permissions
   const canRestore = permissions.includes("backup.restore");
   // Zolang er iets loopt, elke 2 s verversen (de daemon meldt het resultaat aan het panel).
   const list = trpc.backups.list.useQuery({ uuid }, { refetchInterval: (q) => (q.state.data?.some((b) => ACTIVE.has(b.status)) ? 2000 : false) });
+  // Live voortgang van de daemon (ook na herladen: de daemon weet wat er loopt).
+  const anyActive = !!list.data?.some((b) => ACTIVE.has(b.status));
+  const progress = trpc.backups.progress.useQuery({ uuid }, { enabled: anyActive, refetchInterval: anyActive ? 1000 : false });
+  const live = anyActive ? (progress.data ?? null) : null;
   return (
     <div className="max-w-4xl space-y-6" data-testid="backup-manager">
       {canCreate && <CreateBackup uuid={uuid} />}
@@ -38,7 +42,7 @@ export function BackupManager({ uuid, permissions }: { uuid: string; permissions
       ) : (
         <div className="grid gap-3">
           {list.data.map((b) => (
-            <BackupRow key={b.id} uuid={uuid} backup={b} canCreate={canCreate} canRestore={canRestore} />
+            <BackupRow key={b.id} uuid={uuid} backup={b} progress={live?.backupId === b.id ? live : null} canCreate={canCreate} canRestore={canRestore} />
           ))}
         </div>
       )}
@@ -99,7 +103,7 @@ function useNow(active: boolean) {
   return now;
 }
 
-function BackupRow({ uuid, backup: b, canCreate, canRestore }: { uuid: string; backup: Backup; canCreate: boolean; canRestore: boolean }) {
+function BackupRow({ uuid, backup: b, progress: p, canCreate, canRestore }: { uuid: string; backup: Backup; progress: BackupProgress | null; canCreate: boolean; canRestore: boolean }) {
   const t = useT();
   const utils = trpc.useUtils();
   const [confirm, setConfirm] = useState<null | "restore" | "delete">(null);
@@ -108,6 +112,8 @@ function BackupRow({ uuid, backup: b, canCreate, canRestore }: { uuid: string; b
   const refresh = () => void utils.backups.list.invalidate({ uuid });
   const restore = trpc.backups.restore.useMutation({ onSuccess: () => (setConfirm(null), refresh()) });
   const del = trpc.backups.delete.useMutation({ onSuccess: () => (setConfirm(null), refresh()) });
+  const cancel = trpc.backups.cancel.useMutation({ onSuccess: () => (refresh(), void utils.backups.progress.invalidate({ uuid })) });
+  const canCancel = !!p?.cancellable && (p.operation === "restore" ? canRestore : canCreate);
   const download = trpc.backups.downloadUrl.useMutation({
     onSuccess: (r) => {
       // De gesigneerde S3-url opent als download (10 minuten geldig).
@@ -118,7 +124,7 @@ function BackupRow({ uuid, backup: b, canCreate, canRestore }: { uuid: string; b
     },
   });
   const done = b.status === "completed";
-  const err = restore.error ?? del.error ?? download.error;
+  const err = restore.error ?? del.error ?? download.error ?? cancel.error;
   return (
     <Card data-testid="backup-row" className="p-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -140,10 +146,17 @@ function BackupRow({ uuid, backup: b, canCreate, canRestore }: { uuid: string; b
               {t.backups.checksum}: {b.sha256}
             </div>
           )}
-          {b.status === "failed" && b.error && (
-            <div className="break-words text-xs text-destructive" data-testid="backup-error">
-              {t.backups.failedReason}: {b.error}
+          {b.status === "failed" && b.error === "cancelled" ? (
+            <div className="text-xs text-muted-foreground" data-testid="backup-error">
+              {t.backups.cancelled}
             </div>
+          ) : (
+            b.status === "failed" &&
+            b.error && (
+              <div className="break-words text-xs text-destructive" data-testid="backup-error">
+                {t.backups.failedReason}: {b.error}
+              </div>
+            )
           )}
         </div>
         <Badge variant={VARIANT[b.status]}>{t.backups.status[b.status]}</Badge>
@@ -163,14 +176,7 @@ function BackupRow({ uuid, backup: b, canCreate, canRestore }: { uuid: string; b
           </Button>
         )}
       </div>
-      {active && (
-        <div className="mt-3 space-y-1">
-          <div role="progressbar" aria-label={t.backups.status[b.status]} className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-            <div className="h-full w-1/3 animate-pulse rounded-full bg-primary" />
-          </div>
-          <div className="text-xs text-muted-foreground">{t.backups.runningFor(formatDuration(Math.max(0, now - b.createdAt.getTime())))}</div>
-        </div>
-      )}
+      {active && <ProgressBar backup={b} progress={p} now={now} canCancel={canCancel} cancelling={cancel.isPending || (cancel.isSuccess && active)} onCancel={() => cancel.mutate({ id: b.id })} />}
       {confirm === "restore" && (
         <Alert variant="warning" className="mt-3" role="alertdialog" aria-label={t.backups.restoreTitle(b.name)}>
           <div className="space-y-3">
@@ -203,5 +209,43 @@ function BackupRow({ uuid, backup: b, canCreate, canRestore }: { uuid: string; b
       {restore.isSuccess && <p className="mt-3 text-sm text-success">{t.backups.restoreStarted}</p>}
       {err && <p className="mt-3 text-sm text-destructive">{errorText(err)}</p>}
     </Card>
+  );
+}
+
+/** Voortgangsbalk met fase, percentage, bytes en ETA; zonder live gegevens een bezig-animatie. */
+export function ProgressBar({ backup: b, progress: p, now, canCancel, cancelling, onCancel }: { backup: Backup; progress: BackupProgress | null; now: number; canCancel: boolean; cancelling: boolean; onCancel: () => void }) {
+  const t = useT();
+  const pct = p ? Math.round(p.percent) : null;
+  const since = p ? p.startedAt.getTime() : b.createdAt.getTime();
+  const label = p ? t.backups.phase[p.phase] : t.backups.status[b.status];
+  return (
+    <div className="mt-3 space-y-1" data-testid="backup-progress">
+      <div
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        {...(pct !== null ? { "aria-valuenow": pct } : {})}
+        className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+      >
+        {pct !== null ? <div className="h-full rounded-full bg-primary transition-[width] duration-700" style={{ width: `${pct}%` }} /> : <div className="h-full w-1/3 animate-pulse rounded-full bg-primary" />}
+      </div>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        {p ? (
+          <>
+            <span className="font-medium text-foreground">{label}</span>
+            <span>{pct}%</span>
+            {p.totalBytes > 0 && p.bytes > 0 && <span>{t.backups.progressOf(formatBytes(p.bytes), formatBytes(p.totalBytes))}</span>}
+            {p.etaSeconds !== null && p.etaSeconds > 0 && <span>{t.backups.etaLeft(formatDuration(p.etaSeconds * 1000))}</span>}
+          </>
+        ) : null}
+        <span>{t.backups.runningFor(formatDuration(Math.max(0, now - since)))}</span>
+        {canCancel && (
+          <Button size="sm" variant="ghost" className="ml-auto h-6 px-2 text-destructive" disabled={cancelling} title={p?.operation === "restore" ? t.backups.cancelRestoreHint : undefined} onClick={onCancel}>
+            {cancelling ? <Spinner /> : <X />} {cancelling ? t.backups.cancelling : t.backups.cancel}
+          </Button>
+        )}
+      </div>
+    </div>
   );
 }

@@ -56,6 +56,59 @@ describe("BackupManager", () => {
     expect(within(running).getByRole("progressbar")).toBeTruthy();
   });
 
+  it("live voortgang (ook na herladen): fase, percentage, bytes, ETA en annuleren", async () => {
+    const started = new Date(Date.now() - 30_000);
+    const { bodies } = renderWithTrpc(<BackupManager uuid={SMP} permissions={[...ALL]} />, {
+      session: sessionFor("admin"),
+      patch: (m) => {
+        (m.backups as Mutable<typeof m.backups>).list = async () => [{ id: 5, serverUuid: SMP, name: "nachtelijk", sizeBytes: null, sha256: null, status: "running", includesDatabases: false, error: null, createdAt: started, completedAt: null }];
+        (m.backups as Mutable<typeof m.backups>).progress = async () => ({ backupId: 5, operation: "backup", phase: "archiving", bytes: 420 * 1024 * 1024, totalBytes: 800 * 1024 * 1024, percent: 42, etaSeconds: 125, startedAt: started, cancellable: true });
+      },
+    });
+    const bar = await screen.findByRole("progressbar", { name: "Uploaden" });
+    expect(bar.getAttribute("aria-valuenow")).toBe("42");
+    const box = screen.getByTestId("backup-progress");
+    expect(box.textContent).toContain("42%");
+    expect(box.textContent).toMatch(/420([.,]0)? MiB van 800([.,]0)? MiB/);
+    expect(box.textContent).toContain("nog ongeveer 2m 5s");
+    fireEvent.click(within(box).getByRole("button", { name: /Annuleren/ }));
+    await waitFor(() => expect(bodies.find((b) => b.path === "backups.cancel")?.input).toEqual({ id: 5 }));
+  });
+
+  it("geen annuleerknop als het niet meer kan of zonder recht; zonder live gegevens een bezig-balk", async () => {
+    const started = new Date();
+    const row = { id: 6, serverUuid: SMP, name: "herstel", sizeBytes: 10, sha256: "b".repeat(64), status: "restoring" as const, includesDatabases: false, error: null, createdAt: started, completedAt: null };
+    renderWithTrpc(<BackupManager uuid={SMP} permissions={["backup.restore"]} />, {
+      session: sessionFor("admin"),
+      patch: (m) => {
+        (m.backups as Mutable<typeof m.backups>).list = async () => [row];
+        (m.backups as Mutable<typeof m.backups>).progress = async () => ({ backupId: 6, operation: "restore", phase: "applying", bytes: 10, totalBytes: 10, percent: 99, etaSeconds: null, startedAt: started, cancellable: false });
+      },
+    });
+    await screen.findByRole("progressbar", { name: "Data terugzetten" });
+    expect(within(screen.getByTestId("backup-progress")).queryByRole("button")).toBeNull();
+    cleanup();
+    renderWithTrpc(<BackupManager uuid={SMP} permissions={[...ALL]} />, {
+      session: sessionFor("admin"),
+      patch: (m) => {
+        (m.backups as Mutable<typeof m.backups>).list = async () => [{ ...row, status: "running" }];
+        (m.backups as Mutable<typeof m.backups>).progress = async () => null;
+      },
+    });
+    const bar = await screen.findByRole("progressbar", { name: "Bezig" });
+    expect(bar.getAttribute("aria-valuenow")).toBeNull();
+  });
+
+  it("een geannuleerde backup toont 'Geannuleerd' in plaats van een fout", async () => {
+    renderWithTrpc(<BackupManager uuid={SMP} permissions={[...ALL]} />, {
+      session: sessionFor("admin"),
+      patch: (m) => {
+        (m.backups as Mutable<typeof m.backups>).list = async () => [{ id: 7, serverUuid: SMP, name: "weg", sizeBytes: null, sha256: null, status: "failed", includesDatabases: false, error: "cancelled", createdAt: new Date(), completedAt: new Date() }];
+      },
+    });
+    expect((await screen.findByTestId("backup-error")).textContent).toBe("Geannuleerd");
+  });
+
   it("herstellen vraagt eerst bevestiging en waarschuwt dat bestanden vervangen worden", async () => {
     const { bodies } = renderWithTrpc(<BackupManager uuid={SMP} permissions={[...ALL]} />, { session: sessionFor("admin") });
     const row = await screen.findByTestId("backup-row");
