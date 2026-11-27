@@ -130,8 +130,9 @@ Toolchain: Go 1.27 (module vereist 1.23+), Node 22, pnpm 12, TypeScript 5.9
     (naam `local`, host `panel-mariadb`, poort 3306, admin `root`) als die er nog niet is.
   - Websites (`type: web`) hebben geen allocations; netwerk `panel-site-<uuid>` (role=site),
     route-upstream `panel-<uuid>:<http_port>`. Sites met een database hangen **niet** aan een gedeeld
-    netwerk: de daemon koppelt `panel-mariadb` aan `panel-site-<uuid>` (de enige toegestane handeling
-    op een infra-object: network connect/disconnect van `panel-mariadb`). Zo zien sites elkaar nooit.
+    netwerk: de daemon koppelt `panel-mariadb` aan `panel-site-<uuid>` (toegestane handelingen
+    op dat infra-object: network connect/disconnect, en `docker exec` met de mariadb-client voor databasebeheer
+    via de daemon-endpoints `/api/db/*`; nooit herstarten, verwijderen of anders aanraken). Zo zien sites elkaar nooit.
     Vanuit de site heet de database `panel-mariadb:3306`.
   - Instelbaar: `MARIADB_CONTAINER` (standaard `panel-mariadb`; daemon koppelt hem, sites gebruiken
     hem als host, database_hosts.host) en `MARIADB_ADMIN_ADDR` (hoe het panel zelf verbindt,
