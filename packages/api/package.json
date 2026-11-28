@@ -11,6 +11,7 @@
     "./schemas": "./schemas.ts",
     "./network": "./network.ts",
     "./players": "./players.ts",
+    "./player-activity": "./player-activity.ts",
     "./template-schema": "./template-schema.ts",
     "./openapi.yaml": "./openapi.yaml"
   },

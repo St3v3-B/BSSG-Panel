@@ -851,3 +851,36 @@ export const importItems = pgTable("import_items", {
   startedAt: ts("started_at"),
   finishedAt: ts("finished_at"),
 }, (t) => [primaryKey({ columns: [t.sessionId, t.sourceServerId] })]);
+
+// ---------- speleractiviteit ----------
+
+/**
+ * Speelsessies per server (tab Activiteit). Open sessie = `left_at` null. Bron: join/leave uit de console
+ * (daemon) of de periodieke ping (vangnet). Uniek op (server, naam, joined_at): een herhaald join-event is een no-op.
+ * `end_reason`: leave | server_stop | crash | sleep | unknown. Bewaard 90 dagen (retention).
+ */
+export const playerSessions = pgTable("player_sessions", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  serverId: integer("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  playerUuid: uuid("player_uuid"),
+  joinedAt: ts("joined_at").notNull(),
+  leftAt: ts("left_at"),
+  endReason: text("end_reason"),
+}, (t) => [
+  uniqueIndex("player_sessions_unique").on(t.serverId, t.name, t.joinedAt),
+  index("player_sessions_server_idx").on(t.serverId, t.joinedAt),
+  index("player_sessions_open_idx").on(t.serverId).where(sql`${t.leftAt} is null`),
+  index("player_sessions_left_idx").on(t.leftAt),
+]);
+
+/**
+ * Statusovergangen voor de tijdlijn (start, stop, sleep, wake), afgeleid uit de statusmeldingen van de daemon.
+ * Crashes staan al in het activiteitenlog (`server.crashed`) en worden daar gelezen. Bewaard 90 dagen.
+ */
+export const serverEvents = pgTable("server_events", {
+  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  serverId: integer("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  kind: text("kind").notNull(),
+  at: ts("at").notNull().defaultNow(),
+}, (t) => [index("server_events_server_idx").on(t.serverId, t.at), index("server_events_at_idx").on(t.at)]);

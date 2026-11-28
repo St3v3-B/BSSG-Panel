@@ -25,6 +25,7 @@ stored version. Admins can also import or edit templates in /admin.
 | `variables` | no | list of `{key, name, description?, default, user_editable, pattern?}` |
 | `install` | yes | `{image, script}`; the script runs with `/bin/sh` and the same `/home/container` |
 | `image_version_env` | no | name of an env variable in the image config (e.g. `PHP_VERSION`) whose major.minor must stay the same for an automatic image update; if it differs the server needs a reinstall and the daemon only reports it |
+| `player_events` | no | player activity (Activity tab): `minecraft` or `velocity` (built-in patterns), `none`, or your own `{join, leave, uuid?}` (see below). Default: `minecraft` for Paper/Folia/Fabric/vanilla/generic Java, `velocity` for Velocity, otherwise none |
 | `config_files` | no | files the daemon updates before every start; `format`: properties, yaml, json or toml (keys with dots are nested) |
 
 ## Variables
@@ -35,6 +36,20 @@ stored version. Admins can also import or edit templates in /admin.
   `SERVER_IP`, `SERVER_PORT` (primary allocation), `TZ` (`Europe/Amsterdam`).
 - `pattern` is a regex that must match the whole value; the panel checks it on save.
 - `user_editable: false` means only an admin can set the value.
+
+## Player events
+
+The daemon matches every console line (colour codes stripped) against these RE2 patterns and reports joins and
+leaves to the panel. `join` and `leave` need a named group `(?<name>…)`; `uuid` (optional, a line logged before
+the join) needs `(?<name>…)` and `(?<uuid>…)`. Anchor patterns to the whole line (`^…$`) and require the name right
+after the log prefix, so chat that imitates a join (`<Griefer> Steve joined the game`) never matches. The presets
+live in `packages/api/player-activity.ts`. Example for another game:
+
+```yml
+player_events:
+  join: '^\[\d{2}:\d{2}:\d{2}\] Player (?<name>[A-Za-z0-9_]{1,32}) connected$'
+  leave: '^\[\d{2}:\d{2}:\d{2}\] Player (?<name>[A-Za-z0-9_]{1,32}) disconnected$'
+```
 
 ## Values in config_files
 

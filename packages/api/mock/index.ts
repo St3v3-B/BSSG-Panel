@@ -16,6 +16,7 @@ import { mockHistory, mockSparkline } from "./stats";
 import { createNotifyMock } from "./notify";
 import { createBillingMock } from "./billing";
 import { createPlayersMock } from "./players";
+import { createPlayerActivityMock } from "./player-activity";
 import { createCloneMock } from "./clone";
 import { createHostopsMock } from "./hostops";
 import { createDeployMock } from "./deploy";
@@ -458,6 +459,7 @@ export function createMock(): Implementation {
       ...cm.servers,
     },
     players: createPlayersMock({ server: srv }),
+    playerActivity: createPlayerActivityMock({ server: srv }),
     content: {
       info: ({ input }) => {
         const p = contentProfile(srv(input.uuid).templateName.toLowerCase());

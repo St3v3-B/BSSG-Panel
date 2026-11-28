@@ -17,3 +17,4 @@ export * from "./daemon-types";
 export * from "./network";
 export * from "./content";
 export * from "./players";
+export * from "./player-activity";
