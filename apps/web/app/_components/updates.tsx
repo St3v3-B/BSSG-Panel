@@ -1,5 +1,5 @@
 "use client";
-import { ArrowUpCircle, RefreshCw } from "lucide-react";
+import { ArrowRight, ArrowUpCircle, CheckCircle2, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { CiStatus, UpdatesStatus } from "@panel/api";
 import { trpc } from "@/lib/trpc";
@@ -30,6 +30,11 @@ export function UpdatesAdmin() {
   const [confirm, setConfirm] = useState(false);
   const [startedHere, setStartedHere] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
   // Pollt elke 3 s zolang er een update loopt, en ook als het panel even weg is (herstart): data blijft staan.
   const q = trpc.admin.updates.status.useQuery(
     { refresh: false },
@@ -44,6 +49,7 @@ export function UpdatesAdmin() {
       /* de gewone poll toont de fout */
     } finally {
       setChecking(false);
+      setNow(Date.now());
     }
   };
   useEffect(() => {
@@ -69,7 +75,9 @@ export function UpdatesAdmin() {
   const reconnecting = q.isRefetchError || (q.fetchStatus === "idle" && q.isError);
   const up = data.upgrade;
   const busy = running || startedHere;
-  const canStart = data.enabled && data.canUpgrade && !busy && data.available.length > 0;
+  const behind = data.behind;
+  const count = behind ?? data.available.length;
+  const canStart = data.enabled && data.canUpgrade && !busy && count > 0;
   return (
     <div className="space-y-6" data-testid="updates-admin">
       {reconnecting && (
@@ -78,12 +86,59 @@ export function UpdatesAdmin() {
         </Alert>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t.version}</CardTitle>
-          <CardDescription>{data.current.sha === "unknown" ? t.versionUnknown : t.commitLine(short(data.current.sha), date(data.current.date))}</CardDescription>
+      <Card data-testid="version-overview">
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle className="text-base">{t.overview}</CardTitle>
+            <CardDescription>{data.current.sha === "unknown" ? t.versionUnknown : t.commitLine(short(data.current.sha), date(data.current.date))}</CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={checking} data-testid="check-now">
+            {checking ? <Spinner /> : <RefreshCw />} {t.checkNow}
+          </Button>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div>
+              <p className="text-xs text-muted-foreground">{t.currentVersion}</p>
+              <p className="font-mono text-2xl font-semibold tabular-nums" data-testid="current-version">
+                {data.currentVersion ?? "–"}
+              </p>
+            </div>
+            {behind !== null && behind > 0 && data.latestVersion && (
+              <>
+                <ArrowRight className="size-5 text-muted-foreground" aria-hidden />
+                <div>
+                  <p className="text-xs text-muted-foreground">{t.latestVersion}</p>
+                  <p className="font-mono text-2xl font-semibold tabular-nums text-primary" data-testid="latest-version">
+                    {data.latestVersion}
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+          <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[auto_1fr]">
+            <dt className="text-muted-foreground">{t.statusLabel}</dt>
+            <dd data-testid="update-status">
+              {data.upToDate === true ? (
+                <Badge variant="success">
+                  <CheckCircle2 /> {t.statusUpToDate}
+                </Badge>
+              ) : behind !== null && behind > 0 ? (
+                <Badge variant="warning">
+                  <ArrowUpCircle /> {t.statusBehind(behind)}
+                </Badge>
+              ) : (
+                <span className="space-y-1">
+                  <Badge variant="secondary">{t.statusUnknown}</Badge>
+                  <span className="block text-xs text-muted-foreground">{t.statusUnknownHint}</span>
+                </span>
+              )}
+            </dd>
+            <dt className="text-muted-foreground">{t.latestVersion}</dt>
+            <dd className="font-mono tabular-nums">{behind === 0 ? <span className="font-sans text-muted-foreground">{t.noNewer}</span> : (data.latestVersion ?? "–")}</dd>
+            <dt className="text-muted-foreground">{t.lastChecked}</dt>
+            <dd data-testid="last-checked">{data.checkedAt ? `${formatDate(data.checkedAt)} (${t.ago(Math.max(0, now - data.checkedAt.getTime()))})` : t.neverChecked}</dd>
+          </dl>
           {data.current.message && <p className="text-sm">{data.current.message}</p>}
           {data.daemonVersion && <p className="text-xs text-muted-foreground">{t.daemon(data.daemonVersion, data.daemonCommit ? short(data.daemonCommit) : "")}</p>}
           <label className="flex items-start gap-2 text-sm">
@@ -127,14 +182,12 @@ export function UpdatesAdmin() {
       )}
 
       <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-base">{t.available}</CardTitle>
-            <CardDescription>{data.available.length === 0 ? t.upToDate : t.availableCount(data.available.length)}</CardDescription>
-          </div>
-          <Button variant="outline" size="sm" onClick={() => void refresh()} disabled={checking}>
-            {checking ? <Spinner /> : <RefreshCw />} {t.checkNow}
-          </Button>
+        <CardHeader>
+          <CardTitle className="text-base">{t.available}</CardTitle>
+          <CardDescription>
+            {count === 0 ? t.upToDate : t.availableCount(count)}
+            {count > data.available.length && data.available.length > 0 ? ` ${t.shownOf(data.available.length, count)}` : ""}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {data.error && <p className="text-sm text-destructive">{data.error === "NOT_LOCAL" ? t.noRepo : data.error}</p>}
@@ -172,7 +225,8 @@ export function UpdatesAdmin() {
       <Dialog open={confirm} onOpenChange={setConfirm}>
         <DialogContent>
           <DialogTitle>{t.confirmTitle}</DialogTitle>
-          <DialogDescription className="mt-2 text-sm text-muted-foreground">{t.confirmText(data.available.length)}</DialogDescription>
+          <DialogDescription className="mt-2 text-sm text-muted-foreground">{data.currentVersion && data.latestVersion && count > 0 ? `${t.fromTo(data.currentVersion, data.latestVersion)}. ` : ""}
+            {t.confirmText(count)}</DialogDescription>
           {start.error && <p className="mt-3 text-sm text-destructive">{errorText(start.error)}</p>}
           <div className="mt-5 flex justify-end gap-2">
             <DialogClose asChild>

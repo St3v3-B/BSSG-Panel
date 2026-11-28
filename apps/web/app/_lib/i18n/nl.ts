@@ -1893,6 +1893,27 @@ export const nl: Dict = {
     pageTitle: "Updates",
     pageDescription: "Werk het panel met één knop bij vanaf GitHub",
     tab: "Updates",
+    overview: "Versie",
+    currentVersion: "Huidige versie",
+    latestVersion: "Nieuwste versie",
+    statusLabel: "Status",
+    lastChecked: "Laatst gecontroleerd",
+    neverChecked: "Nog nooit",
+    ago: (ms: number) => {
+      const m = Math.round(ms / 60_000);
+      if (m < 1) return "zojuist";
+      if (m < 60) return `${m} min geleden`;
+      const h = Math.round(m / 60);
+      if (h < 24) return `${h} uur geleden`;
+      const d = Math.round(h / 24);
+      return `${d} ${d === 1 ? "dag" : "dagen"} geleden`;
+    },
+    statusUpToDate: "Up-to-date",
+    statusBehind: (n: number) => `${n} ${n === 1 ? "update" : "updates"} achter`,
+    statusUnknown: "Onbekend",
+    statusUnknownHint: "Nog niet gecontroleerd of de controle is mislukt. Klik op Nu controleren.",
+    noNewer: "Geen nieuwere versie",
+    shownOf: (shown: number, total: number) => `De nieuwste ${shown} van ${total} worden getoond.`,
     version: "Huidige versie",
     versionUnknown: "Onbekend (de image is zonder versie-informatie gebouwd)",
     commitLine: (sha: string, date: string) => `Commit ${sha}${date ? ` · ${date}` : ""}`,

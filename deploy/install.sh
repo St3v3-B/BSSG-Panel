@@ -118,7 +118,9 @@ export_version() {
   PANEL_COMMIT="$(git -C "$REPO" -c safe.directory="$REPO" rev-parse HEAD 2>/dev/null || echo unknown)"
   PANEL_COMMIT_DATE="$(git -C "$REPO" -c safe.directory="$REPO" log -1 --format=%cI 2>/dev/null || true)"
   PANEL_COMMIT_MESSAGE="$(git -C "$REPO" -c safe.directory="$REPO" log -1 --format=%s 2>/dev/null | head -c 200 || true)"
-  export PANEL_COMMIT PANEL_COMMIT_DATE PANEL_COMMIT_MESSAGE
+  # Versienummer: 0.1.<aantal commits> (Admin > Settings > Updates).
+  PANEL_COMMIT_NUMBER="$(git -C "$REPO" -c safe.directory="$REPO" rev-list --count HEAD 2>/dev/null || true)"
+  export PANEL_COMMIT PANEL_COMMIT_DATE PANEL_COMMIT_MESSAGE PANEL_COMMIT_NUMBER
 }
 export_version
 

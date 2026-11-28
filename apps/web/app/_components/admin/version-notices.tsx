@@ -27,7 +27,10 @@ export function UpdateNotices() {
       {!!s.panelUpdates && (
         <Alert variant="info" data-testid="panel-update-notice">
           <ArrowUpCircle className="size-4" />
-          <AlertTitle>{t.panelUpdate(s.panelUpdates)}</AlertTitle>
+          <AlertTitle>
+            {t.panelUpdate(s.panelUpdates)}
+            {s.currentVersion && s.latestVersion ? <span className="ml-2 font-mono text-xs font-normal text-muted-foreground" data-testid="panel-update-versions">{`${s.currentVersion} → ${s.latestVersion}`}</span> : null}
+          </AlertTitle>
           <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
             <span className="min-w-0 truncate">{s.latest ? t.panelUpdateText(s.latest.message || short(s.latest.sha)) : null}</span>
             <Button asChild size="sm" variant="outline">

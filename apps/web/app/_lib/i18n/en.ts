@@ -1894,6 +1894,27 @@ export const en = {
     pageTitle: "Updates",
     pageDescription: "Update the panel from GitHub with one button",
     tab: "Updates",
+    overview: "Version",
+    currentVersion: "Current version",
+    latestVersion: "Latest version",
+    statusLabel: "Status",
+    lastChecked: "Last checked",
+    neverChecked: "Never",
+    ago: (ms: number) => {
+      const m = Math.round(ms / 60_000);
+      if (m < 1) return "just now";
+      if (m < 60) return `${m} min ago`;
+      const h = Math.round(m / 60);
+      if (h < 24) return `${h} ${h === 1 ? "hour" : "hours"} ago`;
+      const d = Math.round(h / 24);
+      return `${d} ${d === 1 ? "day" : "days"} ago`;
+    },
+    statusUpToDate: "Up to date",
+    statusBehind: (n: number) => `${n} ${n === 1 ? "update" : "updates"} behind`,
+    statusUnknown: "Unknown",
+    statusUnknownHint: "Not checked yet or the check failed. Click Check now.",
+    noNewer: "No newer version",
+    shownOf: (shown: number, total: number) => `Showing the newest ${shown} of ${total}.`,
     version: "Current version",
     versionUnknown: "Unknown (the image was built without version info)",
     commitLine: (sha: string, date: string) => `Commit ${sha}${date ? ` · ${date}` : ""}`,

@@ -1182,6 +1182,10 @@ export type PanelCommit = z.infer<typeof PanelCommit>;
 export const AvailableUpdate = PanelCommit.extend({ author: z.string().nullable(), ci: CiStatus });
 export type AvailableUpdate = z.infer<typeof AvailableUpdate>;
 
+/** Versienummer van het panel: `0.1.<aantal commits op main>` (git rev-list --count); elke commit op main is een versie. */
+export const PANEL_VERSION_PREFIX = "0.1";
+export const panelVersionLabel = (n: number | null | undefined): string | null => (typeof n === "number" && n >= 0 ? `${PANEL_VERSION_PREFIX}.${n}` : null);
+
 /** Laatste (of lopende) run van deploy/upgrade.sh, uit /var/lib/panel/upgrade/status.json. */
 export const UpgradeRun = z.object({
   state: UpgradeState,
@@ -1210,6 +1214,16 @@ export const UpdatesStatus = z.object({
   /** Reden als er niets te tonen of te doen is (daemon onbereikbaar, git fetch mislukt, ...). */
   error: z.string().nullable(),
   githubRepo: z.string().nullable(),
+  /** Versie die nu draait, bv. "0.1.504"; null = onbekend (ontwikkelbuild). */
+  currentVersion: z.string().nullable(),
+  /** Nieuwste versie op origin/main; null = onbekend. Gelijk aan currentVersion als er niets nieuws is. */
+  latestVersion: z.string().nullable(),
+  /** Exact aantal versies (commits) achter; 0 = up-to-date; null = onbekend. */
+  behind: z.number().int().nullable(),
+  /** true = up-to-date, false = update beschikbaar, null = onbekend (niet gecontroleerd of fout). */
+  upToDate: z.boolean().nullable(),
+  /** Laatste geslaagde controle (git fetch van origin); null = nog nooit. */
+  checkedAt: z.date().nullable(),
 });
 export type UpdatesStatus = z.infer<typeof UpdatesStatus>;
 
@@ -1225,6 +1239,9 @@ export const UpdatesSummary = z.object({
   outdatedNodes: z.array(z.object({ id: Id, name: z.string(), isLocal: z.boolean(), commit: z.string().nullable() })),
   /** Laatste keer dat origin is opgehaald (git fetch); null = nog niet. */
   checkedAt: z.date().nullable(),
+  /** Zie UpdatesStatus. `panelUpdates` is het exacte aantal versies achter. */
+  currentVersion: z.string().nullable(),
+  latestVersion: z.string().nullable(),
 });
 export type UpdatesSummary = z.infer<typeof UpdatesSummary>;
 

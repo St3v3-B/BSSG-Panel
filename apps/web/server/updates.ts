@@ -2,7 +2,7 @@
  * Panel-updates (Admin > Settings > Updates): status van de lokale daemon (git), CI-status per commit
  * van GitHub (publieke API, zonder token, gecachet) en het starten van deploy/upgrade.sh via de daemon.
  */
-import type { AvailableUpdate, CiStatus, PanelCommit, UpdatesStatus, UpdatesSummary, UpgradeRun } from "@panel/api";
+import { panelVersionLabel, type AvailableUpdate, type CiStatus, type PanelCommit, type UpdatesStatus, type UpdatesSummary, type UpgradeRun } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { logActivity } from "./activity";
@@ -78,6 +78,51 @@ export function runningVersion(): PanelCommit | null {
   return { sha, date: process.env.PANEL_COMMIT_DATE?.trim() || null, message: process.env.PANEL_COMMIT_MESSAGE?.trim() ?? "" };
 }
 
+/** Versienummer (git rev-list --count) dat install.sh in de image bakt; null = onbekend. */
+export function runningNumber(): number | null {
+  const n = Number(process.env.PANEL_COMMIT_NUMBER?.trim());
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+const sameSha = (a: string, b: string) => a.length >= 7 && b.length >= 7 && (a.startsWith(b) || b.startsWith(a));
+
+interface DaemonVersionFields {
+  current: { sha: string };
+  commits?: unknown[] | null;
+  current_number?: number | null;
+  latest_number?: number | null;
+  behind?: number | null;
+  last_fetch?: string | null;
+}
+
+export type VersionInfo = Pick<UpdatesStatus, "currentVersion" | "latestVersion" | "behind" | "upToDate" | "checkedAt">;
+
+/**
+ * Versies en achterstand uit de daemonstatus. De daemon telt de checkout (HEAD); draait het panel uit een
+ * andere commit (bv. na een teruggedraaide upgrade), dan geldt het ingebakken nummer en het verschil met origin/main.
+ */
+export function versionInfo(st: DaemonVersionFields | null, fallbackCheckedAt: number | null = null): VersionInfo {
+  const running = runningVersion();
+  const checkoutIsRunning = !running || sameSha(running.sha, st?.current.sha ?? "");
+  const current = runningNumber() ?? (checkoutIsRunning ? (st?.current_number ?? null) : null);
+  const latest = st?.latest_number ?? null;
+  let behind: number | null = null;
+  if (st) {
+    if (checkoutIsRunning && typeof st.behind === "number") behind = st.behind;
+    else if (current !== null && latest !== null) behind = Math.max(0, latest - current);
+    else if (checkoutIsRunning && (st.commits?.length ?? 50) < 50) behind = st.commits!.length;
+  }
+  const checkedAt = st?.last_fetch ? new Date(st.last_fetch) : fallbackCheckedAt !== null ? new Date(fallbackCheckedAt) : null;
+  const currentVersion = panelVersionLabel(current);
+  return {
+    currentVersion,
+    latestVersion: behind === 0 ? currentVersion : panelVersionLabel(latest),
+    behind,
+    upToDate: behind === null ? null : behind === 0,
+    checkedAt: checkedAt && !Number.isNaN(checkedAt.getTime()) ? checkedAt : null,
+  };
+}
+
 async function localNode() {
   const [n] = await getDb().select().from(schema.nodes).where(eq(schema.nodes.isLocal, true));
   return n ?? null;
@@ -108,6 +153,7 @@ export async function updatesStatus(refresh: boolean): Promise<UpdatesStatus> {
     canUpgrade: false,
     error: null,
     githubRepo: githubRepo(null),
+    ...versionInfo(null),
   };
   const node = await localNode();
   if (!node) return { ...base, error: "NO_LOCAL_NODE" };
@@ -139,6 +185,7 @@ export async function updatesStatus(refresh: boolean): Promise<UpdatesStatus> {
     canUpgrade: true,
     error: st.fetch_error ?? null,
     githubRepo: repo,
+    ...versionInfo(st, lastFetchAt),
   };
 }
 
@@ -187,15 +234,16 @@ export async function startUpgrade(input: { ref?: string; onlyIfCiGreen: boolean
 const FETCH_EVERY_MS = 6 * 60 * 60_000;
 const SUMMARY_TTL_MS = 60_000;
 let lastFetchAt: number | null = null;
-let panelCache: { at: number; value: Pick<UpdatesSummary, "panelUpdates" | "latest"> } | null = null;
+type PanelPart = Pick<UpdatesSummary, "panelUpdates" | "latest" | "currentVersion" | "latestVersion"> & { checkedAt: Date | null };
+let panelCache: { at: number; value: PanelPart } | null = null;
 export const resetSummaryCache = () => {
   lastFetchAt = null;
   panelCache = null;
 };
 
-async function panelUpdates(now: number): Promise<Pick<UpdatesSummary, "panelUpdates" | "latest">> {
+async function panelUpdates(now: number): Promise<PanelPart> {
   if (panelCache && now - panelCache.at < SUMMARY_TTL_MS) return panelCache.value;
-  let value: Pick<UpdatesSummary, "panelUpdates" | "latest"> = { panelUpdates: null, latest: null };
+  let value: PanelPart = { panelUpdates: null, latest: null, currentVersion: panelVersionLabel(runningNumber()), latestVersion: null, checkedAt: lastFetchAt === null ? null : new Date(lastFetchAt) };
   const node = await localNode();
   if (node) {
     const fetch = lastFetchAt === null || now - lastFetchAt >= FETCH_EVERY_MS;
@@ -203,7 +251,8 @@ async function panelUpdates(now: number): Promise<Pick<UpdatesSummary, "panelUpd
       const st = await call(() => daemonFor(node).getPanelUpgradeStatus(fetch));
       if (fetch) lastFetchAt = now;
       const c = st.commits?.[0];
-      value = { panelUpdates: st.commits?.length ?? 0, latest: c ? { sha: c.sha, date: c.date ?? null, message: c.message } : null };
+      const v = versionInfo(st, lastFetchAt);
+      value = { panelUpdates: v.behind ?? st.commits?.length ?? 0, latest: c ? { sha: c.sha, date: c.date ?? null, message: c.message } : null, currentVersion: v.currentVersion, latestVersion: v.latestVersion, checkedAt: v.checkedAt };
     } catch {
       /* geen checkout (NOT_LOCAL) of daemon onbereikbaar: onbekend */
     }
@@ -214,5 +263,5 @@ async function panelUpdates(now: number): Promise<Pick<UpdatesSummary, "panelUpd
 
 export async function updatesSummary(outdatedNodes: UpdatesSummary["outdatedNodes"], now = Date.now()): Promise<UpdatesSummary> {
   const p = await panelUpdates(now);
-  return { panelCommit: runningVersion()?.sha ?? null, ...p, outdatedNodes, checkedAt: lastFetchAt === null ? null : new Date(lastFetchAt) };
+  return { panelCommit: runningVersion()?.sha ?? null, ...p, outdatedNodes };
 }

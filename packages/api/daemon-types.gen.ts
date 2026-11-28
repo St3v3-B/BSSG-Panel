@@ -1292,6 +1292,17 @@ export interface components {
             log_tail: string;
             daemon_version: string;
             daemon_commit?: string;
+            /** @description git rev-list --count HEAD (versienummer = 0.1.<n>); null = onbekend */
+            current_number?: number | null;
+            /** @description git rev-list --count origin/main; null = onbekend */
+            latest_number?: number | null;
+            /** @description Exact aantal commits in HEAD..origin/main (commits is begrensd op 50); null = onbekend */
+            behind?: number | null;
+            /**
+             * Format: date-time
+             * @description Laatste geslaagde git fetch (mtime van FETCH_HEAD); null = nooit
+             */
+            last_fetch?: string | null;
         };
         Players: {
             /** @description null = geen antwoord op de ping */

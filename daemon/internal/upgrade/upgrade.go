@@ -75,6 +75,13 @@ type Status struct {
 	Origin     *string         `json:"origin"`
 	Upgrade    json.RawMessage `json:"upgrade"`
 	LogTail    string          `json:"log_tail"`
+	// Versienummers: aantal commits tot en met HEAD / origin/main (`git rev-list --count`); nil = onbekend.
+	CurrentNumber *int `json:"current_number"`
+	LatestNumber  *int `json:"latest_number"`
+	// Exact aantal commits in HEAD..origin/main (Commits is begrensd op 50).
+	Behind *int `json:"behind"`
+	// Laatste geslaagde `git fetch` (mtime van FETCH_HEAD, RFC 3339); nil = nooit.
+	LastFetch *string `json:"last_fetch"`
 }
 
 // Start is het antwoord op een gestarte upgrade.
@@ -168,11 +175,46 @@ func (s *Service) Status(ctx context.Context, fetch bool) (Status, error) {
 		e := err.Error()
 		st.FetchError = &e
 	}
+	st.CurrentNumber = s.count(ctx, "HEAD")
+	st.LatestNumber = s.count(ctx, "origin/main")
+	st.Behind = s.count(ctx, "HEAD..origin/main")
+	st.LastFetch = s.lastFetch(ctx)
 	if b, err := os.ReadFile(filepath.Join(s.UpgradeDir, "status.json")); err == nil && json.Valid(b) {
 		st.Upgrade = json.RawMessage(bytes.TrimSpace(b))
 	}
 	st.LogTail = s.logTail(40)
 	return st, nil
+}
+
+// count geeft `git rev-list --count <rev>`, of nil als dat niet lukt.
+func (s *Service) count(ctx context.Context, rev string) *int {
+	out, err := s.git(ctx, "rev-list", "--count", rev)
+	if err != nil {
+		return nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil || n < 0 {
+		return nil
+	}
+	return &n
+}
+
+// lastFetch: mtime van FETCH_HEAD (git werkt die bij elke geslaagde fetch bij).
+func (s *Service) lastFetch(ctx context.Context) *string {
+	out, err := s.git(ctx, "rev-parse", "--git-path", "FETCH_HEAD")
+	if err != nil || strings.TrimSpace(out) == "" {
+		return nil
+	}
+	p := strings.TrimSpace(out)
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(s.RepoDir, p)
+	}
+	fi, err := os.Stat(p)
+	if err != nil {
+		return nil
+	}
+	t := fi.ModTime().UTC().Format(time.RFC3339)
+	return &t
 }
 
 func (s *Service) logTail(lines int) string {

@@ -96,18 +96,30 @@ func TestStartRefusals(t *testing.T) {
 
 func TestStatus(t *testing.T) {
 	var fetched bool
-	s, _, up := newSvc(t, func(_ context.Context, name string, args ...string) (string, error) {
+	s, repo, up := newSvc(t, func(_ context.Context, name string, args ...string) (string, error) {
 		j := strings.Join(args, " ")
 		switch {
 		case strings.Contains(j, "fetch"):
 			fetched = true
 			return "", nil
+		case strings.Contains(j, "rev-list --count HEAD..origin/main"):
+			return "73\n", nil
+		case strings.Contains(j, "rev-list --count origin/main"):
+			return "577\n", nil
+		case strings.Contains(j, "rev-list --count HEAD"):
+			return "504\n", nil
+		case strings.Contains(j, "rev-parse --git-path FETCH_HEAD"):
+			return ".git/FETCH_HEAD\n", nil
 		case strings.HasSuffix(j, "HEAD..origin/main"):
 			return "bbb\x1f2026-11-27T10:00:00+01:00\x1fsecond\x1fSteve\naaa\x1f\x1ffirst\x1f\n", nil
 		default:
 			return "ccc\x1f2026-11-26T10:00:00+01:00\x1fcurrent\x1fSteve\n", nil
 		}
 	})
+	os.MkdirAll(filepath.Join(repo, ".git"), 0o755)
+	os.WriteFile(filepath.Join(repo, ".git", "FETCH_HEAD"), []byte("x"), 0o644)
+	fetchAt := time.Date(2026, 11, 27, 9, 30, 0, 0, time.UTC)
+	os.Chtimes(filepath.Join(repo, ".git", "FETCH_HEAD"), fetchAt, fetchAt)
 	os.WriteFile(filepath.Join(up, "status.json"), []byte(`{"state":"success","from":"a","to":"b"}`), 0o644)
 	os.WriteFile(filepath.Join(up, "upgrade-20261126T000000Z.log"), []byte("old\n"), 0o644)
 	os.WriteFile(filepath.Join(up, "upgrade-20261127T000000Z.log"), []byte("l1\nl2\n"), 0o644)
@@ -120,6 +132,12 @@ func TestStatus(t *testing.T) {
 	}
 	if !strings.Contains(string(st.Upgrade), `"success"`) || st.LogTail != "l1\nl2" || st.FetchError != nil {
 		t.Fatalf("%+v", st)
+	}
+	if st.CurrentNumber == nil || *st.CurrentNumber != 504 || st.LatestNumber == nil || *st.LatestNumber != 577 || st.Behind == nil || *st.Behind != 73 {
+		t.Fatalf("numbers: %v %v %v", st.CurrentNumber, st.LatestNumber, st.Behind)
+	}
+	if st.LastFetch == nil || *st.LastFetch != "2026-11-27T09:30:00Z" {
+		t.Fatalf("last fetch: %v", st.LastFetch)
 	}
 	fetched = false
 	if _, err := s.Status(context.Background(), false); err != nil || fetched {
@@ -137,5 +155,9 @@ func TestStatusFetchError(t *testing.T) {
 	st, err := s.Status(context.Background(), true)
 	if err != nil || st.FetchError == nil || !strings.Contains(*st.FetchError, "network down") || st.Current.SHA != "ccc" {
 		t.Fatalf("%v %+v", err, st)
+	}
+	// Onbekende getallen (geen geldige rev-list-uitvoer) en nooit gefetcht: nil, geen fout.
+	if st.CurrentNumber != nil || st.Behind != nil || st.LastFetch != nil {
+		t.Fatalf("expected nil numbers: %+v", st)
 	}
 }

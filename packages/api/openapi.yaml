@@ -1656,6 +1656,10 @@ components:
         log_tail: { type: string, description: "Laatste ~40 regels van het laatste log" }
         daemon_version: { type: string }
         daemon_commit: { type: string }
+        current_number: { type: [integer, "null"], description: "git rev-list --count HEAD (versienummer = 0.1.<n>); null = onbekend" }
+        latest_number: { type: [integer, "null"], description: "git rev-list --count origin/main; null = onbekend" }
+        behind: { type: [integer, "null"], description: "Exact aantal commits in HEAD..origin/main (commits is begrensd op 50); null = onbekend" }
+        last_fetch: { type: [string, "null"], format: date-time, description: "Laatste geslaagde git fetch (mtime van FETCH_HEAD); null = nooit" }
 
     Players:
       type: object

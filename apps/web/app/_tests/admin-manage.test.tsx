@@ -34,12 +34,15 @@ describe("dashboard", () => {
           latest: { sha: "a".repeat(40), date: null, message: "ui: nieuwe dingen" },
           outdatedNodes: [{ id: 1, name: "node1", isLocal: false, commit: "d".repeat(40) }],
           checkedAt: new Date(),
+          currentVersion: "0.1.10",
+          latestVersion: "0.1.13",
         });
       },
     });
     const panel = await screen.findByTestId("panel-update-notice");
     expect(panel.textContent).toContain("3 panel updates available");
     expect(panel.textContent).toContain("ui: nieuwe dingen");
+    expect(within(panel).getByTestId("panel-update-versions").textContent).toBe("0.1.10 → 0.1.13");
     expect(within(panel).getByRole("link").getAttribute("href")).toBe("/admin/settings/updates");
     const nodes = screen.getByTestId("node-update-notice");
     expect(nodes.textContent).toContain("1 node runs an older daemon");
@@ -51,7 +54,7 @@ describe("dashboard", () => {
     renderWithTrpc(<AdminDashboard />, {
       ...admin,
       patch: (m) => {
-        (m.admin.updates as Mutable<typeof m.admin.updates>).summary = () => ({ panelCommit: null, panelUpdates: 0, latest: null, outdatedNodes: [], checkedAt: null });
+        (m.admin.updates as Mutable<typeof m.admin.updates>).summary = () => ({ panelCommit: null, panelUpdates: 0, latest: null, outdatedNodes: [], checkedAt: null, currentVersion: null, latestVersion: null });
       },
     });
     await screen.findByTestId("stat-servers");
