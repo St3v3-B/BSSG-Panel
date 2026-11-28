@@ -46,7 +46,8 @@ describe("backup-login (gebruikersnaam + wachtwoord)", () => {
     expect(row!.passwordHash).toMatch(/^\$argon2id\$/);
 
     const s = await login("ALICE.backup", PW, "198.51.100.200");
-    expect(s.ctx.session).toMatchObject({ userId: u.id, totpVerified: false });
+    // Zonder TOTP telt de sessie als geverifieerd (session.ts), net als na een Discord-login.
+    expect(s.ctx.session).toMatchObject({ userId: u.id, totpVerified: true });
     expect((await s.api.account.get()).user.id).toBe(u.id);
     const [after] = await getDb().select().from(schema.users).where(eq(schema.users.id, u.id));
     expect(after!.lastLoginAt).toBeInstanceOf(Date);
