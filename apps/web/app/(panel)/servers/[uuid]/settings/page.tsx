@@ -8,6 +8,8 @@ import { NoPermission } from "@/app/_components/server/no-permission";
 import { ImageUpdateCard } from "@/app/_components/image-updates";
 import { RenameCard, ReinstallCard, SleepCard, VariablesCard } from "@/app/_components/server/server-settings";
 import { SftpCard } from "@/app/_components/server/sftp-card";
+import { AlarmsCard } from "@/app/_components/server/alarms-card";
+import { CloneCard } from "@/app/_components/server/clone-card";
 import { useServer } from "@/app/_hooks/use-server";
 import { useT } from "@/app/_lib/i18n";
 
@@ -28,6 +30,7 @@ export default function ServerSettingsPage() {
       {manage && s.type === "web" && <PhpSettingsCard uuid={s.uuid} />}
       {manage && <SleepCard key={`s-${s.uuid}`} server={s} />}
       {manage && <ServerNotificationsCard uuid={s.uuid} />}
+      {manage && <AlarmsCard uuid={s.uuid} />}
       {manage && <ServerStatusPageCard uuid={s.uuid} name={s.name} />}
       {perms.includes("files.read") || perms.includes("files.write") ? (
         <SftpCard uuid={s.uuid} />
@@ -35,6 +38,7 @@ export default function ServerSettingsPage() {
         <NoPermission>{t.sftp.noAccess}</NoPermission>
       )}
       {s.isOwner && quota.data && <OwnLimitsCard key={`l-${s.uuid}`} server={s} />}
+      {manage && <CloneCard server={s} />}
       {manage && <ReinstallCard server={s} />}
       {s.isOwner && quota.data && <DeleteOwnCard server={s} />}
     </div>

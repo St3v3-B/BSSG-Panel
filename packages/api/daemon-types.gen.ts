@@ -578,6 +578,8 @@ export interface paths {
          *     blijven symlinks, speciale bestanden worden overgeslagen). De server moet gestopt zijn
          *     (`offline`, `sleeping` of `install_failed`), anders 409 `invalid_state`. Alleen met het node-token;
          *     het panel stuurt de stroom door naar `importServerData` van de doelnode.
+         *     Met `live=1` (kopie maken) mag de server ook draaien (niet `installing`); het panel bevriest de
+         *     wereld zelf als dat nodig is. Een bestand dat tijdens het lezen krimpt breekt de stroom af.
          */
         get: operations["exportServerData"];
         put?: never;
@@ -607,6 +609,31 @@ export interface paths {
          */
         put: operations["importServerData"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/transfer/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Datamap van een andere server op deze node naar deze (gestopte) server kopiëren
+         * @description Voor "server dupliceren" op dezelfde node: zelfde inhoud als `exportServerData` → `importServerData`,
+         *     maar de data blijft op de node. Het doel moet gestopt zijn; de bron ook, tenzij `live`.
+         *     Respecteert de schijfquotum van het doel (507). Het verzoek afbreken stopt de kopie; de gedeeltelijke
+         *     inhoud blijft staan (de aanroeper verwijdert dan de server). Oudere daemons: 404 `not_found` (unknown path).
+         */
+        post: operations["copyServerData"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2579,7 +2606,9 @@ export interface operations {
     };
     exportServerData: {
         parameters: {
-            query?: never;
+            query?: {
+                live?: "0" | "1";
+            };
             header?: never;
             path: {
                 uuid: components["parameters"]["Uuid"];
@@ -2618,6 +2647,40 @@ export interface operations {
         };
         responses: {
             /** @description Uitgepakt */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            507: components["responses"]["DiskFull"];
+        };
+    };
+    copyServerData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    source_uuid: string;
+                    /** @default false */
+                    live?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Gekopieerd */
             204: {
                 headers: {
                     [name: string]: unknown;

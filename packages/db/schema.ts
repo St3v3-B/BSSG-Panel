@@ -413,6 +413,67 @@ export const schedules = pgTable("schedules", {
   createdAt: createdAt(),
 });
 
+// ---------- server dupliceren ----------
+
+/**
+ * Kopieeropdracht "server dupliceren": achtergrondtaak met stappen (zoals app_installs). Het doel wordt
+ * bij een fout of annuleren verwijderd (target_server_id wordt dan null; uuid en naam blijven voor het log).
+ * `databases`: welke database naar welke nieuwe is gekopieerd (configbestanden worden niet herschreven).
+ */
+export const serverClones = pgTable("server_clones", {
+  id: pk(),
+  sourceServerId: integer("source_server_id").references(() => servers.id, { onDelete: "set null" }),
+  targetServerId: integer("target_server_id").references(() => servers.id, { onDelete: "set null" }),
+  sourceUuid: uuid("source_uuid").notNull(),
+  targetUuid: uuid("target_uuid").notNull(),
+  sourceName: text("source_name").notNull(),
+  targetName: text("target_name").notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+  status: text("status", { enum: ["running", "succeeded", "failed", "canceled"] }).notNull().default("running"),
+  steps: jsonb("steps").$type<Array<{ key: string; status: "pending" | "running" | "done" | "failed" | "skipped" }>>().notNull().default([]),
+  options: jsonb("options").$type<{ copyDatabases: boolean; domain: string | null; startAfter: boolean; sameNode: boolean; live: boolean }>().notNull(),
+  bytesCopied: bigint("bytes_copied", { mode: "number" }).notNull().default(0),
+  bytesTotal: bigint("bytes_total", { mode: "number" }),
+  databases: jsonb("databases").$type<Array<{ from: string; to: string; username: string }>>().notNull().default([]),
+  warnings: jsonb("warnings").$type<string[]>().notNull().default([]),
+  cancelRequested: boolean("cancel_requested").notNull().default(false),
+  errorCode: text("error_code"),
+  error: text("error"),
+  createdAt: createdAt(),
+  finishedAt: ts("finished_at"),
+}, (t) => [index("server_clones_source_idx").on(t.sourceServerId), index("server_clones_target_idx").on(t.targetServerId)]);
+
+// ---------- verbruiksalarmen ----------
+
+/**
+ * Eigen alarminstelling van een server (geen rij = de standaard van de admin, settings `alarm_defaults`).
+ * Drempels in procenten van de limiet; null = dat alarm uit. `notify_offline` uit = geen crashmelding
+ * voor de eigenaar (de bestaande server_crashed-melding; het admin-kanaal blijft).
+ */
+export const serverAlarms = pgTable("server_alarms", {
+  serverId: integer("server_id").primaryKey().references(() => servers.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(true),
+  cpuPct: integer("cpu_pct"),
+  ramPct: integer("ram_pct"),
+  durationMinutes: integer("duration_minutes").notNull().default(5),
+  diskPct: integer("disk_pct"),
+  notifyOffline: boolean("notify_offline").notNull().default(true),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/** Toestand per server en meetwaarde (cpu, ram, disk): actief sinds, laatste melding (cooldown). */
+export const serverAlarmState = pgTable("server_alarm_state", {
+  serverId: integer("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  metric: text("metric", { enum: ["cpu", "ram", "disk"] }).notNull(),
+  active: boolean("active").notNull().default(false),
+  since: ts("since"),
+  /** Gemeten waarde (procent van de limiet) bij de laatste evaluatie toen het alarm actief was. */
+  value: real("value"),
+  threshold: integer("threshold"),
+  lastNotifiedAt: ts("last_notified_at"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.serverId, t.metric] }), index("server_alarm_state_active_idx").on(t.active)]);
+
 // ---------- meldingen ----------
 
 /** Verificatielinks voor e-mailadressen; alleen de SHA-256 van het token. */

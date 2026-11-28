@@ -2,6 +2,7 @@
  * Remote-API (daemon → panel, packages/api/panel-remote.yaml).
  * Authenticatie: Bearer <node-token>; de node wordt gevonden via sha256(token).
  */
+import { crashTarget } from "./alarms";
 import { verify as argonVerify } from "@node-rs/argon2";
 import { ALL_PERMISSIONS, type ServerStatus } from "@panel/api";
 import { and, eq, sql } from "drizzle-orm";
@@ -146,7 +147,9 @@ export const reportImageUpdate = remoteHandler<{ uuid: string }>(async (req, nod
 
 /** Melding voor een server (webhooks van server, eigenaar en admin). Gooit nooit. */
 async function notifyServer(serverId: number, e: Parameters<typeof notify>[0]): Promise<void> {
-  const target = await targetForServer(serverId).catch(() => null);
+  let target = await targetForServer(serverId).catch(() => null);
+  // Crash = het offline-alarm van de server; de eigenaar kan het per server uitzetten (het admin-kanaal blijft).
+  if (target && e.kind === "server_crashed") target = await crashTarget(target, serverId).catch(() => target);
   if (target) await notify(e, target);
 }
 

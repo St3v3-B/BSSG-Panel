@@ -27,6 +27,8 @@ import { servers } from "./routers/servers";
 import { stats } from "./routers/stats";
 import { subusers } from "./routers/subusers";
 import { billing, billingAdmin } from "./billing/router";
+import { cloneProcedures } from "./clone";
+import { alarmAdmin, alarmProcedures } from "./alarms";
 
 export { createContext } from "./context";
 
@@ -41,7 +43,7 @@ function merge(base: Tree, over: Tree): Tree {
   return out;
 }
 
-const phase1 = { billing, inbox, statusPages, apps, auth: { ...auth, verifyEmail }, backups, schedules, siteSettings, account: { ...account, ...credentials, ...quotaAccount, ...notificationsAccount, ...notifyAccount }, servers: { ...servers, ...stats, ...network, ...bedrock, ...quotaServers, ...notificationsServer }, files, content, players, subusers, domains, databases, admin: { ...admin, ...billingAdmin, notifications: notificationsAdmin, smtp: smtpAdmin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders, s3Targets } };
+const phase1 = { billing, inbox, statusPages, apps, auth: { ...auth, verifyEmail }, backups, schedules, siteSettings, account: { ...account, ...credentials, ...quotaAccount, ...notificationsAccount, ...notifyAccount }, servers: { ...servers, ...stats, ...network, ...bedrock, ...quotaServers, ...notificationsServer, ...cloneProcedures, ...alarmProcedures }, files, content, players, subusers, domains, databases, admin: { ...admin, ...billingAdmin, alarms: alarmAdmin, notifications: notificationsAdmin, smtp: smtpAdmin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, databaseHosts, dnsProviders, s3Targets } };
 
 /** Paden die echt geïmplementeerd zijn (de rest is NOT_IMPLEMENTED). */
 export function implementedPaths(tree: Tree = phase1 as unknown as Tree, prefix = ""): string[] {

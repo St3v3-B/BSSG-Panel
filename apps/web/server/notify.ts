@@ -95,7 +95,9 @@ export type NotifyEvent =
   | { kind: "node_offline"; nodeName: string; error: string | null }
   | { kind: "node_online"; nodeName: string }
   | { kind: "login_new_ip"; ip: string; userAgent: string | null }
-  | { kind: "image_update"; reinstallRequired: boolean };
+  | { kind: "image_update"; reinstallRequired: boolean }
+  | { kind: "usage_alarm"; metric: "cpu" | "ram" | "disk"; state: "triggered" | "resolved"; valuePct: number; thresholdPct: number; durationMinutes: number }
+  | { kind: "server_cloned"; result: "succeeded" | "failed"; sourceName: string; targetName: string; error: string | null };
 
 export interface Target {
   /** Voor de titel en de link; null bij node- en accountgebeurtenissen. */
@@ -147,6 +149,9 @@ export const COALESCE_MS: Record<NotifyEvent["kind"], number> = {
   node_online: 60_000,
   login_new_ip: 10 * 60_000,
   image_update: 24 * 3_600_000,
+  // Hysterese en cooldown zitten al in ./alarms; hier alleen dubbele aanroepen samenvoegen.
+  usage_alarm: 60_000,
+  server_cloned: 1000,
 };
 
 // ---------- opmaak (kanaalonafhankelijk) ----------
@@ -242,6 +247,35 @@ export function buildMessage(e: NotifyEvent, server: Target["server"], opts: { r
       describe = (b) => `Someone signed in to your account from an IP address that was not used before: ${b(clip(e.ip, 60))}. If this was not you, sign out all other sessions and check your Discord account.`;
       if (e.userAgent) f.push({ name: "Browser", value: clip(e.userAgent, 300) });
       link = "/account";
+      break;
+    case "usage_alarm": {
+      const what = e.metric === "cpu" ? "CPU" : e.metric === "ram" ? "Memory" : "Disk";
+      const pct = (n: number) => `${Math.round(n)}%`;
+      if (e.state === "triggered") {
+        title = `High ${what.toLowerCase()} usage`;
+        level = "warning";
+        describe = (b) =>
+          e.metric === "disk"
+            ? `${b(sname)} uses ${pct(e.valuePct)} of its disk limit (alarm at ${pct(e.thresholdPct)}).`
+            : `${b(sname)} used more than ${pct(e.thresholdPct)} of its ${what.toLowerCase()} limit for ${e.durationMinutes} minutes (now ${pct(e.valuePct)}).`;
+      } else {
+        title = `${what} usage back to normal`;
+        level = "success";
+        describe = (b) => `${b(sname)} is back below the alarm (${what.toLowerCase()} ${pct(e.valuePct)}, alarm at ${pct(e.thresholdPct)}).`;
+      }
+      if (server) link = `/servers/${server.uuid}/stats`;
+      break;
+    }
+    case "server_cloned":
+      if (e.result === "succeeded") {
+        title = "Server copy ready";
+        level = "success";
+        describe = (b) => `${b(clip(e.targetName, 100))} is a copy of ${b(clip(e.sourceName, 100))} and is ready to use.`;
+      } else {
+        title = "Server copy failed";
+        describe = (b) => `Copying ${b(clip(e.sourceName, 100))} to ${b(clip(e.targetName, 100))} failed; the partial copy was removed.`;
+        if (e.error) f.push({ name: "Error", value: e.error, code: true, limit: 900 });
+      }
       break;
     case "image_update":
       title = "Image update available";
@@ -436,7 +470,11 @@ function dedupKey(e: NotifyEvent, t: Target): string {
         ? e.hostname
         : e.kind === "login_new_ip"
           ? `${e.ip}:${(t.users ?? []).join(",")}`
-          : (t.server?.uuid ?? "-");
+          : e.kind === "usage_alarm"
+            ? `${t.server?.uuid ?? "-"}:${e.metric}:${e.state}`
+            : e.kind === "server_cloned"
+              ? `${t.server?.uuid ?? "-"}:${e.targetName}:${e.result}`
+              : (t.server?.uuid ?? "-");
   return `${e.kind}:${id}`;
 }
 
