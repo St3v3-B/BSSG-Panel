@@ -101,5 +101,5 @@ func TestDeployAPI(t *testing.T) {
 		t.Fatalf("report %+v", c.Body)
 	}
 	h.expect("POST", "/api/git/host-key", map[string]any{"host": "-oProxy", "port": 22}, 400)
-	h.expect("POST", "/api/git/host-key", map[string]any{"host": "127.0.0.1", "port": 1}, 502)
+	h.expect("POST", "/api/git/host-key", map[string]any{"host": "127.0.0.1", "port": 1}, 422)
 }

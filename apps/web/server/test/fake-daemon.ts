@@ -56,6 +56,10 @@ export class FakeDaemon {
   /** Aantal geopende databasetunnels. */
   tunnelsOpened = 0;
   private readonly tunnelSockets = new Set<Socket>();
+  /** Lopende git-deploys per server (POST /deploy); de test rondt ze af met finishDeploy(). */
+  readonly deploys = new Map<string, { req: Record<string, unknown>; phase: "fetching" | "building" | "publishing"; log: string[] }>();
+  /** Antwoord van POST /api/git/host-key (null = 502 unreachable). */
+  gitHostKeys: Array<{ type: string; fingerprint: string; known_hosts_line: string }> | null = [];
   /** Antwoord van GET /players voor een server die online is. */
   players: { online: number | null; max: number | null; version: string | null } = { online: 2, max: 20, version: "Paper 1.21.4" };
   /** Antwoord van GET /api/relay (HTTP(S)-relay). */
@@ -139,6 +143,8 @@ export class FakeDaemon {
 
   reset(): void {
     this.requests.length = 0;
+    this.deploys.clear();
+    this.gitHostKeys = [];
     this.servers.clear();
     this.files.clear();
     this.dirs.clear();
@@ -282,6 +288,26 @@ export class FakeDaemon {
       if (members.length) this.proxyNetworks.set(proxy, [...new Set(members)]);
       else this.proxyNetworks.delete(proxy);
       return send(200, view());
+    }
+    if (r.method === "POST" && path === "/api/git/host-key") return this.gitHostKeys ? send(200, { keys: this.gitHostKeys }) : send(422, { error: "host_unreachable", message: "no SSH server reachable" });
+    const dpm = /^\/api\/servers\/([0-9a-f-]{36})\/deploy(?:\/(\d+)\/cancel)?$/.exec(path);
+    if (dpm) {
+      const uuid = dpm[1]!;
+      const s = this.servers.get(uuid);
+      if (!s) return send(404, { error: "not_found" });
+      const cur = this.deploys.get(uuid);
+      if (dpm[2]) {
+        if (!cur || Number(cur.req.deploy_id) !== Number(dpm[2])) return send(404, { error: "not_running" });
+        if (cur.phase === "publishing") return send(409, { error: "not_cancellable" });
+        this.deploys.delete(uuid);
+        return send(202);
+      }
+      if (r.method === "GET") return send(200, { deploy: cur ? { deploy_id: cur.req.deploy_id, phase: cur.phase, started_at: new Date().toISOString(), cancellable: cur.phase !== "publishing", log: cur.log, commit: null } : null });
+      if (s.spec.type !== "web") return send(400, { error: "bad_request", message: "git deploy is only available for websites" });
+      if (cur) return send(409, { error: "deploy_running" });
+      if (this.diskFull) return send(507, { error: "disk_exceeded" });
+      this.deploys.set(uuid, { req: body as Record<string, unknown>, phase: "fetching", log: ["Fetching"] });
+      return send(202);
     }
     const tm = /^\/api\/servers\/([0-9a-f-]{36})\/transfer\/(export|import)$/.exec(path);
     if (tm) {

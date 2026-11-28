@@ -904,7 +904,7 @@ paths:
                     items: { $ref: "#/components/schemas/GitHostKey" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "502": { description: "`unreachable`: geen SSH-server op host:port", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "422": { description: "`host_unreachable`: geen SSH-server op host:port", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /api/servers/{uuid}/backups/progress:
     parameters: [{ $ref: "#/components/parameters/Uuid" }]

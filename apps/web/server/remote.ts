@@ -19,6 +19,7 @@ import { logImageUpdate, remoteImageSettings, storeImageReport } from "./image-u
 import { fetchServerByUuid, sftpUsername } from "./servers-data";
 import { applyServerState } from "./node-cache";
 import { relayConfigFor, storeRelayReport } from "./relay";
+import { finishDeploy, runPendingRedeploy } from "./deploy";
 
 type NodeRow = typeof schema.nodes.$inferSelect;
 
@@ -229,6 +230,33 @@ export const reportRestore = remoteHandler<{ backup_id: string }>(async (req, no
     serverId: r.s.id,
     metadata: b.successful ? { id: r.b.id } : { id: r.b.id, error: b.error?.slice(0, 2000) ?? null },
   });
+  return noContent();
+});
+
+// ---------- git-deploy ----------
+
+const DeployReportBody = z.object({
+  status: z.enum(["succeeded", "failed", "cancelled"]),
+  error: z.string().max(5000).nullish(),
+  commit: z.object({ sha: z.string().max(64), author: z.string().max(500), message: z.string().max(2000), date: z.string().nullish() }).nullish(),
+  log_tail: z.array(z.string().max(4000)).max(2000),
+  duration_ms: z.number().int().min(0).optional(),
+});
+
+export const reportDeploy = remoteHandler<{ deploy_id: string }>(async (req, node, { deploy_id }) => {
+  const b = await body(req, DeployReportBody);
+  if (!b) return error(400, "bad_request");
+  const n = Number(deploy_id);
+  if (!Number.isInteger(n) || n < 1) return error(404, "not_found");
+  const [r] = await getDb()
+    .select({ d: schema.deploys, s: schema.servers })
+    .from(schema.deploys)
+    .innerJoin(schema.servers, eq(schema.servers.id, schema.deploys.serverId))
+    .where(and(eq(schema.deploys.id, n), eq(schema.servers.nodeId, node.id)));
+  if (!r) return error(404, "not_found");
+  await finishDeploy(r.d, r.s, b);
+  const bundle = await fetchServerByUuid(r.s.uuid);
+  if (bundle) await runPendingRedeploy(bundle);
   return noContent();
 });
 

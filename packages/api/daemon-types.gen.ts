@@ -2919,8 +2919,8 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
-            /** @description `unreachable`: geen SSH-server op host:port */
-            502: {
+            /** @description `host_unreachable`: geen SSH-server op host:port */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

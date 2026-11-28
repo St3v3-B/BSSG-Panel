@@ -107,7 +107,7 @@ func (a *API) scanHostKey(w http.ResponseWriter, r *http.Request) {
 	}
 	keys, err := deploy.ScanHostKeys(r.Context(), req.Host, req.Port)
 	if err != nil {
-		writeErr(w, http.StatusBadGateway, "unreachable", err.Error())
+		writeErr(w, http.StatusUnprocessableEntity, "host_unreachable", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})

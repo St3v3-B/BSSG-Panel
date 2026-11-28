@@ -1,5 +1,5 @@
 {
-  "id": "f02fa100-bc4a-4d6c-a68b-3a040337a9fd",
+  "id": "5e32c5a9-85f8-40b9-9f07-2cc71c034f97",
   "prevId": "1aa28492-dc13-475d-b48f-278062674e57",
   "version": "7",
   "dialect": "postgresql",
@@ -1145,6 +1145,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
+        },
+        "redeploy_pending": {
+          "name": "redeploy_pending",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "webhook_id": {
           "name": "webhook_id",

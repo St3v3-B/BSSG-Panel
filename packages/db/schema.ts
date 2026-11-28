@@ -407,6 +407,8 @@ export const deployConfigs = pgTable("deploy_configs", {
   sharedPaths: text("shared_paths").array().notNull().default(sql`'{}'::text[]`),
   restartAfter: boolean("restart_after").notNull().default(false),
   autoDeploy: boolean("auto_deploy").notNull().default(true),
+  /** Er kwam een push binnen tijdens een lopende deploy: daarna nog één keer deployen. */
+  redeployPending: boolean("redeploy_pending").notNull().default(false),
   /** Publiek deel van de webhook-URL; het geheim staat apart (versleuteld). */
   webhookId: text("webhook_id").notNull(),
   webhookSecretEnc: text("webhook_secret_enc").notNull(),

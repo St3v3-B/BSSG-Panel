@@ -18,6 +18,7 @@ CREATE TABLE "deploy_configs" (
 	"shared_paths" text[] DEFAULT '{}'::text[] NOT NULL,
 	"restart_after" boolean DEFAULT false NOT NULL,
 	"auto_deploy" boolean DEFAULT true NOT NULL,
+	"redeploy_pending" boolean DEFAULT false NOT NULL,
 	"webhook_id" text NOT NULL,
 	"webhook_secret_enc" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
