@@ -381,6 +381,62 @@ export const appInstalls = pgTable("app_installs", {
   finishedAt: ts("finished_at"),
 }, (t) => [index("app_installs_server").on(t.serverId)]);
 
+// ---------- git-deploy (websites) ----------
+
+/** Koppeling van een website aan een git-repository (één per server). */
+export const deployConfigs = pgTable("deploy_configs", {
+  serverId: integer("server_id").primaryKey().references(() => servers.id, { onDelete: "cascade" }),
+  repoUrl: text("repo_url").notNull(),
+  branch: text("branch").notNull().default("main"),
+  authType: text("auth_type", { enum: ["none", "token", "ssh"] }).notNull().default("none"),
+  /** HTTPS-token (privérepo). */
+  tokenEnc: text("token_enc"),
+  tokenUsername: text("token_username"),
+  /** Door het panel gegenereerde ed25519-deploy key (OpenSSH-formaat). */
+  sshPrivateKeyEnc: text("ssh_private_key_enc"),
+  sshPublicKey: text("ssh_public_key"),
+  /** Vertrouwde known_hosts-regels voor sshHostFor ("host:poort"), met hun fingerprints. */
+  knownHosts: text("known_hosts"),
+  sshHostFor: text("ssh_host_for"),
+  sshHostKeys: jsonb("ssh_host_keys").$type<Array<{ type: string; fingerprint: string }>>(),
+  sshHostTrust: text("ssh_host_trust", { enum: ["builtin", "confirmed"] }),
+  targetDir: text("target_dir").notNull(),
+  sourceDir: text("source_dir").notNull().default("/"),
+  buildCommand: text("build_command"),
+  buildImage: text("build_image").notNull().default("site"),
+  sharedPaths: text("shared_paths").array().notNull().default(sql`'{}'::text[]`),
+  restartAfter: boolean("restart_after").notNull().default(false),
+  autoDeploy: boolean("auto_deploy").notNull().default(true),
+  /** Publiek deel van de webhook-URL; het geheim staat apart (versleuteld). */
+  webhookId: text("webhook_id").notNull(),
+  webhookSecretEnc: text("webhook_secret_enc").notNull(),
+  createdAt: createdAt(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("deploy_configs_webhook_id").on(t.webhookId)]);
+
+/** Deploy-geschiedenis. `log` = de laatste regels (geredacteerd door de daemon). */
+export const deploys = pgTable("deploys", {
+  id: pk(),
+  serverId: integer("server_id").notNull().references(() => servers.id, { onDelete: "cascade" }),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+  status: text("status", { enum: ["running", "succeeded", "failed", "cancelled"] }).notNull().default("running"),
+  trigger: text("trigger", { enum: ["manual", "webhook"] }).notNull(),
+  branch: text("branch").notNull(),
+  commitSha: text("commit_sha"),
+  commitAuthor: text("commit_author"),
+  commitMessage: text("commit_message"),
+  commitDate: ts("commit_date"),
+  error: text("error"),
+  log: text("log").array().notNull().default(sql`'{}'::text[]`),
+  durationMs: integer("duration_ms"),
+  startedAt: ts("started_at").notNull().defaultNow(),
+  finishedAt: ts("finished_at"),
+}, (t) => [
+  index("deploys_server_idx").on(t.serverId, t.id),
+  // Nooit twee lopende deploys per site (ook niet bij gelijktijdige webhooks).
+  uniqueIndex("deploys_one_running").on(t.serverId).where(sql`status = 'running'`),
+]);
+
 // ---------- backups en schema's ----------
 
 export const backups = pgTable("backups", {

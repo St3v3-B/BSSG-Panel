@@ -56,6 +56,10 @@ export const Permission = z.enum([
   "domain.manage",
   "schedule.manage",
   "power",
+  /** Git-deploy (websites): geschiedenis en instellingen bekijken. */
+  "deploy.read",
+  /** Git-deploy: repository koppelen, instellen en deployen/annuleren. */
+  "deploy.manage",
 ]);
 export type Permission = z.infer<typeof Permission>;
 export const ALL_PERMISSIONS = Permission.options;
@@ -556,6 +560,113 @@ export const Backup = z.object({
   completedAt: z.date().nullable(),
 });
 export type Backup = z.infer<typeof Backup>;
+
+// ---------- git-deploy (websites) ----------
+
+export const DeployAuthType = z.enum(["none", "token", "ssh"]);
+export type DeployAuthType = z.infer<typeof DeployAuthType>;
+/** Image voor het build-commando: `site` = de image van de website zelf, anders een vaste keuze. */
+export const DeployBuildImage = z.enum(["site", "node:24-alpine", "node:22-alpine", "composer:2"]);
+export type DeployBuildImage = z.infer<typeof DeployBuildImage>;
+export const DeployStatus = z.enum(["running", "succeeded", "failed", "cancelled"]);
+export type DeployStatus = z.infer<typeof DeployStatus>;
+export const DeployTrigger = z.enum(["manual", "webhook"]);
+export const DeployPhase = z.enum(["fetching", "building", "publishing"]);
+/** Pad binnen de site of de repo, begint met "/". */
+export const DeployPath = z.string().trim().min(1).max(500).regex(/^\/[^\0\n\r]*$/, "path must start with /");
+
+export const DeployConfigInput = z.object({
+  /** https://host/pad (publiek of met token) of SSH (git@host:pad, ssh://git@host[:poort]/pad). */
+  repoUrl: z.string().trim().min(1).max(500),
+  branch: z.string().trim().min(1).max(200).default("main"),
+  authType: DeployAuthType,
+  /** Alleen bij `token`: weggelaten = ongewijzigd, null = verwijderen. Nooit terug te lezen. */
+  token: z.string().trim().min(1).max(1000).nullable().optional(),
+  /** Gebruikersnaam voor HTTPS (standaard x-access-token; Bitbucket: je gebruikersnaam). */
+  tokenUsername: z.string().trim().max(100).nullable().default(null),
+  /** Map binnen de site die vervangen wordt (standaard de webroot van de template). */
+  targetDir: DeployPath.optional(),
+  /** Map binnen de repo (na de build) die gepubliceerd wordt, bv. /dist; "/" = de hele repo. */
+  sourceDir: DeployPath.default("/"),
+  buildCommand: z.string().trim().max(2000).nullable().default(null),
+  buildImage: DeployBuildImage.default("site"),
+  /** Paden relatief aan targetDir die bewaard blijven (bv. /.env, /uploads). */
+  sharedPaths: z.array(DeployPath).max(50).default([]),
+  /** Draaiende site na het omwisselen herstarten (Node.js). */
+  restartAfter: z.boolean().default(false),
+  /** Webhook triggert automatisch een deploy bij een push op de branch. */
+  autoDeploy: z.boolean().default(true),
+});
+export type DeployConfigInput = z.input<typeof DeployConfigInput>;
+
+export const DeployHostKey = z.object({ type: z.string(), fingerprint: z.string() });
+export type DeployHostKey = z.infer<typeof DeployHostKey>;
+
+export const DeployConfig = z.object({
+  /** false = nog geen repository gekoppeld (de rest zijn dan standaardwaarden). */
+  configured: z.boolean(),
+  /** Mag deze gebruiker instellen en deployen (deploy.manage). */
+  canManage: z.boolean(),
+  repoUrl: z.string().nullable(),
+  branch: z.string(),
+  authType: DeployAuthType,
+  tokenSet: z.boolean(),
+  tokenUsername: z.string().nullable(),
+  targetDir: z.string(),
+  defaultTargetDir: z.string(),
+  sourceDir: z.string(),
+  buildCommand: z.string().nullable(),
+  buildImage: DeployBuildImage,
+  sharedPaths: z.array(z.string()),
+  restartAfter: z.boolean(),
+  autoDeploy: z.boolean(),
+  /** Publieke deploy key (ssh-ed25519 …) om bij GitHub/GitLab toe te voegen; null = nog niet gemaakt. */
+  sshPublicKey: z.string().nullable(),
+  /** Vertrouwde hostsleutels van de SSH-host; null = (nog) niet vertrouwd of geen SSH. */
+  sshHost: z.object({ host: z.string(), port: z.number().int(), trust: z.enum(["builtin", "confirmed"]), keys: z.array(DeployHostKey) }).nullable(),
+  /** https://<panel>/api/deploy/webhook/<id>; alleen met deploy.manage. */
+  webhookUrl: z.string().nullable(),
+  /** Webhook-geheim (GitHub "Secret", GitLab "Secret token"); alleen met deploy.manage. */
+  webhookSecret: z.string().nullable(),
+});
+export type DeployConfig = z.infer<typeof DeployConfig>;
+
+export const DeployHostKeyScan = z.object({
+  host: z.string(),
+  port: z.number().int(),
+  keys: z.array(DeployHostKey),
+  /** github.com/gitlab.com/bitbucket.org met de gepubliceerde sleutels: wordt vanzelf vertrouwd. */
+  builtin: z.boolean(),
+});
+export type DeployHostKeyScan = z.infer<typeof DeployHostKeyScan>;
+
+export const Deploy = z.object({
+  id: Id,
+  serverUuid: Uuid,
+  status: DeployStatus,
+  trigger: DeployTrigger,
+  branch: z.string(),
+  commitSha: z.string().nullable(),
+  commitAuthor: z.string().nullable(),
+  commitMessage: z.string().nullable(),
+  commitDate: z.date().nullable(),
+  /** Naam van wie hem startte (null bij een webhook of een verwijderd account). */
+  triggeredBy: z.string().nullable(),
+  error: z.string().nullable(),
+  startedAt: z.date(),
+  finishedAt: z.date().nullable(),
+  durationMs: z.number().int().nullable(),
+});
+export type Deploy = z.infer<typeof Deploy>;
+
+export const DeployDetail = Deploy.extend({
+  /** Laatste regels van de log; tijdens de deploy live van de daemon. */
+  log: z.array(z.string()),
+  /** Alleen tijdens de deploy. */
+  phase: DeployPhase.nullable(),
+  cancellable: z.boolean(),
+});
+export type DeployDetail = z.infer<typeof DeployDetail>;
 
 /** Live voortgang van een lopende backup of herstel (BackupProgress van de daemon). */
 export const BackupPhase = z.enum(["preparing", "dumping", "archiving", "stopping", "downloading", "applying", "finishing", "done", "failed", "cancelled"]);
@@ -1154,6 +1265,8 @@ export const NotificationEvent = z.enum([
   "login_new_ip",
   "node_offline",
   "image_update",
+  "deploy_failed",
+  "deploy_succeeded",
 ]);
 export type NotificationEvent = z.infer<typeof NotificationEvent>;
 export const ADMIN_NOTIFICATION_EVENTS: readonly NotificationEvent[] = ["node_offline", "image_update"];
@@ -1177,6 +1290,8 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   login_new_ip: { panel: true, discord: false, email: true },
   node_offline: { panel: true, discord: true, email: true },
   image_update: { panel: true, discord: false, email: false },
+  deploy_failed: { panel: true, discord: true, email: true },
+  deploy_succeeded: { panel: false, discord: false, email: false },
 };
 
 export const EmailAddress = z.string().trim().toLowerCase().max(254).pipe(z.email());

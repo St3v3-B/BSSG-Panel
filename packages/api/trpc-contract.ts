@@ -401,6 +401,31 @@ export const contract = {
     runNow: mutation("user", byId, s.Ok),
   },
 
+  /**
+   * Git-deploy voor websites (`type: web`, anders BAD_REQUEST `NOT_A_WEBSITE`). Lezen vereist deploy.read,
+   * instellen/deployen/annuleren deploy.manage. Eén deploy tegelijk per site (CONFLICT `DEPLOY_RUNNING`).
+   * Fouten bij instellen: BAD_REQUEST `INVALID_REPO_URL`, `INVALID_BRANCH`, `INVALID_PATH`, `TOKEN_REQUIRED`.
+   * Bij starten: PRECONDITION_FAILED `NOT_CONFIGURED`, `NO_DEPLOY_KEY`, `HOST_KEY_UNTRUSTED`, `DISK_EXCEEDED`.
+   */
+  deploy: {
+    config: query("user", server, s.DeployConfig),
+    configure: mutation("user", server.extend(s.DeployConfigInput.shape), s.DeployConfig),
+    /** Koppeling verwijderen (token, sleutel en webhook vervallen; de geschiedenis blijft). */
+    disconnect: mutation("user", server, s.Ok),
+    /** Nieuwe ed25519-deploy key; de vorige werkt daarna niet meer. */
+    generateKey: mutation("user", server, s.DeployConfig),
+    /** Hostsleutels van de SSH-host van `repoUrl` ophalen via de node (TOFU: fingerprint tonen). */
+    scanHostKey: mutation("user", server.extend({ repoUrl: z.string().trim().min(1).max(500) }), s.DeployHostKeyScan),
+    /** De getoonde fingerprints vertrouwen (de node haalt ze opnieuw op; ze moeten overeenkomen). */
+    trustHostKey: mutation("user", server.extend({ repoUrl: z.string().trim().min(1).max(500), fingerprints: z.array(z.string().max(100)).min(1).max(10) }), s.DeployConfig),
+    rotateWebhookSecret: mutation("user", server, s.DeployConfig),
+    /** Handmatige deploy van de ingestelde branch. */
+    start: mutation("user", server, s.Deploy),
+    /** Lopende deploy afbreken (vóór het omwisselen; daarna CONFLICT `NOT_CANCELLABLE`). */
+    cancel: mutation("user", byId, s.Ok),
+    list: query("user", server.extend(s.PageInput.shape), s.page(s.Deploy)),
+    get: query("user", byId, s.DeployDetail),
+  },
   /** Alleen PHP-websites (templates php-8-*). Eigenaar of admin; opgeschort → FORBIDDEN `SUSPENDED` voor niet-admins. */
   siteSettings: {
     php: query("user", server, s.PhpSettingsInfo),

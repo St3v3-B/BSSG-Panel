@@ -1124,7 +1124,7 @@ export interface components {
             message?: string;
         };
         /** @enum {string} */
-        Permission: "console.read" | "console.write" | "files.read" | "files.write" | "backup.create" | "backup.restore" | "database.manage" | "domain.manage" | "schedule.manage" | "power";
+        Permission: "console.read" | "console.write" | "files.read" | "files.write" | "backup.create" | "backup.restore" | "database.manage" | "domain.manage" | "schedule.manage" | "power" | "deploy.read" | "deploy.manage";
         /** @enum {string} */
         PowerAction: "start" | "stop" | "restart" | "kill";
         ServerState: {

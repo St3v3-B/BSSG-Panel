@@ -1436,7 +1436,7 @@ components:
 
     Permission:
       type: string
-      enum: [console.read, console.write, files.read, files.write, backup.create, backup.restore, database.manage, domain.manage, schedule.manage, power]
+      enum: [console.read, console.write, files.read, files.write, backup.create, backup.restore, database.manage, domain.manage, schedule.manage, power, deploy.read, deploy.manage]
 
     PowerAction:
       type: string
