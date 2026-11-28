@@ -368,3 +368,33 @@ func (c *Client) ReportRelay(st any) {
 		}
 	}()
 }
+
+// NPMConfig haalt GET /api/remote/npm op (instellingen voor Nginx Proxy Manager) en decodeert hem in out.
+// 204 of 404 (ouder panel) geeft found=false.
+func (c *Client) NPMConfig(ctx context.Context, out any) (found bool, err error) {
+	var raw json.RawMessage
+	err = c.do(ctx, http.MethodGet, "/api/remote/npm", nil, &raw)
+	if se, ok := err.(*StatusError); ok && se.Code == http.StatusNotFound {
+		return false, nil
+	}
+	if err == io.EOF || (err == nil && len(raw) == 0) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, json.Unmarshal(raw, out)
+}
+
+// ReportNPM meldt de toestand van de NPM-koppeling (POST /api/remote/npm/status); één poging, best effort.
+func (c *Client) ReportNPM(st any) {
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := c.do(ctx, http.MethodPost, "/api/remote/npm/status", st, nil); err != nil {
+			c.Log.Debug("npm status to panel failed", "err", err)
+		}
+	}()
+}
