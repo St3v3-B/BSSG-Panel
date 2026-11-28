@@ -10,6 +10,27 @@ const VarKey = z.string().regex(/^[A-Z][A-Z0-9_]*$/, "variabelen in HOOFDLETTERS
 /** Variabelen die de daemon altijd zelf zet; templates mogen ze niet definiëren. */
 export const BUILTIN_VARIABLES = ["SERVER_UUID", "SERVER_MEMORY", "SERVER_IP", "SERVER_PORT", "TZ"] as const;
 
+/** Protocol van een poort: Docker publiceert tcp, udp of beide. */
+export const PortProtocol = z.enum(["tcp", "udp", "both"]);
+export type PortProtocol = z.infer<typeof PortProtocol>;
+
+/**
+ * Poorten van een game-template (zie templates/SCHEMA.md, "Ports"). Eerste = primaire allocation (`SERVER_PORT`);
+ * de rest zijn extra allocations (query, RCON, ...) waarvan het panel de poort in `env` zet.
+ */
+export const TemplatePort = z.object({
+  env: VarKey,
+  name: z.string().min(1).optional(),
+  protocol: PortProtocol.default("both"),
+  /** Gebruikelijke afstand tot de primaire poort; zonder passende allocation krijgt `env` primair + offset (niet gepubliceerd). */
+  offset: z.number().int().min(1).max(10000).optional(),
+  /** Het spel leidt de poort zelf af (primair + offset): alleen een allocation met precies die poort telt. */
+  exact: z.boolean().default(false),
+  /** Zonder deze poort werkt de server niet: het panel weigert aanmaken met te weinig allocations. */
+  required: z.boolean().default(false),
+});
+export type TemplatePort = z.infer<typeof TemplatePort>;
+
 export const TemplateSpec = z
   .object({
     schema: z.literal(1),
@@ -24,8 +45,9 @@ export const TemplateSpec = z
     /** Startcommando, uitgevoerd met /bin/sh -c in /home/container. {{VAR}} wordt vervangen. */
     startup: z.string().min(1),
     stop: z.discriminatedUnion("type", [
-      z.object({ type: z.literal("command"), value: z.string().min(1) }),
-      z.object({ type: z.literal("signal"), value: z.enum(["SIGTERM", "SIGINT", "SIGKILL", "SIGQUIT"]) }),
+      /** timeout: seconden tot de daemon de container killt (standaard 30). */
+      z.object({ type: z.literal("command"), value: z.string().min(1), timeout: z.number().int().min(5).max(600).optional() }),
+      z.object({ type: z.literal("signal"), value: z.enum(["SIGTERM", "SIGINT", "SIGKILL", "SIGQUIT"]), timeout: z.number().int().min(5).max(600).optional() }),
     ]),
     /** Regex op stdout; eerste match zet de status op online. */
     ready_pattern: z.string().min(1),
@@ -57,6 +79,8 @@ export const TemplateSpec = z
       image: z.string().min(1),
       /** Shell-script, uitgevoerd met /bin/sh. Variabelen staan in de env. Exit 0 = gelukt. */
       script: z.string().min(1),
+      /** Maximale duur in minuten (standaard 30 van de daemon); grote SteamCMD-downloads hebben meer nodig. */
+      timeout_minutes: z.number().int().min(1).max(720).optional(),
     }),
     /** Bestanden die de daemon vóór elke start bijwerkt (bv. server-port in server.properties). */
     config_files: z
@@ -69,11 +93,28 @@ export const TemplateSpec = z
         }),
       )
       .default([]),
+    /** Aanbevolen limieten (standaard in het aanmaakformulier van de admin). */
+    recommended: z.object({ memory_mb: z.number().int().min(64).optional(), disk_mb: z.number().int().min(0).optional() }).optional(),
+    /** Alleen game: poorten met protocol; leeg = elke allocation tcp + udp (zoals voorheen). */
+    ports: z.array(TemplatePort).default([]),
   })
   .superRefine((t, ctx) => {
     for (const v of t.variables) {
       if ((BUILTIN_VARIABLES as readonly string[]).includes(v.key))
         ctx.addIssue({ code: "custom", message: `${v.key} is built in and may not be defined as a variable`, path: ["variables"] });
+    }
+    if (t.ports.length) {
+      if (t.type === "web") ctx.addIssue({ code: "custom", message: "web templates have no ports", path: ["ports"] });
+      const [first, ...extra] = t.ports;
+      if (first!.env !== "SERVER_PORT" || first!.offset !== undefined || first!.exact || first!.required)
+        ctx.addIssue({ code: "custom", message: "ports[0] is the primary port: env SERVER_PORT, without offset/exact/required", path: ["ports", 0] });
+      const seen = new Set<string>(t.variables.map((v) => v.key));
+      extra.forEach((p, i) => {
+        if ((BUILTIN_VARIABLES as readonly string[]).includes(p.env) || seen.has(p.env))
+          ctx.addIssue({ code: "custom", message: `${p.env} is built in, a variable or already a port`, path: ["ports", i + 1, "env"] });
+        seen.add(p.env);
+        if (p.offset === undefined) ctx.addIssue({ code: "custom", message: "extra ports require offset", path: ["ports", i + 1, "offset"] });
+      });
     }
     if (t.type === "web" && !t.http_port) ctx.addIssue({ code: "custom", message: "web templates require http_port", path: ["http_port"] });
   });

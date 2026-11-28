@@ -1,0 +1,110 @@
+schema: 1
+slug: cs2
+name: Counter-Strike 2
+description: >-
+  Counter-Strike 2 dedicated server (Steam app 730, installed with SteamCMD). LARGE: the game
+  files are about 35 GB and every update downloads several GB; give the server at least 60 GB
+  disk (the first installation can take a long time). Port: the game port (UDP for the game, TCP
+  for RCON; default 27015), optionally a second allocation for SourceTV (UDP, game + 5). For a
+  public server (internet listing) set a Game Server Login Token from
+  https://steamcommunity.com/dev/managegameservers (app 730) in `STEAM_GSLT`; without a token
+  only LAN/direct connect works. Your configs in `game/csgo/cfg` stay on updates (reinstall).
+  Recommended: 4 GB RAM, 60 GB disk.
+type: game
+version: 1
+# ptero-eggs/steamcmd:sniper: Steam Runtime 3 (sniper), de runtime waar Valve CS2 voor bouwt.
+image: ghcr.io/ptero-eggs/steamcmd:sniper
+# Optionele argumenten alleen als ze gezet zijn (een leeg +sv_setsteamaccount geeft fouten); tekst via de env.
+startup: >-
+  set -- ;
+  if [ -n "$STEAM_GSLT" ]; then set -- "$@" +sv_setsteamaccount "$STEAM_GSLT"; fi;
+  if [ -n "$SERVER_PASSWORD" ]; then set -- "$@" +sv_password "$SERVER_PASSWORD"; fi;
+  if [ -n "$RCON_PASSWORD" ]; then set -- "$@" +rcon_password "$RCON_PASSWORD"; fi;
+  exec ./game/bin/linuxsteamrt64/cs2 -dedicated -console -usercon
+  +ip 0.0.0.0 -port {{SERVER_PORT}} +tv_port {{TV_PORT}} -maxplayers {{MAX_PLAYERS}}
+  +game_type {{GAME_TYPE}} +game_mode {{GAME_MODE}} +map {{MAP}}
+  +hostname "$SERVER_NAME" "$@"
+stop:
+  type: command
+  value: quit
+ready_pattern: "Connection to Steam servers successful|GC Connection established|Host activate"
+recommended:
+  memory_mb: 4096
+  disk_mb: 61440
+ports:
+  - env: SERVER_PORT
+    name: Game + RCON
+    protocol: both
+  - env: TV_PORT
+    name: SourceTV
+    protocol: udp
+    offset: 5
+variables:
+  - key: SERVER_NAME
+    name: Server name
+    default: My CS2 server
+    user_editable: true
+    pattern: "^[A-Za-z0-9 _.,!?#()+:'|-]{1,64}$"
+  - key: STEAM_GSLT
+    name: Game Server Login Token
+    description: From steamcommunity.com/dev/managegameservers (app 730). Needed for internet listing.
+    default: ""
+    user_editable: true
+    pattern: "^[A-Fa-f0-9]{0,64}$"
+  - key: SERVER_PASSWORD
+    name: Join password
+    description: Empty = no password.
+    default: ""
+    user_editable: true
+    pattern: "^[A-Za-z0-9!#%()*+,.:;=?@^_~-]{0,64}$"
+  - key: RCON_PASSWORD
+    name: RCON password
+    description: Empty = no RCON.
+    default: ""
+    user_editable: true
+    pattern: "^[A-Za-z0-9!#%()*+,.:;=?@^_~-]{0,64}$"
+  - key: MAP
+    name: Start map
+    default: de_dust2
+    user_editable: true
+    pattern: "^[a-z0-9_]{1,64}$"
+  - key: MAX_PLAYERS
+    name: Max players
+    default: "16"
+    user_editable: true
+    pattern: "^([1-9]|[1-5][0-9]|6[0-4])$"
+  - key: GAME_TYPE
+    name: Game type
+    description: "0 = classic (with GAME_MODE 0 casual, 1 competitive, 2 wingman), 1 = gun game (0 arms race, 2 deathmatch)."
+    default: "0"
+    user_editable: true
+    pattern: "^[0-6]$"
+  - key: GAME_MODE
+    name: Game mode
+    default: "1"
+    user_editable: true
+    pattern: "^[0-6]$"
+install:
+  image: steamcmd/steamcmd:debian-12
+  # ~35 GB: ruim de tijd geven.
+  timeout_minutes: 360
+  script: |
+    #!/bin/sh
+    # SteamCMD (anoniem) installeert of werkt bij naar /home/container; eigen cfg-bestanden blijven staan.
+    set -eu
+    APP=730
+    cd /home/container
+    export HOME=/root
+    ok() { grep -qE '"StateFlags"[[:space:]]+"4"' "steamapps/appmanifest_$APP.acf" 2>/dev/null; }
+    for n in 1 2 3; do
+      steamcmd +force_install_dir /home/container +login anonymous +app_update "$APP" validate +quit || true
+      ok && break
+      echo "SteamCMD did not finish (attempt $n of 3)"; [ "$n" = 3 ] || sleep 10
+    done
+    ok || { echo "SteamCMD could not install app $APP" >&2; exit 1; }
+    mkdir -p .steam/sdk64 .steam/sdk32
+    cp -f /root/.local/share/Steam/steamcmd/linux64/steamclient.so .steam/sdk64/steamclient.so
+    cp -f /root/.local/share/Steam/steamcmd/linux32/steamclient.so .steam/sdk32/steamclient.so
+    chmod +x game/bin/linuxsteamrt64/cs2
+    echo "Installation complete: Counter-Strike 2 (app $APP)"
+config_files: []

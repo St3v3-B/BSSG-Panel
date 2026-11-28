@@ -13,6 +13,8 @@ export {
   type Handler,
 } from "./trpc-builder";
 export { TemplateSpec, parseTemplate, BUILTIN_VARIABLES } from "./template-schema";
+export { PortProtocol, TemplatePort } from "./template-schema";
+export * from "./template-ports";
 export * from "./daemon-types";
 export * from "./network";
 export * from "./content";

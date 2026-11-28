@@ -1,0 +1,107 @@
+schema: 1
+slug: palworld
+name: Palworld
+description: >-
+  Palworld dedicated server (Steam app 2394010, installed with SteamCMD). Port: the game port
+  (UDP, default 8211); optionally a second allocation for RCON (TCP). The variables below are
+  written into `Pal/Saved/Config/LinuxServer/PalWorldSettings.ini` on every start; edit the
+  other options there (stop the server first). Saves are in `Pal/Saved/SaveGames`. Updating:
+  reinstall (your world stays). Recommended: 8 GB RAM (16 GB for more than 10 players), 12 GB disk.
+type: game
+version: 1
+image: ghcr.io/ptero-eggs/steamcmd:debian
+# Instellingen in OptionSettings=(...) van PalWorldSettings.ini (één regel); de patronen van de variabelen
+# sluiten ", \, /, & en regeleinden uit, zodat sed ze letterlijk kan invullen. De binary direct starten
+# (niet PalServer.sh), zodat het stopsignaal de server zelf bereikt.
+startup: >-
+  CFG=Pal/Saved/Config/LinuxServer/PalWorldSettings.ini;
+  mkdir -p Pal/Saved/Config/LinuxServer;
+  grep -q 'OptionSettings=(' "$CFG" 2>/dev/null || cp DefaultPalWorldSettings.ini "$CFG";
+  opt() { sed -i -E "s/([(,]$1=)(\"[^\"]*\"|[^,)]*)/\1$2/" "$CFG"; };
+  opt ServerName "\"$SERVER_NAME\""; opt ServerDescription "\"$SERVER_DESCRIPTION\"";
+  opt ServerPassword "\"$SERVER_PASSWORD\""; opt AdminPassword "\"$ADMIN_PASSWORD\"";
+  opt ServerPlayerMaxNum {{MAX_PLAYERS}}; opt PublicPort {{SERVER_PORT}};
+  opt RCONEnabled {{RCON_ENABLED}}; opt RCONPort {{RCON_PORT}};
+  set -- ; if [ "{{COMMUNITY}}" = true ]; then set -- -publiclobby; fi;
+  exec ./Pal/Binaries/Linux/PalServer-Linux-Shipping Pal -port={{SERVER_PORT}} -players={{MAX_PLAYERS}}
+  -useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS "$@"
+stop:
+  type: signal
+  value: SIGINT
+  timeout: 90
+ready_pattern: "Setting breakpad minidump AppID = 2394010|Running Palworld dedicated server"
+recommended:
+  memory_mb: 8192
+  disk_mb: 12288
+ports:
+  - env: SERVER_PORT
+    name: Game
+    protocol: udp
+  - env: RCON_PORT
+    name: RCON
+    protocol: tcp
+    offset: 1
+variables:
+  - key: SERVER_NAME
+    name: Server name
+    default: My Palworld server
+    user_editable: true
+    pattern: "^[A-Za-z0-9 _.,!?#()+:'-]{1,64}$"
+  - key: SERVER_DESCRIPTION
+    name: Description
+    default: ""
+    user_editable: true
+    pattern: "^[A-Za-z0-9 _.,!?#()+:'-]{0,128}$"
+  - key: SERVER_PASSWORD
+    name: Join password
+    description: Empty = no password.
+    default: ""
+    user_editable: true
+    pattern: "^[A-Za-z0-9!#%()*+,.:;=?@^_~-]{0,64}$"
+  - key: ADMIN_PASSWORD
+    name: Admin password
+    description: For /AdminPassword in the game and for RCON. Empty = no admin login.
+    default: ""
+    user_editable: true
+    pattern: "^[A-Za-z0-9!#%()*+,.:;=?@^_~-]{0,64}$"
+  - key: MAX_PLAYERS
+    name: Max players
+    description: 1 to 32.
+    default: "16"
+    user_editable: true
+    pattern: "^([1-9]|[12][0-9]|3[0-2])$"
+  - key: COMMUNITY
+    name: Community server
+    description: "`true` = listed in the in-game community server list."
+    default: "false"
+    user_editable: true
+    pattern: "^(true|false)$"
+  - key: RCON_ENABLED
+    name: RCON
+    description: "`True` = RCON on the second allocation (needs an admin password)."
+    default: "False"
+    user_editable: true
+    pattern: "^(True|False)$"
+install:
+  image: steamcmd/steamcmd:debian-12
+  timeout_minutes: 90
+  script: |
+    #!/bin/sh
+    # SteamCMD (anoniem) installeert of werkt bij naar /home/container; Pal/Saved (wereld, instellingen) blijft staan.
+    set -eu
+    APP=2394010
+    cd /home/container
+    export HOME=/root
+    ok() { grep -qE '"StateFlags"[[:space:]]+"4"' "steamapps/appmanifest_$APP.acf" 2>/dev/null; }
+    for n in 1 2 3; do
+      steamcmd +force_install_dir /home/container +login anonymous +app_update "$APP" validate +quit || true
+      ok && break
+      echo "SteamCMD did not finish (attempt $n of 3)"; [ "$n" = 3 ] || sleep 10
+    done
+    ok || { echo "SteamCMD could not install app $APP" >&2; exit 1; }
+    mkdir -p .steam/sdk64 .steam/sdk32
+    cp -f /root/.local/share/Steam/steamcmd/linux64/steamclient.so .steam/sdk64/steamclient.so
+    cp -f /root/.local/share/Steam/steamcmd/linux32/steamclient.so .steam/sdk32/steamclient.so
+    chmod +x Pal/Binaries/Linux/PalServer-Linux-Shipping
+    echo "Installation complete: Palworld (app $APP)"
+config_files: []

@@ -19,12 +19,14 @@ stored version. Admins can also import or edit templates in /admin.
 | `version` | yes | integer; bump on every change |
 | `image` | yes | runtime image, must be able to run as non-root (uid 1000) |
 | `startup` | yes | start command, run with `/bin/sh -c` in `/home/container` |
-| `stop` | yes | `{type: command, value: stop}` or `{type: signal, value: SIGTERM}` |
+| `stop` | yes | `{type: command, value: stop}` or `{type: signal, value: SIGTERM}`; optional `timeout` (seconds, 5-600, default 30) before the daemon kills the container |
 | `ready_pattern` | yes | RE2 regex on stdout; first match sets status to *online* |
 | `http_port` | web only | port in the container where Caddy delivers the traffic |
 | `variables` | no | list of `{key, name, description?, default, user_editable, pattern?}` |
-| `install` | yes | `{image, script}`; the script runs with `/bin/sh` and the same `/home/container` |
+| `install` | yes | `{image, script}`; the script runs with `/bin/sh` and the same `/home/container`; optional `timeout_minutes` (1-720, default 30) |
 | `image_version_env` | no | name of an env variable in the image config (e.g. `PHP_VERSION`) whose major.minor must stay the same for an automatic image update; if it differs the server needs a reinstall and the daemon only reports it |
+| `ports` | no (game only) | protocol and role of the allocations, see [Ports](#ports) |
+| `recommended` | no | `{memory_mb, disk_mb}`: default limits in the admin create form |
 | `config_files` | no | files the daemon updates before every start; `format`: properties, yaml, json or toml (keys with dots are nested) |
 
 ## Variables
@@ -35,6 +37,37 @@ stored version. Admins can also import or edit templates in /admin.
   `SERVER_IP`, `SERVER_PORT` (primary allocation), `TZ` (`Europe/Amsterdam`).
 - `pattern` is a regex that must match the whole value; the panel checks it on save.
 - `user_editable: false` means only an admin can set the value.
+
+## Ports
+
+Without `ports` every allocation is published as TCP **and** UDP (or with the protocol an admin set on the
+allocation). With `ports` the template describes them:
+
+```
+ports:
+  - env: SERVER_PORT        # always first: the primary allocation
+    name: Game
+    protocol: udp           # tcp, udp or both (default both)
+  - env: QUERY_PORT         # extra port: the panel sets this variable to the port of its allocation
+    name: Steam query
+    protocol: udp
+    offset: 1               # usual distance to the primary port (required for extra ports)
+    exact: true             # the game derives it itself: only an allocation at exactly primary + offset counts
+  - env: RCON_PORT
+    protocol: tcp
+    offset: 1
+    required: false         # true: the panel refuses to create the server with too few allocations
+```
+
+- The panel maps the server's allocations (primary first, then by port): first the `exact` ports (only
+  primary + offset on the same IP), then the others (preferably primary + offset, otherwise the next
+  free extra allocation). The protocol of a mapped allocation comes from the template; the others keep
+  their own protocol.
+- An extra port without an allocation is not published; its variable becomes primary + offset (the game
+  can still listen on it inside the container). Use `{{QUERY_PORT}}` in `startup`/`config_files` like any
+  variable; the env names must not collide with variables or built-ins.
+- When the panel picks allocations itself (self-service, plans) it prefers a primary port where the
+  extra ports at primary + offset are free too, and takes at least 1 + the number of `required` ports.
 
 ## Values in config_files
 

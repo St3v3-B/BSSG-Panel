@@ -12,6 +12,7 @@
     "./network": "./network.ts",
     "./players": "./players.ts",
     "./template-schema": "./template-schema.ts",
+    "./template-ports": "./template-ports.ts",
     "./openapi.yaml": "./openapi.yaml"
   },
   "scripts": {
