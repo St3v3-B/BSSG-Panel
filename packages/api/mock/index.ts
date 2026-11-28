@@ -796,7 +796,7 @@ export function createMock(): Implementation {
           for (const part of input.ports.split(",")) {
             const [a, b] = part.split("-").map((p) => Number(p.trim()));
             for (let p = a!; p <= (b ?? a!); p++) {
-              db.allocations.push({ id: id(), nodeId: input.nodeId, ip: input.ip, port: p, serverUuid: null, primary: false, role: "game" });
+              db.allocations.push({ id: id(), nodeId: input.nodeId, ip: input.ip, port: p, serverUuid: null, primary: false, role: "game", protocol: input.protocol, label: null });
               created++;
             }
           }
@@ -811,7 +811,7 @@ export function createMock(): Implementation {
           const owner = user(input.ownerId);
           const uuid = crypto.randomUUID();
           const allocs = input.allocationIds.map((aid) => db.allocations.find((a) => a.id === aid)).filter((a): a is s.Allocation => !!a);
-          allocs.forEach((a, i) => Object.assign(a, { serverUuid: uuid, primary: i === 0 }));
+          allocs.forEach((a, i) => Object.assign(a, { serverUuid: uuid, primary: i === 0, ...(t.ports[i] ? { protocol: t.ports[i].protocol, label: t.ports[i].name } : {}) }));
           const x = {
             uuid, shortId: uuid.slice(0, 8), name: input.name, type: t.type, status: "installing" as const, templateName: t.name, templateSlug: t.slug, nodeName: "node1",
             primaryAddress: allocs[0] ? `${allocs[0].ip}:${allocs[0].port}` : null, limits: input.limits, isOwner: false, owner, ownerId: owner.id,
@@ -820,7 +820,7 @@ export function createMock(): Implementation {
             node: { id: 1, name: "node1", fqdn: "node1.test", supportsDomains: true }, sftp: { host: "node1.test", port: 2022, username: `${owner.name ?? owner.discordId}.${uuid.slice(0, 8)}` },
             suspended: null, network: { role: "none" as const, members: [], proxy: null, connectAddress: null, forcedHosts: [], forcedHostSuggestions: [] },
             domainsAllowed: t.type === "web",
-            sleep: { supported: t.type === "game", enabled: false, idleMinutes: 10 },
+            sleep: { supported: t.slug === "paper", enabled: false, idleMinutes: 10 },
             imageUpdate: { policy: null, effectivePolicy: db.settings.imageUpdates.defaultPolicy, available: false, reinstallRequired: false, checkedAt: null },
             installedAt: null, createdAt: new Date(),
           };
@@ -856,7 +856,7 @@ export function createMock(): Implementation {
         list: () => db.templates.map(({ yaml: _y, variables: _v, ...t }) => t),
         get: ({ input }) => db.templates.find((t) => t.id === input.id) ?? notFound("template"),
         create: ({ input }) => {
-          const t: s.TemplateDetail = { id: id(), slug: `mock-${db.nextId}`, name: "New template", type: "game", version: 1, description: null, serverCount: 0, yaml: input.yaml, variables: [] };
+          const t: s.TemplateDetail = { id: id(), slug: `mock-${db.nextId}`, name: "New template", type: "game", version: 1, description: null, serverCount: 0, yaml: input.yaml, variables: [], ports: [], recommended: null };
           db.templates.push(t);
           return t;
         },

@@ -266,10 +266,13 @@ export const allocations = pgTable("allocations", {
   /** leeg = vrij */
   serverId: integer("server_id").references(() => servers.id, { onDelete: "set null" }),
   isPrimary: boolean("is_primary").notNull().default(false),
+  /** Gepubliceerd als tcp, udp of beide (standaard; zo werkte het vóór deze kolom). Een template met `ports` gaat voor. */
+  protocol: text("protocol").$type<"tcp" | "udp" | "both">().notNull().default("both"),
 }, (t) => [
   uniqueIndex("allocations_node_ip_port").on(t.nodeId, t.ip, t.port),
   index("allocations_server_idx").on(t.serverId),
   check("allocations_port_range", sql`${t.port} between 1 and 65535`),
+  check("allocations_protocol", sql`${t.protocol} in ('tcp', 'udp', 'both')`),
 ]);
 
 export const serverVariables = pgTable("server_variables", {

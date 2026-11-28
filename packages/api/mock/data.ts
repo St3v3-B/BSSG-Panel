@@ -26,15 +26,36 @@ export const templates: s.TemplateDetail[] = [
     variables: [
       { key: "MINECRAFT_VERSION", name: "Minecraft version", description: "e.g. 1.21.4 or latest", default: "latest", userEditable: true, pattern: "^(latest|\\d+\\.\\d+(\\.\\d+)?)$" },
     ],
+    ports: [],
+    recommended: null,
   },
-  { id: 2, slug: "static", name: "Static site", type: "web", version: 1, description: "nginx", serverCount: 1, yaml: "schema: 1\nslug: static\n", variables: [] },
+  { id: 2, slug: "static", name: "Static site", type: "web", version: 1, description: "nginx", serverCount: 1, yaml: "schema: 1\nslug: static\n", variables: [], ports: [], recommended: null },
+  {
+    id: 3,
+    slug: "valheim",
+    name: "Valheim",
+    type: "game",
+    version: 1,
+    description: "Valheim dedicated server (SteamCMD)",
+    serverCount: 0,
+    yaml: "schema: 1\nslug: valheim\n# zie templates/game/valheim.yaml\n",
+    variables: [
+      { key: "SERVER_NAME", name: "Server name", description: null, default: "My Valheim server", userEditable: true, pattern: "^[A-Za-z0-9 _.,!?#()+:'-]{1,64}$" },
+      { key: "SERVER_PASSWORD", name: "Password", description: "At least 5 characters", default: "", userEditable: true, pattern: "^[A-Za-z0-9!#%()*+,.:;=?@^_~-]{5,64}$" },
+    ],
+    ports: [
+      { env: "SERVER_PORT", name: "Game", protocol: "udp", offset: null, exact: false, required: false },
+      { env: "QUERY_PORT", name: "Steam query", protocol: "udp", offset: 1, exact: true, required: false },
+    ],
+    recommended: { ramMb: 4096, diskMb: 4096 },
+  },
 ];
 
 export const allocations: s.Allocation[] = [
-  { id: 1, nodeId: 1, ip: "203.0.113.10", port: 25565, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", primary: true, role: "game" },
-  { id: 2, nodeId: 1, ip: "203.0.113.10", port: 25566, serverUuid: "3a1d9b7c-5e6f-4a8b-9c0d-112233445566", primary: true, role: "game" },
-  { id: 3, nodeId: 1, ip: "203.0.113.10", port: 25567, serverUuid: null, primary: false, role: "game" },
-  { id: 4, nodeId: 1, ip: "203.0.113.10", port: 25568, serverUuid: null, primary: false, role: "game" },
+  { id: 1, nodeId: 1, ip: "203.0.113.10", port: 25565, serverUuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6", primary: true, role: "game", protocol: "both", label: null },
+  { id: 2, nodeId: 1, ip: "203.0.113.10", port: 25566, serverUuid: "3a1d9b7c-5e6f-4a8b-9c0d-112233445566", primary: true, role: "game", protocol: "both", label: null },
+  { id: 3, nodeId: 1, ip: "203.0.113.10", port: 25567, serverUuid: null, primary: false, role: "game", protocol: "both", label: null },
+  { id: 4, nodeId: 1, ip: "203.0.113.10", port: 25568, serverUuid: null, primary: false, role: "game", protocol: "both", label: null },
 ];
 
 const limits = { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 };

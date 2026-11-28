@@ -12,7 +12,7 @@
  * 7. deleteAfterDays ingesteld: opgeschort ≥ zoveel dagen achterstand, of zoveel dagen na beëindiging → server verwijderen
  */
 import { randomUUID } from "node:crypto";
-import type { Ctx, Invoice, InvoiceDetail, Subscription } from "@panel/api";
+import { minTemplatePorts, type Ctx, type Invoice, type InvoiceDetail, type Subscription, type TemplatePort } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { and, asc, eq, inArray, isNotNull, isNull, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -20,7 +20,8 @@ import { logActivity } from "../activity";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema, type Db } from "../db";
 import { getEnv } from "../env";
-import { buildServerSpec, validateVariables } from "../spec";
+import { buildServerSpec, templatePorts, validateVariables } from "../spec";
+import { pickFreeAllocations } from "../port-pick";
 import { fetchServerByUuid, userPublic } from "../servers-data";
 import { deleteServerFully } from "../routers/admin";
 import type { PlanRow } from "./plans";
@@ -189,7 +190,9 @@ export interface NodeChoice {
  * Voorkeur: de meeste vrije RAM (onbeperkt eerst), dan het laagste id. Vergrendelt de gekozen poorten.
  * Moet binnen de provisioning-lock draaien (zie provisionPlanServer).
  */
-export async function pickNode(tx: Tx, plan: Pick<PlanRow, "type" | "nodeIds" | "ramMb" | "diskMb" | "allocations">): Promise<NodeChoice> {
+export async function pickNode(tx: Tx, planIn: Pick<PlanRow, "type" | "nodeIds" | "ramMb" | "diskMb" | "allocations">, ports: readonly TemplatePort[] = []): Promise<NodeChoice> {
+  // Minstens de verplichte poorten van de template; extra poorten liefst op primair + offset.
+  const plan = { ...planIn, allocations: planIn.allocations ? Math.max(planIn.allocations, minTemplatePorts(ports)) : 0 };
   const conds: SQL[] = [];
   if (plan.nodeIds) conds.push(inArray(schema.nodes.id, plan.nodeIds.length ? plan.nodeIds : [-1]));
   if (plan.type === "web") conds.push(eq(schema.nodes.supportsDomains, true));
@@ -219,13 +222,7 @@ export async function pickNode(tx: Tx, plan: Pick<PlanRow, "type" | "nodeIds" | 
     .sort((a, b) => b.ram - a.ram || a.n.id - b.n.id);
   for (const c of fits) {
     if (!plan.allocations) return { node: c.n, allocations: [] };
-    const picked = await tx
-      .select()
-      .from(schema.allocations)
-      .where(and(eq(schema.allocations.nodeId, c.n.id), isNull(schema.allocations.serverId)))
-      .orderBy(asc(schema.allocations.port), asc(schema.allocations.id))
-      .limit(plan.allocations)
-      .for("update", { skipLocked: true });
+    const picked = await pickFreeAllocations(tx, c.n.id, ports, plan.allocations);
     if (picked.length === plan.allocations) return { node: c.n, allocations: picked };
   }
   throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_CAPACITY" });
@@ -269,7 +266,7 @@ export async function provisionPlanServer(i: ProvisionInput): Promise<ProvisionR
   const r = await db.transaction(async (tx) => {
     // Eén provisioning tegelijk: de capaciteitscontrole en de reservering horen bij elkaar.
     await tx.execute(sql`select pg_advisory_xact_lock(${PROVISION_LOCK})`);
-    const choice = await pickNode(tx, plan);
+    const choice = await pickNode(tx, plan, templatePorts(template));
     const [srv] = await tx
       .insert(schema.servers)
       .values({
@@ -315,7 +312,7 @@ export async function provisionPlanServer(i: ProvisionInput): Promise<ProvisionR
     template,
     variables: i.variables,
     limits,
-    allocations: r.choice.allocations.map((a, idx) => ({ ip: a.ip, port: a.port, isPrimary: idx === 0 })),
+    allocations: r.choice.allocations.map((a, idx) => ({ ip: a.ip, port: a.port, protocol: a.protocol, isPrimary: idx === 0 })),
     startOnInstall: !i.paid,
   });
   try {

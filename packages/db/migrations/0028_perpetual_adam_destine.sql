@@ -1,0 +1,2 @@
+ALTER TABLE "allocations" ADD COLUMN "protocol" text DEFAULT 'both' NOT NULL;--> statement-breakpoint
+ALTER TABLE "allocations" ADD CONSTRAINT "allocations_protocol" CHECK ("allocations"."protocol" in ('tcp', 'udp', 'both'));

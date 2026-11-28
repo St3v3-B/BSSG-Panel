@@ -147,7 +147,7 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
       template: b.template,
       variables: await serverVariables(b.server.id),
       limits: limitsOf(b.server),
-      allocations: targetAllocs.map((a, i) => ({ ip: a.ip, port: a.port, isPrimary: i === 0 })),
+      allocations: targetAllocs.map((a, i) => ({ ip: a.ip, port: a.port, protocol: a.protocol, isPrimary: i === 0 })),
       skipInstall: true,
       startOnInstall: false,
       sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server), imagePolicy: imagePolicyOf(b.server),

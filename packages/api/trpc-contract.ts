@@ -625,7 +625,8 @@ export const contract = {
     allocations: {
       list: query("admin", z.object({ nodeId: s.Id }), z.array(s.Allocation)),
       /** ports: "25565" of "25565-25600" of "25565,25570-25575" */
-      create: mutation("admin", z.object({ nodeId: s.Id, ip: z.ipv4(), ports: z.string().min(1) }), z.object({ created: z.number().int() })),
+      /** protocol: tcp, udp of beide (standaard); een template met `ports` gaat voor. */
+      create: mutation("admin", z.object({ nodeId: s.Id, ip: z.ipv4(), ports: z.string().min(1), protocol: z.enum(["tcp", "udp", "both"]).default("both") }), z.object({ created: z.number().int() })),
       delete: mutation("admin", byId, s.Ok),
     },
 

@@ -476,7 +476,7 @@ export async function runClone(r: RunInput): Promise<void> {
       template: src.template,
       variables: vars,
       limits: await targetLimits(job.targetServerId!),
-      allocations: r.javaAllocs.concat(r.bedrock ? [r.bedrock] : []).map((a, i) => ({ ip: a.ip, port: a.port, isPrimary: i === 0 })),
+      allocations: r.javaAllocs.concat(r.bedrock ? [r.bedrock] : []).map((a, i) => ({ ip: a.ip, port: a.port, protocol: a.protocol, isPrimary: i === 0 })),
       skipInstall: true,
       startOnInstall: false,
       sleep: { ...sleepOf(src.server), name: job.targetName },

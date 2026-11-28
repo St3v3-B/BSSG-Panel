@@ -158,6 +158,10 @@ export const Allocation = z.object({
   primary: z.boolean(),
   /** `bedrock` = de UDP-poort van Geyser (zie servers.bedrock); anders gewoon een game-poort. */
   role: z.enum(["game", "bedrock"]).default("game"),
+  /** Gepubliceerd protocol: tcp, udp of beide. Bij een server: zoals de template de poort beschrijft. */
+  protocol: z.enum(["tcp", "udp", "both"]).default("both"),
+  /** Rol uit de template-poorten (bv. "Steam query"); null = geen. */
+  label: z.string().nullable().default(null),
 });
 export type Allocation = z.infer<typeof Allocation>;
 
@@ -1042,6 +1046,12 @@ export type TemplateSummary = z.infer<typeof TemplateSummary>;
 export const TemplateDetail = TemplateSummary.extend({
   yaml: z.string(), // bron, zie templates/SCHEMA.md
   variables: z.array(TemplateVariable),
+  /** `ports` uit de template (leeg = elke allocation tcp + udp); zie templates/SCHEMA.md. */
+  ports: z
+    .array(z.object({ env: z.string(), name: z.string().nullable(), protocol: z.enum(["tcp", "udp", "both"]), offset: z.number().int().nullable(), exact: z.boolean(), required: z.boolean() }))
+    .default([]),
+  /** Aanbevolen limieten uit de template. */
+  recommended: z.object({ ramMb: z.number().int().nullable(), diskMb: z.number().int().nullable() }).nullable().default(null),
 });
 export type TemplateDetail = z.infer<typeof TemplateDetail>;
 
