@@ -85,6 +85,7 @@ fetch_verified() { # fetch_verified <url> <dest> <sha256-url>
   curl -fsS -m 600 -o "$2" "$1" || die "download of $1 failed"
   got="$(sha256sum "$2" | awk '{print $1}')"
   [ "$got" = "$want" ] || { rm -f "$2"; die "sha256 mismatch for $1"; }
+}
 
 # Questions: from the terminal (stdin is the script when piped from curl). --yes answers yes.
 confirm() {
@@ -248,7 +249,6 @@ elif ! resolves; then
 fi
 
 # ------------------------------------------------------------------ files from the panel
-}
 
 progress download "downloading the daemon"
 mkdir -p "$(dirname "$BIN_DST")" "$INSTALL_DIR" "$(dirname "$ENV_FILE")" "$(dirname "$UNIT_DST")"
