@@ -509,6 +509,24 @@ describe("leesrol mail_reader", () => {
   });
 });
 
+describe("uurlijkse taak", () => {
+  it("mailTick: nieuwe check als het rapport > 1 uur oud is, DNS van verouderde domeinen, dagelijkse reload", async () => {
+    const { mailTick } = await import("./checks");
+    fake.checks = greenChecks();
+    fake.enabled = true;
+    const before = fake.checkCalls;
+    const later = new Date(Date.now() + 2 * 3_600_000);
+    await mailTick(later);
+    expect(fake.checkCalls).toBe(before + 1);
+    const domains = await getDb().select().from(schema.mailDomains);
+    expect(domains.every((d) => d.dnsCheckedAt && d.dnsCheckedAt.getTime() > Date.now() - 60_000)).toBe(true);
+    expect(mailRequests("POST", "/api/mail/reload")).toHaveLength(1);
+    // Direct daarna: niets nieuws (rapport is vers, reload was vandaag al).
+    await mailTick(later);
+    expect(mailRequests("POST", "/api/mail/reload")).toHaveLength(1);
+  });
+});
+
 describe("domein verwijderen", () => {
   it("Maildirs en DKIM bij de daemon weg, rijen cascade", async () => {
     fake.deletedData.length = 0;
