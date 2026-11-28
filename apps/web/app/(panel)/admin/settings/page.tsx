@@ -2,6 +2,7 @@
 import { PageHeader } from "@/app/_components/page-header";
 import { AdminWebhookCard } from "@/app/_components/notifications/webhook-card";
 import { SettingsAdmin } from "@/app/_components/admin/settings";
+import { AlarmDefaultsCard } from "@/app/_components/admin/alarms";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
 import { useT } from "@/app/_lib/i18n";
 
@@ -14,6 +15,9 @@ export default function SettingsAdminPage() {
       <SettingsAdmin />
       <div className="mt-6 max-w-2xl">
         <AdminWebhookCard />
+      </div>
+      <div className="mt-6 max-w-2xl">
+        <AlarmDefaultsCard />
       </div>
     </>
   );

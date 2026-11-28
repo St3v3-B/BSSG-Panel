@@ -12,6 +12,7 @@ import { Progress } from "@/app/_components/ui/progress";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { formatBytes, formatDate } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
+import { ActiveAlarms } from "@/app/_components/admin/alarms";
 
 function Stat({ label, value, href, testId, icon: Icon }: { label: string; value: ReactNode; href?: string; testId: string; icon: LucideIcon }) {
   const body = (
@@ -144,6 +145,8 @@ export function AdminDashboard() {
           </Card>
         )}
       </section>
+
+      <ActiveAlarms />
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">{d.quick}</h2>
