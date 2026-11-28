@@ -14,7 +14,7 @@ import { setCloudflareBase } from "./lib/cloudflare";
 import { setDnsLookup, type DnsLookup } from "./lib/dns";
 import { exchangeJoinCode } from "./join";
 import { checkSsl } from "./monitor";
-import { resetNodeIpCache } from "./relay";
+import { nodeIp, resetNodeIpCache } from "./relay";
 import { FakeDaemon } from "./test/fake-daemon";
 import { OWNER, useHarness, type TestUser } from "./test/harness";
 
@@ -97,6 +97,14 @@ afterAll(async () => {
 });
 
 describe("HTTP(S)-relay", () => {
+  it("direct: het door join gemelde IP wint van een A-record dat nog naar de oude relay wijst", async () => {
+    resetNodeIpCache();
+    zone["node2.test"] = [A_IP];
+    expect(await nodeIp({ ...(await nodeRow(nodeB)), httpRelayNodeId: null })).toBe(B_IP);
+    resetNodeIpCache();
+    delete zone["node2.test"];
+  });
+
   it("alleen admins", async () => {
     await expect(player.api.admin.nodes.relayStatus({ id: nodeB })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(player.api.admin.nodes.setHttpRelay({ id: nodeB, relayNodeId: h.localNodeId })).rejects.toMatchObject({ code: "FORBIDDEN" });

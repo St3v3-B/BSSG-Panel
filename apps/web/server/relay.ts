@@ -32,7 +32,7 @@ async function rowOf(id: number): Promise<NodeRow | null> {
 
 /**
  * Het eigen (directe) IP van een node: gamepoorten, SFTP en Minecraft-records. NODE_PUBLIC_IP (lokale node),
- * anders het A-record van de node. Loopt de node via een relay, dan wijst zijn domein naar de relay-node: dan het
+ * anders het door join gemelde IP, anders het A-record van de node. Loopt de node via een relay, dan wijst zijn domein naar de relay-node: dan het
  * door join gemelde IP of dat van een allocatie.
  */
 export async function nodeIp(node: IpNode): Promise<string> {
@@ -52,7 +52,8 @@ export async function nodeIp(node: IpNode): Promise<string> {
     ip = await knownIp(node.id, publicIp ?? null);
     if (!ip) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NODE_IP_UNKNOWN: the node domain points to the relay node; no public IP known for this node (join or allocation)" });
   } else {
-    [ip] = await dns().a(node.fqdn);
+    // Het door join gemelde IP wint van het A-record: dat kan nog naar een oude relay wijzen (en zou zichzelf dan goedkeuren).
+    ip = publicIp ?? (await dns().a(node.fqdn))[0];
   }
   if (!ip) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NODE_IP_UNKNOWN: set NODE_PUBLIC_IP" });
   ipCache.set(node.id, { ip, until: Date.now() + 10 * 60_000 });
