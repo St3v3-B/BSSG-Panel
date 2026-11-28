@@ -45,8 +45,13 @@ done
 docker run --rm "${LABELS[@]}" \
   -v "$DEPLOY:/deploy:ro" -v "$WORK/sc:/templates:ro" \
   koalaman/shellcheck:stable -x /deploy/install.sh /deploy/test.sh /deploy/join/join.sh /deploy/uninstall.sh /deploy/test-uninstall.sh \
+    /deploy/mail.sh /deploy/test/mail-stack.sh \
   || fail "shellcheck deploy/*.sh"
-pass "deploy/install.sh, deploy/test.sh"
+pass "deploy/install.sh, deploy/test.sh, deploy/mail.sh, deploy/test/mail-stack.sh"
+docker run --rm "${LABELS[@]}" -v "$DEPLOY/mail:/mail:ro" koalaman/shellcheck:stable -s sh \
+  /mail/tls.sh /mail/postfix/entrypoint.sh /mail/postfix/mail-reload.sh /mail/dovecot/entrypoint.sh /mail/dovecot/mail-reload.sh \
+  /mail/rspamd/entrypoint.sh /mail/rspamd/mail-reload.sh || fail "shellcheck deploy/mail (POSIX sh)"
+pass "deploy/mail entrypoints and mail-reload (POSIX sh)"
 sc_files=()
 for f in "$WORK"/sc/*.sh; do sc_files+=("/templates/$(basename "$f")"); done
 docker run --rm "${LABELS[@]}" -v "$WORK/sc:/templates:ro" koalaman/shellcheck:stable -s sh "${sc_files[@]}" \
@@ -122,6 +127,65 @@ pass "compose without PMA_SHARED_SECRET fails"
 grep -q '^      - \${PANEL_ENV_FILE:-/etc/panel/panel.env}$' "$DEPLOY/docker-compose.yml" \
   && pass "env_file defaults to /etc/panel/panel.env" || fail "env_file defaults to /etc/panel/panel.env"
 
+# ------------------------------------------------------------------ mail profile
+step "compose profile mail"
+MAIL_SVCS="['postfix','dovecot','rspamd','clamav','unbound','mail-redis']"
+check_cfg "without the profile: no mail services; caddy without mail site (MAIL_CADDY empty)" \
+  "$MAIL_SVCS.every(s=>!c.services[s])&&!c.services.caddy.environment.MAIL_CADDY"
+check_cfg "postgres on panel-mail-db (internal, label role=mail), the only member without the profile" \
+  "c.networks['mail-db'].name==='panel-mail-db'&&c.networks['mail-db'].internal===true&&'mail-db' in c.services.postgres.networks&&Object.entries(c.services).filter(([,v])=>v.networks&&'mail-db' in v.networks).map(([k])=>k).join()==='postgres'"
+MAIL_ENV="$WORK/mail.env"
+{ cat "$TEST_ENV"; printf 'MAIL_HOSTNAME=mail.panel.test\nMAIL_DB_PASSWORD=%s\nCOMPOSE_PROFILES=mail\n' "$(printf 'm%.0s' {1..24})"; } > "$MAIL_ENV"
+MCFG="$(PANEL_ENV_FILE="$MAIL_ENV" docker compose --env-file "$MAIL_ENV" -f "$DEPLOY/docker-compose.yml" config --format json)" \
+  || fail "compose config with COMPOSE_PROFILES=mail"
+check_mail() { node -e "const c=JSON.parse(require('fs').readFileSync(0,'utf8')); if(!($2)) process.exit(1)" <<<"$MCFG" && pass "$1" || fail "$1"; }
+check_mail "COMPOSE_PROFILES=mail in the env file: all mail services, container names panel-*" \
+  "$MAIL_SVCS.every(s=>c.services[s]&&c.services[s].container_name==='panel-'+s)"
+check_mail "mail services: labels managed/instance main + panel.role=mail, volumes and networks too" \
+  "[...$MAIL_SVCS.map(s=>c.services[s]),c.networks.mail,c.networks['mail-db'],...['vmail','postfix_spool','rspamd_data','mail_dkim','clamav_db','mail_redis'].map(v=>c.volumes[v])].every(o=>o.labels['panel.managed']==='true'&&o.labels['panel.instance']==='main'&&o.labels['panel.role']==='mail')"
+check_mail "volume names panel-vmail, panel-postfix-spool, panel-rspamd-data, panel-mail-dkim, panel-clamav-db, panel-mail-redis" \
+  "['vmail:panel-vmail','postfix_spool:panel-postfix-spool','rspamd_data:panel-rspamd-data','mail_dkim:panel-mail-dkim','clamav_db:panel-clamav-db','mail_redis:panel-mail-redis'].every(x=>{const [k,n]=x.split(':');return c.volumes[k].name===n})"
+check_mail "ports: postfix 25/465/587, dovecot 993/4190, the rest nothing" \
+  "(p=>p('postfix')==='25,465,587'&&p('dovecot')==='4190,993'&&['rspamd','clamav','unbound','mail-redis'].every(s=>!c.services[s].ports))(s=>(c.services[s].ports||[]).map(x=>x.published).sort().join())"
+check_mail "networks: postfix/dovecot on mail-db + mail, the rest only mail; panel-mail has internet" \
+  "['postfix','dovecot'].every(s=>Object.keys(c.services[s].networks).sort().join()==='mail,mail-db')&&['rspamd','clamav','unbound','mail-redis'].every(s=>Object.keys(c.services[s].networks).join()==='mail')&&c.networks.mail.name==='panel-mail'&&!c.networks.mail.internal"
+check_mail "postfix + dovecot: caddy_data read-only on /data, config read-only, MAIL_HOSTNAME + MAIL_DB_PASSWORD from env" \
+  "['postfix','dovecot'].every(s=>{const v=c.services[s].volumes,e=c.services[s].environment;return v.some(x=>x.source==='caddy_data'&&x.target==='/data'&&x.read_only)&&v.some(x=>x.target==='/etc/panel-mail'&&x.read_only)&&e.MAIL_HOSTNAME==='mail.panel.test'&&e.MAIL_DB_PASSWORD.length>=16&&!('NODE_TOKEN' in e)})"
+check_mail "vmail on /var/vmail (dovecot), DKIM volume on /var/lib/rspamd/dkim (rspamd)" \
+  "c.services.dovecot.volumes.some(x=>x.source==='vmail'&&x.target==='/var/vmail')&&c.services.rspamd.volumes.some(x=>x.source==='mail_dkim'&&x.target==='/var/lib/rspamd/dkim')"
+check_mail "caddy: MAIL_CADDY=on and MAIL_HOSTNAME when MAIL_HOSTNAME is set" \
+  "c.services.caddy.environment.MAIL_CADDY==='on'&&c.services.caddy.environment.MAIL_HOSTNAME==='mail.panel.test'"
+for mc in "" on; do
+  docker run --rm "${LABELS[@]}" -e PANEL_DOMAIN=panel.test -e NODE_DOMAIN=node1.test -e ACME_EMAIL=it@panel.test \
+    -e MAIL_HOSTNAME=mail.panel.test -e MAIL_CADDY="$mc" \
+    -v "$DEPLOY/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" -v "$DEPLOY/caddy/global.d:/etc/caddy/global.d:ro" \
+    -v "$DEPLOY/caddy/mail:/etc/caddy/mail:ro" -v "$WORK/run:/run/panel" \
+    caddy:2 caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile >"$WORK/caddy-mail.json" 2>"$WORK/caddy-mail.log" \
+    || { cat "$WORK/caddy-mail.log"; fail "caddy adapt with MAIL_CADDY=$mc"; }
+  if [ "$mc" = on ]; then
+    grep -q '"mail.panel.test"' "$WORK/caddy-mail.json" && pass "Caddyfile: site mail.panel.test when MAIL_CADDY=on" || fail "no mail site with MAIL_CADDY=on"
+  else
+    ! grep -q 'mail.panel.test' "$WORK/caddy-mail.json" && pass "Caddyfile: no mail site without MAIL_CADDY" || fail "mail site without MAIL_CADDY"
+  fi
+done
+
+# deploy/mail.sh: switch COMPOSE_PROFILES in the env file (dry run: docker compose only printed).
+MS_ENV="$WORK/mailsh.env"
+grep -v '^COMPOSE_PROFILES=' "$MAIL_ENV" > "$MS_ENV"; echo 'COMPOSE_PROFILES=other' >> "$MS_ENV"; chmod 600 "$MS_ENV"
+PANEL_ENV_FILE="$MS_ENV" MAIL_DRY_RUN=0 bash "$DEPLOY/mail.sh" bogus >/dev/null 2>&1 && fail "mail.sh bogus should fail" || true
+# Only write_profiles really runs: docker is replaced by a stub that logs its arguments.
+mkdir -p "$WORK/stubbin"; printf '#!/bin/sh\necho "docker $*" >> "%s"\n' "$WORK/mailsh-docker.log" > "$WORK/stubbin/docker"; chmod +x "$WORK/stubbin/docker"
+PATH="$WORK/stubbin:$PATH" PANEL_ENV_FILE="$MS_ENV" bash "$DEPLOY/mail.sh" enable || fail "mail.sh enable"
+grep -qx 'COMPOSE_PROFILES=other,mail' "$MS_ENV" && [ "$(stat -c %a "$MS_ENV")" = 600 ] && pass "mail.sh enable: COMPOSE_PROFILES=other,mail (chmod 600 kept)" || fail "mail.sh enable did not set COMPOSE_PROFILES"
+grep -q 'compose --env-file .* up -d --build --no-deps mail-redis unbound clamav rspamd dovecot postfix$' "$WORK/mailsh-docker.log" \
+  && grep -q 'up -d --no-deps --no-build caddy$' "$WORK/mailsh-docker.log" && pass "mail.sh enable: up of the mail services (--no-deps) + caddy" || { cat "$WORK/mailsh-docker.log"; fail "mail.sh enable compose calls"; }
+PATH="$WORK/stubbin:$PATH" PANEL_ENV_FILE="$MS_ENV" bash "$DEPLOY/mail.sh" disable || fail "mail.sh disable"
+grep -qx 'COMPOSE_PROFILES=other' "$MS_ENV" && grep -q -- '--profile mail stop mail-redis unbound clamav rspamd dovecot postfix$' "$WORK/mailsh-docker.log" \
+  && pass "mail.sh disable: mail out of COMPOSE_PROFILES, services stopped" || fail "mail.sh disable"
+sed -i 's/^MAIL_HOSTNAME=.*/MAIL_HOSTNAME=/' "$MS_ENV"
+rc=0; PATH="$WORK/stubbin:$PATH" PANEL_ENV_FILE="$MS_ENV" bash "$DEPLOY/mail.sh" enable >/dev/null 2>&1 || rc=$?
+[ "$rc" = 3 ] && grep -qx 'COMPOSE_PROFILES=other' "$MS_ENV" && pass "mail.sh enable without MAIL_HOSTNAME: exit 3 (mail_not_configured), nothing changed" || fail "mail.sh enable without MAIL_HOSTNAME: rc=$rc"
+
 # ------------------------------------------------------------------ systemd-unit
 step "systemd-unit"
 UNIT="$DEPLOY/systemd/panel-daemon.service"
@@ -158,6 +222,8 @@ diff <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$DEPLOY/panel.env.example") <(s
 [[ "$(getv MARIADB_ROOT_PASSWORD)" =~ ^[0-9a-f]{48}$ ]] && pass "MARIADB_ROOT_PASSWORD generated" || fail "MARIADB_ROOT_PASSWORD"
 [[ "$(getv PMA_SHARED_SECRET)" =~ ^[0-9a-f]{64}$ ]] && [[ "$(getv PMA_BLOWFISH_SECRET)" =~ ^[0-9a-f]{64}$ ]] && [ "$(getv PMA_SHARED_SECRET)" != "$(getv PMA_BLOWFISH_SECRET)" ] \
   && pass "PMA_SHARED_SECRET and PMA_BLOWFISH_SECRET generated (distinct)" || fail "PMA secrets"
+[[ "$(getv MAIL_DB_PASSWORD)" =~ ^[0-9a-f]{48}$ ]] && [ -z "$(getv MAIL_HOSTNAME)" ] && [ -z "$(getv COMPOSE_PROFILES)" ] \
+  && pass "MAIL_DB_PASSWORD generated; MAIL_HOSTNAME and COMPOSE_PROFILES empty (mail module off)" || fail "mail values in panel.env"
 [ -x "$ROOT/usr/local/bin/panel-daemon" ] && pass "daemon installed (stub)" || fail "daemon"
 cmp -s "$UNIT" "$ROOT/etc/systemd/system/panel-daemon.service" && pass "unit installed" || fail "unit"
 grep -q '^\[dry-run\] systemctl restart panel-daemon.service$' "$WORK/install1.log" && pass "systemctl only printed" || fail "systemctl"

@@ -1,0 +1,10 @@
+# Mail module: site for MAIL_HOSTNAME, so Caddy obtains (and renews) its certificate. Postfix and Dovecot read
+# it read-only from caddy_data (/data/caddy/certificates/<issuer>/<host>/<host>.{crt,key}).
+#
+# Imported by the Caddyfile as /etc/caddy/mail/{$MAIL_CADDY}-site*.caddy: compose sets MAIL_CADDY=on only when
+# MAIL_HOSTNAME is set. Otherwise the pattern is "-site*.caddy", which matches nothing (an empty glob is fine).
+# Later: MTA-STS (/.well-known/mta-sts.txt) and autoconfig.
+{$MAIL_HOSTNAME} {
+	header Content-Type "text/plain; charset=utf-8"
+	respond "Mail server {$MAIL_HOSTNAME}" 200
+}

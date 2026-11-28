@@ -132,7 +132,23 @@ compose() {
   [ "$mode" = relay ] && prof=caddy-relay
   [ "$mode" = npm ] && prof=caddy-npm
   [ "$NODE_ONLY" = 0 ] && [ "$mode" = npm ] && files+=(-f "$DEPLOY/docker-compose.npm.yml")
-  PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES="${COMPOSE_PROFILES:-$([ "$NODE_ONLY" = 1 ] && echo "$prof")}" docker compose --env-file "$ENV_FILE" "${files[@]}" "$@"
+  PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES="$(compose_profiles "$prof")" docker compose --env-file "$ENV_FILE" "${files[@]}" "$@"
+}
+
+# Profiles for compose: the explicit environment wins (tests); otherwise COMPOSE_PROFILES from panel.env (the
+# panel machine: "mail" when the mail module is on, see deploy/mail.sh) plus the Caddy profile of a node.
+# "mail" only with a MAIL_HOSTNAME, so a stale value never starts a mail stack that cannot work.
+compose_profiles() { # caddy-profile
+  if [ -n "${COMPOSE_PROFILES:-}" ]; then printf '%s' "$COMPOSE_PROFILES"; return; fi
+  local p out=() saved="${VAL[COMPOSE_PROFILES]:-${OLD[COMPOSE_PROFILES]:-}}" host="${VAL[MAIL_HOSTNAME]:-${OLD[MAIL_HOSTNAME]:-}}"
+  [ "$NODE_ONLY" = 1 ] && out+=("$1")
+  if [ "$NODE_ONLY" = 0 ]; then
+    for p in ${saved//,/ }; do
+      [ "$p" = mail ] && [ -z "$host" ] && { warn "COMPOSE_PROFILES contains mail but MAIL_HOSTNAME is empty: mail stack not started"; continue; }
+      out+=("$p")
+    done
+  fi
+  local IFS=,; printf '%s' "${out[*]}"
 }
 
 # ---------------------------------------------------------------- vereisten
@@ -218,6 +234,16 @@ validate() {
       [[ "$v" =~ ^[A-Za-z0-9]{16,}$ ]] || { echo "at least 16 characters [A-Za-z0-9]"; return 1; } ;;
     PMA_SHARED_SECRET|PMA_BLOWFISH_SECRET)
       [[ "$v" =~ ^[A-Za-z0-9]{32,}$ ]] || { echo "at least 32 characters [A-Za-z0-9]"; return 1; } ;;
+    MAIL_HOSTNAME)
+      [ -z "$v" ] || [[ "$v" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ ]] || { echo "not a valid host name (lowercase), e.g. mail.example.com"; return 1; } ;;
+    MAIL_DB_PASSWORD)
+      [[ "$v" =~ ^[A-Za-z0-9]{16,}$ ]] || { echo "at least 16 characters [A-Za-z0-9]"; return 1; } ;;
+    MAIL_PUBLIC_IPV4)
+      [ -z "$v" ] || [[ "$v" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || { echo "not an IPv4 address"; return 1; } ;;
+    MAIL_PUBLIC_IPV6)
+      [ -z "$v" ] || [[ "$v" =~ ^[0-9A-Fa-f:]+$ && "$v" == *:* ]] || { echo "not an IPv6 address"; return 1; } ;;
+    COMPOSE_PROFILES)
+      [[ "$v" =~ ^[a-z0-9_,-]*$ ]] || { echo "comma-separated profile names"; return 1; } ;;
     PANEL_URL)
       [[ "$v" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || { echo "not a URL like https://panel.example.com (no path)"; return 1; } ;;
     HTTP_MODE)
@@ -326,6 +352,10 @@ collect_values() {
   keep_or_generate PMA_SHARED_SECRET gen_pma_secret
   keep_or_generate PMA_BLOWFISH_SECRET gen_pma_secret
 
+  # Mail module: password of the read-only role mail_reader (the panel creates/updates the role at every start).
+  # Also generated on an upgrade, and also when the mail module stays off (costs nothing).
+  keep_or_generate MAIL_DB_PASSWORD gen_pg_password
+
   # De daemon bereikt het lokale panel rechtstreeks (127.0.0.1:3000 wordt door compose
   # gepubliceerd): geen afhankelijkheid van externe DNS of hairpin-NAT. Een gezette waarde blijft.
   if [ -z "${PANEL_URL:-}" ] && [ -z "${OLD[PANEL_URL]:-}" ]; then
@@ -349,6 +379,9 @@ collect_values() {
   while IFS= read -r key; do
     [ -n "${VAL[$key]+x}" ] || keep_or_default "$key"
   done < <(sed -n 's/^\([A-Z_][A-Z0-9_]*\)=.*/\1/p' "$EXAMPLE")
+  case "${VAL[MAIL_HOSTNAME]:-}" in
+    "") ;; "${VAL[PANEL_DOMAIN]}"|"${VAL[NODE_DOMAIN]}") die "MAIL_HOSTNAME must differ from PANEL_DOMAIN and NODE_DOMAIN (own Caddy site)" ;;
+  esac
   # Onbekende sleutels uit het bestaande bestand ook behouden.
   for key in "${OLD_ORDER[@]}"; do
     [ -n "${VAL[$key]+x}" ] || VAL[$key]="${OLD[$key]}"

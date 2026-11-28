@@ -16,6 +16,13 @@ x-labels: &labels
   panel.instance: "main"
   panel.role: "infra"
 
+# Mail module (compose profile "mail", off by default): same labels, but panel.role=mail. The daemon may only
+# `docker exec` into these containers and start/stop the profile (deploy/mail.sh). See docs/mail.md.
+x-mail-labels: &mail-labels
+  panel.managed: "true"
+  panel.instance: "${PANEL_INSTANCE:-main}"
+  panel.role: "mail"
+
 x-logging: &logging
   driver: json-file
   options:
@@ -82,7 +89,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
-    networks: [backend]
+    # mail-db: only for the read-only role mail_reader of Postfix/Dovecot (mail module). Compose cannot make the
+    # networks of a service depend on a profile, so postgres is always on it; without the profile it has no
+    # other members (internal, nothing published).
+    networks: [backend, mail-db]
     logging: *logging
 
   redis:
@@ -204,6 +214,10 @@ services:
       PANEL_DOMAIN: ${PANEL_DOMAIN:?PANEL_DOMAIN ontbreekt in het env-bestand}
       NODE_DOMAIN: ${NODE_DOMAIN:?NODE_DOMAIN ontbreekt in het env-bestand}
       ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL ontbreekt in het env-bestand}
+      # Mail module: certificate for MAIL_HOSTNAME (caddy/mail/on-site.caddy, only imported when MAIL_CADDY=on,
+      # i.e. when MAIL_HOSTNAME is set). Postfix/Dovecot read it from caddy_data.
+      MAIL_HOSTNAME: ${MAIL_HOSTNAME:-}
+      MAIL_CADDY: ${MAIL_HOSTNAME:+on}
     ports:
       - "80:80"
       - "443:443"
@@ -211,6 +225,7 @@ services:
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./caddy/global.d:/etc/caddy/global.d:ro
+      - ./caddy/mail:/etc/caddy/mail:ro
       - caddy_data:/data
       - caddy_config:/config
       # Map met daemon.sock en caddy-admin.sock (als map, niet de sockets zelf). De unit houdt /run/panel vast (RuntimeDirectoryPreserve=yes),
@@ -224,6 +239,146 @@ services:
       - panel
     # pma: alleen om phpmyadmin:80 te bereiken (handle_path /phpmyadmin/* in de Caddyfile).
     networks: [frontend, pma]
+    logging: *logging
+
+  # ------------------------------------------------------------------ mail module (profile "mail")
+  # Postfix -> milter Rspamd (+ ClamAV) -> LMTP Dovecot. Domains/mailboxes/aliases come from the panel database
+  # (views mail.v_*, role mail_reader, password MAIL_DB_PASSWORD); certificate from caddy_data (read-only).
+  # On/off: deploy/mail.sh enable|disable (keeps COMPOSE_PROFILES in panel.env in sync). After a new
+  # certificate or DKIM key: `docker exec panel-postfix|panel-dovecot|panel-rspamd mail-reload`.
+  # No `:?` checks here: compose interpolates the whole file, also without the profile. The entrypoints
+  # refuse to start without MAIL_HOSTNAME / MAIL_DB_PASSWORD.
+  postfix:
+    profiles: [mail]
+    build:
+      context: ./mail
+      dockerfile: postfix/Dockerfile
+      labels: *mail-labels
+    image: panel-postfix:local
+    container_name: panel-postfix
+    hostname: ${MAIL_HOSTNAME:-mail.invalid}
+    restart: unless-stopped
+    labels: *mail-labels
+    environment:
+      MAIL_HOSTNAME: ${MAIL_HOSTNAME:-}
+      MAIL_DB_PASSWORD: ${MAIL_DB_PASSWORD:-}
+      TZ: Europe/Amsterdam
+    ports:
+      - "25:25"
+      - "465:465"
+      - "587:587"
+    volumes:
+      - ./mail/postfix:/etc/panel-mail:ro
+      - postfix_spool:/var/spool/postfix
+      - caddy_data:/data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dovecot:
+        condition: service_started
+      rspamd:
+        condition: service_started
+    networks: [mail-db, mail]
+    logging: *logging
+
+  dovecot:
+    profiles: [mail]
+    build:
+      context: ./mail
+      dockerfile: dovecot/Dockerfile
+      labels: *mail-labels
+    image: panel-dovecot:local
+    container_name: panel-dovecot
+    restart: unless-stopped
+    labels: *mail-labels
+    environment:
+      MAIL_HOSTNAME: ${MAIL_HOSTNAME:-}
+      MAIL_DB_PASSWORD: ${MAIL_DB_PASSWORD:-}
+      TZ: Europe/Amsterdam
+    ports:
+      - "993:993"
+      - "4190:4190"
+    volumes:
+      - ./mail/dovecot:/etc/panel-mail:ro
+      - vmail:/var/vmail
+      - caddy_data:/data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [mail-db, mail]
+    logging: *logging
+
+  rspamd:
+    profiles: [mail]
+    build:
+      context: ./mail
+      dockerfile: rspamd/Dockerfile
+      labels: *mail-labels
+    image: panel-rspamd:local
+    container_name: panel-rspamd
+    restart: unless-stopped
+    labels: *mail-labels
+    environment:
+      TZ: Europe/Amsterdam
+    volumes:
+      - ./mail/rspamd/local.d:/etc/rspamd/local.d:ro
+      - rspamd_data:/var/lib/rspamd
+      - mail_dkim:/var/lib/rspamd/dkim
+    depends_on:
+      - mail-redis
+      - unbound
+      - clamav
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks: [mail]
+    logging: *logging
+
+  # ClamAV needs about 1.5 GB RAM (signature database); freshclam updates it in the same container.
+  clamav:
+    profiles: [mail]
+    image: clamav/clamav:1.5.5
+    container_name: panel-clamav
+    restart: unless-stopped
+    labels: *mail-labels
+    environment:
+      TZ: Europe/Amsterdam
+    volumes:
+      - clamav_db:/var/lib/clamav
+    networks: [mail]
+    logging: *logging
+
+  unbound:
+    profiles: [mail]
+    build:
+      context: ./mail
+      dockerfile: unbound/Dockerfile
+      labels: *mail-labels
+    image: panel-unbound:local
+    container_name: panel-unbound
+    restart: unless-stopped
+    labels: *mail-labels
+    volumes:
+      - ./mail/unbound/unbound.conf:/etc/unbound/unbound.conf:ro
+    networks: [mail]
+    logging: *logging
+
+  # Own Redis for Rspamd (Bayes, greylisting, rate limits), not the Redis of the panel.
+  mail-redis:
+    profiles: [mail]
+    image: redis:7-alpine
+    container_name: panel-mail-redis
+    restart: unless-stopped
+    labels: *mail-labels
+    command: ["redis-server", "--appendonly", "yes", "--save", "300", "1", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru"]
+    volumes:
+      - mail_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+    networks: [mail]
     logging: *logging
 
 networks:
@@ -247,6 +402,16 @@ networks:
     name: panel-db
     internal: true
     labels: *labels
+  # Mail module: postgres + postfix + dovecot (read-only SQL lookups). Internal: no internet.
+  mail-db:
+    name: panel-mail-db
+    internal: true
+    labels: *mail-labels
+  # Mail module: postfix, dovecot, rspamd, clamav, unbound, mail-redis; with internet (outbound SMTP, DNS,
+  # ClamAV updates).
+  mail:
+    name: panel-mail
+    labels: *mail-labels
 
 volumes:
   postgres_data:
@@ -264,3 +429,22 @@ volumes:
   mariadb_data:
     name: panel-mariadb-data
     labels: *labels
+  # Mail module. Mail, queue, DKIM keys and spam data in named volumes, so image updates never touch them.
+  vmail:
+    name: panel-vmail
+    labels: *mail-labels
+  postfix_spool:
+    name: panel-postfix-spool
+    labels: *mail-labels
+  rspamd_data:
+    name: panel-rspamd-data
+    labels: *mail-labels
+  mail_dkim:
+    name: panel-mail-dkim
+    labels: *mail-labels
+  clamav_db:
+    name: panel-clamav-db
+    labels: *mail-labels
+  mail_redis:
+    name: panel-mail-redis
+    labels: *mail-labels

@@ -117,6 +117,19 @@ daemon (host) ─► Caddy admin unix:///run/panel/caddy-admin.sock, Docker, PAN
   this network can also reach each other; isolation between sites relies on the MariaDB privileges
   (a separate user per database).
 
+## Mail (compose profile `mail`)
+
+- Off by default. Postfix, Dovecot, Rspamd, ClamAV, Unbound and a separate Redis (`panel-postfix`, `panel-dovecot`,
+  `panel-rspamd`, `panel-clamav`, `panel-unbound`, `panel-mail-redis`), label `panel.role=mail`, config in
+  `mail/` (read-only mounts), data in named volumes (`panel-vmail`, `panel-postfix-spool`, `panel-mail-dkim`, ...).
+- The switch is `COMPOSE_PROFILES` in `panel.env` (`mail` = on). `mail.sh enable|disable|reload|status` keeps it
+  in sync and starts/stops only the mail containers; `install.sh`/`upgrade.sh` include the profile only when it is
+  listed there and `MAIL_HOSTNAME` is set.
+- Caddy gets a site for `MAIL_HOSTNAME` (`caddy/mail/on-site.caddy`, imported only when compose sets
+  `MAIL_CADDY=on`); Postfix/Dovecot read the certificate from `caddy_data` (read-only).
+- `test/mail-stack.sh`: end-to-end test with its own labels and random ports. Admin documentation:
+  [docs/mail.md](../docs/mail.md).
+
 ## phpMyAdmin
 
 The sidebar item "phpMyAdmin" opens `https://$PANEL_DOMAIN/phpmyadmin/`, signed in without a password.

@@ -1,0 +1,7 @@
+# smtpd_sender_login_maps: which SASL logins may use this sender address (several rows = comma list).
+# __PLACEHOLDERS__ are filled in by the entrypoint (password from MAIL_DB_PASSWORD).
+hosts = __MAIL_DB_HOST__
+dbname = __MAIL_DB_NAME__
+user = mail_reader
+password = __MAIL_DB_PASSWORD__
+query = SELECT login FROM mail.v_senders WHERE sender = '%s'
