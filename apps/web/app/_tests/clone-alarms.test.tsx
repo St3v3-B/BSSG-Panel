@@ -55,8 +55,9 @@ describe("server dupliceren", () => {
     renderWithTrpc(<CloneCard server={await loadServer(USER_GAME, "user")} />, {
       ...user,
       patch: (m) => {
-        const orig = m.servers.cloneOptions;
-        m.servers.cloneOptions = async (o) => ({ ...(await orig(o)), allowed: false, quota: null });
+        const srv = m.servers as { -readonly [K in keyof typeof m.servers]: (typeof m.servers)[K] };
+        const orig = srv.cloneOptions;
+        srv.cloneOptions = async (o: Parameters<typeof orig>[0]) => ({ ...(await orig(o)), allowed: false, quota: null });
       },
     });
     fireEvent.click(screen.getByTestId("clone-open"));
