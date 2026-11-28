@@ -44,6 +44,25 @@ describe("meldingsinstellingen op het account", () => {
     await waitFor(() => expect((screen.getByLabelText("Server crashed: E-mail") as HTMLInputElement).checked).toBe(false));
   });
 
+  it("voorkeur aanvinken verandert meteen (optimistisch), ook als de server traag is", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    renderWithTrpc(<NotificationSettingsCards isAdmin={false} />, {
+      ...en("user"),
+      patch: (m) => {
+        const orig = m.account.setNotificationPrefs;
+        Object.assign(m.account, { setNotificationPrefs: async (a: Parameters<typeof orig>[0]) => (await gate, orig(a)) });
+      },
+    });
+    const box = (await screen.findByLabelText("Backup completed: Panel")) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    fireEvent.click(box);
+    await waitFor(() => expect((screen.getByLabelText("Backup completed: Panel") as HTMLInputElement).checked).toBe(true));
+    release();
+    await waitFor(() => expect((screen.getByLabelText("Backup completed: Panel") as HTMLInputElement).disabled).toBe(false));
+    expect((screen.getByLabelText("Backup completed: Panel") as HTMLInputElement).checked).toBe(true);
+  });
+
   it("admin ziet admin-gebeurtenissen; e-mailadres zetten stuurt een link", async () => {
     const { bodies } = renderWithTrpc(
       <>
@@ -61,6 +80,17 @@ describe("meldingsinstellingen op het account", () => {
     await waitFor(() => expect(inputs(bodies, "admin.smtp.set")[0]).toMatchObject({ host: "smtp.panel.test", port: 587, security: "starttls", password: "geheim", from: "panel@panel.test" }));
     // na opslaan is het wachtwoordveld leeg en staat er een hint
     expect(await screen.findByText("Leave empty to keep the current password")).toBeTruthy();
+  });
+
+  it("SMTP opslaan: de melding 'SMTP settings saved.' blijft staan na het opnieuw opbouwen van het formulier", async () => {
+    renderWithTrpc(<SmtpSettingsCard />, en());
+    fireEvent.change(await screen.findByLabelText("Host"), { target: { value: "smtp.panel.test" } });
+    fireEvent.change(screen.getByLabelText("Sender address"), { target: { value: "panel@panel.test" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("SMTP settings saved.")).toBeTruthy();
+    // het testmail-formulier verschijnt (host gezet) en de melding staat er nog
+    expect(await screen.findByLabelText("Send a test e-mail to")).toBeTruthy();
+    expect(screen.getByText("SMTP settings saved.")).toBeTruthy();
   });
 
   it("e-mailadres: ongeldig geblokkeerd, geldig verstuurt een bevestigingslink", async () => {
@@ -94,6 +124,25 @@ describe("statuspagina's", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(inputs(bodies, "statusPages.setServerPage")).toEqual([{ uuid: GAME, enabled: true, slug: "smp-status", showAddress: true, showPlayers: true }]));
     expect(await screen.findByText("Saved.")).toBeTruthy();
+  });
+
+  it("serverkaart zonder bestaande pagina: na de eerste keer opslaan blijft 'Saved.' staan (geen remount)", async () => {
+    let first = true;
+    renderWithTrpc(<ServerStatusPageCard uuid={GAME} name="SMP" />, {
+      ...en(),
+      patch: (m) => {
+        const orig = m.statusPages.serverPage;
+        Object.assign(m.statusPages, { serverPage: (a: Parameters<typeof orig>[0]) => (first ? ((first = false), null) : orig(a)) });
+      },
+    });
+    const slug = (await screen.findByLabelText("Address")) as HTMLInputElement;
+    fireEvent.change(slug, { target: { value: "smp-nieuw" } });
+    fireEvent.click(screen.getByRole("switch", { name: "Status page on" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved.")).toBeTruthy();
+    expect(await screen.findByRole("link", { name: "Open page" })).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.getByText("Saved.")).toBeTruthy();
   });
 
   it("netwerkpagina maken met servers in volgorde", async () => {

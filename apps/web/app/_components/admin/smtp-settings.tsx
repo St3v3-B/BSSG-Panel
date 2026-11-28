@@ -22,15 +22,18 @@ const DEFAULT_PORT: Record<SmtpSecurity, number> = { tls: 465, starttls: 587, no
 /** Admin: SMTP-server, testmail. */
 export function SmtpSettingsCard() {
   const q = trpc.admin.smtp.get.useQuery();
+  // De melding staat hier: het formulier mount opnieuw met de opgeslagen gegevens (wachtwoordveld leeg).
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   if (!q.data) return <Skeleton className="h-96 rounded-xl" />;
-  return <SmtpForm key={JSON.stringify(q.data)} data={q.data} />;
+  return <SmtpForm key={JSON.stringify(q.data)} data={q.data} msg={msg} setMsg={setMsg} />;
 }
 
-function SmtpForm({ data }: { data: SmtpSettings }) {
+type Msg = { ok: boolean; text: string } | null;
+
+function SmtpForm({ data, msg, setMsg }: { data: SmtpSettings; msg: Msg; setMsg: (m: Msg) => void }) {
   const t = useT().notif2;
   const utils = trpc.useUtils();
   const [f, setF] = useState({ host: data.host ?? "", port: String(data.port), security: data.security, username: data.username ?? "", password: "", clearPassword: false, from: data.from ?? "", fromName: data.fromName ?? "" });
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [to, setTo] = useState("");
   const save = trpc.admin.smtp.set.useMutation({ onSuccess: (d) => utils.admin.smtp.get.setData(undefined, d) });
   const test = trpc.admin.smtp.test.useMutation();

@@ -9,7 +9,7 @@
  */
 import { contentProfile, type PublicServerState, type PublicStatus, type PublicStatusServer, type ServerStatus, type StatusPage } from "@panel/api";
 import { TRPCError } from "@trpc/server";
-import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { call, daemonFor } from "./daemon";
 import { getDb, schema } from "./db";
 import { getNodesLive, resolveStatus } from "./node-cache";
@@ -52,7 +52,8 @@ export async function sampleUptime(now = new Date()): Promise<number> {
 
 /** Metingen ouder dan 8 dagen weg. */
 export async function cleanupUptime(now = new Date()): Promise<void> {
-  await getDb().delete(schema.serverUptime).where(sql`${schema.serverUptime.hour} < ${new Date(now.getTime() - 8 * 86_400_000)}`);
+  // lt() i.p.v. een rauwe sql-template: die geeft de Date ongemapt door en postgres-js weigert dat.
+  await getDb().delete(schema.serverUptime).where(lt(schema.serverUptime.hour, new Date(now.getTime() - 8 * 86_400_000)));
 }
 
 const pct = (up: number, total: number) => (total ? Math.round((up * 10_000) / total) / 100 : null);

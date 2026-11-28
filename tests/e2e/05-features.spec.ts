@@ -232,7 +232,8 @@ test("network tab on a Velocity server: add Paper backend, save, velocity.toml u
   await expect(page.getByTestId("network-result")).toBeVisible({ timeout: 2 * 60_000 });
   const api = (await login(USER.id, USER.name)).api;
   const toml = await api.files.read.query({ uuid: need("velocity"), path: "/velocity.toml" });
-  expect(toml.content).toMatch(/e2epaper\s*=\s*"127\.0\.0\.1:\d+"/);
+  // backends heten sinds de netwerkisolatie bij hun containernaam (gedeeld Velocity-netwerk), niet bij IP
+  expect(toml.content).toMatch(new RegExp(`e2epaper\\s*=\\s*"panel-${need("paper")}:\\d+"`));
   expect(toml.content).toMatch(/player-info-forwarding-mode\s*=\s*"modern"/);
   // the Paper server now shows the backend notice
   await page.goto(`/servers/${need("paper")}/network`).catch(() => {});

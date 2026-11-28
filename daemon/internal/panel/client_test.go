@@ -73,3 +73,19 @@ func TestStatusOrderAndCoalesce(t *testing.T) {
 		t.Fatalf("laatste status moet offline zijn: %v", got)
 	}
 }
+
+// Zonder gevolgde servers stuurde de daemon `"servers": null`; het panel weigert dat (400) en de melding gaat verloren.
+func TestReportImagesEmptyIsArray(t *testing.T) {
+	p := testpanel.New("tok", "node1.test")
+	defer p.Close()
+	c := client(p, "tok")
+	c.ReportImages(nil)
+	c.Wait()
+	calls := p.Calls("/api/remote/node/images")
+	if len(calls) != 1 {
+		t.Fatalf("%+v", calls)
+	}
+	if s, ok := calls[0].Body["servers"].([]any); !ok || len(s) != 0 {
+		t.Fatalf("servers = %#v, wil []", calls[0].Body["servers"])
+	}
+}

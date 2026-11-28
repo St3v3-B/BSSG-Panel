@@ -6,14 +6,21 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
 IT_KIND=e2e
+# phpMyAdmin-koppeling aan (de spec start zelf een phpMyAdmin-container uit deploy/phpmyadmin, zie fakes.ts).
+if [ "${E2E_PMA:-1}" = 1 ]; then
+  export PMA_SHARED_SECRET=$(openssl rand -hex 32)
+  export PMA_BLOWFISH_SECRET=$(openssl rand -hex 32)
+fi
 source "$root/tests/lib/env.sh"
 daemon_pid=""
 cleanup_all() {
+  set +e
   [ -n "$daemon_pid" ] && kill "$daemon_pid" 2>/dev/null && wait "$daemon_pid" 2>/dev/null
   pkill -x -f "$work/panel-daemon" 2>/dev/null
   cleanup
 }
 trap cleanup_all EXIT
+trap "exit 143" TERM INT
 
 export PLAYWRIGHT_BROWSERS_PATH="$root/tests/e2e/.browsers"
 [ -d "$PLAYWRIGHT_BROWSERS_PATH" ] || (cd tests/e2e && pnpm exec playwright install chromium)
@@ -21,6 +28,15 @@ export PLAYWRIGHT_BROWSERS_PATH="$root/tests/e2e/.browsers"
 export LD_LIBRARY_PATH="$root/tests/e2e/.libs/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 if ldd "$PLAYWRIGHT_BROWSERS_PATH"/chromium_headless_shell-*/*/chrome-headless-shell | grep -q 'not found'; then
   bash tests/e2e/setup-libs.sh
+fi
+
+echo "== phpMyAdmin-image (deploy/phpmyadmin) bouwen"
+if [ -z "${PMA_SHARED_SECRET:-}" ]; then
+  echo "phpMyAdmin uit (E2E_PMA=0)"
+elif docker build -q --label panel.test=true -t panel-phpmyadmin:e2e deploy/phpmyadmin >"$work/pma-build.log" 2>&1; then
+  export IT_PMA_IMAGE=panel-phpmyadmin:e2e
+else
+  echo "phpMyAdmin-image niet gebouwd (zie $work/pma-build.log): de phpMyAdmin-spec wordt overgeslagen"
 fi
 
 echo "== daemon starten"
@@ -35,7 +51,7 @@ curl -sf -H "authorization: Bearer $NODE_TOKEN" "$DAEMON_URL/api/system" >/dev/n
 if [ "${E2E_HOLD:-}" = 1 ]; then
   export -p > "$work/exports.sh"
   echo "hold: source $work/exports.sh ; Ctrl-C om op te ruimen"
-  while true; do sleep 3600; done
+  while true; do sleep 3600 & wait $!; done
 fi
 
 echo "== e2e"

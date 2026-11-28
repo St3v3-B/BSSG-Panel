@@ -98,6 +98,21 @@ export const test = base.extend<{ page: Page; pageErrors: string[]; consoleError
     page.on("requestfailed", (r) => failed.push(`${r.method()} ${r.url().slice(0, 150)} ${r.failure()?.errorText}`));
     page.on("response", (r) => { if (r.status() >= 400 && r.url().startsWith(base0)) failed.push(`${r.status()} ${r.url().slice(0, 150)}`); });
     await routeDaemon(page);
+    // Chromium breekt een navigatie af met ERR_NETWORK_CHANGED zodra Docker een interface aanmaakt (een
+    // servercontainer die start, ook van andere agents op deze machine). Dat is geen fout van het panel: opnieuw.
+    for (const k of ["goto", "reload"] as const) {
+      const orig = page[k].bind(page) as (...a: unknown[]) => Promise<unknown>;
+      (page as unknown as Record<string, unknown>)[k] = async (...a: unknown[]) => {
+        for (let i = 0; ; i++) {
+          try {
+            return await orig(...a);
+          } catch (e) {
+            if (i >= 3 || !/ERR_NETWORK_CHANGED/.test(String(e))) throw e;
+            await new Promise((r) => setTimeout(r, 500));
+          }
+        }
+      };
+    }
     await use(page);
     if (failed.length || consoleErrors.length || pageErrors.length) await info.attach("browser-problems.txt", { body: JSON.stringify({ failed, consoleErrors, pageErrors }, null, 1) });
     expect(pageErrors, "uncaught exceptions in the page").toEqual([]);
