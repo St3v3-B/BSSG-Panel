@@ -992,6 +992,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/npm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Toestand van de koppeling met Nginx Proxy Manager */
+        get: operations["getNpm"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/npm/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * NPM-instellingen nu opnieuw bij het panel ophalen en een ronde starten
+         * @description Het panel roept dit aan na een wijziging. Zonder aanroep haalt de daemon ze elke minuut op. 501 buiten `HTTP_MODE=npm`.
+         */
+        post: operations["refreshNpm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/npm/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Inloggen bij NPM met deze gegevens en de proxy hosts tellen (wijzigt niets) */
+        post: operations["testNpm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/routes": {
         parameters: {
             query?: never;
@@ -1458,12 +1512,50 @@ export interface components {
                 ssl_error?: string | null;
             }[];
         };
+        NpmTestResult: {
+            /** @enum {string} */
+            state: "unconfigured" | "ok" | "login_failed" | "unreachable" | "error";
+            error?: string;
+            /** @description NPM-versie, bv. 2.17.1 */
+            version?: string;
+            /** @description Alle proxy hosts die het account ziet */
+            proxy_hosts: number;
+            /** @description Waarvan met de marker van deze panel-instance */
+            managed_hosts: number;
+        };
+        NpmHostState: {
+            host: string;
+            proxy_host_id?: number;
+            /** @enum {string} */
+            ssl: "pending" | "dns_wrong" | "issuing" | "active" | "failed";
+            error?: string;
+            /** @description Het domein hoort in NPM bij een host die niet van het panel is */
+            conflict?: boolean;
+            /** Format: date-time */
+            expires?: string;
+        };
+        NpmState: {
+            /** @enum {string} */
+            http_mode: "direct" | "relay" | "npm";
+            /** @description Het panel heeft NPM-instellingen voor deze node */
+            configured: boolean;
+            /** @enum {string} */
+            state: "unconfigured" | "ok" | "login_failed" | "unreachable" | "error";
+            error?: string;
+            version?: string;
+            proxy_hosts: number;
+            managed_hosts: number;
+            conflicts: string[];
+            hosts: components["schemas"]["NpmHostState"][];
+            /** Format: date-time */
+            checked_at?: string;
+        };
         RelayState: {
             /**
-             * @description HTTP_MODE van de node (relay = Caddy zonder publieke poorten)
+             * @description HTTP_MODE van de node (relay = Caddy zonder publieke poorten, npm = achter Nginx Proxy Manager)
              * @enum {string}
              */
-            http_mode: "direct" | "relay";
+            http_mode: "direct" | "relay" | "npm";
             /** @description Gezet als deze node via een andere node loopt */
             edge: components["schemas"]["RelayTunnelStatus"] | null;
             clients: components["schemas"]["RelayClientState"][];
@@ -3124,6 +3216,103 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    getNpm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NpmState"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    refreshNpm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Opgehaald; de ronde loopt op de achtergrond */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Niet in HTTP_MODE=npm */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Panel niet bereikbaar */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    testNpm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description bv. http://127.0.0.1:81 */
+                    url: string;
+                    email: string;
+                    password: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Resultaat (ook bij een mislukte login; zie state) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NpmTestResult"];
+                };
+            };
+            /** @description Velden ontbreken */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
         };
     };
     listRoutes: {

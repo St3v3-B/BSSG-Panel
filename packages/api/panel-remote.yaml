@@ -127,7 +127,59 @@ paths:
                 last_error: { type: [string, "null"], maxLength: 500 }
                 last_error_at: { type: [string, "null"], format: date-time }
                 reconnects: { type: integer }
-                http_mode: { type: string, enum: [direct, relay] }
+                http_mode: { type: string, enum: [direct, relay, npm] }
+      responses:
+        "204": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/remote/npm:
+    get:
+      operationId: getNpmConfig
+      summary: Instellingen voor Nginx Proxy Manager van deze node (HTTP_MODE=npm)
+      description: |
+        De daemon haalt dit bij de start, elke minuut en na `POST /api/npm/refresh` op en bewaart het niet op schijf.
+        Bevat het NPM-wachtwoord en (bij ssl `cloudflare`) het Cloudflare-token: alleen voor de node zelf (node-token),
+        versleuteld in `nodes.npm_password_enc` / `nodes.npm_cloudflare_token_enc`. `enabled: false` = niet achter NPM.
+        `fixed_hosts`: het node-domein, en op de lokale node ook het panel-domein.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NpmConfig" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/remote/npm/status:
+    post:
+      operationId: reportNpmStatus
+      summary: Toestand van de NPM-koppeling van deze node
+      description: Bij elke wijziging en elke 10 minuten. Zelfde vorm als `GET /api/npm` van de daemon (openapi.yaml, NpmState).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [state]
+              properties:
+                http_mode: { type: string, enum: [direct, relay, npm] }
+                configured: { type: boolean }
+                state: { type: string, enum: [unconfigured, ok, login_failed, unreachable, error] }
+                error: { type: string, maxLength: 500 }
+                version: { type: string }
+                proxy_hosts: { type: integer }
+                managed_hosts: { type: integer }
+                conflicts: { type: array, items: { type: string } }
+                hosts:
+                  type: array
+                  items:
+                    type: object
+                    required: [host, ssl]
+                    properties:
+                      host: { type: string }
+                      ssl: { type: string, enum: [pending, dns_wrong, issuing, active, failed] }
+                      error: { type: string }
+                checked_at: { type: string, format: date-time }
       responses:
         "204": { description: OK }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -167,7 +219,7 @@ paths:
                   supports_domains: { type: boolean }
                   public_port: { type: integer }
                   dns_mode: { type: string, enum: [cloudflare, manual] }
-                  http_mode: { type: string, enum: [direct, relay], description: "relay: HTTP(S) via een andere node; Caddy zonder publieke poorten (compose-profiel caddy-relay)" }
+                  http_mode: { type: string, enum: [direct, relay, npm], description: "relay: HTTP(S) via een andere node; Caddy zonder publieke poorten (compose-profiel caddy-relay). npm: achter Nginx Proxy Manager (compose-profiel caddy-npm)" }
                   dns_ip: { type: string, description: "IPv4 waar node_domain naar moet wijzen: het eigen IP, of dat van de relay-node bij http_mode relay" }
         "404": { description: invalid_code }
         "429": { description: Te veel pogingen }
@@ -451,6 +503,21 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
   schemas:
+    NpmConfig:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: { type: boolean }
+        url: { type: string, description: "Adminpoort van NPM vanaf de node, bv. http://127.0.0.1:81" }
+        email: { type: string }
+        password: { type: string }
+        forward_host: { type: string, description: "Leeg = NPM_CADDY_ADDR van de node" }
+        forward_port: { type: integer, description: "0 = NPM_CADDY_ADDR van de node" }
+        ssl: { type: string, enum: [http, cloudflare] }
+        cloudflare_token: { type: string }
+        force_ssl: { type: boolean }
+        letsencrypt_email: { type: string, description: "Alleen voor NPM < 2.13 (ACME_EMAIL van het panel)" }
+        fixed_hosts: { type: array, items: { type: string } }
     RelayConfig:
       type: object
       required: [edge, clients]

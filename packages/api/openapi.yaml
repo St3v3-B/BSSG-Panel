@@ -78,6 +78,13 @@ tags:
       termineert TLS voor de hostnamen die het panel aan B heeft toegewezen (plus B's node-domein) en stuurt ze
       door de tunnel. De configuratie komt van het panel (`GET /api/remote/relay`, panel-remote.yaml).
       Gamepoorten en SFTP gaan nooit via de relay.
+  - name: npm
+    description: |
+      Node achter Nginx Proxy Manager (`HTTP_MODE=npm`): NPM bezit 80/443 en de certificaten, Caddy draait HTTP-only
+      op `NPM_CADDY_ADDR`. De daemon maakt met de instellingen van het panel (`GET /api/remote/npm`, panel-remote.yaml)
+      voor elk domein (node-domein, routes, panel-domein op de lokale node) een proxy host in NPM met de marker
+      `# managed-by-panel <instance>` in `advanced_config`, en raakt hosts zonder die marker nooit aan. De SSL-status
+      in `/api/routes` komt dan uit NPM.
 
 paths:
   /api/system:
@@ -1168,6 +1175,68 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/npm:
+    get:
+      tags: [npm]
+      operationId: getNpm
+      summary: Toestand van de koppeling met Nginx Proxy Manager
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NpmState" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/npm/refresh:
+    post:
+      tags: [npm]
+      operationId: refreshNpm
+      summary: NPM-instellingen nu opnieuw bij het panel ophalen en een ronde starten
+      description: Het panel roept dit aan na een wijziging. Zonder aanroep haalt de daemon ze elke minuut op. 501 buiten `HTTP_MODE=npm`.
+      responses:
+        "204": { description: Opgehaald; de ronde loopt op de achtergrond }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "501":
+          description: Niet in HTTP_MODE=npm
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: Panel niet bereikbaar
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/npm/test:
+    post:
+      tags: [npm]
+      operationId: testNpm
+      summary: Inloggen bij NPM met deze gegevens en de proxy hosts tellen (wijzigt niets)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, email, password]
+              properties:
+                url: { type: string, description: "bv. http://127.0.0.1:81" }
+                email: { type: string }
+                password: { type: string }
+      responses:
+        "200":
+          description: Resultaat (ook bij een mislukte login; zie state)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NpmTestResult" }
+        "400":
+          description: Velden ontbreken
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /api/routes:
     get:
       tags: [routes]
@@ -1756,11 +1825,44 @@ components:
               ssl_status: { type: string, enum: [pending, dns_wrong, issuing, active, failed] }
               ssl_error: { type: [string, "null"] }
 
+    NpmTestResult:
+      type: object
+      required: [state, proxy_hosts, managed_hosts]
+      properties:
+        state: { type: string, enum: [unconfigured, ok, login_failed, unreachable, error] }
+        error: { type: string }
+        version: { type: string, description: "NPM-versie, bv. 2.17.1" }
+        proxy_hosts: { type: integer, description: Alle proxy hosts die het account ziet }
+        managed_hosts: { type: integer, description: Waarvan met de marker van deze panel-instance }
+    NpmHostState:
+      type: object
+      required: [host, ssl]
+      properties:
+        host: { type: string }
+        proxy_host_id: { type: integer }
+        ssl: { type: string, enum: [pending, dns_wrong, issuing, active, failed] }
+        error: { type: string }
+        conflict: { type: boolean, description: "Het domein hoort in NPM bij een host die niet van het panel is" }
+        expires: { type: string, format: date-time }
+    NpmState:
+      type: object
+      required: [http_mode, configured, state, proxy_hosts, managed_hosts, conflicts, hosts]
+      properties:
+        http_mode: { type: string, enum: [direct, relay, npm] }
+        configured: { type: boolean, description: "Het panel heeft NPM-instellingen voor deze node" }
+        state: { type: string, enum: [unconfigured, ok, login_failed, unreachable, error] }
+        error: { type: string }
+        version: { type: string }
+        proxy_hosts: { type: integer }
+        managed_hosts: { type: integer }
+        conflicts: { type: array, items: { type: string } }
+        hosts: { type: array, items: { $ref: "#/components/schemas/NpmHostState" } }
+        checked_at: { type: string, format: date-time }
     RelayState:
       type: object
       required: [http_mode, edge, clients]
       properties:
-        http_mode: { type: string, enum: [direct, relay], description: "HTTP_MODE van de node (relay = Caddy zonder publieke poorten)" }
+        http_mode: { type: string, enum: [direct, relay, npm], description: "HTTP_MODE van de node (relay = Caddy zonder publieke poorten, npm = achter Nginx Proxy Manager)" }
         edge:
           description: Gezet als deze node via een andere node loopt
           oneOf:
