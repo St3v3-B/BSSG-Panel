@@ -137,6 +137,41 @@ A relay node cannot be deleted while other nodes relay through it, and a node th
 allocations; websites need none. **Update daemon** on a node makes it download the daemon of the current panel version and restart.
 A node with servers cannot be removed: move or delete the servers first.
 
+### Maintenance mode and evacuating a node
+
+Before you work on a machine, put its node in **maintenance** (**Admin, Nodes, <node>, Maintenance mode**):
+
+- No new servers land on the node: creating a server for a user, users creating their own (quota), plans (automatic node choice)
+  and moving a server *to* the node all refuse with `NODE_IN_MAINTENANCE`. Existing servers keep running.
+- Owners of servers on the node see a banner on their server pages and a badge on the overview ("in maintenance from … until …",
+  with your optional message). Planned start and end are information only; times are entered and shown in Europe/Amsterdam.
+- With **Notify the owners** checked, every owner gets one notification (panel inbox, Discord, e-mail, depending on their own
+  settings, event *Node maintenance and server moves*) listing their servers on the node. Changing the text or the planning sends a
+  new one; saving without changes does not.
+
+**Evacuate** moves servers off the node. Choose the servers (all are selected), a target per server (or *Automatic*) and how many
+moves run at the same time (1 to 5). Each move is the normal transfer (**Admin, Servers, <server>, Move**): stop, copy the data and the
+databases through the panel, create the server on the target, move domains and routes, start it again if it was running, and only then
+remove it from the old node.
+
+- *Automatic* is decided when that server's move starts: the node with the most free RAM (nodes with unlimited RAM first) that has
+  enough free disk and free allocations, supports domains if the server is a website or has domains, is not in maintenance, is ready and
+  not offline, and preferably has the same HTTP(S) mode (own ports 80/443 or the same relay). The planner shows each candidate and why
+  it does not fit.
+- Progress is shown per server and refreshes every two seconds. **Cancel the rest** stops queued moves; the move that is running
+  finishes. A panel restart during an evacuation marks the interrupted move as failed (the server stays where it was) and continues
+  with the rest.
+- A failed move leaves the server on the old node, running as before. The admin who started the evacuation gets a notification (and
+  the admin Discord webhook a message). Fix the cause (free ports, room on the target) and evacuate it again.
+- After a move the list shows the new address of game servers and every DNS record the owner has to change: `A` records of
+  websites and HTTP domains point to the HTTP(S) entry of the new node (its own IP, or that of its relay node), Minecraft domains to
+  the node's own IP, and the `_minecraft._tcp` SRV record to the new port. The owner gets a notification with a link to the domains
+  page of the server, which shows the same records with copy buttons and a live check. Records in a connected Cloudflare zone can be
+  set from there with one click.
+
+**End maintenance** makes the node accept new servers again and cancels queued moves. Nothing moves back automatically; move servers
+back yourself if you want to.
+
 ## Templates
 
 Templates are YAML files read from `TEMPLATES_DIR` (`/app/templates` in the panel container, from `templates/` in the repo) at every
@@ -147,6 +182,48 @@ In **Admin, Templates** you can list, create, edit and validate templates in a Y
 file from `TEMPLATES_DIR` is added when its slug is new and replaces the stored one only when its `version` is higher. So bump `version`
 when you change a template file, and keep in mind that a newer file version overwrites edits made in the editor. A template defines the image, the startup command (with `{{VARIABLES}}`),
 how to stop, the install script, config files the panel writes, user-editable variables and, for websites, the HTTP port.
+
+## Importing from Pterodactyl or Pelican
+
+**Admin, Import** brings users, servers and their files over from an existing Pterodactyl (1.x) or Pelican panel. The source is
+**only read**: the panel sends nothing but `GET` requests to its API and only reads over SFTP. The source panel and its servers keep
+running; switch them off yourself when you are done.
+
+1. **Connect.** Enter the panel URL and an **Application API key** (Pterodactyl: *Admin, Application API*, `ptla_…`; Pelican: `peli_…`)
+   with read permission on Users, Nodes, Allocations, Nests/Eggs and Servers. For files, add one or both of:
+   - a **Client API key** of an admin account (*Account, API Credentials*, `ptlc_…`/`pacc_…`): the newest *completed* backup of each
+     server is downloaded (`/api/client/servers/<id>/backups/<uuid>/download`). No new backup is made on the source, because that
+     would change it; make fresh backups there first if you want current data.
+   - an **SFTP login** on the Wings nodes: your panel username and password there. The panel logs in as `<username>.<server id>`
+     on the FQDN and SFTP port of the source node (override the host and port if needed) and reads all files. API keys do not work
+     for Wings SFTP.
+   Without either, servers are created empty and the template's install script runs.
+   The keys and the SFTP password are stored encrypted (AES-GCM with `PANEL_ENCRYPTION_KEY`) only while the import exists: they are
+   wiped as soon as every server is imported, or when you press **Disconnect**.
+2. **Eggs → templates.** Every egg gets a suggestion based on its name, docker image, start command and variables; a suggestion of
+   50% or more is selected automatically. Pick another template or skip the egg (its servers are then not imported). **Convert** turns
+   an egg into template YAML for you to review: `/mnt/server` becomes `/home/container`, bash install scripts are run with bash,
+   `{{server.build.default.port}}`-style placeholders become `{{SERVER_PORT}}`, simple Laravel rules (`in:`, `integer`, `boolean`,
+   `regex:`) become patterns, and the comments at the top list what could not be converted (ini/xml config files, wildcard keys,
+   built-in variables). Check that the image runs as a non-root user (uid 1000). **Save as template** stores it and maps the egg.
+3. **Users → accounts.** A user is linked automatically when an account here has the same Discord ID (the user's `external_id`, or
+   the Discord ID of a Pelican OAuth login), e-mail address or name. Otherwise choose **Create account** with the person's Discord ID
+   (like *Admin, Users, Create*: the name comes with the first Discord login; the source username is used until then and the source
+   e-mail is kept as an unconfirmed address), link to another account, or skip the user (their servers are skipped too).
+4. **Servers.** Choose which servers come along, the default target node and, per server, another node. Allocations: the same
+   port as on the source when it is free on the target node, otherwise the first free one. Limits are taken over (unlimited RAM in
+   the source becomes 1024 MB). Variables the template does not know are dropped and listed in the dry run.
+5. **Dry run** shows, with the current choices, which accounts would be created and for every server the owner, template, node, ports,
+   file method, dropped variables, warnings, or why it would be skipped. It creates and changes nothing (it does read the list of
+   backups on the source).
+6. **Start import.** First the accounts, then one server at a time: create it on the target node (without install when files come
+   along), copy the files (backup → unpacked into the server; or SFTP → streamed), done. Progress and copied bytes are shown per
+   server. A server that fails is removed again and marked *Failed* with the reason; fix the cause and press **Resume**: only failed
+   and remaining servers run again, imported servers are never imported twice. **Stop after this server** pauses the import. Imported
+   servers are not started.
+
+One import exists at a time. Imported servers are normal servers: databases, subusers, schedules and backups of the source are not
+imported.
 
 ## Settings
 

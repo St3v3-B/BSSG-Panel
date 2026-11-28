@@ -97,7 +97,10 @@ export type NotifyEvent =
   | { kind: "login_new_ip"; ip: string; userAgent: string | null }
   | { kind: "image_update"; reinstallRequired: boolean }
   | { kind: "usage_alarm"; metric: "cpu" | "ram" | "disk"; state: "triggered" | "resolved"; valuePct: number; thresholdPct: number; durationMinutes: number }
-  | { kind: "server_cloned"; result: "succeeded" | "failed"; sourceName: string; targetName: string; error: string | null };
+  | { kind: "server_cloned"; result: "succeeded" | "failed"; sourceName: string; targetName: string; error: string | null }
+  | { kind: "node_maintenance"; nodeName: string; message: string | null; plannedStart: Date | null; plannedEnd: Date | null; ended: boolean; servers: string[] }
+  | { kind: "server_moved"; fromNode: string; toNode: string; newAddress: string | null; dnsChanged: string[] }
+  | { kind: "server_move_failed"; nodeName: string; error: string };
 
 export interface Target {
   /** Voor de titel en de link; null bij node- en accountgebeurtenissen. */
@@ -119,6 +122,10 @@ export function prefKeyOf(e: NotifyEvent): NotificationEvent {
     case "node_offline":
     case "node_online":
       return "server_unreachable";
+    case "node_maintenance":
+    case "server_moved":
+    case "server_move_failed":
+      return "maintenance";
     default:
       return e.kind;
   }
@@ -152,6 +159,9 @@ export const COALESCE_MS: Record<NotifyEvent["kind"], number> = {
   // Hysterese en cooldown zitten al in ./alarms; hier alleen dubbele aanroepen samenvoegen.
   usage_alarm: 60_000,
   server_cloned: 1000,
+  node_maintenance: 60_000,
+  server_moved: 1_000,
+  server_move_failed: 0,
 };
 
 // ---------- opmaak (kanaalonafhankelijk) ----------
@@ -282,6 +292,37 @@ export function buildMessage(e: NotifyEvent, server: Target["server"], opts: { r
       level = "info";
       describe = (b) => `A newer image is available for ${b(sname)}.${e.reinstallRequired ? " It requires a reinstall." : ""}`;
       link = "/admin/settings/image-updates";
+      break;
+    case "node_maintenance": {
+      // Tijden in Europe/Amsterdam (zelfde zone als schema's en containers).
+      const when = (d: Date) => d.toLocaleString("en-GB", { timeZone: "Europe/Amsterdam", dateStyle: "medium", timeStyle: "short" });
+      level = e.ended ? "success" : "warning";
+      title = e.ended ? "Maintenance finished" : "Node maintenance";
+      const list = e.servers.length ? ` (${e.servers.slice(0, 10).map((x) => clip(x, 60)).join(", ")}${e.servers.length > 10 ? ", …" : ""})` : "";
+      describe = (b) =>
+        e.ended
+          ? `The maintenance of node ${b(clip(e.nodeName, 100))} has ended${list}.`
+          : `Node ${b(clip(e.nodeName, 100))} is in maintenance${list}. Your server may be moved to another node or be unavailable for a while.`;
+      if (!e.ended && (e.plannedStart || e.plannedEnd)) f.push({ name: "Planned (Europe/Amsterdam)", value: `${e.plannedStart ? when(e.plannedStart) : "now"} – ${e.plannedEnd ? when(e.plannedEnd) : "until further notice"}`, inline: false });
+      if (!e.ended && e.message) f.push({ name: "Message", value: clip(e.message, 1000) });
+      if (!server) link = "/";
+      break;
+    }
+    case "server_moved":
+      level = "info";
+      title = "Server moved to another node";
+      describe = (b) => `${b(sname)} was moved from node ${b(clip(e.fromNode, 100))} to ${b(clip(e.toNode, 100))}.`;
+      if (e.newAddress) f.push({ name: "New address", value: e.newAddress, inline: true });
+      if (e.dnsChanged.length) {
+        f.push({ name: "Update your DNS", value: `These records must point to the new node: ${e.dnsChanged.slice(0, 20).join(", ")}` });
+        if (server) link = `/servers/${server.uuid}/domains`;
+      }
+      break;
+    case "server_move_failed":
+      title = "Moving a server failed";
+      describe = (b) => `${b(sname)} could not be moved off node ${b(clip(e.nodeName, 100))} and stays there.`;
+      f.push({ name: "Error", value: e.error, code: true, limit: 900 });
+      if (server) link = `/admin/servers/${server.uuid}`;
       break;
   }
   if (opts.repeats && opts.repeats > 0) f.push({ name: "Repeats", value: `${opts.repeats} more since the previous message (merged)`, inline: true });
@@ -466,6 +507,8 @@ function dedupKey(e: NotifyEvent, t: Target): string {
   const id =
     e.kind === "node_offline" || e.kind === "node_online"
       ? e.nodeName
+      : e.kind === "node_maintenance"
+        ? `${e.nodeName}:${e.ended}:${(t.users ?? []).join(",")}`
       : e.kind === "ssl_failed"
         ? e.hostname
         : e.kind === "login_new_ip"

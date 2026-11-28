@@ -31,6 +31,7 @@ import { isBackend, isProxy, rewriteProxyToml, syncProxyAddresses } from "../net
 import { assignAllocations, checkAllocations, nodeById } from "./admin";
 import { isMc, routeFor } from "./domains";
 import { pokeRelay } from "../relay";
+import { assertNotInMaintenance } from "../node-maintenance";
 
 const ok = { ok: true as const };
 const inProgress = new Set<string>();
@@ -55,6 +56,7 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
     throw new TRPCError({ code: "BAD_REQUEST", message: "NODE_NOT_FOUND" });
   });
   if (target.id === b.node.id) throw new TRPCError({ code: "BAD_REQUEST", message: "SAME_NODE" });
+  assertNotInMaintenance(target);
   if (inProgress.has(b.server.uuid)) throw new TRPCError({ code: "CONFLICT", message: "TRANSFER_IN_PROGRESS" });
   const db = getDb();
   if (!target.supportsDomains) {

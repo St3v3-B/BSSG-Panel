@@ -11,6 +11,7 @@ import { logActivity } from "../activity";
 import { dropServerDatabases } from "./databases";
 import { removeServerRoutes } from "./domains";
 import { transfer } from "./transfer";
+import { assertNotInMaintenance, maintenanceOut } from "../node-maintenance";
 import { activityPage } from "../activity-query";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema, type Db } from "../db";
@@ -49,6 +50,7 @@ export function nodeOut(n: NodeRow): NodeOut {
     publicIp: n.publicIp,
     joinState: (n.joinState as NodeOut["joinState"]) ?? null,
     httpRelayNodeId: n.httpRelayNodeId,
+    maintenance: maintenanceOut(n.maintenance),
   };
 }
 
@@ -375,6 +377,7 @@ export const admin = {
       if (template.type === "game" && input.allocationIds.length === 0) throw bad("ALLOCATION_REQUIRED");
       if (template.type === "web" && input.allocationIds.length > 0) throw bad("WEB_HAS_NO_ALLOCATIONS");
       if (template.type === "web" && !node.supportsDomains) throw bad("NODE_HAS_NO_DOMAINS: this node does not support websites");
+      assertNotInMaintenance(node);
       const allocs = await checkAllocations(db, input.allocationIds, node.id, null);
       const errors = validateVariables(template.variables, input.variables, { onlyUserEditable: false });
       if (errors.length) throw bad(`INVALID_VARIABLES: ${errors.join("; ")}`);

@@ -80,6 +80,9 @@ async function runBoot(): Promise<void> {
   if (!process.env.VITEST) {
     startScheduler();
     startNodeMonitor();
+    // Evacuaties die liepen toen het panel stopte: afsluiten wat onderbroken is, de rest hervatten.
+    void import("./routers/maintenance").then((m) => m.resumeEvacuations()).catch((e) => console.error("[boot] evacuations:", e));
+    void import("./importer/router").then((m) => m.resumeImports()).catch((e) => console.error("[boot] import:", e));
     startBot(env.DISCORD_BOT_TOKEN); // optioneel; zonder token of bij een fout blijft het panel gewoon draaien
     // phpMyAdmin: tunnels naar de MariaDB van remote nodes, zodat bestaande sessies na een herstart blijven werken.
     if (env.PMA_SHARED_SECRET) void startTunnels().catch((e) => console.error("[boot] pma tunnels:", e));

@@ -1,5 +1,5 @@
 "use client";
-import { Activity, Database, FileCode2, Globe, LayoutDashboard, Package, Receipt, Server, Settings, Users, type LucideIcon } from "lucide-react";
+import { Activity, Database, FileCode2, Globe, Import, LayoutDashboard, Package, Receipt, Server, Settings, Users, type LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { usePathname } from "next/navigation";
 import { usePhpMyAdmin } from "@/app/_hooks/use-phpmyadmin";
@@ -64,6 +64,7 @@ export function useNav(isAdmin: boolean) {
         mk("/admin/nodes", n.nodes, Server, under("/admin/nodes")),
         mk("/admin/users", n.users, Users, under("/admin/users")),
         mk("/admin/templates", n.templates, FileCode2, under("/admin/templates")),
+        mk("/admin/import", t.hostops.imp.nav, Import, under("/admin/import")),
         ...(b?.plansEnabled ? [mk("/admin/plans", t.billing.nav.adminPlans, Package, under("/admin/plans"))] : []),
         ...(b?.plansEnabled || b?.billingEnabled ? [mk("/admin/billing", t.billing.nav.adminBilling, Receipt, under("/admin/billing"))] : []),
         mk("/admin/activity", n.activity, Activity, under("/admin/activity")),

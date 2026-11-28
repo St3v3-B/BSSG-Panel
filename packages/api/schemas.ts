@@ -3,6 +3,7 @@
  * Eigenaar: orchestrator. Agents wijzigen dit bestand niet; vraag een wijziging aan.
  */
 import { z } from "zod";
+import { NodeMaintenance } from "./hostops-schemas";
 
 // ---------- basis ----------
 
@@ -243,6 +244,8 @@ export const ServerSummary = z.object({
   imageUpdate: ImageUpdateInfo.default({ policy: null, effectivePolicy: "notify", available: false, reinstallRequired: false, checkedAt: null }),
   /** Wanneer de node de status voor het laatst bevestigde (achtergrondmonitor). null = onbekend/nooit. */
   lastSeenAt: z.date().nullable().optional(),
+  /** De node van deze server is in onderhoud (banner voor de eigenaar); null = niet. */
+  maintenance: NodeMaintenance.nullable().optional(),
 });
 export type ServerSummary = z.infer<typeof ServerSummary>;
 
@@ -680,6 +683,8 @@ export const Node = z.object({
   joinState: z.lazy(() => NodeJoinState).nullable(),
   /** HTTP(S)-relay: null = eigen 80/443; anders loopt alle HTTP(S) (sites, domeinen, node-API) via deze node. */
   httpRelayNodeId: Id.nullable(),
+  /** Onderhoudsmodus: geen nieuwe servers op deze node; null = normaal. */
+  maintenance: NodeMaintenance.nullable().optional(),
 });
 export type Node = z.infer<typeof Node>;
 
@@ -1158,6 +1163,7 @@ export const NotificationEvent = z.enum([
   "image_update",
   "usage_alarm",
   "server_cloned",
+  "maintenance",
 ]);
 export type NotificationEvent = z.infer<typeof NotificationEvent>;
 export const ADMIN_NOTIFICATION_EVENTS: readonly NotificationEvent[] = ["node_offline", "image_update"];
@@ -1183,6 +1189,7 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   image_update: { panel: true, discord: false, email: false },
   usage_alarm: { panel: true, discord: true, email: false },
   server_cloned: { panel: true, discord: false, email: false },
+  maintenance: { panel: true, discord: true, email: true },
 };
 
 export const EmailAddress = z.string().trim().toLowerCase().max(254).pipe(z.email());
@@ -1422,3 +1429,4 @@ export type ServerAlarms = z.infer<typeof ServerAlarms>;
 
 // ---------- pakketten en facturatie ----------
 export * from "./billing-schemas";
+export * from "./hostops-schemas";

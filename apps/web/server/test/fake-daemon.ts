@@ -2,6 +2,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { connect, type AddressInfo, type Socket } from "node:net";
 import type { DaemonServerSpec, DaemonServerState } from "@panel/api";
+import { parseTar } from "../importer/tar";
 
 export interface RecordedRequest {
   method: string;
@@ -34,6 +35,8 @@ export class FakeDaemon {
   copyUnsupported = false;
   /** Wordt afgewacht vóór transfer/copy en transfer/import (om een lopende kopie te kunnen afbreken in tests). */
   transferHold: (() => Promise<void>) | null = null;
+  /** Ontvangen echte tar-stromen (import). */
+  importedTars: Array<{ uuid: string; bytes: number }> = [];
   readonly routes = new Map<string, Record<string, unknown>>();
   /** Velocity-netwerken (PUT /api/servers/{proxy}/network): proxy-uuid → backend-uuids. */
   readonly proxyNetworks = new Map<string, string[]>();
@@ -159,6 +162,7 @@ export class FakeDaemon {
     this.exportFails = false;
     this.copyUnsupported = false;
     this.transferHold = null;
+    this.importedTars = [];
     this.dbs.clear();
     this.pmaUsers.clear();
     this.tunnelTarget = null;
@@ -211,7 +215,8 @@ export class FakeDaemon {
   private async handle(req: IncomingMessage, res: ServerResponse) {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
-    const raw = Buffer.concat(chunks).toString();
+    const rawBuf = Buffer.concat(chunks);
+    const raw = rawBuf.toString();
     let body: unknown = undefined;
     try {
       body = raw ? JSON.parse(raw) : undefined;
@@ -323,6 +328,14 @@ export class FakeDaemon {
       }
       if (this.diskFull) return send(507, { error: "disk_exceeded" });
       if (this.transferHold) await this.transferHold();
+      // Echte tar (import vanuit Pterodactyl/Pelican) of de JSON-"tar" van exportData hierboven.
+      if (rawBuf[0] !== 0x7b) {
+        const t = parseTar(rawBuf);
+        for (const [p, c] of t.files) fs.files.set(p, Buffer.from(c).toString());
+        for (const d of t.dirs) fs.dirs.add(d);
+        this.importedTars.push({ uuid: tm[1]!, bytes: rawBuf.length });
+        return send(204);
+      }
       const t = JSON.parse(raw) as { files: [string, string][]; dirs: string[] };
       for (const [p, c] of t.files) fs.files.set(p, c);
       for (const d of t.dirs) fs.dirs.add(d);

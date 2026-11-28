@@ -17,6 +17,7 @@ import { createNotifyMock } from "./notify";
 import { createBillingMock } from "./billing";
 import { createPlayersMock } from "./players";
 import { createCloneMock } from "./clone";
+import { createHostopsMock } from "./hostops";
 
 const MOCK_HITS: s.ContentHit[] = [
   { source: "modrinth", projectId: "fabric-api", name: "Fabric API", description: "Core API for Fabric mods", author: "modmuss50", downloads: 100000000, iconUrl: null, url: "https://modrinth.com/mod/fabric-api" },
@@ -241,6 +242,7 @@ export function createMock(): Implementation {
     freeAllocations: () => db.allocations.filter((a) => a.serverUuid === null).length,
     quota: overview,
   });
+  const hostops = createHostopsMock({ nodes: () => db.nodes, servers: () => db.servers, users: () => db.users, templates: () => db.templates, id });
   return {
     auth: {
       me: ({ ctx }) => (ctx.session ? me(ctx.session) : null),
@@ -642,6 +644,8 @@ export function createMock(): Implementation {
     admin: {
       ...billing.admin,
       ...cm.admin,
+      maintenance: hostops.maintenance,
+      importer: hostops.importer,
       dashboard: () => ({
         nodes: db.nodes.map(nodeHealth),
         alerts: [{ kind: "install_failed", message: "Installation of blokgenoten.test is still running", at: new Date(), serverUuid: data.servers[2]!.uuid, nodeId: 1 }],

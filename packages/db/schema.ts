@@ -172,6 +172,8 @@ export const nodes = pgTable("nodes", {
   relaySecretEnc: text("relay_secret_enc"),
   /** Laatste melding van de daemon over zijn tunnel (POST /api/remote/relay/status). */
   relayStatus: jsonb("relay_status").$type<{ edgeNodeId: number; connected: boolean; latencyMs: number | null; lastError: string | null; lastErrorAt: string | null; connectedAt: string | null; reconnects: number; httpMode: "direct" | "relay" | null; reportedAt: string }>(),
+  /** Onderhoudsmodus (null = normaal): geen nieuwe servers op deze node; tijden als ISO-tekst. */
+  maintenance: jsonb("maintenance").$type<{ since: string; message: string | null; plannedStart: string | null; plannedEnd: string | null; by: number | null }>(),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("nodes_one_local").on(t.isLocal).where(sql`${t.isLocal}`)]);
 
@@ -709,3 +711,72 @@ export const billingEvents = pgTable("billing_events", {
   invoiceId: integer("invoice_id").references(() => invoices.id, { onDelete: "set null" }),
   receivedAt: ts("received_at").notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.provider, t.eventId] })]);
+
+// ---------- onderhoud en import (agent hostops) ----------
+
+/** Evacuatie van een node: servers één (of N) tegelijk verhuizen met admin.servers.transfer. */
+export const nodeEvacuations = pgTable("node_evacuations", {
+  id: pk(),
+  nodeId: integer("node_id").notNull().references(() => nodes.id, { onDelete: "cascade" }),
+  /** running | completed | cancelled */
+  status: text("status").notNull().default("running"),
+  concurrency: integer("concurrency").notNull().default(1),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+  finishedAt: ts("finished_at"),
+}, (t) => [index("node_evacuations_node_idx").on(t.nodeId)]);
+
+export const nodeEvacuationItems = pgTable("node_evacuation_items", {
+  id: pk(),
+  evacuationId: integer("evacuation_id").notNull().references(() => nodeEvacuations.id, { onDelete: "cascade" }),
+  serverId: integer("server_id").references(() => servers.id, { onDelete: "set null" }),
+  serverUuid: uuid("server_uuid").notNull(),
+  serverName: text("server_name").notNull(),
+  /** Gekozen doel; null + auto = nog te kiezen bij het starten. */
+  targetNodeId: integer("target_node_id").references(() => nodes.id, { onDelete: "set null" }),
+  auto: boolean("auto").notNull().default(true),
+  /** queued | running | done | failed | cancelled */
+  status: text("status").notNull().default("queued"),
+  error: text("error"),
+  /** Na de verhuizing: nieuw adres en DNS-records die de eigenaar moet aanpassen. */
+  result: jsonb("result").$type<{ newAddress: string | null; dns: Array<{ hostname: string; type: "A" | "SRV"; value: string | null; changed: boolean | null }> }>(),
+  position: integer("position").notNull().default(0),
+  startedAt: ts("started_at"),
+  finishedAt: ts("finished_at"),
+}, (t) => [index("node_evacuation_items_evac_idx").on(t.evacuationId)]);
+
+/**
+ * Import vanuit Pterodactyl/Pelican. Eén rij per import; de sleutels (`_enc`) worden gewist zodra de import
+ * klaar is of ontkoppeld wordt. `snapshot` = wat de bron-API gaf, `mapping` = keuzes van de admin.
+ */
+export const importSessions = pgTable("import_sessions", {
+  id: pk(),
+  kind: text("kind").notNull(),
+  url: text("url").notNull(),
+  apiKeyEnc: text("api_key_enc"),
+  clientKeyEnc: text("client_key_enc"),
+  /** SFTP-login op de bron-nodes; wachtwoord versleuteld. */
+  sftp: jsonb("sftp").$type<{ username: string; passwordEnc: string; host: string | null; port: number | null }>(),
+  snapshot: jsonb("snapshot").notNull(),
+  mapping: jsonb("mapping").notNull().default({}),
+  /** ready | running | done | cancelled */
+  state: text("state").notNull().default("ready"),
+  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+  fetchedAt: ts("fetched_at").notNull().defaultNow(),
+  createdAt: createdAt(),
+});
+
+/** Voortgang per bronserver. */
+export const importItems = pgTable("import_items", {
+  sessionId: integer("session_id").notNull().references(() => importSessions.id, { onDelete: "cascade" }),
+  sourceServerId: integer("source_server_id").notNull(),
+  /** pending | creating | copying | done | failed | skipped */
+  status: text("status").notNull().default("pending"),
+  error: text("error"),
+  method: text("method"),
+  serverId: integer("server_id").references(() => servers.id, { onDelete: "set null" }),
+  newUuid: uuid("new_uuid"),
+  bytes: bigint("bytes", { mode: "number" }).notNull().default(0),
+  startedAt: ts("started_at"),
+  finishedAt: ts("finished_at"),
+}, (t) => [primaryKey({ columns: [t.sessionId, t.sourceServerId] })]);

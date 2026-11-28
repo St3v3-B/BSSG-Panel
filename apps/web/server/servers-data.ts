@@ -5,6 +5,7 @@ import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { apiKeyOf } from "./apikey";
 import { getDb, schema } from "./db";
+import { maintenanceOut } from "./node-maintenance";
 import { getNodesLive, resolveStatus } from "./node-cache";
 import { getImageUpdateSettings } from "./settings";
 import { templateSleepCapable } from "./spec";
@@ -93,6 +94,7 @@ export function toSummary(b: ServerBundle, viewerId: number, status?: ServerStat
     suspended: b.server.suspendedAt ? { reason: b.server.suspendedReason, at: b.server.suspendedAt } : null,
     imageUpdate: imageInfo(b),
     lastSeenAt: lastSeenAt ?? null,
+    maintenance: maintenanceOut(b.node.maintenance),
   };
 }
 
