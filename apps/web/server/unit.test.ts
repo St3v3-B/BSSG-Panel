@@ -150,7 +150,9 @@ describe("beveiligingsheaders en omgeving", () => {
   it("CSP en vaste headers", async () => {
     const { contentSecurityPolicy, securityHeaders } = await import("../next.config");
     expect(contentSecurityPolicy).toContain("frame-ancestors 'none'");
-    expect(contentSecurityPolicy).toContain("https://cdn.jsdelivr.net");
+    // Monaco wordt meegeleverd (public/monaco): geen CDN in de CSP.
+    expect(contentSecurityPolicy).not.toContain("cdn.jsdelivr.net");
+    expect(contentSecurityPolicy).toMatch(/script-src 'self' 'unsafe-inline'(;| 'unsafe-eval';)/);
     expect(securityHeaders.map((x) => x.key)).toEqual(expect.arrayContaining(["X-Content-Type-Options", "Strict-Transport-Security", "Content-Security-Policy"]));
   });
   it("NODE_TOKEN: minimaal 32 tekens", async () => {

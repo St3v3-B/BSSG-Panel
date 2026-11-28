@@ -11,7 +11,9 @@ except `caddy/` (web-hosting).
 | `systemd/panel-daemon.service` | the Go daemon on the host |
 | `panel.env.example` | all variables (contract; only the orchestrator changes names) |
 | `caddy/` | Caddyfile and documentation (web-hosting) |
+| `uninstall.sh` | removes a panel or node installation (labelled Docker objects, unit, optionally data) |
 | `test.sh` | tests, do not touch the real installation |
+| `test-upgrade.sh`, `test-uninstall.sh` | sandbox tests for `upgrade.sh` and `uninstall.sh` (part of `make check`) |
 
 ## Installing
 
@@ -62,6 +64,18 @@ systemctl status panel-daemon; journalctl -u panel-daemon -f
 
 Different domain: edit the env, `systemctl restart panel-daemon`, compose `up -d`, and update the
 redirect URI in the Discord portal.
+
+Uninstall:
+
+```
+sudo deploy/uninstall.sh --dry-run          # show what would be removed
+sudo deploy/uninstall.sh --backup           # dump Postgres + MariaDB first, then remove (asks for the domain)
+sudo deploy/uninstall.sh --purge --yes      # also delete volumes, /etc/panel and DATA_DIR
+```
+
+It only removes Docker objects with both `panel.managed=true` and `panel.instance=$PANEL_INSTANCE`.
+Without `--purge` the volumes, `/etc/panel` and the data directory stay, so `install.sh` can pick them up again.
+`PANEL_ROOT` and `ENV_FILE` redirect all file paths (used by `deploy/test-uninstall.sh`).
 
 ## How the pieces reach each other
 
