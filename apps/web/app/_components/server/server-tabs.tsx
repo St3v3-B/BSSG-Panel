@@ -1,5 +1,5 @@
 "use client";
-import { Archive, CalendarClock, ChartLine, Contact, Database, FolderOpen, GitBranch, Globe, Network, Smartphone, PackagePlus, Puzzle, ScrollText, Settings, SquareTerminal, Terminal as TerminalIcon, Users } from "lucide-react";
+import { Archive, CalendarClock, History, ChartLine, Contact, Database, FolderOpen, GitBranch, Globe, Network, Smartphone, PackagePlus, Puzzle, ScrollText, Settings, SquareTerminal, Terminal as TerminalIcon, Users } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
@@ -27,6 +27,7 @@ export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner
   if (has("console.read")) tabs.push({ key: "stats", href: `${base}/stats`, label: l.stats, icon: ChartLine });
   if (has("files.read")) tabs.push({ key: "files", href: `${base}/files`, label: l.files, icon: FolderOpen });
   if (server.players && has("players.read")) tabs.push({ key: "players", href: `${base}/players`, label: l.players, icon: Contact });
+  if (server.players && has("players.read")) tabs.push({ key: "activity", href: `${base}/activity`, label: getT().playerActivity.tab, icon: History });
   if (has("terminal") && has("files.write") && server.terminal?.enabled) tabs.push({ key: "terminal", href: `${base}/terminal`, label: getT().devaccess.terminal.tab, icon: TerminalIcon });
   if (server.content && has("files.read")) tabs.push({ key: "content", href: `${base}/content`, label: server.content === "plugin" ? l.plugins : l.mods, icon: Puzzle });
   if ((server.type === "web" || server.domainsAllowed) && has("domain.manage")) tabs.push({ key: "domains", href: `${base}/domains`, label: l.domains, icon: Globe });
