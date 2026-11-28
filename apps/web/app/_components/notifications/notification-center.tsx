@@ -207,10 +207,13 @@ function EmailCard({ settings }: { settings: NotificationSettings }) {
 function PrefsCard({ settings, isAdmin }: { settings: NotificationSettings; isAdmin: boolean }) {
   const t = useT().notif2;
   const utils = trpc.useUtils();
-  // Optimistisch: het vinkje verandert meteen (anders lijkt een klik niets te doen tot de server antwoordt).
+  // Optimistisch in lokale state: het vinkje verandert meteen in de klik. Via de query-cache alleen zou de
+  // gecontroleerde checkbox eerst terugspringen (react-query meldt wijzigingen pas een tik later).
+  const [local, setLocal] = useState<NotificationSettings["prefs"] | null>(null);
+  const prefs = local ?? settings.prefs;
   const save = trpc.account.setNotificationPrefs.useMutation({
-    onSuccess: (d) => utils.account.notificationSettings.setData(undefined, d),
-    onError: () => void utils.account.notificationSettings.invalidate(),
+    onSuccess: (d) => (setLocal(d.prefs), utils.account.notificationSettings.setData(undefined, d)),
+    onError: () => (setLocal(null), void utils.account.notificationSettings.invalidate()),
   });
   const events = NotificationEvent.options.filter((e) => isAdmin || !ADMIN_NOTIFICATION_EVENTS.includes(e));
   const unavailable: Record<NotificationChannel, string | null> = {
@@ -219,9 +222,8 @@ function PrefsCard({ settings, isAdmin }: { settings: NotificationSettings; isAd
     email: settings.email.address && settings.emailAvailable ? null : t.emailMissing,
   };
   const toggle = (e: (typeof events)[number], c: NotificationChannel, v: boolean) => {
-    const next: ChannelPrefs = { ...settings.prefs[e], [c]: v };
-    // synchroon in de klik: een gecontroleerde checkbox springt anders eerst terug
-    utils.account.notificationSettings.setData(undefined, (old) => (old ? { ...old, prefs: { ...old.prefs, [e]: next } } : old));
+    const next: ChannelPrefs = { ...prefs[e], [c]: v };
+    setLocal({ ...prefs, [e]: next });
     save.mutate({ prefs: { [e]: next } });
   };
   return (
@@ -257,7 +259,7 @@ function PrefsCard({ settings, isAdmin }: { settings: NotificationSettings; isAd
                   <td key={c} className="px-2 py-2 text-center">
                     <Checkbox
                       aria-label={`${t.events[e]}: ${t.channels[c]}`}
-                      checked={settings.prefs[e][c]}
+                      checked={prefs[e][c]}
                       disabled={save.isPending}
                       title={unavailable[c] ?? undefined}
                       onChange={(ev) => toggle(e, c, ev.target.checked)}
