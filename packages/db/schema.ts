@@ -1004,7 +1004,7 @@ export const mailDomains = mail.table("domains", {
   dnsStatus: text("dns_status").notNull().default("pending"),
   dnsCheckedAt: ts("dns_checked_at"),
   /** Laatste DNS-controle per record-id (voor dnsRecords zonder live lookup). */
-  dnsLastCheck: jsonb("dns_last_check").$type<Record<string, { status: string; actual: string[] }>>(),
+  dnsLastCheck: jsonb("dns_last_check").$type<Record<string, { status: string; actual: string[]; value?: string }>>(),
   active: boolean("active").notNull().default(true),
   ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: createdAt(),

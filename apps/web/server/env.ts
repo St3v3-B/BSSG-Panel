@@ -77,6 +77,19 @@ const EnvSchema = z
     DISCORD_BOT_TOKEN: optional,
     SESSION_IDLE_DAYS: days(30),
     SESSION_MAX_DAYS: days(90),
+    /** Mailmodule: hostnaam van de mailserver (leeg = mailmodule uit), wachtwoord van de leesrol mail_reader, publieke IP's (anders detecteert de daemon ze). */
+    MAIL_HOSTNAME: optional.transform((v, ctx) => {
+      if (v === undefined) return undefined;
+      const h = v.toLowerCase();
+      if (!/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(h)) {
+        ctx.addIssue({ code: "custom", message: `invalid host name: ${v}` });
+        return z.NEVER;
+      }
+      return h;
+    }),
+    MAIL_DB_PASSWORD: optional,
+    MAIL_PUBLIC_IPV4: optional.pipe(z.ipv4().optional()),
+    MAIL_PUBLIC_IPV6: optional.pipe(z.ipv6().optional()),
     PANEL_INSECURE_TEST_LOGIN: optional.transform((v) => v === "1" || v === "true"),
   })
   .transform((e) => ({

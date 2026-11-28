@@ -102,7 +102,7 @@ export function baseEnv(over: Record<string, string> = {}): Record<string, strin
   };
 }
 
-const ENV_KEYS = Object.keys(baseEnv()).concat(["DATABASE_URL", "DAEMON_URL", "TEMPLATES_DIR", "NODE_PUBLIC_IP", "REDIS_URL", "MARIADB_ROOT_PASSWORD", "MARIADB_CONTAINER", "MARIADB_ADMIN_ADDR", "SESSION_IDLE_DAYS", "SESSION_MAX_DAYS"]);
+const ENV_KEYS = Object.keys(baseEnv()).concat(["DATABASE_URL", "DAEMON_URL", "TEMPLATES_DIR", "NODE_PUBLIC_IP", "REDIS_URL", "MARIADB_ROOT_PASSWORD", "MARIADB_CONTAINER", "MARIADB_ADMIN_ADDR", "SESSION_IDLE_DAYS", "SESSION_MAX_DAYS", "MAIL_HOSTNAME", "MAIL_DB_PASSWORD", "MAIL_PUBLIC_IPV4", "MAIL_PUBLIC_IPV6"]);
 
 export function applyEnv(vars: Record<string, string | undefined>): void {
   for (const k of ENV_KEYS) delete process.env[k];
