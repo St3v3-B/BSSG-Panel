@@ -162,6 +162,7 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	d.relay = newRelaySvc(d)
 	d.api.SetRelay(d.relay)
 	d.routes.SetExtra(d.relay.edge.Routes)
+	d.routes.SetRelayed(d.relay.client.Active)
 	if cfg.PanelRepoDir != "" {
 		d.api.SetUpgrade(&upgrade.Service{RepoDir: cfg.PanelRepoDir, UpgradeDir: filepath.Join(cfg.DataDir, "upgrade")})
 	}
