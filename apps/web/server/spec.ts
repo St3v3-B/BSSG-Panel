@@ -2,7 +2,7 @@
  * Template + servervariabelen + limieten + allocations → ServerSpec voor de daemon.
  * `{{VAR}}` laat het panel staan; de daemon vervangt die (startup en config_files).
  */
-import { parseTemplate, type DaemonServerSpec, type Limits } from "@panel/api";
+import { parseTemplate, resolvePlayerEvents, type DaemonServerSpec, type Limits, type PlayerEventPatterns } from "@panel/api";
 import type { schema } from "./db";
 import { getSleepMotdConfig } from "./sleep-motd";
 
@@ -66,6 +66,20 @@ export function imageUpdateSpec(t: Parameters<typeof templateImageVersionEnv>[0]
   const out: { policy?: string; version_env: string | null } = { version_env: templateImageVersionEnv(t) };
   if (policy !== undefined) out.policy = policy ?? "default";
   return out as DaemonServerSpec["image_update"];
+}
+
+const playerEventsCache = new Map<string, PlayerEventPatterns | null>();
+/** Patronen voor de speleractiviteit (`player_events` uit de template-YAML, of de standaard per slug). null = niet bijgehouden. */
+export function templatePlayerEvents(t: Pick<TemplateRow, "id" | "version" | "sourceYaml" | "type" | "slug">): PlayerEventPatterns | null {
+  if (t.type !== "game") return null;
+  const k = `${t.id}:${t.version}`;
+  let v = playerEventsCache.get(k);
+  if (v === undefined) {
+    const r = parseTemplate(t.sourceYaml);
+    v = r.ok ? resolvePlayerEvents(t.slug, r.spec.player_events) : null;
+    playerEventsCache.set(k, v);
+  }
+  return v;
 }
 
 export const SLEEP_MOTD = "Server is sleeping - join to start it";
@@ -139,5 +153,12 @@ export function buildServerSpec(i: SpecInput): DaemonServerSpec {
     sleep: sleepSpec(t, i.sleep),
     image_update: imageUpdateSpec(t, i.imagePolicy),
     auto_restart: i.autoRestart?.enabled ? { max_per_10min: i.autoRestart.max } : null,
+    ...playerEventsSpec(t),
   };
+}
+
+/** Spec-veld `player_events`, alleen als de template speleractiviteit heeft (anders weggelaten). */
+function playerEventsSpec(t: SpecInput["template"]): { player_events?: DaemonServerSpec["player_events"] } {
+  const p = templatePlayerEvents(t);
+  return p ? { player_events: p } : {};
 }

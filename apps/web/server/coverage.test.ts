@@ -68,6 +68,8 @@ export const ADMIN2 = ["admin.servers.setSuspended", "admin.servers.changeTempla
 export const CONTENT = ["content.info", "content.search", "content.resolve", "content.install", "content.list", "content.checkUpdates", "content.update", "content.uninstall", "content.importModpack", "content.versionOptions"];
 /** Minecraft-spelers: online, whitelist, ops, bans. */
 export const PLAYERS = ["players.info", "players.online", "players.manage"];
+/** Speleractiviteit: tijdlijn, spelers, piekuren, huidige sessies. */
+export const PLAYER_ACTIVITY = ["playerActivity.timeline", "playerActivity.players", "playerActivity.heatmap", "playerActivity.current"];
 /** Quota's per gebruiker. */
 export const NOTIFY = ["account.webhook", "account.setWebhook", "account.testWebhook", "servers.notifications", "servers.updateNotifications", "servers.testWebhook", "admin.notifications.get", "admin.notifications.set", "admin.notifications.test"];
 /** Meldingssysteem (inbox, e-mail, voorkeuren, SMTP) en openbare statuspagina's. */
@@ -103,7 +105,7 @@ export const DEVACCESS = ["servers.terminalToken", "admin.servers.setTerminalAll
 describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES, ...STATS, ...NOTIFY2, ...BILLING, ...PLAYERS, ...CLONE_ALARMS, ...HOSTOPS, ...DEVACCESS, ...DEPLOY];
+    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES, ...STATS, ...NOTIFY2, ...BILLING, ...PLAYERS, ...PLAYER_ACTIVITY, ...CLONE_ALARMS, ...HOSTOPS, ...DEVACCESS, ...DEPLOY];
     for (const p of all) expect(contract.has(p), p).toBe(true);
     expect(implementedPaths().sort()).toEqual(all.sort());
   });

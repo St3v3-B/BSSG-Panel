@@ -8,6 +8,7 @@ import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { getDb, schema } from "./db";
 import { sessionIdleMs } from "./session";
 import { getActivityRetentionDays } from "./settings";
+import { PLAYER_ACTIVITY_RETENTION_DAYS } from "@panel/api/player-activity";
 
 const DAY_MS = 24 * 3600_000;
 export const RETENTION_INTERVAL_MS = 3600_000;
@@ -34,6 +35,9 @@ export interface RetentionResult {
   activity: number;
   sessions: number;
   joinCodes: number;
+  /** Speleractiviteit: afgesloten sessies en servergebeurtenissen ouder dan PLAYER_ACTIVITY_RETENTION_DAYS. */
+  playerSessions: number;
+  serverEvents: number;
 }
 
 export async function runRetention(now = new Date()): Promise<RetentionResult> {
@@ -49,7 +53,11 @@ export async function runRetention(now = new Date()): Promise<RetentionResult> {
   const latest = getDb().select({ id: sql<number>`max(${j.id})` }).from(j).groupBy(j.nodeId);
   const joinCodes = await deleteBatched(j, j.id, and(or(lt(j.expiresAt, weekAgo), lt(j.usedAt, weekAgo)), notInArray(j.id, latest)));
 
-  return { activity, sessions, joinCodes };
+  const activityCutoff = new Date(now.getTime() - PLAYER_ACTIVITY_RETENTION_DAYS * DAY_MS);
+  const playerSessions = await deleteBatched(schema.playerSessions, schema.playerSessions.id, lt(schema.playerSessions.leftAt, activityCutoff));
+  const serverEvents = await deleteBatched(schema.serverEvents, schema.serverEvents.id, lt(schema.serverEvents.at, activityCutoff));
+
+  return { activity, sessions, joinCodes, playerSessions, serverEvents };
 }
 
 let lastRun = 0;
@@ -59,6 +67,7 @@ export async function maybeRunRetention(now = new Date()): Promise<RetentionResu
   if (now.getTime() - lastRun < RETENTION_INTERVAL_MS) return null;
   lastRun = now.getTime();
   const r = await runRetention(now);
-  if (r.activity || r.sessions || r.joinCodes) console.log(`[retention] removed ${r.activity} activity rows, ${r.sessions} sessions, ${r.joinCodes} join codes`);
+  if (r.activity || r.sessions || r.joinCodes || r.playerSessions || r.serverEvents)
+    console.log(`[retention] removed ${r.activity} activity rows, ${r.sessions} sessions, ${r.joinCodes} join codes, ${r.playerSessions} player sessions, ${r.serverEvents} server events`);
   return r;
 }

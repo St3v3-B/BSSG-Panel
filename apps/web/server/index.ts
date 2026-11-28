@@ -20,6 +20,7 @@ import { files } from "./routers/files";
 import { network } from "./routers/network";
 import { bedrock } from "./bedrock";
 import { players } from "./players";
+import { playerActivity } from "./player-activity";
 import { quotaAccount, quotaAdmin, quotaServers } from "./routers/quotas";
 import { notificationsAccount, notificationsAdmin, notificationsServer } from "./routers/notifications";
 import { inbox, notifyAccount, smtpAdmin, verifyEmail } from "./routers/notify-center";
@@ -46,7 +47,7 @@ function merge(base: Tree, over: Tree): Tree {
   return out;
 }
 
-const phase1 = { deploy, billing, inbox, statusPages, apps, auth: { ...auth, verifyEmail }, backups, schedules, siteSettings, account: { ...account, ...credentials, ...quotaAccount, ...notificationsAccount, ...notifyAccount }, servers: { ...servers, ...stats, ...network, ...bedrock, ...quotaServers, ...notificationsServer, ...cloneProcedures, ...alarmProcedures }, files, content, players, subusers, domains, databases, admin: { ...admin, ...billingAdmin, alarms: alarmAdmin, notifications: notificationsAdmin, smtp: smtpAdmin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, maintenance, importer, databaseHosts, dnsProviders, s3Targets } };
+const phase1 = { deploy, billing, inbox, statusPages, apps, auth: { ...auth, verifyEmail }, backups, schedules, siteSettings, account: { ...account, ...credentials, ...quotaAccount, ...notificationsAccount, ...notifyAccount }, servers: { ...servers, ...stats, ...network, ...bedrock, ...quotaServers, ...notificationsServer, ...cloneProcedures, ...alarmProcedures }, files, content, players, playerActivity, subusers, domains, databases, admin: { ...admin, ...billingAdmin, alarms: alarmAdmin, notifications: notificationsAdmin, smtp: smtpAdmin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, maintenance, importer, databaseHosts, dnsProviders, s3Targets } };
 
 /** Paden die echt geïmplementeerd zijn (de rest is NOT_IMPLEMENTED). */
 export function implementedPaths(tree: Tree = phase1 as unknown as Tree, prefix = ""): string[] {
