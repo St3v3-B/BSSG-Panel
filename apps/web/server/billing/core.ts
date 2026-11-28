@@ -195,6 +195,8 @@ export async function pickNode(tx: Tx, plan: Pick<PlanRow, "type" | "nodeIds" | 
   if (plan.type === "web") conds.push(eq(schema.nodes.supportsDomains, true));
   // Nodes die nog via join worden opgezet, niet gebruiken.
   conds.push(or(isNull(schema.nodes.joinState), eq(schema.nodes.joinState, "ready"))!);
+  // Nodes in onderhoud nemen geen nieuwe servers aan.
+  conds.push(isNull(schema.nodes.maintenance));
   const nodes = await tx.select().from(schema.nodes).where(and(...conds)).orderBy(asc(schema.nodes.id));
   if (!nodes.length) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_CAPACITY" });
   const ids = nodes.map((n) => n.id);

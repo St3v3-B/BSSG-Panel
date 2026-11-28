@@ -1764,6 +1764,7 @@ export const nl: Dict = {
       login_new_ip: "Nieuwe login vanaf onbekend IP",
       node_offline: "Node offline (admin)",
       image_update: "Image-update beschikbaar (admin)",
+      maintenance: "Node-onderhoud en verhuizingen",
     },
     channels: { panel: "Panel", discord: "Discord", email: "E-mail" },
     prefsTitle: "Meldingen",

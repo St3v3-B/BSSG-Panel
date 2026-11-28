@@ -97,6 +97,8 @@ export const isMinecraft = (slug: string) => !!contentProfile(slug) || MC_SLUG.t
 
 function publicState(b: ServerBundle, st: ServerStatus): PublicServerState {
   if (b.server.suspendedAt || st === "installing" || st === "install_failed") return "maintenance";
+  // Node in onderhoud: een server die niet draait is "in onderhoud", niet "offline".
+  if (b.node.maintenance && st !== "online" && st !== "starting" && st !== "sleeping") return "maintenance";
   switch (st) {
     case "online":
       return "online";

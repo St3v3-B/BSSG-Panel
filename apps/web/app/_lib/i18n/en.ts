@@ -1765,6 +1765,7 @@ export const en = {
       login_new_ip: "New sign-in from an unknown IP",
       node_offline: "Node offline (admin)",
       image_update: "Image update available (admin)",
+      maintenance: "Node maintenance and server moves",
     },
     channels: { panel: "Panel", discord: "Discord", email: "E-mail" },
     prefsTitle: "Notifications",
