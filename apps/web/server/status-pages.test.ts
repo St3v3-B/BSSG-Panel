@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, schema } from "./db";
 import { authProxy } from "./proxy";
-import { CACHE_MS, invalidateStatus, publicStatus, sampleUptime, statusStats, uptimeFor } from "./status-pages";
+import { CACHE_MS, cleanupUptime, invalidateStatus, publicStatus, sampleUptime, statusStats, uptimeFor } from "./status-pages";
 import { GAME_TEMPLATE, OWNER, useHarness, type TestUser } from "./test/harness";
 
 const PAPER = GAME_TEMPLATE.replace("slug: testgame", "slug: paper").replace("name: Testspel", "name: Paper");
@@ -127,6 +127,21 @@ describe("caching", () => {
 });
 
 describe("uptime", () => {
+  it("cleanupUptime verwijdert metingen ouder dan 8 dagen (echte Postgres: Date als parameter)", async () => {
+    const [s] = await getDb().select().from(schema.servers).where(eq(schema.servers.uuid, smp));
+    await getDb().delete(schema.serverUptime);
+    const now = new Date();
+    const hour = (h: number) => new Date(Math.floor(now.getTime() / 3_600_000) * 3_600_000 - h * 3_600_000);
+    await getDb().insert(schema.serverUptime).values([
+      { serverId: s!.id, hour: hour(24 * 9), upMinutes: 60, totalMinutes: 60 },
+      { serverId: s!.id, hour: hour(2), upMinutes: 60, totalMinutes: 60 },
+    ]);
+    await cleanupUptime(now);
+    const rows = await getDb().select().from(schema.serverUptime).where(eq(schema.serverUptime.serverId, s!.id));
+    expect(rows.map((r) => r.hour.getTime())).toEqual([hour(2).getTime()]);
+    await getDb().delete(schema.serverUptime);
+  });
+
   it("één meting per minuut per server, ook bij dubbele aanroep; percentages per uur en dag", async () => {
     const [s] = await getDb().select().from(schema.servers).where(eq(schema.servers.uuid, smp));
     await getDb().delete(schema.serverUptime);
