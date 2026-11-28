@@ -8,6 +8,7 @@ import { CopyText } from "@/app/_components/copy-button";
 import { QueryError } from "@/app/_components/query-error";
 import { ServerTabs } from "@/app/_components/server/server-tabs";
 import { CloneBanner } from "@/app/_components/server/clone-card";
+import { StagingBanner } from "@/app/_components/publish/publish-manager";
 import { StatusBadge } from "@/app/_components/status-badge";
 import { Button } from "@/app/_components/ui/button";
 import { Skeleton } from "@/app/_components/ui/skeleton";
@@ -86,6 +87,7 @@ export default function ServerLayout({ children }: { children: ReactNode }) {
         <ServerTabs server={s} />
       </div>
       {(s.isOwner || (me.data?.isAdmin && me.data.totpVerified)) && <CloneBanner server={s} />}
+      {s.type === "web" && <StagingBanner server={s} />}
       <MaintenanceNotice maintenance={s.maintenance} />
       {children}
     </div>

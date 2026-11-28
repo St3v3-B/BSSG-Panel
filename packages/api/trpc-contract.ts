@@ -547,6 +547,27 @@ export const contract = {
     list: query("user", server.extend(s.PageInput.shape), s.page(s.Deploy)),
     get: query("user", byId, s.DeployDetail),
   },
+  /**
+   * Staging → productie voor websites. Een staging-site is een (geslaagde) kopie van een website die nog bestaat
+   * (servers.clone; `createStaging` is een kopie met de juiste naam). Publiceren (`start`, uuid = staging) zet
+   * bestanden (en optioneel databases) van staging over productie: backup van productie, werkmap vullen, productie
+   * kort stoppen, atomisch omwisselen met uitsluitingen, databases vervangen (met URL-vervanging), productie weer in
+   * de oude staat. Mislukt iets, dan wordt productie teruggezet. Geen API-sleutels (FORBIDDEN `NOT_WITH_API_KEY`).
+   * Rechten: staging `files.read` (+ `database.manage`), productie `files.write` + `power` + `backup.create`
+   * (+ `database.manage`); eigenaar en admin hebben ze allemaal. Fouten: BAD_REQUEST `NOT_A_WEBSITE`,
+   * `NOT_A_STAGING_SITE`, `NOTHING_TO_PUBLISH`, `CONFIRM_DATABASES`; PRECONDITION_FAILED `BACKUP_UNAVAILABLE`,
+   * `DAEMON_TOO_OLD`, `DATABASE_NOT_MANAGED`, `SERVER_BUSY`; CONFLICT `PUBLISH_IN_PROGRESS`, `CLONE_IN_PROGRESS`.
+   */
+  publish: {
+    info: query("user", server, s.PublishInfo),
+    /** Staging-kopie maken (servers.clone met naam "<naam> (staging)", databases standaard mee). */
+    createStaging: mutation("user", server.extend({ name: z.string().trim().min(1).max(100).optional(), copyDatabases: z.boolean().default(true), domain: s.Hostname.nullable().default(null) }), s.CloneJob),
+    start: mutation("user", server.extend(s.PublishInput.shape), s.PublishJob),
+    /** Voortgang; wie staging of productie mag zien. */
+    job: query("user", byId, s.PublishJob),
+    /** Publicaties waar deze site staging of productie van is (nieuwste eerst, max 20). */
+    history: query("user", server, z.array(s.PublishJob)),
+  },
   /** Alleen PHP-websites (templates php-8-*). Eigenaar of admin; opgeschort → FORBIDDEN `SUSPENDED` voor niet-admins. */
   siteSettings: {
     php: query("user", server, s.PhpSettingsInfo),

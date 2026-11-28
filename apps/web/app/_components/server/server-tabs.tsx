@@ -1,5 +1,5 @@
 "use client";
-import { Archive, CalendarClock, History, ChartLine, Contact, Database, FolderOpen, GitBranch, Globe, Network, Smartphone, PackagePlus, Puzzle, ScrollText, Settings, SquareTerminal, Terminal as TerminalIcon, Users } from "lucide-react";
+import { Archive, CalendarClock, History, ChartLine, Contact, Database, FolderOpen, GitBranch, GitCompareArrows, Globe, Network, Smartphone, PackagePlus, Puzzle, ScrollText, Settings, SquareTerminal, Terminal as TerminalIcon, Users } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
@@ -35,6 +35,7 @@ export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner
   if (server.bedrock && (server.isOwner || has("files.write"))) tabs.push({ key: "bedrock", href: `${base}/bedrock`, label: l.bedrock, icon: Smartphone });
   if (server.type === "web" && has("files.write")) tabs.push({ key: "apps", href: `${base}/apps`, label: l.apps, icon: PackagePlus });
   if (server.type === "web" && has("deploy.read")) tabs.push({ key: "deploy", href: `${base}/deploy`, label: l.deploy, icon: GitBranch });
+  if (server.type === "web" && has("files.read")) tabs.push({ key: "staging", href: `${base}/staging`, label: getT().publish.tab, icon: GitCompareArrows });
   if (has("database.manage")) tabs.push({ key: "databases", href: `${base}/databases`, label: l.databases, icon: Database });
   if (has("backup.create") || has("backup.restore")) tabs.push({ key: "backups", href: `${base}/backups`, label: l.backups, icon: Archive });
   if (has("schedule.manage")) tabs.push({ key: "schedules", href: `${base}/schedules`, label: l.schedules, icon: CalendarClock });

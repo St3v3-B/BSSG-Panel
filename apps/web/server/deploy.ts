@@ -13,6 +13,7 @@ import { getDb, schema } from "./db";
 import { getEnv } from "./env";
 import { decrypt, randomToken, safeEqual } from "./lib/crypto";
 import { notify, targetForServer } from "./notify";
+import { publishBusy } from "./publish";
 import type { ServerBundle } from "./servers-data";
 
 export type ConfigRow = typeof schema.deployConfigs.$inferSelect;
@@ -357,6 +358,8 @@ export class DeployConflict extends Error {}
  */
 export async function startDeploy(b: ServerBundle, c: ConfigRow, trigger: "manual" | "webhook", userId: number | null, ctx: Ctx | null): Promise<DeployRow> {
   await reapStale(b.server.id);
+  // Publiceren (staging → productie) wisselt dezelfde bestanden om: niet tegelijk.
+  if (await publishBusy(b.server.id)) throw new TRPCError({ code: "CONFLICT", message: "PUBLISH_IN_PROGRESS" });
   const db = getDb();
   let row: DeployRow;
   try {

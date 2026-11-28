@@ -35,6 +35,12 @@ export class FakeDaemon {
   copyUnsupported = false;
   /** Wordt afgewacht vóór transfer/copy en transfer/import (om een lopende kopie te kunnen afbreken in tests). */
   transferHold: (() => Promise<void>) | null = null;
+  /** Publiceren: werkmap per `${uuid}:${id}` (nieuwe versie, en na de swap de oude als snapshot). */
+  readonly publishes = new Map<string, { next: { files: Map<string, string>; dirs: Set<string> }; old: { files: Map<string, string>; dirs: Set<string> } | null }>();
+  /** Doet alsof de daemon /publish niet kent (oude versie: 404 unknown path). */
+  publishUnsupported = false;
+  /** POST /publish/{id}/swap geeft 500. */
+  publishSwapFails = false;
   /** Ontvangen echte tar-stromen (import). */
   importedTars: Array<{ uuid: string; bytes: number }> = [];
   readonly routes = new Map<string, Record<string, unknown>>();
@@ -169,6 +175,9 @@ export class FakeDaemon {
     this.copyUnsupported = false;
     this.transferHold = null;
     this.importedTars = [];
+    this.publishes.clear();
+    this.publishUnsupported = false;
+    this.publishSwapFails = false;
     this.dbs.clear();
     this.pmaUsers.clear();
     this.tunnelTarget = null;
@@ -332,6 +341,8 @@ export class FakeDaemon {
       this.deploys.set(uuid, { req: body as Record<string, unknown>, phase: "fetching", log: ["Fetching"] });
       return send(202);
     }
+    const pbm = /^\/api\/servers\/([0-9a-f-]{36})\/publish\/(\d+)(?:\/(data|copy|swap|rollback))?$/.exec(path);
+    if (pbm) return this.handlePublish(pbm[1]!, pbm[2]!, pbm[3] ?? "", r, rawBuf, send);
     const tm = /^\/api\/servers\/([0-9a-f-]{36})\/transfer\/(export|import|copy)$/.exec(path);
     if (tm) {
       const s = this.servers.get(tm[1]!);
@@ -356,7 +367,8 @@ export class FakeDaemon {
       }
       if (tm[2] === "export") {
         if (this.exportFails) return send(500, { error: "internal", message: "export kapot" });
-        return send(200, new Raw(JSON.stringify({ files: [...fs.files], dirs: [...fs.dirs] })));
+        const internal = query.get("exclude_internal") === "1" ? (p: string) => /^\/\.panel-/.test(p) : () => false;
+        return send(200, new Raw(JSON.stringify({ files: [...fs.files].filter(([p]) => !internal(p)), dirs: [...fs.dirs].filter((p) => !internal(p)) })));
       }
       if (this.diskFull) return send(507, { error: "disk_exceeded" });
       if (this.transferHold) await this.transferHold();
@@ -453,6 +465,95 @@ export class FakeDaemon {
       default:
         return send(404, { error: "not_found" });
     }
+  }
+
+  private async handlePublish(uuid: string, id: string, op: string, r: RecordedRequest, rawBuf: Buffer, send: (s: number, b?: unknown) => void) {
+    if (this.publishUnsupported) return send(404, { error: "not_found", message: "unknown path" });
+    const s = this.servers.get(uuid);
+    if (!s) return send(404, { error: "not_found" });
+    const key = `${uuid}:${id}`;
+    const stopped = s.state === "offline" || s.state === "install_failed" || s.state === "sleeping";
+    const internal = (p: string) => /^\/\.panel-/.test(p);
+    const fs = this.fs(uuid);
+    const copyFs = (f: { files: Map<string, string>; dirs: Set<string> }) => ({ files: new Map(f.files), dirs: new Set(f.dirs) });
+    if (op === "data" || op === "copy") {
+      if (s.state === "installing") return send(409, { error: "invalid_state" });
+      if (this.diskFull) return send(507, { error: "disk_exceeded" });
+      let src: { files: Map<string, string>; dirs: Set<string> };
+      if (op === "copy") {
+        const b = (r.body ?? {}) as { source_uuid?: string };
+        if (!b.source_uuid || !this.servers.has(b.source_uuid)) return send(404, { error: "not_found" });
+        if (this.exportFails) return send(500, { error: "internal", message: "copy kapot" });
+        if (this.transferHold) await this.transferHold();
+        src = this.fs(b.source_uuid);
+      } else {
+        if (this.transferHold) await this.transferHold();
+        const t = JSON.parse(rawBuf.toString()) as { files: [string, string][]; dirs: string[] };
+        src = { files: new Map(t.files), dirs: new Set(t.dirs) };
+      }
+      const next = { files: new Map([...src.files].filter(([p]) => !internal(p))), dirs: new Set([...src.dirs].filter((p) => !internal(p))) };
+      this.publishes.set(key, { next, old: null });
+      return send(204);
+    }
+    const st = this.publishes.get(key);
+    if (op === "swap") {
+      if (!st) return send(404, { error: "not_prepared" });
+      if (!stopped) return send(409, { error: "invalid_state" });
+      if (this.publishSwapFails) return send(500, { error: "internal", message: "swap kapot" });
+      const pats = ((r.body as { exclude?: string[] } | undefined)?.exclude ?? []).map((p) => {
+        const dirOnly = p.endsWith("/");
+        let g = p.replace(/\/+$/, "");
+        const anchored = g.startsWith("/") || g.includes("/");
+        g = g.replace(/^\/+/, "");
+        const re = new RegExp(`^${g.replace(/[.+^${}()|\\]/g, "\\$&").replace(/\*/g, "[^/]*").replace(/\?/g, "[^/]")}$`);
+        return { re, anchored, dirOnly };
+      });
+      const isDir = (f: { dirs: Set<string> }, p: string) => f.dirs.has(p);
+      const excluded = (f: { dirs: Set<string> }, p: string) => {
+        // p of een van zijn ouders matcht
+        const parts = p.split("/").filter(Boolean);
+        for (let i = 1; i <= parts.length; i++) {
+          const sub = "/" + parts.slice(0, i).join("/");
+          const rel = sub.slice(1);
+          for (const x of pats) {
+            if (x.dirOnly && !(i < parts.length || isDir(f, sub))) continue;
+            if (x.re.test(x.anchored ? rel : parts[i - 1]!)) return true;
+          }
+        }
+        return false;
+      };
+      const old = copyFs(fs);
+      const kept: string[] = [];
+      fs.files.clear();
+      fs.dirs.clear();
+      fs.dirs.add("/");
+      for (const [p, c] of st.next.files) if (!excluded(st.next, p)) fs.files.set(p, c);
+      for (const d of st.next.dirs) if (!excluded(st.next, d)) fs.dirs.add(d);
+      for (const [p, c] of old.files) {
+        if (internal(p) || excluded(old, p)) {
+          fs.files.set(p, c);
+          if (!internal(p)) kept.push(`kept ${p}`);
+        }
+      }
+      for (const d of old.dirs) if (internal(d) || excluded(old, d)) fs.dirs.add(d);
+      st.old = old;
+      return send(200, { log: kept });
+    }
+    if (op === "rollback") {
+      if (st?.old) {
+        fs.files.clear();
+        fs.dirs.clear();
+        for (const [p, c] of st.old.files) fs.files.set(p, c);
+        for (const d of st.old.dirs) fs.dirs.add(d);
+      }
+      this.publishes.delete(key);
+      return send(204);
+    }
+    if (op === "" && r.method === "DELETE") {
+      this.publishes.delete(key);
+      return send(204);
+    }
+    return send(404, { error: "not_found" });
   }
 
   fs(uuid: string) {

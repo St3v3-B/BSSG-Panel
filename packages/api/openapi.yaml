@@ -101,6 +101,8 @@ tags:
   - name: backups
   - name: deploy
     description: Git-deploy van websites (clone/build/atomisch omwisselen)
+  - name: publish
+    description: Staging-kopie van een website naar productie zetten (werkmap, atomisch omwisselen, rollback)
   - name: databases
     description: Klantdatabases op de MariaDB van deze node (panel-mariadb); het panel beheert ze via de daemon
   - name: routes
@@ -810,6 +812,7 @@ paths:
         wereld zelf als dat nodig is. Een bestand dat tijdens het lezen krimpt breekt de stroom af.
       parameters:
         - { name: live, in: query, required: false, schema: { type: string, enum: ["0", "1"] } }
+        - { name: exclude_internal, in: query, required: false, description: "1 = namen `.panel-*` op het hoogste niveau (git-deploy, werkmappen) niet meesturen (publiceren)", schema: { type: string, enum: ["0", "1"] } }
       responses:
         "200":
           description: tar-stroom
@@ -872,6 +875,112 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "507": { $ref: "#/components/responses/DiskFull" }
+
+  # ---------- publiceren (staging → productie) ----------
+  /api/servers/{uuid}/publish/{publish_id}/data:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }, { $ref: "#/components/parameters/PublishId" }]
+    put:
+      tags: [publish]
+      operationId: publishData
+      summary: Nieuwe versie (tar van exportServerData van staging) in een lege werkmap van deze server
+      description: |
+        Maakt `.panel-publish-<publish_id>/new` leeg aan in de datamap en pakt de tar daarin uit (zelfde regels als
+        importServerData). De server mag draaien (niet `installing`). Telt mee voor de schijfquotum (507): tijdelijk staan
+        beide versies op de schijf. Bij een fout is de werkmap weer weg. Eén publicatiestap tegelijk per server (409 `publish_busy`).
+      requestBody:
+        required: true
+        content:
+          application/x-tar:
+            schema: { type: string, format: binary }
+      responses:
+        "204": { description: Klaar om om te wisselen }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+  /api/servers/{uuid}/publish/{publish_id}/copy:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }, { $ref: "#/components/parameters/PublishId" }]
+    post:
+      tags: [publish]
+      operationId: publishCopy
+      summary: Zelfde node — de datamap van staging (zonder `.panel-*`) rechtstreeks in de werkmap
+      description: Zoals publishData, maar de data passeert het panel niet. Bron en doel mogen draaien (niet installeren). Oudere daemons 404 (unknown path).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_uuid]
+              properties:
+                source_uuid: { type: string, format: uuid }
+      responses:
+        "204": { description: Klaar om om te wisselen }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+  /api/servers/{uuid}/publish/{publish_id}/swap:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }, { $ref: "#/components/parameters/PublishId" }]
+    post:
+      tags: [publish]
+      operationId: publishSwap
+      summary: Werkmap op de plek van de huidige bestanden zetten (server gestopt)
+      description: |
+        Uit de nieuwe versie gaan namen `.panel-*` op het hoogste niveau en alle uitgesloten paden; de huidige bestanden
+        (behalve `.panel-*`) gaan naar `.panel-publish-<id>/old`, de nieuwe versie komt op hun plek (rename, geen kopie),
+        en de uitgesloten paden van de huidige versie worden teruggezet. Uitsluitingen zoals .gitignore zonder `**`/`!`:
+        zonder `/` = naam op elke diepte (`wp-config.php`, `.env`), met `/` = pad vanaf de root, eindigt op `/` = alleen
+        mappen. Elke stap staat in `state.json`; mislukt iets, dan zet de daemon alles terug. De oude versie blijft
+        staan tot finish (DELETE) of rollback. 409 als de server niet gestopt is, 404 `not_prepared` zonder werkmap.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                exclude: { type: array, maxItems: 100, items: { type: string, maxLength: 512 } }
+      responses:
+        "200":
+          description: Omgewisseld
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [log]
+                properties:
+                  log: { type: array, items: { type: string }, description: "Bv. `kept /wp-config.php`" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/servers/{uuid}/publish/{publish_id}/rollback:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }, { $ref: "#/components/parameters/PublishId" }]
+    post:
+      tags: [publish]
+      operationId: publishRollback
+      summary: Alles terug zoals vóór de swap (of alleen de werkmap weg als er niet gewisseld is); idempotent
+      responses:
+        "204": { description: Teruggezet }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/servers/{uuid}/publish/{publish_id}:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }, { $ref: "#/components/parameters/PublishId" }]
+    delete:
+      tags: [publish]
+      operationId: publishFinish
+      summary: Publicatie afronden — de oude versie en de werkmap verwijderen
+      responses:
+        "204": { description: Opgeruimd }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /api/servers/{uuid}/backups:
     parameters: [{ $ref: "#/components/parameters/Uuid" }]
@@ -1317,6 +1426,8 @@ paths:
       operationId: importDatabase
       summary: SQL-dump inladen in een bestaande (lege) database
       description: De database moet eerst met `createDatabase` zijn aangemaakt. Bij een SQL-fout 500 `import_failed` met het eind van de foutmelding.
+      parameters:
+        - { name: replace, in: query, required: false, description: "1 = database eerst leegmaken (DROP + CREATE met dezelfde naam; rechten van de gebruiker blijven staan), voor publiceren en terugzetten", schema: { type: string, enum: ["0", "1"] } }
       requestBody:
         required: true
         content:
@@ -1592,6 +1703,12 @@ components:
       required: true
       description: Pad binnen de serverdata, begint met `/`. `..` buiten de root → 400.
       schema: { type: string }
+    PublishId:
+      name: publish_id
+      in: path
+      required: true
+      description: Id van de publicatie (site_publishes.id in het panel)
+      schema: { type: integer, minimum: 1 }
     DbName:
       name: name
       in: path

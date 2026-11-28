@@ -271,10 +271,11 @@ export class DaemonClient {
 
   // ---------- verplaatsen tussen nodes ----------
   /** Tar-stroom van de hele datamap (server moet gestopt zijn). De body moet volledig gelezen worden. */
-  async exportData(uuid: string, o: { live?: boolean; signal?: AbortSignal } = {}): Promise<ReadableStream<Uint8Array>> {
+  async exportData(uuid: string, o: { live?: boolean; excludeInternal?: boolean; signal?: AbortSignal } = {}): Promise<ReadableStream<Uint8Array>> {
     let res: Response;
+    const q = [o.live ? "live=1" : "", o.excludeInternal ? "exclude_internal=1" : ""].filter(Boolean).join("&");
     try {
-      res = await fetch(`${this.baseUrl}/api/servers/${uuid}/transfer/export${o.live ? "?live=1" : ""}`, {
+      res = await fetch(`${this.baseUrl}/api/servers/${uuid}/transfer/export${q ? `?${q}` : ""}`, {
         headers: { authorization: `Bearer ${this.token}` },
         signal: transferSignal(o.signal),
         cache: "no-store",
@@ -324,6 +325,43 @@ export class DaemonClient {
     }
     if (!res.ok) throw await this.httpError(res);
     await res.arrayBuffer().catch(() => undefined);
+  }
+
+  // ---------- publiceren (staging → productie) ----------
+  private async publishFetch(uuid: string, id: number, sub: string, method: Method, body: BodyInit | undefined, contentType: string | undefined, signal?: AbortSignal): Promise<Response> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/api/servers/${uuid}/publish/${id}${sub}`, {
+        method,
+        headers: { authorization: `Bearer ${this.token}`, ...(contentType ? { "content-type": contentType } : {}) },
+        body,
+        ...(body instanceof ReadableStream ? { duplex: "half" } : {}),
+        signal: transferSignal(signal),
+        cache: "no-store",
+      } as RequestInit);
+    } catch (e) {
+      throw new DaemonUnreachableError(this.nodeId, e);
+    }
+    if (!res.ok) throw await this.httpError(res);
+    return res;
+  }
+  /** Tar-stroom (exportData van staging) in een lege werkmap van productie. */
+  async publishData(uuid: string, id: number, body: ReadableStream<Uint8Array>, o: { signal?: AbortSignal } = {}): Promise<void> {
+    await (await this.publishFetch(uuid, id, "/data", "PUT", body, "application/x-tar", o.signal)).arrayBuffer().catch(() => undefined);
+  }
+  /** Zelfde node: de datamap van `sourceUuid` in de werkmap. Oudere daemons: 404 "unknown path". */
+  async publishCopy(uuid: string, id: number, sourceUuid: string, o: { signal?: AbortSignal } = {}): Promise<void> {
+    await (await this.publishFetch(uuid, id, "/copy", "POST", JSON.stringify({ source_uuid: sourceUuid }), "application/json", o.signal)).arrayBuffer().catch(() => undefined);
+  }
+  /** Omwisselen (server gestopt); geeft de paden die productie hield. */
+  async publishSwap(uuid: string, id: number, exclude: string[]): Promise<string[]> {
+    return ((await (await this.publishFetch(uuid, id, "/swap", "POST", JSON.stringify({ exclude }), "application/json")).json()) as { log: string[] }).log;
+  }
+  async publishRollback(uuid: string, id: number): Promise<void> {
+    await (await this.publishFetch(uuid, id, "/rollback", "POST", undefined, undefined)).arrayBuffer().catch(() => undefined);
+  }
+  async publishFinish(uuid: string, id: number): Promise<void> {
+    await (await this.publishFetch(uuid, id, "", "DELETE", undefined, undefined)).arrayBuffer().catch(() => undefined);
   }
 
   private async httpError(res: Response): Promise<Error> {
@@ -431,10 +469,10 @@ export class DaemonClient {
     return res.body;
   }
   /** Laadt een SQL-stroom in een bestaande (lege) database. */
-  async dbImport(name: string, body: ReadableStream<Uint8Array>, o: { signal?: AbortSignal } = {}): Promise<void> {
+  async dbImport(name: string, body: ReadableStream<Uint8Array>, o: { signal?: AbortSignal; replace?: boolean } = {}): Promise<void> {
     let res: Response;
     try {
-      res = await fetch(`${this.baseUrl}/api/db/databases/${encodeURIComponent(name)}/import`, {
+      res = await fetch(`${this.baseUrl}/api/db/databases/${encodeURIComponent(name)}/import${o.replace ? "?replace=1" : ""}`, {
         method: "PUT",
         headers: { authorization: `Bearer ${this.token}`, "content-type": "application/sql" },
         body,

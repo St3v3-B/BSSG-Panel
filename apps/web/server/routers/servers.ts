@@ -1,4 +1,5 @@
 import { cloneTargetBusy } from "../clone";
+import { publishBusy } from "../publish";
 import { type Implementation, type ServerStatus } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
@@ -91,6 +92,8 @@ export const servers: Pick<
     const a = await requireServer(ctx, input.uuid, "power", { mutates: input.action === "start" || input.action === "restart" });
     // Een kopie wordt nog gevuld: niet starten (de daemon weigert dan het uitpakken).
     if (await cloneTargetBusy(a.bundle.server.id)) throw new TRPCError({ code: "CONFLICT", message: "CLONE_IN_PROGRESS" });
+    // Publiceren (staging → productie) stopt en start de site zelf.
+    if (await publishBusy(a.bundle.server.id)) throw new TRPCError({ code: "CONFLICT", message: "PUBLISH_IN_PROGRESS" });
     await call(() => daemonFor(a.bundle.node).power(input.uuid, input.action));
     // Cache direct bijwerken; de daemon pusht de echte status en de monitor corrigeert zo nodig.
     // Niet op "starting" zetten als de server al draait: anders blijft een start-klik op een

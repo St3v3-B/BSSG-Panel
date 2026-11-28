@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 
+	"panel/daemon/internal/publish"
 	"panel/daemon/internal/server"
 )
 
@@ -33,7 +34,12 @@ func (a *API) exportData(w http.ResponseWriter, r *http.Request, s *server.Serve
 	}
 	w.Header().Set("Content-Type", "application/x-tar")
 	w.WriteHeader(http.StatusOK)
-	if err := s.Root().ExportTar(w); err != nil {
+	// ?exclude_internal=1 (publiceren): namen `.panel-*` (git-deploy, werkmappen) niet meesturen.
+	var skip func(string) bool
+	if v := r.URL.Query().Get("exclude_internal"); v == "1" || v == "true" {
+		skip = publish.Internal
+	}
+	if err := s.Root().ExportTarSkip(w, skip); err != nil {
 		// De status staat al verstuurd: de verbinding afbreken zodat de ontvanger een fout ziet
 		// in plaats van een afgekapte maar geldige tar.
 		a.log.Warn("transfer export", "uuid", s.UUID(), "err", err)

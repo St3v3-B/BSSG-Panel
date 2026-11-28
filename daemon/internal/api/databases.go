@@ -17,6 +17,8 @@ type DBAdmin interface {
 	Drop(ctx context.Context, db, user string) error
 	Dump(ctx context.Context, db string, w io.Writer) error
 	Import(ctx context.Context, db string, in io.Reader) error
+	// Reset leegt de database (DROP + CREATE; rechten blijven staan), voor import?replace=1.
+	Reset(ctx context.Context, db string) error
 	Exists(ctx context.Context, db string) (bool, error)
 	SyncPmaUser(ctx context.Context, user, password string, dbs []string) error
 }
@@ -191,6 +193,13 @@ func (a *API) dbImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := &errReader{r: r.Body}
+	if v := r.URL.Query().Get("replace"); v == "1" || v == "true" {
+		// Publiceren: eerst leeg, zodat tabellen die alleen in de oude versie bestaan niet blijven staan.
+		if err := a.dbadmin.Reset(r.Context(), r.PathValue("name")); err != nil {
+			dbErr(w, err)
+			return
+		}
+	}
 	err := a.dbadmin.Import(r.Context(), r.PathValue("name"), body)
 	if body.err != nil {
 		writeErr(w, http.StatusBadRequest, "bad_request", "upload interrupted: "+body.err.Error())

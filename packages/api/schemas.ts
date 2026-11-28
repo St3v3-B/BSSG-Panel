@@ -1726,6 +1726,81 @@ export const CloneInput = z.object({
   allocationIds: z.array(Id).optional(),
 });
 
+// ---------- staging → productie (websites publiceren) ----------
+
+export const PublishStepKey = z.enum(["backup", "prepare", "stop", "files", "databases", "start", "finish"]);
+export type PublishStepKey = z.infer<typeof PublishStepKey>;
+export const PublishStatus = z.enum(["running", "succeeded", "failed"]);
+/** Uitsluiting: pad of naam zoals .gitignore (zonder `**`/`!`); `/` aan het eind = alleen mappen. */
+export const PublishExclude = z.string().trim().min(1).max(512).regex(/^[^\\\0]+$/);
+/** Standaarduitsluitingen met een code voor de uitleg in de UI. */
+export const PublishExcludeKind = z.enum(["wp_config", "env", "nextcloud_config", "panel_settings", "php_runtime", "uploads", "user_data"]);
+export const PublishJob = z.object({
+  id: Id,
+  status: PublishStatus,
+  staging: z.object({ uuid: Uuid, name: z.string(), exists: z.boolean() }),
+  production: z.object({ uuid: Uuid, name: z.string(), exists: z.boolean() }),
+  steps: z.array(z.object({ key: PublishStepKey, status: CloneStepStatus })),
+  options: z.object({ files: z.boolean(), databases: z.boolean(), exclude: z.array(z.string()), rewriteUrls: z.boolean(), backup: z.boolean(), sameNode: z.boolean() }),
+  /** Backup van productie vóór het publiceren (null = overgeslagen). */
+  backupId: Id.nullable(),
+  /** Gepubliceerde databases: staging → productie. */
+  databases: z.array(z.object({ from: z.string(), to: z.string() })),
+  /** Paden waarvan productie zijn eigen versie hield (uitsluitingen die bestonden). */
+  kept: z.array(z.string()),
+  /** URL-vervanging in de databases (host van staging → host van productie). */
+  urlRewrite: z.object({ from: z.string(), to: z.string(), replaced: z.number().int(), skipped: z.number().int() }).nullable(),
+  warnings: z.array(z.string()),
+  /** Na een fout: true = productie is teruggezet zoals hij was; false = terugzetten mislukte (zie error); null = n.v.t. */
+  restored: z.boolean().nullable(),
+  errorCode: z.string().nullable(),
+  error: z.string().nullable(),
+  startedAt: z.date(),
+  finishedAt: z.date().nullable(),
+});
+export type PublishJob = z.infer<typeof PublishJob>;
+
+/** Staging-relatie van een website en wat er kan (publish.info, voor staging én productie). */
+export const PublishInfo = z.object({
+  /** `staging`: kopie van een (nog bestaande) website; `production`: heeft staging-kopieën; anders `none`. */
+  role: z.enum(["staging", "production", "none"]),
+  isWeb: z.boolean(),
+  /** Bij een staging-site: de productiesite. */
+  production: z.object({ uuid: Uuid, name: z.string(), sameNode: z.boolean() }).nullable(),
+  /** Staging-kopieën van deze site (die de gebruiker kan zien). */
+  stagings: z.array(z.object({ uuid: Uuid, name: z.string(), lastPublishedAt: z.date().nullable() })),
+  /** Mag deze gebruiker nu publiceren (alleen bij role staging); anders de reden als code. */
+  canPublish: z.boolean(),
+  reason: z.string().nullable(),
+  /** Er is een S3-doel voor de node van productie (anders alleen "zonder backup doorgaan"). */
+  backupAvailable: z.boolean(),
+  /** Databaseparen op basisnaam; `unmatched` = staging-databases zonder tegenhanger (worden niet gepubliceerd). */
+  databases: z.array(z.object({ from: z.string(), to: z.string() })),
+  unmatchedDatabases: z.array(z.string()),
+  defaultExcludes: z.array(z.object({ pattern: z.string(), kind: PublishExcludeKind })),
+  /** Herkende app (voor siteurl/home). */
+  app: z.enum(["wordpress", "nextcloud", "grav"]).nullable(),
+  /** Host van staging en productie voor de URL-vervanging (null = geen domein). */
+  stagingHost: z.string().nullable(),
+  productionHost: z.string().nullable(),
+  notes: z.array(z.enum(["production_git_deploy", "cross_node", "no_domains", "databases_external"])),
+  running: PublishJob.nullable(),
+});
+export type PublishInfo = z.infer<typeof PublishInfo>;
+
+export const PublishInput = z.object({
+  files: z.boolean().default(true),
+  databases: z.boolean().default(false),
+  /** Verplicht `true` als `databases`: productiedata (bestellingen, reacties, accounts) wordt overschreven. */
+  confirmDatabases: z.boolean().default(false),
+  /** Weggelaten = de standaarduitsluitingen. Namen `.panel-*` op het hoogste niveau gaan nooit mee. */
+  exclude: z.array(PublishExclude).max(100).optional(),
+  /** Host van staging → host van productie in de databases (veilig voor geserialiseerde PHP-data). */
+  rewriteUrls: z.boolean().default(true),
+  /** Zonder S3-doel: expliciet zonder backup doorgaan (anders PRECONDITION_FAILED `BACKUP_UNAVAILABLE`). */
+  skipBackup: z.boolean().default(false),
+});
+
 // ---------- verbruiksalarmen ----------
 
 export const AlarmMetric = z.enum(["cpu", "ram", "disk"]);

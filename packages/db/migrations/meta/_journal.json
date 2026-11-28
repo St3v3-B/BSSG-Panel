@@ -225,6 +225,13 @@
       "when": 1795882519545,
       "tag": "0031_old_shiva",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795882631731,
+      "tag": "0032_good_otto_octavius",
+      "breakpoints": true
     }
   ]
 }

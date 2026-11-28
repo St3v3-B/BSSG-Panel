@@ -289,10 +289,19 @@ func (x *extractor) zipEntry(zf *zip.File) error {
 
 // ExportTar schrijft de hele datamap als niet-gecomprimeerde tar (voor het verplaatsen van een
 // server naar een andere node). Symlinks blijven symlinks; sockets en devices worden overgeslagen.
-func (r *Root) ExportTar(w io.Writer) error {
-	names, err := readNames(r.Dir)
+func (r *Root) ExportTar(w io.Writer) error { return r.ExportTarSkip(w, nil) }
+
+// ExportTarSkip is ExportTar zonder de namen op het hoogste niveau waarvoor skip true geeft.
+func (r *Root) ExportTarSkip(w io.Writer, skip func(name string) bool) error {
+	all, err := readNames(r.Dir)
 	if err != nil {
 		return err
+	}
+	names := all[:0]
+	for _, n := range all {
+		if skip == nil || !skip(n) {
+			names = append(names, n)
+		}
 	}
 	root, err := r.rootFD()
 	if err != nil {
@@ -321,5 +330,17 @@ func readNames(dir string) ([]string, error) {
 // veiligheidsregels als Decompress.
 func (r *Root) ImportTar(rd io.Reader, budget Budget) error {
 	x := &extractor{r: r, dir: ".", budget: budget}
+	return x.tar(rd)
+}
+
+// ImportTarInto is ImportTar, maar pakt uit in de map dir (relatief, moet al bestaan) binnen de
+// datamap. Alle bewerkingen lopen via deze root (RESOLVE_BENEATH): ook een map die tijdens het
+// uitpakken door een symlink vervangen wordt, brengt niets buiten de serverdata.
+func (r *Root) ImportTarInto(dir string, rd io.Reader, budget Budget) error {
+	rel, err := Clean(dir)
+	if err != nil {
+		return err
+	}
+	x := &extractor{r: r, dir: rel, budget: budget}
 	return x.tar(rd)
 }

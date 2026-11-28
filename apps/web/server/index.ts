@@ -30,6 +30,7 @@ import { stats } from "./routers/stats";
 import { subusers } from "./routers/subusers";
 import { billing, billingAdmin } from "./billing/router";
 import { cloneProcedures } from "./clone";
+import { publishProcedures } from "./publish";
 import { alarmAdmin, alarmProcedures } from "./alarms";
 import { maintenance } from "./routers/maintenance";
 import { importer } from "./importer/router";
@@ -49,7 +50,7 @@ function merge(base: Tree, over: Tree): Tree {
   return out;
 }
 
-const phase1 = { deploy, billing, inbox, statusPages, apps, auth: { ...auth, verifyEmail, ...passwordLoginAuth, ...passkeyAuth }, backups, schedules, siteSettings, account: { ...account, ...credentials, ...quotaAccount, ...notificationsAccount, ...notifyAccount, ...passwordLoginAccount, passkeys: passkeyAccount }, servers: { ...servers, ...stats, ...network, ...bedrock, ...quotaServers, ...notificationsServer, ...cloneProcedures, ...alarmProcedures }, files, content, players, playerActivity, subusers, domains, databases, admin: { ...admin, ...billingAdmin, alarms: alarmAdmin, notifications: notificationsAdmin, smtp: smtpAdmin, users: { ...admin.users, ...quotaAdmin.users, ...passwordLoginAdmin, ...passkeyAdmin }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, maintenance, importer, databaseHosts, dnsProviders, s3Targets } };
+const phase1 = { deploy, publish: publishProcedures, billing, inbox, statusPages, apps, auth: { ...auth, verifyEmail, ...passwordLoginAuth, ...passkeyAuth }, backups, schedules, siteSettings, account: { ...account, ...credentials, ...quotaAccount, ...notificationsAccount, ...notifyAccount, ...passwordLoginAccount, passkeys: passkeyAccount }, servers: { ...servers, ...stats, ...network, ...bedrock, ...quotaServers, ...notificationsServer, ...cloneProcedures, ...alarmProcedures }, files, content, players, playerActivity, subusers, domains, databases, admin: { ...admin, ...billingAdmin, alarms: alarmAdmin, notifications: notificationsAdmin, smtp: smtpAdmin, users: { ...admin.users, ...quotaAdmin.users, ...passwordLoginAdmin, ...passkeyAdmin }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, maintenance, importer, databaseHosts, dnsProviders, s3Targets } };
 
 /** Paden die echt geïmplementeerd zijn (de rest is NOT_IMPLEMENTED). */
 export function implementedPaths(tree: Tree = phase1 as unknown as Tree, prefix = ""): string[] {

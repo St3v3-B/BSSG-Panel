@@ -242,6 +242,23 @@ func TestRealDockerDBAdmin(t *testing.T) {
 	if out, code := as("u9999_c", pw1, "s9999_copy", "SELECT txt FROM notes WHERE id=2"); code != 0 || out != "twee 🙂" {
 		t.Fatalf("kopie: %d %q", code, out)
 	}
+	// Publiceren: import?replace=1 leegt eerst (een tabel die alleen in het doel stond verdwijnt) en de
+	// gebruiker houdt zijn rechten.
+	if _, code := as("u9999_c", pw1, "s9999_copy", "CREATE TABLE alleen_hier (id int)"); code != 0 {
+		t.Fatal("extra tabel", code)
+	}
+	if c, b := h.rawDB("PUT", "/api/db/databases/s9999_copy/import?replace=1", "application/sql", bytes.NewReader(dump)); c != 204 {
+		t.Fatalf("import replace: %d %s", c, b)
+	}
+	if out, code := as("u9999_c", pw1, "s9999_copy", "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='s9999_copy' AND TABLE_NAME='alleen_hier'"); code != 0 || out != "0" {
+		t.Fatalf("replace liet de oude tabel staan: %d %q", code, out)
+	}
+	if out, code := as("u9999_c", pw1, "s9999_copy", "SELECT txt FROM notes WHERE id=2"); code != 0 || out != "twee 🙂" {
+		t.Fatalf("na replace: %d %q", code, out)
+	}
+	if c, _ := h.rawDB("PUT", "/api/db/databases/niet_gemaakt/import?replace=1", "application/sql", bytes.NewReader(dump)); c != 404 {
+		t.Fatal("replace zonder database", c)
+	}
 	// Kapotte SQL geeft een fout met uitleg.
 	if c := create("s9998_bad", "u9998_b", pw1); c != 204 {
 		t.Fatal(c)
