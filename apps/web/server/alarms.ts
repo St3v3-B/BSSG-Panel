@@ -180,8 +180,9 @@ export function decide(metric: AlarmMetric, threshold: number, durationMinutes: 
   const latest = win[win.length - 1];
   if (!active) {
     const need = Math.max(1, Math.ceil(durationMinutes * (1 - GAP_TOLERANCE)));
-    // Metingen zijn per minuut uniek, dus `need` metingen beslaan ook (bijna) het hele venster.
     if (win.length < need || !win.every((p) => p.v > threshold)) return { kind: "none" };
+    // Het venster moet echt N minuten beslaan: een meting in de eerste minuut ervan (gaten mogen alleen daarna).
+    if (win[0]!.t > nowMinute - (durationMinutes - 1) * MINUTE_MS) return { kind: "none" };
     return { kind: "trigger", value: latest!.v, since: new Date(win[0]!.t) };
   }
   const calm = within(Math.min(durationMinutes, 5));
