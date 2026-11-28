@@ -21,9 +21,10 @@ import { buildServerSpec, validateVariables } from "../spec";
 import { imagePolicyOf, fetchServerByUuid, fetchServers, limitsOf, sleepOf, autoRestartOf, serverVariables, toDetail, toSummary, liveViews, userPublic, type ServerBundle } from "../servers-data";
 import { adminImageRows, checkAllNodes } from "../image-updates";
 import { getSettings } from "../settings";
-import { setUpdatesEnabled, startUpgrade, updatesStatus } from "../updates";
+import { setUpdatesEnabled, startUpgrade, updatesStatus, updatesSummary } from "../updates";
 import { templateRow } from "../templates";
 import { forgetServer, getNodeLive, isStale } from "../node-cache";
+import { daemonCommitOf, isOutdated } from "../node-version";
 import type { Ctx } from "@panel/api";
 
 const ok = { ok: true as const };
@@ -75,7 +76,9 @@ export async function nodeHealth(n: NodeRow, serverCount: number): Promise<NodeH
     serverCount,
     error: null,
     lastSeenAt: null,
+    commit: daemonCommitOf(n.daemonVersion),
   };
+  base.outdated = isOutdated(base.commit ?? null);
   // Altijd uit de cache van de node-monitor; hier wacht niets op een daemon.
   const live = await getNodeLive(n.id);
   if (!live) return base;
@@ -94,6 +97,10 @@ export async function nodeHealth(n: NodeRow, serverCount: number): Promise<NodeH
     diskTotalBytes: s?.disk_total_bytes ?? null,
     diskFreeBytes: s?.disk_free_bytes ?? null,
     error: online ? null : (live.error ?? "no response"),
+    ...(() => {
+      const commit = daemonCommitOf(s?.version ?? n.daemonVersion, s?.commit) ?? base.commit ?? null;
+      return { commit, outdated: isOutdated(commit) };
+    })(),
   };
 }
 
@@ -728,6 +735,12 @@ export const admin = {
 
   updates: {
     status: async ({ input }) => updatesStatus(input.refresh ?? true),
+    summary: async () => {
+      const nodes = await getDb().select().from(schema.nodes).orderBy(asc(schema.nodes.id));
+      const health = await Promise.all(nodes.map((n) => nodeHealth(n, 0)));
+      const outdated = nodes.flatMap((n, i) => (health[i]!.outdated ? [{ id: n.id, name: n.name, isLocal: n.isLocal, commit: health[i]!.commit ?? null }] : []));
+      return updatesSummary(outdated);
+    },
     start: async ({ input, ctx }) => startUpgrade(input, { userId: uid(ctx), ip: ctx.ip }),
     setEnabled: async ({ input, ctx }) => {
       await setUpdatesEnabled(input.enabled);

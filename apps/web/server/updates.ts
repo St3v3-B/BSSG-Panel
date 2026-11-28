@@ -2,7 +2,7 @@
  * Panel-updates (Admin > Settings > Updates): status van de lokale daemon (git), CI-status per commit
  * van GitHub (publieke API, zonder token, gecachet) en het starten van deploy/upgrade.sh via de daemon.
  */
-import type { AvailableUpdate, CiStatus, PanelCommit, UpdatesStatus, UpgradeRun } from "@panel/api";
+import type { AvailableUpdate, CiStatus, PanelCommit, UpdatesStatus, UpdatesSummary, UpgradeRun } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { eq } from "drizzle-orm";
 import { logActivity } from "./activity";
@@ -118,6 +118,10 @@ export async function updatesStatus(refresh: boolean): Promise<UpdatesStatus> {
     const m = msg(e);
     return { ...base, error: /NOT_LOCAL/i.test(m) ? "NOT_LOCAL" : m };
   }
+  if (refresh && !st.fetch_error) {
+    lastFetchAt = Date.now();
+    panelCache = null;
+  }
   const repo = githubRepo(st.origin);
   const commits = st.commits ?? [];
   const cis = await Promise.all(commits.slice(0, 20).map((c) => ciFor(repo, c.sha)));
@@ -175,4 +179,40 @@ export async function startUpgrade(input: { ref?: string; onlyIfCiGreen: boolean
   }
   await logActivity({ action: "admin.updates.start", userId: who.userId, ip: who.ip, metadata: { ref, onlyIfCiGreen: input.onlyIfCiGreen, unit: started.unit } });
   return { unit: started.unit };
+}
+
+// ---------- samenvatting (zijbalk, dashboard) ----------
+
+/** Hoe vaak de samenvatting origin ophaalt (git fetch via de lokale daemon), en hoe lang een antwoord geldig blijft. */
+const FETCH_EVERY_MS = 6 * 60 * 60_000;
+const SUMMARY_TTL_MS = 60_000;
+let lastFetchAt: number | null = null;
+let panelCache: { at: number; value: Pick<UpdatesSummary, "panelUpdates" | "latest"> } | null = null;
+export const resetSummaryCache = () => {
+  lastFetchAt = null;
+  panelCache = null;
+};
+
+async function panelUpdates(now: number): Promise<Pick<UpdatesSummary, "panelUpdates" | "latest">> {
+  if (panelCache && now - panelCache.at < SUMMARY_TTL_MS) return panelCache.value;
+  let value: Pick<UpdatesSummary, "panelUpdates" | "latest"> = { panelUpdates: null, latest: null };
+  const node = await localNode();
+  if (node) {
+    const fetch = lastFetchAt === null || now - lastFetchAt >= FETCH_EVERY_MS;
+    try {
+      const st = await call(() => daemonFor(node).getPanelUpgradeStatus(fetch));
+      if (fetch) lastFetchAt = now;
+      const c = st.commits?.[0];
+      value = { panelUpdates: st.commits?.length ?? 0, latest: c ? { sha: c.sha, date: c.date ?? null, message: c.message } : null };
+    } catch {
+      /* geen checkout (NOT_LOCAL) of daemon onbereikbaar: onbekend */
+    }
+  }
+  panelCache = { at: now, value };
+  return value;
+}
+
+export async function updatesSummary(outdatedNodes: UpdatesSummary["outdatedNodes"], now = Date.now()): Promise<UpdatesSummary> {
+  const p = await panelUpdates(now);
+  return { panelCommit: runningVersion()?.sha ?? null, ...p, outdatedNodes, checkedAt: lastFetchAt === null ? null : new Date(lastFetchAt) };
 }

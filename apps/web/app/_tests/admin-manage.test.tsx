@@ -23,6 +23,41 @@ describe("dashboard", () => {
     expect(screen.getAllByTestId("dash-node")).toHaveLength(1);
     expect(screen.getAllByTestId("alert")[0]!.textContent).toContain("Install failed");
   });
+
+  it("meldt een panel-update en achterlopende nodes", async () => {
+    renderWithTrpc(<AdminDashboard />, {
+      ...admin,
+      patch: (m) => {
+        (m.admin.updates as Mutable<typeof m.admin.updates>).summary = () => ({
+          panelCommit: "c".repeat(40),
+          panelUpdates: 3,
+          latest: { sha: "a".repeat(40), date: null, message: "ui: nieuwe dingen" },
+          outdatedNodes: [{ id: 1, name: "node1", isLocal: false, commit: "d".repeat(40) }],
+          checkedAt: new Date(),
+        });
+      },
+    });
+    const panel = await screen.findByTestId("panel-update-notice");
+    expect(panel.textContent).toContain("3 panel updates available");
+    expect(panel.textContent).toContain("ui: nieuwe dingen");
+    expect(within(panel).getByRole("link").getAttribute("href")).toBe("/admin/settings/updates");
+    const nodes = screen.getByTestId("node-update-notice");
+    expect(nodes.textContent).toContain("1 node runs an older daemon");
+    expect(within(nodes).getByRole("link").getAttribute("href")).toBe("/admin/nodes/1");
+    expect(await screen.findByTestId("node-outdated-badge")).toBeTruthy();
+  });
+
+  it("niets te melden: geen meldingen", async () => {
+    renderWithTrpc(<AdminDashboard />, {
+      ...admin,
+      patch: (m) => {
+        (m.admin.updates as Mutable<typeof m.admin.updates>).summary = () => ({ panelCommit: null, panelUpdates: 0, latest: null, outdatedNodes: [], checkedAt: null });
+      },
+    });
+    await screen.findByTestId("stat-servers");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByTestId("update-notices")).toBeNull();
+  });
 });
 
 describe("serverlijst", () => {

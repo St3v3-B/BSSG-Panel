@@ -13,6 +13,7 @@ import { Skeleton } from "@/app/_components/ui/skeleton";
 import { formatBytes, formatDate } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
 import { ActiveAlarms } from "@/app/_components/admin/alarms";
+import { OutdatedBadge, UpdateNotices } from "@/app/_components/admin/version-notices";
 
 function Stat({ label, value, href, testId, icon: Icon }: { label: string; value: ReactNode; href?: string; testId: string; icon: LucideIcon }) {
   const body = (
@@ -58,6 +59,7 @@ export function AdminDashboard() {
 
   return (
     <div className="space-y-6" data-testid="admin-dashboard">
+      <UpdateNotices />
       <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
         <Stat label={d.servers} value={serverCount} href="/admin/servers" testId="stat-servers" icon={Server} />
         <Stat label={d.users} value={userCount} href="/admin/users" testId="stat-users" icon={Users} />
@@ -77,7 +79,10 @@ export function AdminDashboard() {
                   <Card>
                     <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
                       <CardTitle className="text-base">{nameOf(h.nodeId)}</CardTitle>
-                      <Badge variant={h.online ? "success" : "destructive"}>{h.online ? d.online : d.offline}</Badge>
+                      <span className="flex flex-wrap justify-end gap-1.5">
+                        <OutdatedBadge nodeId={h.nodeId} />
+                        <Badge variant={h.online ? "success" : "destructive"}>{h.online ? d.online : d.offline}</Badge>
+                      </span>
                     </CardHeader>
                     <CardContent className="space-y-2.5 text-sm text-muted-foreground">
                       <div>{d.serverCount(h.serverCount)}</div>

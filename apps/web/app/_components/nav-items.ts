@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { usePathname } from "next/navigation";
 import { usePhpMyAdmin } from "@/app/_hooks/use-phpmyadmin";
 import { useT } from "@/app/_lib/i18n";
+import { useUpdatesSummary } from "@/app/_components/admin/version-notices";
 
 export interface NavItem {
   href: string;
@@ -14,6 +15,8 @@ export interface NavItem {
   current: boolean;
   icon: LucideIcon;
   children?: NavItem[];
+  /** Stip met uitleg (bv. "Update beschikbaar"). */
+  dot?: string;
 }
 
 export interface NavSection {
@@ -42,6 +45,10 @@ export function useNav(isAdmin: boolean) {
     mk("/admin/settings/billing", t.billing.nav.settings, Settings, under("/admin/settings/billing")),
   ];
   const n = t.admin2.nav;
+  const upd = useUpdatesSummary(isAdmin).data;
+  const dot = (on: boolean | undefined) => (isAdmin && on ? t.nodeUpdates.navDot : undefined);
+  const updatesChild = settingsChildren.find((c) => c.href === "/admin/settings/updates");
+  if (updatesChild) updatesChild.dot = dot(!!upd?.panelUpdates);
   const pma = usePhpMyAdmin();
   const panelItems: NavItem[] = [{ ...mk("/", t.nav.myServers, Server, pathname === "/" || under("/servers")), current: pathname === "/" }];
   panelItems.push(mk("/status-pages", t.statusPage.navTitle, Globe, under("/status-pages")));
@@ -62,14 +69,14 @@ export function useNav(isAdmin: boolean) {
       items: [
         mk("/admin", n.dashboard, LayoutDashboard, is("/admin")),
         mk("/admin/servers", n.servers, Server, under("/admin/servers")),
-        mk("/admin/nodes", n.nodes, Server, under("/admin/nodes")),
+        { ...mk("/admin/nodes", n.nodes, Server, under("/admin/nodes")), dot: dot((upd?.outdatedNodes.length ?? 0) > 0) },
         mk("/admin/users", n.users, Users, under("/admin/users")),
         mk("/admin/templates", n.templates, FileCode2, under("/admin/templates")),
         mk("/admin/import", t.hostops.imp.nav, Import, under("/admin/import")),
         ...(b?.plansEnabled ? [mk("/admin/plans", t.billing.nav.adminPlans, Package, under("/admin/plans"))] : []),
         ...(b?.plansEnabled || b?.billingEnabled ? [mk("/admin/billing", t.billing.nav.adminBilling, Receipt, under("/admin/billing"))] : []),
         mk("/admin/activity", n.activity, Activity, under("/admin/activity")),
-        mk("/admin/settings", n.settings, Settings, under("/admin/settings"), settingsChildren),
+        { ...mk("/admin/settings", n.settings, Settings, under("/admin/settings"), settingsChildren), dot: dot(!!upd?.panelUpdates) },
       ],
     });
   }

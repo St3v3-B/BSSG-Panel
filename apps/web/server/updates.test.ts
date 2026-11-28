@@ -1,6 +1,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { OWNER, useHarness, type TestUser } from "./test/harness";
-import { githubTransport, githubRepo, resetCiCache, summarizeRuns } from "./updates";
+import { githubTransport, githubRepo, resetCiCache, resetSummaryCache, summarizeRuns } from "./updates";
+import { refreshNodeNow } from "./node-cache";
+import { daemonCommitOf, isOutdated } from "./node-version";
 
 const h = useHarness();
 let admin: TestUser, player: TestUser;
@@ -18,14 +20,24 @@ beforeAll(async () => {
   player = await h.user({ discordId: "290000000000000021", name: "speler" });
 });
 
+let systemCommit: string | null = null;
+let statusCalls: string[] = [];
+
 beforeEach(() => {
   resetCiCache();
+  resetSummaryCache();
+  systemCommit = null;
+  statusCalls = [];
   upgradeRunning = false;
   started = [];
   ghCalls = [];
   ghRuns = { [sha("a")]: [{ status: "completed", conclusion: "success" }], [sha("b")]: [{ status: "in_progress", conclusion: null }] };
   h.daemon.override = (r) => {
+    if (r.path === "/api/system" && systemCommit !== null) {
+      return { status: 200, body: { version: "0.1.0-dev", commit: systemCommit, disk_quota_mode: "soft", cpu_count: 4, memory_total_bytes: 1, memory_used_bytes: 0, disk_total_bytes: 1, disk_free_bytes: 1, docker_version: "27.0", server_count: 0 } };
+    }
     if (r.path.startsWith("/api/panel-upgrade/status")) {
+      statusCalls.push(r.path);
       return {
         status: 200,
         body: {
@@ -135,7 +147,59 @@ describe("admin.updates", () => {
   });
 });
 
+describe("admin.updates.summary", () => {
+  it("telt panel-updates; fetch hooguit eens per 6 uur, daarna uit de checkout", async () => {
+    process.env.PANEL_COMMIT = sha("c");
+    const s = await admin.api.admin.updates.summary();
+    expect(s).toMatchObject({ panelCommit: sha("c"), panelUpdates: 2, latest: { sha: sha("b"), message: "second" } });
+    expect(s.checkedAt).toBeInstanceOf(Date);
+    expect(statusCalls).toHaveLength(1);
+    expect(statusCalls[0]).toMatch(/refresh=true|fetch=1|fetch=true/);
+    resetCiCache();
+    await admin.api.admin.updates.summary(); // binnen de TTL: geen nieuwe daemon-aanroep
+    expect(statusCalls).toHaveLength(1);
+    expect(ghCalls).toHaveLength(0); // geen CI-aanroepen voor de samenvatting
+  });
+
+  it("daemon zonder checkout: panelUpdates null, geen fout", async () => {
+    h.daemon.override = (r) => (r.path.startsWith("/api/panel-upgrade/status") ? { status: 404, body: { error: "not_local", message: "no checkout" } } : undefined);
+    const s = await admin.api.admin.updates.summary();
+    expect(s).toMatchObject({ panelUpdates: null, latest: null, outdatedNodes: [] });
+  });
+
+  it("node met een andere commit dan het panel staat in outdatedNodes en krijgt outdated in de health", async () => {
+    process.env.PANEL_COMMIT = sha("c");
+    systemCommit = sha("d");
+    await refreshNodeNow(h.localNodeId);
+    const s = await admin.api.admin.updates.summary();
+    expect(s.outdatedNodes).toEqual([expect.objectContaining({ id: h.localNodeId, isLocal: true, commit: sha("d") })]);
+    const n = await admin.api.admin.nodes.get({ id: h.localNodeId });
+    expect(n.health).toMatchObject({ commit: sha("d"), outdated: true });
+
+    systemCommit = sha("c");
+    await refreshNodeNow(h.localNodeId);
+    expect((await admin.api.admin.updates.summary()).outdatedNodes).toEqual([]);
+  });
+
+  it("alleen admin", async () => {
+    await expect(player.api.admin.updates.summary()).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
 describe("helpers", () => {
+  it("daemonCommitOf en isOutdated", () => {
+    expect(daemonCommitOf("0.1.0-dev", sha("a"))).toBe(sha("a"));
+    expect(daemonCommitOf("0.1.0-1edb165cf2b6724abeb959b6f65c03b5ef84bc5b")).toBe("1edb165cf2b6724abeb959b6f65c03b5ef84bc5b");
+    expect(daemonCommitOf("0.1.0-dev")).toBeNull();
+    expect(daemonCommitOf(null, "")).toBeNull();
+    expect(daemonCommitOf("fake-1.0", "not-a-sha")).toBeNull();
+    expect(isOutdated(sha("a"), sha("a"))).toBe(false);
+    expect(isOutdated("aaaaaaa", sha("a"))).toBe(false); // korte sha
+    expect(isOutdated(sha("b"), sha("a"))).toBe(true);
+    expect(isOutdated(null, sha("a"))).toBe(false);
+    expect(isOutdated(sha("b"), null)).toBe(false);
+  });
+
   it("githubRepo: uit https/ssh-remote, env wint", () => {
     expect(githubRepo("https://github.com/St3v3-B/BSSG-Panel.git")).toBe("St3v3-B/BSSG-Panel");
     expect(githubRepo("git@github-bssg-panel:St3v3-B/BSSG-Panel.git")).toBe("St3v3-B/BSSG-Panel");

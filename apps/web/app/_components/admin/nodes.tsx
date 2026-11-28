@@ -22,6 +22,7 @@ import { useT } from "@/app/_lib/i18n";
 import { NodeHttpRelay } from "./node-relay";
 import { NodeMaintenance } from "./node-maintenance";
 import { NodeNpm } from "./node-npm";
+import { OutdatedBadge, OutdatedNotice } from "./version-notices";
 
 /** Fouttekst; NOT_IMPLEMENTED (backend nog niet klaar) krijgt een eigen, rustige melding. */
 export function AdminError({ error }: { error: unknown }) {
@@ -348,6 +349,7 @@ function NodeCard({ node, relayName }: { node: Node; relayName?: string }) {
         <div className="flex gap-1.5">
           {node.isLocal && <Badge variant="info">{n.local}</Badge>}
           {node.maintenance && <Badge variant="warning">{t.hostops.maint.badge}</Badge>}
+          <OutdatedBadge nodeId={node.id} />
           {!node.supportsDomains && <Badge variant="secondary">{n.join.noDomains}</Badge>}
           {node.httpMode === "npm" && <Badge variant="secondary" data-testid="node-npm-badge">{n.npm.badge}</Badge>}
           {node.httpRelayNodeId !== null && <Badge variant="secondary" data-testid="node-relay-badge">{n.relay.badge(relayName ?? String(node.httpRelayNodeId))}</Badge>}
@@ -367,7 +369,12 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
   const utils = trpc.useUtils();
   const node = trpc.admin.nodes.get.useQuery({ id }, { retry: false });
   const regen = trpc.admin.nodes.regenerateToken.useMutation();
-  const updateDaemon = trpc.admin.nodes.updateDaemon.useMutation();
+  // De daemon herstart na de update; daarna meldt hij zijn nieuwe commit aan de node-monitor.
+  const updateDaemon = trpc.admin.nodes.updateDaemon.useMutation({
+    onSuccess: () => {
+      for (const ms of [15_000, 45_000]) setTimeout(() => void utils.admin.updates.summary.invalidate(), ms);
+    },
+  });
   const [confirm, setConfirm] = useState(false);
   const del = trpc.admin.nodes.delete.useMutation({
     onSuccess: async () => {
@@ -388,6 +395,7 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
             <Badge variant={h.online ? "success" : "destructive"}>{h.online ? n.online : n.offline}</Badge>
             {d.isLocal && <Badge variant="info">{n.local}</Badge>}
             {d.maintenance && <Badge variant="warning">{t.hostops.maint.badge}</Badge>}
+            <OutdatedBadge nodeId={d.id} />
           </h1>
           <code className="font-mono text-sm text-muted-foreground">{d.fqdn}</code>
         </div>
@@ -420,6 +428,7 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
       {regen.data && <TokenOnce title={n.regenerated} token={regen.data.token} installCommand={regen.data.installCommand} onDone={() => regen.reset()} />}
       {(regen.error || del.error || updateDaemon.error) && <AdminError error={regen.error ?? del.error ?? updateDaemon.error} />}
       {updateDaemon.isSuccess && <p className="text-sm text-success" role="status">{n.join.updateStarted}</p>}
+      {!updateDaemon.isSuccess && <OutdatedNotice nodeId={d.id} isLocal={d.isLocal} />}
       {confirm && !d.isLocal && <UninstallHint nodeId={id} serverCount={h.serverCount} />}
       {!d.isLocal && d.joinState && d.joinState !== "ready" && (
         <Card>

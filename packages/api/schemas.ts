@@ -1013,6 +1013,10 @@ export const NodeHealth = z.object({
   error: z.string().nullable(),
   /** Laatste keer dat de node antwoordde (uit de monitor-cache); null = nog nooit. */
   lastSeenAt: z.date().nullable().optional(),
+  /** Git-commit waaruit de daemon gebouwd is (uit /api/system of de versie `0.1.0-<sha>`); null = onbekend. */
+  commit: z.string().nullable().optional(),
+  /** De daemon is uit een andere commit gebouwd dan het draaiende panel: bijwerken (remote: Update daemon). */
+  outdated: z.boolean().optional(),
 });
 export type NodeHealth = z.infer<typeof NodeHealth>;
 
@@ -1188,6 +1192,21 @@ export const UpdatesStatus = z.object({
   githubRepo: z.string().nullable(),
 });
 export type UpdatesStatus = z.infer<typeof UpdatesStatus>;
+
+/** Lichte samenvatting voor de zijbalk en het dashboard: is er een panel-update, welke nodes lopen achter. */
+export const UpdatesSummary = z.object({
+  /** Commit van het draaiende panel; null = onbekend (ontwikkelbuild). */
+  panelCommit: z.string().nullable(),
+  /** Commits op origin/main die nog niet geïnstalleerd zijn; null = onbekend (geen checkout of daemon onbereikbaar). */
+  panelUpdates: z.number().int().nullable(),
+  /** Nieuwste beschikbare commit (zonder CI-status). */
+  latest: z.object({ sha: z.string(), date: z.string().nullable(), message: z.string() }).nullable(),
+  /** Nodes waarvan de daemon uit een andere commit komt dan het panel. */
+  outdatedNodes: z.array(z.object({ id: Id, name: z.string(), isLocal: z.boolean(), commit: z.string().nullable() })),
+  /** Laatste keer dat origin is opgehaald (git fetch); null = nog niet. */
+  checkedAt: z.date().nullable(),
+});
+export type UpdatesSummary = z.infer<typeof UpdatesSummary>;
 
 export const DashboardAlert = z.object({
   kind: z.enum(["emergency_login", "node_offline", "install_failed", "backup_failed", "disk_low", "npm_error"]),

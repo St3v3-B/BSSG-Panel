@@ -769,6 +769,8 @@ export const contract = {
      */
     updates: {
       status: query("admin", z.object({ refresh: z.boolean().optional() }), s.UpdatesStatus),
+      /** Zijbalk/dashboard: aantal panel-updates (origin wordt hooguit elke 6 uur opgehaald) en achterlopende nodes. */
+      summary: query("admin", none, s.UpdatesSummary),
       start: mutation("admin", z.object({ ref: z.string().optional(), onlyIfCiGreen: z.boolean() }), z.object({ unit: z.string() })),
       setEnabled: mutation("admin", z.object({ enabled: z.boolean() }), s.Ok),
     },

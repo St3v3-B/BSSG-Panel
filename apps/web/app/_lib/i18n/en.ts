@@ -2618,6 +2618,20 @@ export const en = {
       off: "Blocked",
     },
   },
+  nodeUpdates: {
+    panelUpdate: (n: number) => (n === 1 ? "1 panel update available" : `${n} panel updates available`),
+    panelUpdateText: (msg: string) => `Newest: ${msg}`,
+    toUpdates: "View updates",
+    nodesOutdated: (n: number) => (n === 1 ? "1 node runs an older daemon" : `${n} nodes run an older daemon`),
+    nodesOutdatedText: (names: string) => `${names}. Remote nodes: open the node and press Update daemon. The local node is updated together with the panel.`,
+    toNode: (name: string) => `Open ${name}`,
+    badge: "Update available",
+    badgeTitle: (commit: string, panel: string) => `Daemon ${commit}, panel ${panel}`,
+    detailTitle: "This daemon is older than the panel",
+    detailRemote: (commit: string, panel: string) => `The daemon was built from ${commit}, the panel runs ${panel}. Press Update daemon to install the version of this panel; servers keep running.`,
+    detailLocal: (commit: string, panel: string) => `The daemon was built from ${commit}, the panel runs ${panel}. The local daemon is updated with deploy/install.sh or the panel update (Settings > Updates).`,
+    navDot: "Update available",
+  },
   docTitle: { server: "Server", account: "Account", login: "Sign in" },
 };
 

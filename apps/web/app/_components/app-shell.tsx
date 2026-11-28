@@ -178,6 +178,15 @@ function Section({ section, first, collapsed, touch }: { section: NavSection; fi
   );
 }
 
+/** Kleine stip in de navigatie; de tekst is voor schermlezers en als tooltip. */
+function NavDot({ label, className }: { label: string; className?: string }) {
+  return (
+    <span className={cn("inline-flex size-2 shrink-0 rounded-full bg-warning", className)} title={label} data-testid="nav-dot">
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
 function NavRow({ item, collapsed, touch }: { item: NavItem; collapsed: boolean; touch: boolean }) {
   const Icon = item.icon;
   return (
@@ -194,8 +203,12 @@ function NavRow({ item, collapsed, touch }: { item: NavItem; collapsed: boolean;
           item.active ? "bg-primary/15 text-primary" : "text-foreground/80 hover:bg-accent",
         )}
       >
-        <Icon className="size-4.5 shrink-0" aria-hidden />
+        <span className="relative shrink-0">
+          <Icon className="size-4.5" aria-hidden />
+          {item.dot && collapsed && <NavDot label={item.dot} className="absolute -right-1 -top-1" />}
+        </span>
         {!collapsed && <span className="truncate">{item.label}</span>}
+        {item.dot && !collapsed && <NavDot label={item.dot} className="ml-auto" />}
       </Link>
       {!collapsed && item.children && item.active && (
         <ul className="ml-5 mt-0.5 space-y-0.5 border-l border-border pl-2" data-testid="nav-subitems">
@@ -211,6 +224,7 @@ function NavRow({ item, collapsed, touch }: { item: NavItem; collapsed: boolean;
                 )}
               >
                 <span className="truncate">{c.label}</span>
+                {c.dot && <NavDot label={c.dot} className="ml-auto" />}
               </Link>
             </li>
           ))}

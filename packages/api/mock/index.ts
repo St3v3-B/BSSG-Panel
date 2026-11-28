@@ -186,6 +186,8 @@ export function createMock(): Implementation {
     nodeId: n.id,
     online: true,
     version: "0.1.0-mock",
+    commit: n.isLocal ? "15efeda0b1c2d3e4f5061728394a5b6c7d8e9f01" : "0badc0de",
+    outdated: !n.isLocal,
     diskQuotaMode: n.diskQuotaMode,
     cpuCount: 6,
     memoryTotalBytes: 8 * 1024 ** 3,
@@ -680,6 +682,13 @@ export function createMock(): Implementation {
         userCount: db.users.length,
       }),
       updates: {
+        summary: () => ({
+          panelCommit: "15efeda0b1c2d3e4f5061728394a5b6c7d8e9f01",
+          panelUpdates: 2,
+          latest: { sha: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", date: "2026-11-27T09:00:00+01:00", message: "ui: Updates-pagina" },
+          outdatedNodes: db.nodes.filter((n) => !n.isLocal).map((n) => ({ id: n.id, name: n.name, isLocal: false, commit: "0badc0de" })),
+          checkedAt: new Date("2026-11-27T10:05:00+01:00"),
+        }),
         status: () => ({
           enabled: true,
           current: { sha: "15efeda0b1c2d3e4f5061728394a5b6c7d8e9f01", date: "2026-11-26T20:00:00+01:00", message: "perf: geen optimistische 'starting' bij start van een server die al draait" },
