@@ -1853,3 +1853,4 @@ export type ServerAlarms = z.infer<typeof ServerAlarms>;
 // ---------- pakketten en facturatie ----------
 export * from "./billing-schemas";
 export * from "./hostops-schemas";
+export * from "./mail-schemas";

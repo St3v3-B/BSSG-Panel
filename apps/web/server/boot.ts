@@ -7,6 +7,7 @@
  * 3. OWNER_DISCORD_ID in admin_discord_ids
  * 4. lokale node upserten (is_local, fqdn = NODE_DOMAIN, token_hash = sha256(NODE_TOKEN), poorten)
  * 4b. lokale MariaDB als database-host `local` (als MARIADB_ROOT_PASSWORD gezet is)
+ * 4b2. leesrol mail_reader voor Postfix/Dovecot (als MAIL_DB_PASSWORD gezet is)
  * 4c. NPM_URL/NPM_EMAIL/NPM_PASSWORD (panel-machine achter Nginx Proxy Manager) één keer naar de lokale node
  * 5. standaardinstellingen
  * 6. Ed25519-sleutelpaar voor browser-JWT's
@@ -66,6 +67,30 @@ export async function ensureLocalDatabaseHost(nodeId: number): Promise<void> {
   });
 }
 
+/** Views waar de leesrol `mail_reader` (Postfix/Dovecot) SELECT op krijgt; verder niets. */
+export const MAIL_READER_VIEWS = ["v_domains", "v_mailboxes", "v_aliases", "v_senders"] as const;
+
+/**
+ * Leesrol voor de mailstack (alleen als MAIL_DB_PASSWORD gezet is): aanmaken of wachtwoord bijwerken, USAGE op
+ * schema `mail` en SELECT op de vier views. Een view leest met de rechten van zijn eigenaar, dus de tabellen
+ * zelf blijven voor mail_reader dicht.
+ */
+export async function ensureMailReader(): Promise<boolean> {
+  const pw = getEnv().MAIL_DB_PASSWORD;
+  if (!pw) return false;
+  await getDb().transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(4242002)`);
+    const exists = await tx.execute(sql`select 1 from pg_roles where rolname = 'mail_reader'`);
+    if (!exists.length) await tx.execute(sql.raw("create role mail_reader login"));
+    // Postgres quote het wachtwoord zelf (%L), daarna pas uitvoeren.
+    const [stmt] = (await tx.execute(sql`select format('alter role mail_reader with login nosuperuser nocreatedb nocreaterole noinherit noreplication password %L', ${pw}::text) as q`)) as unknown as Array<{ q: string }>;
+    await tx.execute(sql.raw(stmt!.q));
+    await tx.execute(sql.raw("grant usage on schema mail to mail_reader"));
+    await tx.execute(sql.raw(`grant select on ${MAIL_READER_VIEWS.map((v) => `mail.${v}`).join(", ")} to mail_reader`));
+  });
+  return true;
+}
+
 async function runBoot(): Promise<void> {
   const env = getEnv();
   await runMigrations(env.DATABASE_URL);
@@ -73,6 +98,7 @@ async function runBoot(): Promise<void> {
   await db.insert(schema.adminDiscordIds).values({ discordId: env.OWNER_DISCORD_ID }).onConflictDoNothing();
   const localNodeId = await upsertLocalNode();
   await ensureLocalDatabaseHost(localNodeId);
+  await ensureMailReader().catch((e) => console.warn(`[boot] mail_reader role not set up: ${e instanceof Error ? e.message : e}`));
   if (await seedLocalNpm(localNodeId).catch((e) => (console.warn(`[boot] NPM settings from panel.env not applied: ${e instanceof Error ? e.message : e}`), false))) {
     console.info("[boot] Nginx Proxy Manager settings from panel.env applied to the local node");
   }

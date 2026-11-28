@@ -20,6 +20,7 @@ import { createPlayerActivityMock } from "./player-activity";
 import { createCloneMock } from "./clone";
 import { createHostopsMock } from "./hostops";
 import { createDeployMock } from "./deploy";
+import { createMailMock } from "./mail";
 import { createPublishMock } from "./publish";
 
 const MOCK_HITS: s.ContentHit[] = [
@@ -299,6 +300,7 @@ export function createMock(): Implementation {
   const publish = createPublishMock({ servers: () => db.servers, id, clone: (o) => cm.servers.clone(o), hostOf: (uuid) => db.domains.find((x) => x.serverUuid === uuid && !x.redirectTo)?.hostname ?? null });
   return {
     deploy,
+    mail: createMailMock({ id }),
     publish,
     auth: {
       me: ({ ctx }) => (ctx.session ? me(ctx.session) : null),

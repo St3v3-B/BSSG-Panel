@@ -11,12 +11,18 @@ export interface DnsLookup {
   ns(name: string): Promise<string[]>;
   /** SRV-records als "prio weight port target" (target zonder punt). */
   srv(name: string): Promise<string[]>;
+  /** MX als "prio host" (host zonder punt, kleine letters). Optioneel: nep-resolvers zonder MX geven leeg. */
+  mx?(name: string): Promise<string[]>;
+  /** TXT-records, delen per record aan elkaar geplakt; hoofdletters blijven staan (DKIM-sleutels). */
+  txt?(name: string): Promise<string[]>;
+  /** Reverse lookup van een IP (PTR-namen zonder punt). */
+  ptr?(ip: string): Promise<string[]>;
 }
 
 const RESOLVERS = ["1.1.1.1", "8.8.8.8"];
 
 /** Lege lijst bij NXDOMAIN/NODATA; andere fouten ook leeg (beide resolvers onbereikbaar = leeg). */
-async function both(fn: (r: Resolver) => Promise<string[]>): Promise<string[]> {
+async function both(fn: (r: Resolver) => Promise<string[]>, lower = true): Promise<string[]> {
   const out = await Promise.all(
     RESOLVERS.map(async (ip) => {
       const r = new Resolver({ timeout: 3000, tries: 2 });
@@ -28,7 +34,7 @@ async function both(fn: (r: Resolver) => Promise<string[]>): Promise<string[]> {
       }
     }),
   );
-  return [...new Set(out.flat().map((x) => x.toLowerCase().replace(/\.$/, "")))].sort();
+  return [...new Set(out.flat().map((x) => (lower ? x.toLowerCase().replace(/\.$/, "") : x)))].sort();
 }
 
 export const publicDns: DnsLookup = {
@@ -37,6 +43,9 @@ export const publicDns: DnsLookup = {
   cname: (n) => both((r) => r.resolveCname(n)),
   ns: (n) => both((r) => r.resolveNs(n)),
   srv: (n) => both(async (r) => (await r.resolveSrv(n)).map((x) => `${x.priority} ${x.weight} ${x.port} ${x.name}`)),
+  mx: (n) => both(async (r) => (await r.resolveMx(n)).map((x) => `${x.priority} ${x.exchange}`)),
+  txt: (n) => both(async (r) => (await r.resolveTxt(n)).map((parts) => parts.join("")), false),
+  ptr: (ip) => both((r) => r.reverse(ip)),
 };
 
 let current: DnsLookup = publicDns;

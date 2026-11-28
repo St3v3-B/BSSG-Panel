@@ -150,3 +150,41 @@ export async function removeARecord(token: string, zoneId: string, name: string)
   }
   return n;
 }
+
+/** Zorgt voor precies één MX-record op `name` → `target` met deze prioriteit (andere MX-records op de naam gaan weg). */
+export async function setMxRecord(token: string, zoneId: string, name: string, target: string, priority: number): Promise<{ created: number; updated: number; deleted: number }> {
+  const r = await cf<Array<CfRecord & { priority?: number }>>(token, "GET", `/zones/${zoneId}/dns_records?per_page=100&type=MX&name=${encodeURIComponent(name)}`);
+  const recs = r.result.filter((x) => x.name === name && x.type === "MX");
+  const stats = { created: 0, updated: 0, deleted: 0 };
+  const keep = recs.find((x) => x.content.replace(/\.$/, "").toLowerCase() === target && x.priority === priority);
+  if (!keep) {
+    await cf(token, "POST", `/zones/${zoneId}/dns_records`, { type: "MX", name, content: target, priority, ttl: 1 });
+    stats.created++;
+  }
+  for (const x of recs.filter((x) => x !== keep)) {
+    await cf(token, "DELETE", `/zones/${zoneId}/dns_records/${x.id}`);
+    stats.deleted++;
+  }
+  return stats;
+}
+
+/**
+ * Zorgt dat er op `name` precies één TXT-record begint met `prefix` (hoofdletterongevoelig, bv. `v=spf1`) en dat het
+ * `value` is. Andere TXT-records op de naam (zonder dat prefix) blijven staan.
+ */
+export async function setTxtByPrefix(token: string, zoneId: string, name: string, prefix: string, value: string): Promise<{ created: number; updated: number; deleted: number }> {
+  const r = await cf<CfRecord[]>(token, "GET", `/zones/${zoneId}/dns_records?per_page=100&type=TXT&name=${encodeURIComponent(name)}`);
+  const unq = (c: string) => c.replace(/^"|"$/g, "").replace(/"\s*"/g, "");
+  const recs = r.result.filter((x) => x.name === name && x.type === "TXT" && unq(x.content).toLowerCase().startsWith(prefix.toLowerCase()));
+  const stats = { created: 0, updated: 0, deleted: 0 };
+  const keep = recs.find((x) => unq(x.content) === value);
+  if (!keep) {
+    await cf(token, "POST", `/zones/${zoneId}/dns_records`, { type: "TXT", name, content: value, ttl: 1 });
+    stats.created++;
+  }
+  for (const x of recs.filter((x) => x !== keep)) {
+    await cf(token, "DELETE", `/zones/${zoneId}/dns_records/${x.id}`);
+    stats.deleted++;
+  }
+  return stats;
+}

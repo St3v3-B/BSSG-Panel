@@ -49,13 +49,13 @@ export class DaemonClient {
     this.timeoutMs = o.timeoutMs ?? 10_000;
   }
 
-  private async request<T>(method: Method, path: string, body?: unknown, timeoutMs = this.timeoutMs): Promise<T> {
+  protected async request<T>(method: Method, path: string, body?: unknown, timeoutMs = this.timeoutMs): Promise<T> {
     const text = await this.send(method, path, body === undefined ? undefined : { json: body }, timeoutMs);
     return (text ? JSON.parse(text) : undefined) as T;
   }
 
   /** Ruwe aanroep; `raw` = octet-stream-body. Geeft de responstekst terug. */
-  private async send(method: Method, path: string, body: { json: unknown } | { raw: string | Uint8Array } | undefined, timeoutMs = this.timeoutMs): Promise<string> {
+  protected async send(method: Method, path: string, body: { json: unknown } | { raw: string | Uint8Array } | undefined, timeoutMs = this.timeoutMs): Promise<string> {
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}${path}`, {
