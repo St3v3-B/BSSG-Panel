@@ -133,6 +133,18 @@ describe("admin", () => {
     await waitFor(() => expect(input(bodies, "admin.users.clearQuota")[0]).toEqual({ id: 2 }), { timeout: 5000 });
   });
 
+  it("quota-editor: na opslaan blijft 'Saved.' zichtbaar", async () => {
+    const { calls } = renderWithTrpc(<UserDetail id={2} />, admin);
+    const ram = (await screen.findByLabelText("Memory (MB)")) as HTMLInputElement;
+    fireEvent.change(ram, { target: { value: "6144" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save quota" }));
+    expect(await screen.findByText("Saved.")).toBeTruthy();
+    // ook nadat getQuota opnieuw geladen is
+    await waitFor(() => expect(calls.filter((c) => c.includes("admin.users.getQuota")).length).toBeGreaterThanOrEqual(2), { timeout: 5000 });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.getByText("Saved.")).toBeTruthy();
+  });
+
   it("verbruik per gebruiker", async () => {
     renderWithTrpc(<QuotaUsageTable />, admin);
     const row = (await screen.findAllByRole("row")).find((r) => r.textContent?.includes("blokgenoot"))!;

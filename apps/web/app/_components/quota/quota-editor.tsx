@@ -18,7 +18,8 @@ const DEFAULT: QuotaInput = { maxRamMb: 4096, maxDiskMb: 20000, maxCpuPct: 200, 
 export function QuotaEditor({ userId }: { userId: number }) {
   const q = trpc.admin.users.getQuota.useQuery({ id: userId });
   if (q.isPending) return <Skeleton className="h-40 rounded-xl" />;
-  return <QuotaForm key={JSON.stringify(q.data)} userId={userId} current={q.data ?? null} />;
+  // Key alleen op de gebruiker: na opslaan niet opnieuw mounten, anders verdwijnt "Opgeslagen".
+  return <QuotaForm key={userId} userId={userId} current={q.data ?? null} />;
 }
 
 function QuotaForm({ userId, current }: { userId: number; current: QuotaInput | null }) {

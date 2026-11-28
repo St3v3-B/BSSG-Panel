@@ -41,7 +41,8 @@ function SlugField({ id, value, onChange }: { id: string; value: string; onChang
 export function ServerStatusPageCard({ uuid, name }: { uuid: string; name: string }) {
   const q = trpc.statusPages.serverPage.useQuery({ uuid });
   if (q.isLoading) return null;
-  return <ServerStatusPageForm key={q.data?.id ?? "new"} uuid={uuid} name={name} page={q.data ?? null} />;
+  // Key alleen op de server: de eerste keer opslaan geeft de pagina een id, en een remount zou "Opgeslagen" wissen.
+  return <ServerStatusPageForm key={uuid} uuid={uuid} name={name} page={q.data ?? null} />;
 }
 
 function ServerStatusPageForm({ uuid, name, page }: { uuid: string; name: string; page: StatusPage | null }) {
