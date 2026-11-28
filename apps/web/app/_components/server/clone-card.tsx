@@ -337,9 +337,9 @@ export function CloneProgress({ id }: { id: number }) {
               <tbody>
                 {j.databases.map((d) => (
                   <tr key={d.to} className="border-t border-border">
-                    <td className="break-all px-2 py-1.5 font-mono">{d.from}</td>
-                    <td className="break-all px-2 py-1.5 font-mono">{d.to}</td>
-                    <td className="break-all px-2 py-1.5 font-mono">{d.username}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 font-mono">{d.from}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 font-mono">{d.to}</td>
+                    <td className="whitespace-nowrap px-2 py-1.5 font-mono">{d.username}</td>
                   </tr>
                 ))}
               </tbody>
