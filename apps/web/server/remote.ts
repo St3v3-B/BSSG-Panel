@@ -18,6 +18,7 @@ import { notify, targetForServer } from "./notify";
 import { getLimiter } from "./lib/ratelimit";
 import { logImageUpdate, remoteImageSettings, storeImageReport } from "./image-updates";
 import { fetchServerByUuid, sftpUsername } from "./servers-data";
+import { getTerminalEnabled } from "./settings";
 import { applyServerState } from "./node-cache";
 import { relayConfigFor, storeRelayReport } from "./relay";
 import { npmConfigFor, storeNpmReport } from "./npm";
@@ -278,6 +279,8 @@ async function checkSftpPassword(userId: number, serverId: number, password: str
     .where(and(eq(schema.apiKeys.prefix, password.slice(0, 8)), eq(schema.apiKeys.userId, userId)));
   if (!key || !safeEqual(key.hash, sha256(password))) return null;
   if (key.expiresAt && key.expiresAt.getTime() <= Date.now()) return null;
+  // Sleutel beperkt tot andere servers: geen login op deze.
+  if (key.serverIds?.length && !key.serverIds.includes(serverId)) return null;
   await db.update(schema.apiKeys).set({ lastUsedAt: new Date() }).where(eq(schema.apiKeys.id, key.id));
   return perms.filter((p) => key.permissions.includes(p));
 }
@@ -317,7 +320,9 @@ export const sftpAuth = remoteHandler(async (req, node) => {
       if (srv.suspendedAt) return fail("suspended", srv.id);
       await limiter.reset(userKey);
       await logActivity({ action: "server.sftp.login", userId: c.user.id, serverId: srv.id, ip: b.ip });
-      return json(200, { server_uuid: srv.uuid, user_id: String(c.user.id), permissions: perms });
+      // SSH-shell (recht terminal) alleen als de admin de terminal globaal en voor deze server toestaat.
+      const shell = srv.terminalAllowed && (await getTerminalEnabled());
+      return json(200, { server_uuid: srv.uuid, user_id: String(c.user.id), permissions: shell ? perms : perms.filter((p) => p !== "terminal") });
     }
   }
   return fail("invalid", srvs[0]?.id);

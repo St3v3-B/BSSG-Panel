@@ -55,6 +55,8 @@ type ContainerConfig struct {
 	NetworkMode    string
 	// Init: tini als PID 1, zodat signalen ook processen zonder eigen handler bereiken.
 	Init bool
+	// Tty: een pseudo-terminal (webterminal/SSH-shell); koppelen met TTY.AttachTTY.
+	Tty bool
 }
 
 // Container is de staat van een bestaande container.

@@ -49,6 +49,9 @@ type Options struct {
 	Update func(context.Context) (changed bool, err error)
 	// Restart herstart het proces na een geslaagde update (systemd start de nieuwe binary).
 	Restart func()
+	// TerminalIdle / TerminalMax: webterminal sluiten na zoveel tijd zonder invoer / na zoveel tijd open
+	// (standaard 15 min en 4 uur).
+	TerminalIdle, TerminalMax time.Duration
 }
 
 // API bundelt de handlers.
@@ -130,6 +133,7 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("PUT /api/servers/{uuid}/network", p(a.withServer(a.setProxyNetwork)))
 	mux.Handle("GET /api/stats", p(a.allStats))
 	mux.HandleFunc("GET /api/servers/{uuid}/ws", a.websocket)
+	mux.HandleFunc("GET /api/servers/{uuid}/terminal", a.terminal)
 
 	mux.Handle("GET /api/servers/{uuid}/files/list", p(a.withServer(a.listFiles)))
 	mux.Handle("GET /api/servers/{uuid}/files/contents", p(a.withServer(a.readFile)))

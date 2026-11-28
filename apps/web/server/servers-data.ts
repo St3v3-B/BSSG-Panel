@@ -3,7 +3,7 @@ import { ALL_PERMISSIONS, type ImageUpdateInfo, type Ctx, type Permission, type 
 import { TRPCError } from "@trpc/server";
 import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { apiKeyOf } from "./apikey";
+import { apiKeyOf, keyAllowsServer } from "./apikey";
 import { getDb, schema } from "./db";
 import { maintenanceOut } from "./node-maintenance";
 import { getNodesLive, resolveStatus } from "./node-cache";
@@ -111,6 +111,7 @@ export function toDetail(
   storedVariables: Record<string, string>,
   live?: { status?: ServerStatus; installedAt?: Date | null; lastSeenAt?: Date | null },
   network?: ServerNetwork,
+  terminalGlobal = true,
 ): ServerDetail {
   return {
     ...toSummary(b, viewer.id, live?.status, live?.lastSeenAt),
@@ -130,6 +131,7 @@ export function toDetail(
     domainsAllowed: b.server.type === "web" || (b.server.domainsAllowed && b.node.supportsDomains),
     sleep: { supported: templateSleepCapable(b.template), enabled: b.server.sleepEnabled, idleMinutes: b.server.sleepIdleMinutes },
     network: network ?? { role: "none", members: [], proxy: null, connectAddress: null, forcedHosts: [], forcedHostSuggestions: [] },
+    terminal: { enabled: terminalGlobal && b.server.terminalAllowed && !b.server.suspendedAt, serverAllowed: b.server.terminalAllowed, globalEnabled: terminalGlobal },
     installedAt: live?.installedAt !== undefined ? live.installedAt : b.server.installedAt,
     createdAt: b.server.createdAt,
   };
@@ -173,6 +175,8 @@ export async function accessFor(ctx: Ctx, bundle: ServerBundle): Promise<ServerA
   const a = await baseAccess(ctx, bundle);
   const key = apiKeyOf(ctx);
   if (!key || (!a.canManage && !a.isSubuser)) return a;
+  // Sleutel beperkt tot andere servers: alsof de gebruiker er geen toegang toe heeft.
+  if (!keyAllowsServer(ctx, bundle.server.id)) return { ...a, canManage: false, isSubuser: false, permissions: [] };
   // API-sleutel: geen eigenaarsacties, rechten = doorsnede van sleutel en gebruiker.
   return { ...a, canManage: false, isSubuser: true, permissions: a.permissions.filter((p) => key.permissions.includes(p)) };
 }

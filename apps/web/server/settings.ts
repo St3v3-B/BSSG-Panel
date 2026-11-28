@@ -15,7 +15,14 @@ export const SETTING_DEFAULTS = {
   sleep_motd_show_logo: true,
   sleep_motd_seed_logo: true,
   activity_retention_days: 90,
+  terminal_enabled: true,
 };
+
+/** Webterminal/SSH-shell globaal aan (setting terminal_enabled, standaard aan). */
+export async function getTerminalEnabled(): Promise<boolean> {
+  const [r] = await getDb().select().from(schema.settings).where(eq(schema.settings.key, "terminal_enabled"));
+  return typeof r?.value === "boolean" ? r.value : SETTING_DEFAULTS.terminal_enabled;
+}
 
 export const DEFAULT_ACTIVITY_RETENTION_DAYS = SETTING_DEFAULTS.activity_retention_days;
 
@@ -88,5 +95,6 @@ export async function getSettings(): Promise<Settings> {
     imageUpdates: await getImageUpdateSettings(),
     sleepMotd: await getSleepMotdSettings(),
     activityRetentionDays: await getActivityRetentionDays(),
+    terminalEnabled: typeof m.get("terminal_enabled") === "boolean" ? (m.get("terminal_enabled") as boolean) : SETTING_DEFAULTS.terminal_enabled,
   };
 }

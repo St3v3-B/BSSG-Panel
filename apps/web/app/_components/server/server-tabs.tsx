@@ -1,5 +1,5 @@
 "use client";
-import { Archive, CalendarClock, ChartLine, Contact, Database, FolderOpen, Globe, Network, Smartphone, PackagePlus, Puzzle, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
+import { Archive, CalendarClock, ChartLine, Contact, Database, FolderOpen, Globe, Network, Smartphone, PackagePlus, Puzzle, ScrollText, Settings, SquareTerminal, Terminal as TerminalIcon, Users } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
@@ -19,7 +19,7 @@ export interface ServerTab {
 }
 
 /** Welke tabbladen deze gebruiker op deze server ziet (op basis van type en rechten). */
-export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner" | "permissions"> & { domainsAllowed?: boolean; network?: Pick<ServerDetail["network"], "role">; content?: ContentKind | null; bedrock?: boolean; players?: boolean }): ServerTab[] {
+export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner" | "permissions"> & { terminal?: Pick<ServerDetail["terminal"], "enabled">; domainsAllowed?: boolean; network?: Pick<ServerDetail["network"], "role">; content?: ContentKind | null; bedrock?: boolean; players?: boolean }): ServerTab[] {
   const base = `/servers/${server.uuid}`;
   const has = (p: Permission) => server.permissions.includes(p);
   const l = getT().server.tabs;
@@ -27,6 +27,7 @@ export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner
   if (has("console.read")) tabs.push({ key: "stats", href: `${base}/stats`, label: l.stats, icon: ChartLine });
   if (has("files.read")) tabs.push({ key: "files", href: `${base}/files`, label: l.files, icon: FolderOpen });
   if (server.players && has("players.read")) tabs.push({ key: "players", href: `${base}/players`, label: l.players, icon: Contact });
+  if (has("terminal") && has("files.write") && server.terminal?.enabled) tabs.push({ key: "terminal", href: `${base}/terminal`, label: getT().devaccess.terminal.tab, icon: TerminalIcon });
   if (server.content && has("files.read")) tabs.push({ key: "content", href: `${base}/content`, label: server.content === "plugin" ? l.plugins : l.mods, icon: Puzzle });
   if ((server.type === "web" || server.domainsAllowed) && has("domain.manage")) tabs.push({ key: "domains", href: `${base}/domains`, label: l.domains, icon: Globe });
   if (server.network?.role === "proxy" && (server.isOwner || ALL_PERMISSIONS.every(has))) tabs.push({ key: "network", href: `${base}/network`, label: l.network, icon: Network });

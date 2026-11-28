@@ -52,6 +52,8 @@ type Deps struct {
 	Panel *panel.Client
 	// WSAuthTimeout: tijd voor het eerste auth-bericht (standaard 10 s).
 	WSAuthTimeout time.Duration
+	// TerminalIdle: webterminal sluiten na zoveel tijd zonder invoer (standaard 15 min; tests korter).
+	TerminalIdle time.Duration
 	// SyncInterval voor Router.Sync (standaard 5 min) en HealthInterval (15 s).
 	SyncInterval, HealthInterval time.Duration
 	// SFTPAddr vervangt ":$SFTP_PORT" (tests: 127.0.0.1:0). Leeg en SFTP_PORT 0 = geen SFTP.
@@ -156,6 +158,9 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	if !sc.NetworkPool.IsValid() {
 		sc.NetworkPool = cfg.NetworkPool
 	}
+	if sc.TerminalImage == "" {
+		sc.TerminalImage = cfg.TerminalImage
+	}
 	d.mgr = server.NewManager(sc, deps.Engine, d.panel, deps.Log)
 	ic := deps.Image
 	if ic.Interval == 0 {
@@ -184,7 +189,7 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	if restart == nil {
 		restart = func() { _ = syscall.Kill(os.Getpid(), syscall.SIGTERM) }
 	}
-	d.api = api.New(api.Options{NodeToken: cfg.NodeToken, AllowedOrigins: cfg.AllowedOrigins(), AuthTimeout: deps.WSAuthTimeout, Update: upd.Run, Restart: restart}, d.mgr, routes, verifier, d.systemInfo, deps.Log)
+	d.api = api.New(api.Options{NodeToken: cfg.NodeToken, AllowedOrigins: cfg.AllowedOrigins(), AuthTimeout: deps.WSAuthTimeout, TerminalIdle: deps.TerminalIdle, Update: upd.Run, Restart: restart}, d.mgr, routes, verifier, d.systemInfo, deps.Log)
 	d.api.SetBackups(d.backup)
 	d.relay = newRelaySvc(d)
 	d.api.SetRelay(d.relay)

@@ -122,7 +122,7 @@ func (d *Docker) Create(ctx context.Context, c ContainerConfig) (string, error) 
 		AttachStdout: true,
 		AttachStderr: true,
 		StdinOnce:    false,
-		Tty:          false,
+		Tty:          c.Tty,
 		ExposedPorts: exposed,
 	}
 	host := &container.HostConfig{

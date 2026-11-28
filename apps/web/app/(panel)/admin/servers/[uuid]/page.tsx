@@ -2,6 +2,7 @@
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { TerminalAllowedSection } from "@/app/_components/admin/terminal-toggles";
 import { DeleteServerCard, DomainsAllowedSection, LimitsCard, MoveNodeCard, OwnerCard, PortsCard, SuspendSection, TemplateSection } from "@/app/_components/admin/server-manage";
 import { QueryError } from "@/app/_components/query-error";
 import { ImageUpdateCard } from "@/app/_components/image-updates";
@@ -55,6 +56,7 @@ export default function AdminServerPage() {
           <LimitsCard key={`l-${s.uuid}`} server={s} />
           <OwnerCard server={s} />
           {s.type === "game" && <DomainsAllowedSection uuid={s.uuid} allowed={s.domainsAllowed} nodeSupportsDomains={s.node.supportsDomains} />}
+          <TerminalAllowedSection uuid={s.uuid} allowed={s.terminal.serverAllowed} globalEnabled={s.terminal.globalEnabled} />
           {s.type === "game" && <PortsCard key={`p-${s.allocations.map((a) => a.id).join()}`} server={s} />}
           <MoveNodeCard key={`m-${s.node.id}`} server={s} />
           <VariablesCard server={s} all />

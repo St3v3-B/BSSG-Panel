@@ -183,6 +183,13 @@
       "when": 1795866086176,
       "tag": "0025_amused_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795866173827,
+      "tag": "0026_white_slipstream",
+      "breakpoints": true
     }
   ]
 }

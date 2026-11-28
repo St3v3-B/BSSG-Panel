@@ -39,7 +39,7 @@ export const allocations: s.Allocation[] = [
 
 const limits = { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 };
 
-export const servers: (s.ServerDetail & { ownerId: number })[] = [
+export const servers: (Omit<s.ServerDetail, "terminal"> & { ownerId: number })[] = [
   {
     uuid: "8f6c1a2e-1b2c-4d3e-9f40-a1b2c3d4e5f6",
     shortId: "8f6c1a2e",

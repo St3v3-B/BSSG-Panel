@@ -33,7 +33,7 @@ export const stats: Pick<Implementation["servers"], "statsHistory" | "statsSpark
     const allowed = rows.filter((r) => {
       const perms: readonly string[] = r.ownerId === uid || admin ? ALL_PERMISSIONS : (subPerms.get(r.id) ?? []);
       if (!perms.includes("console.read")) return false;
-      return !key || key.permissions.includes("console.read");
+      return !key || (key.permissions.includes("console.read") && (!key.serverIds.length || key.serverIds.includes(r.id)));
     });
     const lines = await sparklines(allowed.map((r) => r.id));
     const out: Record<string, StatsSparkline> = {};

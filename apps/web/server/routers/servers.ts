@@ -11,7 +11,8 @@ import { applyServerState, getNodeLive, resolveStatus } from "../node-cache";
 import { signBrowserJwt } from "../lib/jwt";
 import { buildServerSpec, templateSleepCapable, validateVariables } from "../spec";
 import { serverNetwork } from "../network";
-import { forbidApiKey } from "../apikey";
+import { getTerminalEnabled } from "../settings";
+import { forbidApiKey, keyAllowsServer } from "../apikey";
 import { imagePolicyOf, isFullAdmin, fetchServers, limitsOf, sleepOf, autoRestartOf, requireServer, isSuspendedFor, serverVariables, toDetail, toSummary, liveViews, type ServerBundle } from "../servers-data";
 
 const ok = { ok: true as const };
@@ -32,7 +33,7 @@ export async function currentSpec(b: ServerBundle, opts: { startOnInstall?: bool
 
 export const servers: Pick<
   Implementation["servers"],
-  "list" | "get" | "stats" | "power" | "sendCommand" | "consoleToken" | "rename" | "updateVariables" | "reinstall" | "activity" | "updateSleep" | "updateImagePolicy" | "updateImageNow"
+  "list" | "get" | "stats" | "power" | "sendCommand" | "consoleToken" | "terminalToken" | "rename" | "updateVariables" | "reinstall" | "activity" | "updateSleep" | "updateImagePolicy" | "updateImageNow"
 > = {
   list: async ({ input, ctx }) => {
     const uid = ctx.session!.userId;
@@ -45,6 +46,7 @@ export const servers: Pick<
       const subOf = getDb().select({ id: schema.subusers.serverId }).from(schema.subusers).where(eq(schema.subusers.userId, uid));
       rows = await fetchServers(or(eq(schema.servers.ownerId, uid), inArray(schema.servers.id, subOf)));
     }
+    rows = rows.filter((b) => keyAllowsServer(ctx, b.server.id));
     const live = await liveViews(rows);
     return rows.map((b) => {
       const l = live.get(b.server.uuid);
@@ -54,13 +56,14 @@ export const servers: Pick<
 
   get: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "any");
-    const [live, vars, [viewer], net] = await Promise.all([
+    const [live, vars, [viewer], net, terminalGlobal] = await Promise.all([
       liveViews([a.bundle]).then((m) => m.get(a.bundle.server.uuid)!),
       serverVariables(a.bundle.server.id),
       getDb().select().from(schema.users).where(eq(schema.users.id, ctx.session!.userId)),
       serverNetwork(a.bundle),
+      getTerminalEnabled(),
     ]);
-    return toDetail(a.bundle, { id: viewer!.id, name: viewer!.name, discordId: viewer!.discordId }, a.permissions, vars, { status: live.status, lastSeenAt: live.lastSeenAt, installedAt: a.bundle.server.installedAt ?? live.installedAt }, net);
+    return toDetail(a.bundle, { id: viewer!.id, name: viewer!.name, discordId: viewer!.discordId }, a.permissions, vars, { status: live.status, lastSeenAt: live.lastSeenAt, installedAt: a.bundle.server.installedAt ?? live.installedAt }, net, terminalGlobal);
   },
 
   stats: async ({ input, ctx }) => {
@@ -119,6 +122,23 @@ export const servers: Pick<
       permissions: isSuspendedFor(ctx, a.bundle) ? a.permissions.filter((p) => p === "console.read") : a.permissions,
     });
     return { token, socketUrl: `wss://${nodeHost(a.bundle.node)}/api/servers/${a.bundle.server.uuid}/ws`, expiresAt: new Date(claims.exp * 1000) };
+  },
+
+  terminalToken: async ({ input, ctx }) => {
+    const a = await requireServer(ctx, input.uuid, "terminal", { mutates: true });
+    // Een shell kan alle bestanden wijzigen: zonder files.write geen terminal (ook niet via een beperkte sleutel).
+    if (!a.permissions.includes("files.write")) throw new TRPCError({ code: "FORBIDDEN", message: "MISSING_PERMISSION: files.write" });
+    if (!a.bundle.server.terminalAllowed || !(await getTerminalEnabled())) throw new TRPCError({ code: "FORBIDDEN", message: "TERMINAL_DISABLED" });
+    const { token, claims } = await signBrowserJwt({
+      iss: getEnv().PANEL_URL,
+      aud: a.bundle.node.fqdn,
+      sub: String(ctx.session!.userId),
+      serverUuid: a.bundle.server.uuid,
+      permissions: ["terminal"],
+      extra: { purpose: "terminal" },
+    });
+    if (!input.refresh) await logActivity({ action: "server.terminal.open", userId: ctx.session!.userId, serverId: a.bundle.server.id, ip: ctx.ip, ctx });
+    return { token, socketUrl: `wss://${nodeHost(a.bundle.node)}/api/servers/${a.bundle.server.uuid}/terminal`, expiresAt: new Date(claims.exp * 1000) };
   },
 
   rename: async ({ input, ctx }) => {

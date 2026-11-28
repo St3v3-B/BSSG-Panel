@@ -182,6 +182,7 @@ type TokenOpts struct {
 	Path        string // claim "path" (downloadtoken)
 	Directory   string // claim "directory" (uploadtoken)
 	Archive     any    // claim "archive" (archief-downloadtoken)
+	Purpose     string // claim "purpose" (terminal-token)
 }
 
 // Sign maakt een browser-JWT.
@@ -223,6 +224,9 @@ func (p *Panel) Sign(o TokenOpts) string {
 	}
 	if o.Archive != nil {
 		claims["archive"] = o.Archive
+	}
+	if o.Purpose != "" {
+		claims["purpose"] = o.Purpose
 	}
 	t := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
 	t.Header["kid"] = kid

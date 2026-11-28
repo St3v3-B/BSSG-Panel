@@ -37,7 +37,7 @@ const WEB_CHATTER = [
   "PHP Fatal error:  Uncaught Error: Call to undefined function mysql_connect() in /home/container/public/contact.php:12",
 ];
 
-const ALL: Permission[] = ["console.read", "console.write", "files.read", "files.write", "backup.create", "backup.restore", "database.manage", "domain.manage", "schedule.manage", "power", "players.read", "players.manage"];
+const ALL: Permission[] = ["console.read", "console.write", "files.read", "files.write", "backup.create", "backup.restore", "database.manage", "domain.manage", "schedule.manage", "power", "players.read", "players.manage", "terminal"];
 
 const ts = () => new Date().toLocaleTimeString("nl-NL", { hour12: false, timeZone: "Europe/Amsterdam" });
 const info = (s: string) => `[${ts()} INFO]: ${s}`;

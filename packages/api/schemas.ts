@@ -59,6 +59,8 @@ export const Permission = z.enum([
   "power",
   "players.read",
   "players.manage",
+  /** Webterminal/SSH-shell in een tools-container met de bestanden van de server (geeft feitelijk ook bestandstoegang). */
+  "terminal",
 ]);
 export type Permission = z.infer<typeof Permission>;
 export const ALL_PERMISSIONS = Permission.options;
@@ -351,6 +353,11 @@ export const ServerDetail = ServerSummary.extend({
   sleep: z.object({ supported: z.boolean(), enabled: z.boolean(), idleMinutes: z.number().int() }).default({ supported: false, enabled: false, idleMinutes: 10 }),
   /** Minecraft-netwerk (proxy of backend); `role: "none"` voor alle andere servers. */
   network: ServerNetwork.default({ role: "none", members: [], proxy: null, connectAddress: null, forcedHosts: [], forcedHostSuggestions: [] }),
+  /**
+   * Webterminal/SSH-shell. `enabled` = globaal aan (`Settings.terminalEnabled`) én voor deze server toegestaan
+   * (`serverAllowed`, admin) én niet opgeschort; het recht `terminal` staat los daarvan in `permissions`.
+   */
+  terminal: z.object({ enabled: z.boolean(), serverAllowed: z.boolean(), globalEnabled: z.boolean() }).default({ enabled: false, serverAllowed: true, globalEnabled: true }),
   installedAt: z.date().nullable(),
   createdAt: z.date(),
 });
@@ -363,6 +370,15 @@ export const ConsoleToken = z.object({
   expiresAt: z.date(),
 });
 export type ConsoleToken = z.infer<typeof ConsoleToken>;
+
+/** Eenmalige JWT (10 min, `purpose: "terminal"`) voor wss://<node fqdn>/api/servers/{uuid}/terminal. */
+export const TerminalToken = z.object({
+  token: z.string(),
+  /** wss://<node fqdn>/api/servers/{uuid}/terminal */
+  socketUrl: z.string(),
+  expiresAt: z.date(),
+});
+export type TerminalToken = z.infer<typeof TerminalToken>;
 
 export const ActivityEntry = z.object({
   id: Id,
@@ -655,6 +671,8 @@ export const ApiKey = z.object({
   name: z.string(),
   prefix: z.string(), // eerste 8 tekens, om de sleutel te herkennen
   permissions: z.array(Permission),
+  /** Alleen deze servers; leeg = alle servers waar de gebruiker bij kan. */
+  serverUuids: z.array(Uuid).default([]),
   lastUsedAt: z.date().nullable(),
   expiresAt: z.date().nullable(),
   createdAt: z.date(),
@@ -997,6 +1015,8 @@ export const Settings = Branding.extend({
   sleepMotd: SleepMotdSettings,
   /** Activiteitenlog zoveel dagen bewaren; 0 = altijd. Oudere regels ruimt een periodieke taak op. */
   activityRetentionDays: z.number().int().min(0).max(3650),
+  /** Webterminal en SSH-shell voor alle servers (per server uit te zetten met admin.servers.setTerminalAllowed). */
+  terminalEnabled: z.boolean(),
 });
 export type Settings = z.infer<typeof Settings>;
 

@@ -25,6 +25,8 @@ info:
       Bij een archief-download (`/files/archive`) staat `archive` (`root`, `paths`, `format`) in de
       JWT en komt de selectie alleen daaruit. Een token met `archive` geldt nergens anders, en
       een token zonder `archive` niet voor `/files/archive` (403).
+      Een terminal-JWT heeft `purpose: "terminal"` en `permissions: ["terminal"]`, is eenmalig (`jti`)
+      en geldt alleen voor `/terminal`; een JWT zonder `purpose` wordt daar geweigerd.
 
     ## Fouten
     Altijd `application/json` met het `Error`-schema en een passende statuscode.
@@ -52,6 +54,36 @@ info:
 
     Sluitcodes: 4001 token verlopen/ongeldig, 4003 geen `console.read`, 4004 server onbekend,
     4008 geen auth binnen 10 s. De schema's staan onder `components.schemas.Ws*`.
+
+    ## Webterminal `GET /api/servers/{uuid}/terminal`
+    Interactieve shell in een kortlevende tools-container (`panel.role=shell`, naam
+    `panel-<uuid>-shell-<8 hex>`): image `TERMINAL_IMAGE` van de daemon of anders de image van de server,
+    `/home/container` = de bestanden van de server, gebruiker 1000:1000, de limieten van de server,
+    `cap-drop ALL`, `no-new-privileges`, read-only rootfs met tmpfs `/tmp`, netwerk `panel-site-<uuid>`
+    (de database is bereikbaar; geen andere sites, geen docker-socket). De server hoeft niet te draaien.
+    Upgrade zonder auth-header (Origin-check als bij `/ws`). Eerste bericht binnen 10 s (tekst):
+    `{"event":"auth","token":"<terminal-jwt>","cols":80,"rows":24}`. Daarna:
+
+    | Richting | frame | inhoud | betekenis |
+    |---|---|---|---|
+    | → daemon | binair | bytes | toetsenbordinvoer naar de pty |
+    | → daemon | tekst | `{"event":"resize","cols":n,"rows":n}` | venstergrootte (1–500 × 1–200) |
+    | → daemon | tekst | `{"event":"auth","token":…}` | token-refresh (nieuw eenmalig token van dezelfde gebruiker) |
+    | ← daemon | tekst | `{"event":"auth_success"}` | shell start; daarna uitvoer |
+    | ← daemon | binair | bytes | uitvoer van de pty (UTF-8, ruw) |
+    | ← daemon | tekst | `{"event":"token_expiring","expires_at":…}` / `{"event":"token_expired"}` | als bij `/ws` |
+    | ← daemon | tekst | `{"event":"terminal_exit","code":n}` | de shell is gestopt; daarna sluit de daemon (1000) |
+    | ← daemon | tekst | `{"event":"error","message":…}` | bv. image niet te starten |
+
+    Sluitcodes: 4001 token ongeldig/verlopen/al gebruikt, 4003 geen `terminal`-token, 4004 server onbekend,
+    4008 geen auth binnen 10 s, 4009 geen invoer in 15 min (of 4 uur open), 4029 te veel shells
+    (3 per server, 20 per node). Bij sluiten verwijdert de daemon de container; verweesde shells
+    ruimt hij op bij zijn start.
+
+    ## SSH-shell via de SFTP-poort
+    Dezelfde login als SFTP (`<naam>.<shortId>`, SFTP-wachtwoord of API-sleutel). Staat `terminal` in de
+    rechten uit `/api/remote/sftp/auth`, dan opent een `shell`-verzoek (met `pty-req`/`window-change`)
+    dezelfde tools-container als de webterminal; `exec` en port-forwarding worden geweigerd.
 servers:
   - url: https://{nodeDomain}
     variables:
@@ -456,6 +488,17 @@ paths:
       tags: [servers]
       operationId: websocket
       summary: Console- en stats-websocket (zie protocol bovenaan)
+      security: []
+      responses:
+        "101": { description: Switching Protocols }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/servers/{uuid}/terminal:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    get:
+      tags: [servers]
+      operationId: terminal
+      summary: Webterminal-websocket (zie protocol bovenaan)
       security: []
       responses:
         "101": { description: Switching Protocols }
@@ -1438,7 +1481,7 @@ components:
 
     Permission:
       type: string
-      enum: [console.read, console.write, files.read, files.write, backup.create, backup.restore, database.manage, domain.manage, schedule.manage, power, players.read, players.manage]
+      enum: [console.read, console.write, files.read, files.write, backup.create, backup.restore, database.manage, domain.manage, schedule.manage, power, players.read, players.manage, terminal]
 
     PowerAction:
       type: string

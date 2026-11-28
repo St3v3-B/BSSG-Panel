@@ -323,6 +323,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/servers/{uuid}/terminal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        /** Webterminal-websocket (zie protocol bovenaan) */
+        get: operations["terminal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{uuid}/files/list": {
         parameters: {
             query?: never;
@@ -1131,7 +1150,7 @@ export interface components {
             message?: string;
         };
         /** @enum {string} */
-        Permission: "console.read" | "console.write" | "files.read" | "files.write" | "backup.create" | "backup.restore" | "database.manage" | "domain.manage" | "schedule.manage" | "power" | "players.read" | "players.manage";
+        Permission: "console.read" | "console.write" | "files.read" | "files.write" | "backup.create" | "backup.restore" | "database.manage" | "domain.manage" | "schedule.manage" | "power" | "players.read" | "players.manage" | "terminal";
         /** @enum {string} */
         PowerAction: "start" | "stop" | "restart" | "kill";
         ServerState: {
@@ -2272,6 +2291,27 @@ export interface operations {
         };
     };
     websocket: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching Protocols */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    terminal: {
         parameters: {
             query?: never;
             header?: never;

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { RecoveryCodesCard, RecoveryCodesList } from "@/app/_components/account/recovery-codes";
 import { SessionsCard } from "@/app/_components/account/sessions-card";
+import { ApiKeysCard } from "@/app/_components/account/api-keys-card";
 import { AccountWebhookCard } from "@/app/_components/notifications/webhook-card";
 import { NotificationSettingsCards } from "@/app/_components/notifications/notification-center";
 import { CopyButton } from "@/app/_components/copy-button";
@@ -52,6 +53,7 @@ export default function AccountPage() {
         </Card>
         <TotpCard enabled={me.totpEnabled} isAdmin={me.isAdmin} />
         <SessionsCard />
+        <ApiKeysCard />
         <NotificationSettingsCards isAdmin={me.isAdmin} />
         <AccountWebhookCard />
       </div>

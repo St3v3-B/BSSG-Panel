@@ -6,7 +6,7 @@ import { TRPCError } from "@trpc/server";
 import type * as s from "../schemas";
 import type { Implementation } from "../trpc-builder";
 
-type MockServer = s.ServerDetail & { ownerId: number };
+type MockServer = Omit<s.ServerDetail, "terminal"> & { ownerId: number };
 
 interface Deps {
   nodes: () => s.Node[];
