@@ -77,7 +77,13 @@ export const contract = {
     /** `key` is de volledige sleutel en wordt maar één keer getoond. */
     createApiKey: mutation(
       "user",
-      z.object({ name: z.string().min(1).max(100), permissions: z.array(s.Permission), expiresAt: z.date().nullable() }),
+      z.object({
+        name: z.string().min(1).max(100),
+        permissions: z.array(s.Permission),
+        expiresAt: z.date().nullable(),
+        /** Alleen deze servers (moeten bereikbaar zijn voor de gebruiker, anders FORBIDDEN); leeg = alle. */
+        serverUuids: z.array(s.Uuid).max(100).default([]),
+      }),
       z.object({ key: z.string(), apiKey: s.ApiKey }),
     ),
     revokeApiKey: mutation("user", byId, s.Ok),
@@ -160,6 +166,12 @@ export const contract = {
     sendCommand: mutation("user", server.extend({ command: z.string().min(1).max(2000) }), s.Ok),
     /** JWT (10 min) voor wss://$NODE_DOMAIN/api/servers/{uuid}/ws. Vereist console.read. */
     consoleToken: mutation("user", server, s.ConsoleToken),
+    /**
+     * Eenmalige JWT (10 min) voor de webterminal (wss://<node>/api/servers/{uuid}/terminal). Vereist `terminal`;
+     * FORBIDDEN `TERMINAL_DISABLED` als de admin het globaal of voor deze server uitzette, `SUSPENDED` bij opschorting.
+     * `refresh: true` = nieuw token voor een open sessie (geen nieuwe regel in het activiteitenlog).
+     */
+    terminalToken: mutation("user", server.extend({ refresh: z.boolean().default(false) }), s.TerminalToken),
     /**
      * Zelf een server maken binnen het eigen quotum (FORBIDDEN `NO_QUOTA`, PRECONDITION_FAILED
      * `QUOTA_EXCEEDED: <resource>`, `TEMPLATE_NOT_ALLOWED`, `NODE_NOT_ALLOWED`, `NO_FREE_ALLOCATIONS`).
@@ -534,6 +546,8 @@ export const contract = {
       /** Opschorten stopt de server; eigenaar en subusers kunnen dan niet starten, schrijven of SFTP'en. Admins wel. */
       /** Domeinen koppelen aan een game-server toestaan (bv. play.example.com of map.example.com). */
       setDomainsAllowed: mutation("admin", server.extend({ allowed: z.boolean() }), s.Ok),
+      /** Webterminal/SSH-shell voor deze server toestaan (standaard aan; globaal: settings.terminalEnabled). */
+      setTerminalAllowed: mutation("admin", server.extend({ allowed: z.boolean() }), s.Ok),
       setSuspended: mutation("admin", server.extend({ suspended: z.boolean(), reason: z.string().max(500).nullable().default(null) }), s.Ok),
       /** Andere template (zelfde type). Variabelen die de nieuwe template ook kent blijven; reinstall=true draait het install-script. */
       changeTemplate: mutation("admin", server.extend({ templateId: s.Id, reinstall: z.boolean().default(false) }), s.Ok),

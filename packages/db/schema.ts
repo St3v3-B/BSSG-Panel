@@ -114,6 +114,8 @@ export const apiKeys = pgTable("api_keys", {
   /** SHA-256 van de volledige sleutel */
   hash: text("hash").notNull(),
   permissions: text("permissions").array().notNull().default(sql`'{}'::text[]`),
+  /** Alleen deze servers (servers.id); leeg = alle servers van de gebruiker. */
+  serverIds: integer("server_ids").array().notNull().default(sql`'{}'::integer[]`),
   lastUsedAt: ts("last_used_at"),
   expiresAt: ts("expires_at"),
   createdAt: createdAt(),
@@ -233,6 +235,8 @@ export const servers = pgTable("servers", {
   suspendedAt: ts("suspended_at"),
   suspendedReason: text("suspended_reason"),
   domainsAllowed: boolean("domains_allowed").notNull().default(false),
+  /** Webterminal/SSH-shell toegestaan (admin; globaal: setting terminal_enabled). */
+  terminalAllowed: boolean("terminal_allowed").notNull().default(true),
   status: serverStatus("status").notNull().default("installing"),
   installedAt: ts("installed_at"),
   /** Automatisch herstarten na een crash; max N herstarts per 10 minuten */

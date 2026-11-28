@@ -66,9 +66,10 @@ export function createMock(): Implementation {
     content: [] as Array<s.InstalledContent & { serverUuid: string }>,
     subusers: [] as Array<{ serverUuid: string; userId: number; permissions: s.Permission[]; createdAt: Date }>,
     apiKeys: [] as s.ApiKey[],
+    terminalDisabled: new Set<string>(),
     phpSettings: new Map<string, s.PhpSettings>(),
     admins: ["100000000000000001"],
-    settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 }, imageUpdates: { defaultPolicy: "notify", windowStart: "04:00", windowEnd: "05:00" }, sleepMotd: { promo: "&e⚡ &fJoin to wake it up &8• &7Hosted on &b&lBSSG Panel", showLogoIcon: true, seedLogoIcon: true }, activityRetentionDays: 90 } as s.Settings,
+    settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 }, imageUpdates: { defaultPolicy: "notify", windowStart: "04:00", windowEnd: "05:00" }, sleepMotd: { promo: "&e⚡ &fJoin to wake it up &8• &7Hosted on &b&lBSSG Panel", showLogoIcon: true, seedLogoIcon: true }, activityRetentionDays: 90, terminalEnabled: true } as s.Settings,
     totpEnabled: new Map<number, boolean>([[1, true]]),
     quotas: new Map<number, s.QuotaInput>([[2, { maxRamMb: 4096, maxDiskMb: 50_000, maxCpuPct: 300, maxServers: 3, maxDatabases: 2, templateIds: null, nodeIds: null, maxPortsPerServer: 2 }]]),
     webhooks: new Map<string, s.WebhookStatus>(),
@@ -115,7 +116,9 @@ export function createMock(): Implementation {
   const detail = (x: (typeof db.servers)[number], uid: number): s.ServerDetail => {
     const { ownerId, ...rest } = x;
     const sub = db.subusers.find((u) => u.serverUuid === x.uuid && u.userId === uid);
-    return { ...rest, network: network(x), isOwner: ownerId === uid, permissions: ownerId === uid || uid === 1 ? [...ALL_PERMISSIONS] : (sub?.permissions ?? []) };
+    const serverAllowed = !db.terminalDisabled.has(x.uuid);
+    const terminal = { serverAllowed, globalEnabled: db.settings.terminalEnabled, enabled: serverAllowed && db.settings.terminalEnabled && !x.suspended };
+    return { ...rest, network: network(x), terminal, isOwner: ownerId === uid, permissions: ownerId === uid || uid === 1 ? [...ALL_PERMISSIONS] : (sub?.permissions ?? []) };
   };
   const me = (session: SessionCtx): s.Me => ({
     user: user(session.userId),
@@ -267,7 +270,7 @@ export function createMock(): Implementation {
       totpDisable: ({ ctx }) => (db.totpEnabled.set(uid(ctx), false), ok),
       apiKeys: () => db.apiKeys,
       createApiKey: ({ input }) => {
-        const k: s.ApiKey = { id: id(), name: input.name, prefix: "pk_mock1", permissions: input.permissions, lastUsedAt: null, expiresAt: input.expiresAt, createdAt: new Date() };
+        const k: s.ApiKey = { id: id(), name: input.name, prefix: "pk_mock1", permissions: input.permissions, serverUuids: input.serverUuids, lastUsedAt: null, expiresAt: input.expiresAt, createdAt: new Date() };
         db.apiKeys.push(k);
         return { key: "pk_mock1_" + "x".repeat(40), apiKey: k };
       },
@@ -345,6 +348,11 @@ export function createMock(): Implementation {
       },
       sendCommand: () => ok,
       consoleToken: ({ input }) => ({ token: "mock.jwt.token", socketUrl: `wss://node1.test/api/servers/${input.uuid}/ws`, expiresAt: new Date(Date.now() + 10 * 60_000) }),
+      terminalToken: ({ input }) => {
+        const x = srv(input.uuid);
+        if (!db.settings.terminalEnabled || db.terminalDisabled.has(x.uuid)) throw new TRPCError({ code: "FORBIDDEN", message: "TERMINAL_DISABLED" });
+        return { token: "mock.terminal.token", socketUrl: `wss://node1.test/api/servers/${input.uuid}/terminal`, expiresAt: new Date(Date.now() + 10 * 60_000) };
+      },
       rename: ({ input }) => ((srv(input.uuid).name = input.name), ok),
       updateVariables: ({ input }) => {
         const x = srv(input.uuid);
@@ -762,6 +770,7 @@ export function createMock(): Implementation {
         delete: ({ input }) => ((db.servers = db.servers.filter((x) => x.uuid !== input.uuid)), ok),
         transfer: () => ok,
         setDomainsAllowed: ({ input }) => (((srv(input.uuid) as { domainsAllowed?: boolean }).domainsAllowed = input.allowed), ok),
+        setTerminalAllowed: ({ input }) => (srv(input.uuid), input.allowed ? db.terminalDisabled.delete(input.uuid) : db.terminalDisabled.add(input.uuid), ok),
         setSuspended: ({ input }) => {
           const x = srv(input.uuid);
           (x as { suspended: s.ServerSummary["suspended"] }).suspended = input.suspended ? { reason: input.reason, at: new Date() } : null;
