@@ -162,6 +162,13 @@
       "when": 1795826864838,
       "tag": "0022_productive_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795859386593,
+      "tag": "0023_volatile_hannibal_king",
+      "breakpoints": true
     }
   ]
 }

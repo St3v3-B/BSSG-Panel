@@ -484,6 +484,52 @@ export const contract = {
       relayStatus: query("admin", byId, s.NodeRelayStatus),
     },
 
+    /**
+     * Onderhoudsmodus per node en evacueren. In onderhoud: geen nieuwe servers op de node (PRECONDITION_FAILED
+     * `NODE_IN_MAINTENANCE` bij aanmaken, quotum, pakketten en verplaatsen naar de node); eigenaren zien een banner.
+     * Evacueren verhuist servers met `admin.servers.transfer`, `concurrency` tegelijk; mislukte blijven op de oude node.
+     * Fouten: PRECONDITION_FAILED `NODE_NOT_IN_MAINTENANCE` (evacueren zonder onderhoud), CONFLICT `EVACUATION_RUNNING`,
+     * BAD_REQUEST `SERVER_NOT_ON_NODE` / `TARGET_INVALID`.
+     */
+    maintenance: {
+      /** Aanzetten of bijwerken (tekst, planning). Meldt de eigenaren als `notifyOwners`. */
+      set: mutation("admin", s.MaintenanceInput, s.Node),
+      /** Onderhoud beëindigen: de node neemt weer servers aan; wachtende verhuizingen worden geannuleerd (geen terugverhuizing). */
+      end: mutation("admin", byId, s.Node),
+      /** Doelnodes per server (vrije RAM/disk/allocations, domeinen, HTTP-modus) en een automatisch voorstel. */
+      plan: query("admin", byId.extend({ uuids: z.array(s.Uuid).optional() }), s.EvacuationPlan),
+      evacuate: mutation("admin", s.EvacuateInput, s.Evacuation),
+      /** Laatste evacuatie van deze node (null = nooit). */
+      evacuation: query("admin", byId, s.Evacuation.nullable()),
+      /** Wachtende verhuizingen annuleren; lopende maken hun verhuizing af. `id` = node. */
+      cancel: mutation("admin", byId, s.Evacuation),
+    },
+
+    /**
+     * Import vanuit Pterodactyl of Pelican (Application API, alleen lezen; de bron wordt nooit gewijzigd).
+     * Eén import tegelijk. Sleutels versleuteld bewaard tot `disconnect` of tot de import klaar is.
+     * Fouten: BAD_REQUEST `SOURCE_UNREACHABLE` / `SOURCE_UNAUTHORIZED` / `SOURCE_INVALID`, NOT_FOUND `NO_IMPORT`,
+     * CONFLICT `IMPORT_RUNNING`, PRECONDITION_FAILED `NOT_CONNECTED`.
+     */
+    importer: {
+      get: query("admin", none, s.ImportSession.nullable()),
+      /** Verbindt, leest gebruikers/nodes/eggs/servers en stelt een mapping voor (vervangt een eerdere, niet-lopende import). */
+      connect: mutation("admin", s.ImportConnectInput, s.ImportSession),
+      /** Bron opnieuw inlezen; bestaande keuzes en voortgang blijven. */
+      refresh: mutation("admin", none, s.ImportSession),
+      setMapping: mutation("admin", s.ImportMappingInput, s.ImportSession),
+      /** Template-YAML (templates/SCHEMA.md) gemaakt uit een egg, om na te kijken en op te slaan met admin.templates.create. */
+      convertEgg: query("admin", z.object({ eggId: z.number().int() }), z.object({ yaml: z.string(), errors: z.array(z.string()) })),
+      /** Wat `start` zou doen; schrijft niets. */
+      dryRun: query("admin", none, s.ImportPlan),
+      /** Start of hervat (mislukte servers opnieuw): accounts aanmaken, dan per server aanmaken + bestanden overzetten, één tegelijk. */
+      start: mutation("admin", none, s.ImportSession),
+      /** Stopt na de server die nu bezig is. */
+      cancel: mutation("admin", none, s.ImportSession),
+      /** Import vergeten: sleutels en overzicht weg (geïmporteerde servers blijven). */
+      disconnect: mutation("admin", none, s.Ok),
+    },
+
     allocations: {
       list: query("admin", z.object({ nodeId: s.Id }), z.array(s.Allocation)),
       /** ports: "25565" of "25565-25600" of "25565,25570-25575" */

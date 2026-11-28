@@ -3,6 +3,7 @@
  * Eigenaar: orchestrator. Agents wijzigen dit bestand niet; vraag een wijziging aan.
  */
 import { z } from "zod";
+import { NodeMaintenance } from "./hostops-schemas";
 
 // ---------- basis ----------
 
@@ -241,6 +242,8 @@ export const ServerSummary = z.object({
   imageUpdate: ImageUpdateInfo.default({ policy: null, effectivePolicy: "notify", available: false, reinstallRequired: false, checkedAt: null }),
   /** Wanneer de node de status voor het laatst bevestigde (achtergrondmonitor). null = onbekend/nooit. */
   lastSeenAt: z.date().nullable().optional(),
+  /** De node van deze server is in onderhoud (banner voor de eigenaar); null = niet. */
+  maintenance: NodeMaintenance.nullable().optional(),
 });
 export type ServerSummary = z.infer<typeof ServerSummary>;
 
@@ -678,6 +681,8 @@ export const Node = z.object({
   joinState: z.lazy(() => NodeJoinState).nullable(),
   /** HTTP(S)-relay: null = eigen 80/443; anders loopt alle HTTP(S) (sites, domeinen, node-API) via deze node. */
   httpRelayNodeId: Id.nullable(),
+  /** Onderhoudsmodus: geen nieuwe servers op deze node; null = normaal. */
+  maintenance: NodeMaintenance.nullable().optional(),
 });
 export type Node = z.infer<typeof Node>;
 
@@ -1154,6 +1159,7 @@ export const NotificationEvent = z.enum([
   "login_new_ip",
   "node_offline",
   "image_update",
+  "maintenance",
 ]);
 export type NotificationEvent = z.infer<typeof NotificationEvent>;
 export const ADMIN_NOTIFICATION_EVENTS: readonly NotificationEvent[] = ["node_offline", "image_update"];
@@ -1177,6 +1183,7 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   login_new_ip: { panel: true, discord: false, email: true },
   node_offline: { panel: true, discord: true, email: true },
   image_update: { panel: true, discord: false, email: false },
+  maintenance: { panel: true, discord: true, email: true },
 };
 
 export const EmailAddress = z.string().trim().toLowerCase().max(254).pipe(z.email());
@@ -1306,3 +1313,4 @@ export const PublicStatus = z.object({
 export type PublicStatus = z.infer<typeof PublicStatus>;
 // ---------- pakketten en facturatie ----------
 export * from "./billing-schemas";
+export * from "./hostops-schemas";
