@@ -30,6 +30,7 @@ func (f *fakeDB) Drop(context.Context, string, string) error                  { 
 func (f *fakeDB) Dump(context.Context, string, io.Writer) error               { return nil }
 func (f *fakeDB) Import(context.Context, string, io.Reader) error             { return nil }
 func (f *fakeDB) Exists(context.Context, string) (bool, error)                { return true, nil }
+func (f *fakeDB) Reset(context.Context, string) error                         { return nil }
 func (f *fakeDB) SyncPmaUser(context.Context, string, string, []string) error { return nil }
 func (f *fakeDB) Dial(ctx context.Context) (net.Conn, error) {
 	f.dials.Add(1)

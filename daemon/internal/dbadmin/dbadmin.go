@@ -252,6 +252,27 @@ func (a *Admin) Dump(ctx context.Context, db string, w io.Writer) error {
 	return nil
 }
 
+// Reset leegt een bestaande database (DROP + CREATE met dezelfde naam en tekenset). Rechten op
+// databaseniveau staan in mysql.db en blijven bij een DROP DATABASE gewoon staan, dus de gebruiker van de
+// site houdt zijn toegang. Voor publiceren: daarna een volledige dump inladen.
+func (a *Admin) Reset(ctx context.Context, db string) error {
+	if !ValidName(db) {
+		return ErrInvalid
+	}
+	if err := a.ready(); err != nil {
+		return err
+	}
+	ok, err := a.Exists(ctx, db)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotFound
+	}
+	_, err = a.sql(ctx, fmt.Sprintf("DROP DATABASE `%s`;\nCREATE DATABASE `%s` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\n", db, db))
+	return err
+}
+
 // Import laadt een SQL-stroom in een bestaande database.
 func (a *Admin) Import(ctx context.Context, db string, in io.Reader) error {
 	if !ValidName(db) {

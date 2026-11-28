@@ -659,6 +659,127 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/servers/{uuid}/publish/{publish_id}/data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                /** @description Id van de publicatie (site_publishes.id in het panel) */
+                publish_id: components["parameters"]["PublishId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Nieuwe versie (tar van exportServerData van staging) in een lege werkmap van deze server
+         * @description Maakt `.panel-publish-<publish_id>/new` leeg aan in de datamap en pakt de tar daarin uit (zelfde regels als
+         *     importServerData). De server mag draaien (niet `installing`). Telt mee voor de schijfquotum (507): tijdelijk staan
+         *     beide versies op de schijf. Bij een fout is de werkmap weer weg. Eén publicatiestap tegelijk per server (409 `publish_busy`).
+         */
+        put: operations["publishData"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/publish/{publish_id}/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                /** @description Id van de publicatie (site_publishes.id in het panel) */
+                publish_id: components["parameters"]["PublishId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Zelfde node — de datamap van staging (zonder `.panel-*`) rechtstreeks in de werkmap
+         * @description Zoals publishData, maar de data passeert het panel niet. Bron en doel mogen draaien (niet installeren). Oudere daemons 404 (unknown path).
+         */
+        post: operations["publishCopy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/publish/{publish_id}/swap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                /** @description Id van de publicatie (site_publishes.id in het panel) */
+                publish_id: components["parameters"]["PublishId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Werkmap op de plek van de huidige bestanden zetten (server gestopt)
+         * @description Uit de nieuwe versie gaan namen `.panel-*` op het hoogste niveau en alle uitgesloten paden; de huidige bestanden
+         *     (behalve `.panel-*`) gaan naar `.panel-publish-<id>/old`, de nieuwe versie komt op hun plek (rename, geen kopie),
+         *     en de uitgesloten paden van de huidige versie worden teruggezet. Uitsluitingen zoals .gitignore zonder `**`/`!`:
+         *     zonder `/` = naam op elke diepte (`wp-config.php`, `.env`), met `/` = pad vanaf de root, eindigt op `/` = alleen
+         *     mappen. Elke stap staat in `state.json`; mislukt iets, dan zet de daemon alles terug. De oude versie blijft
+         *     staan tot finish (DELETE) of rollback. 409 als de server niet gestopt is, 404 `not_prepared` zonder werkmap.
+         */
+        post: operations["publishSwap"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/publish/{publish_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                /** @description Id van de publicatie (site_publishes.id in het panel) */
+                publish_id: components["parameters"]["PublishId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Alles terug zoals vóór de swap (of alleen de werkmap weg als er niet gewisseld is); idempotent */
+        post: operations["publishRollback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/publish/{publish_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                /** @description Id van de publicatie (site_publishes.id in het panel) */
+                publish_id: components["parameters"]["PublishId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Publicatie afronden — de oude versie en de werkmap verwijderen */
+        delete: operations["publishFinish"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{uuid}/backups": {
         parameters: {
             query?: never;
@@ -1887,6 +2008,8 @@ export interface components {
         Uuid: string;
         /** @description Pad binnen de serverdata, begint met `/`. `..` buiten de root → 400. */
         Path: string;
+        /** @description Id van de publicatie (site_publishes.id in het panel) */
+        PublishId: number;
         DbName: string;
         /** @description Browser-JWT met files.read (download, archief) of files.write (upload) */
         Token: string;
@@ -2876,6 +2999,8 @@ export interface operations {
         parameters: {
             query?: {
                 live?: "0" | "1";
+                /** @description 1 = namen `.panel-*` op het hoogste niveau (git-deploy, werkmappen) niet meesturen (publiceren) */
+                exclude_internal?: "0" | "1";
             };
             header?: never;
             path: {
@@ -2960,6 +3085,160 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             507: components["responses"]["DiskFull"];
+        };
+    };
+    publishData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                /** @description Id van de publicatie (site_publishes.id in het panel) */
+                publish_id: components["parameters"]["PublishId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-tar": string;
+            };
+        };
+        responses: {
+            /** @description Klaar om om te wisselen */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            507: components["responses"]["DiskFull"];
+        };
+    };
+    publishCopy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                /** @description Id van de publicatie (site_publishes.id in het panel) */
+                publish_id: components["parameters"]["PublishId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    source_uuid: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Klaar om om te wisselen */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            507: components["responses"]["DiskFull"];
+        };
+    };
+    publishSwap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                /** @description Id van de publicatie (site_publishes.id in het panel) */
+                publish_id: components["parameters"]["PublishId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    exclude?: string[];
+                };
+            };
+        };
+        responses: {
+            /** @description Omgewisseld */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Bv. `kept /wp-config.php` */
+                        log: string[];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    publishRollback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                /** @description Id van de publicatie (site_publishes.id in het panel) */
+                publish_id: components["parameters"]["PublishId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Teruggezet */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    publishFinish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                /** @description Id van de publicatie (site_publishes.id in het panel) */
+                publish_id: components["parameters"]["PublishId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Opgeruimd */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     createBackup: {
@@ -3418,7 +3697,10 @@ export interface operations {
     };
     importDatabase: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 1 = database eerst leegmaken (DROP + CREATE met dezelfde naam; rechten van de gebruiker blijven staan), voor publiceren en terugzetten */
+                replace?: "0" | "1";
+            };
             header?: never;
             path: {
                 name: components["parameters"]["DbName"];
