@@ -1,0 +1,67 @@
+schema: 1
+slug: satisfactory
+name: Satisfactory
+description: >-
+  Satisfactory dedicated server (Steam app 1690800, installed with SteamCMD). Needs two
+  allocations: the game port (UDP for the game, TCP for the server API; default 7777) and the
+  reliable port (TCP; default 8888). After the first start, claim the server in the game via
+  Server Manager (name, admin password and join password are set there). Saves are in
+  `.config/Epic/FactoryGame/Saved/SaveGames`. Updating: reinstall (your saves stay).
+  Recommended: 12 GB RAM (at least 8 GB), 15 GB disk.
+type: game
+version: 1
+# ptero-eggs/steamcmd:debian: Pterodactyl-runtime (Debian, glibc, 32/64-bit libs van Steam-servers).
+image: ghcr.io/ptero-eggs/steamcmd:debian
+# De binary direct (niet FactoryServer.sh): dan bereikt het stopsignaal de server zelf.
+startup: >-
+  exec ./Engine/Binaries/Linux/FactoryServer-Linux-Shipping FactoryGame
+  -Port={{SERVER_PORT}} -ReliablePort={{RELIABLE_PORT}} -multihome=0.0.0.0 -log -unattended
+  "-ini:Game:[/Script/Engine.GameSession]:MaxPlayers={{MAX_PLAYERS}}"
+stop:
+  type: signal
+  value: SIGINT
+  timeout: 120
+# Unreal logt: LogInit: Display: Engine is initialized. Leaving FEngineLoop::Init()
+ready_pattern: "Engine is initialized|Created socket for bind address"
+recommended:
+  memory_mb: 12288
+  disk_mb: 15360
+ports:
+  - env: SERVER_PORT
+    name: Game + server API
+    protocol: both
+  - env: RELIABLE_PORT
+    name: Reliable messaging
+    protocol: tcp
+    offset: 1111
+    required: true
+variables:
+  - key: MAX_PLAYERS
+    name: Max players
+    description: 1 to 64. Restart required.
+    default: "4"
+    user_editable: true
+    pattern: "^([1-9]|[1-5][0-9]|6[0-4])$"
+install:
+  image: steamcmd/steamcmd:debian-12
+  timeout_minutes: 120
+  script: |
+    #!/bin/sh
+    # SteamCMD (anoniem) installeert of werkt bij naar /home/container; saves en eigen bestanden blijven staan.
+    set -eu
+    APP=1690800
+    cd /home/container
+    export HOME=/root
+    ok() { grep -qE '"StateFlags"[[:space:]]+"4"' "steamapps/appmanifest_$APP.acf" 2>/dev/null; }
+    for n in 1 2 3; do
+      steamcmd +force_install_dir /home/container +login anonymous +app_update "$APP" validate +quit || true
+      ok && break
+      echo "SteamCMD did not finish (attempt $n of 3)"; [ "$n" = 3 ] || sleep 10
+    done
+    ok || { echo "SteamCMD could not install app $APP" >&2; exit 1; }
+    mkdir -p .steam/sdk64 .steam/sdk32
+    cp -f /root/.local/share/Steam/steamcmd/linux64/steamclient.so .steam/sdk64/steamclient.so
+    cp -f /root/.local/share/Steam/steamcmd/linux32/steamclient.so .steam/sdk32/steamclient.so
+    chmod +x Engine/Binaries/Linux/FactoryServer-Linux-Shipping
+    echo "Installation complete: Satisfactory (app $APP)"
+config_files: []

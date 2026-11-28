@@ -232,6 +232,13 @@
       "when": 1795882631731,
       "tag": "0032_good_otto_octavius",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1795882749734,
+      "tag": "0033_goofy_frank_castle",
+      "breakpoints": true
     }
   ]
 }

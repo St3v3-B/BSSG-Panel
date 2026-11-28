@@ -19,6 +19,7 @@ import { LogViewer, useLogLines } from "@/app/_components/log-viewer";
 import { errorText } from "@/app/_lib/errors";
 import { formatCpuLimit, formatDate, formatMb, isRunning } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
+import { portSuffix } from "@/app/_lib/ports";
 import { BillingSuspendedNotice } from "@/app/_components/billing/invoice-view";
 
 /** Console-tabblad: game-servers krijgen de console, websites een alleen-lezen logweergave. */
@@ -133,7 +134,7 @@ export function ServerView({ server }: { server: ServerDetail }) {
             <Detail label={t.server.installed}>{server.installedAt ? formatDate(server.installedAt) : t.server.notYet}</Detail>
             {server.allocations.length > 0 && (
               <Detail label={t.server.ports} className="sm:col-span-2">
-                {server.allocations.map((a) => `${a.ip}:${a.port}${a.primary ? ` ${t.server.primary}` : ""}`).join(", ")}
+                {server.allocations.map((a) => `${a.ip}:${a.port}${a.primary ? ` ${t.server.primary}` : ""}${portSuffix(a, t)}`).join(", ")}
               </Detail>
             )}
           </dl>

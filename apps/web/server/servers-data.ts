@@ -8,7 +8,7 @@ import { getDb, schema } from "./db";
 import { maintenanceOut } from "./node-maintenance";
 import { getNodesLive, resolveStatus } from "./node-cache";
 import { getImageUpdateSettings } from "./settings";
-import { templateSleepCapable } from "./spec";
+import { mapServerPorts, templateSleepCapable } from "./spec";
 
 type UserRow = typeof schema.users.$inferSelect;
 
@@ -113,10 +113,15 @@ export function toDetail(
   network?: ServerNetwork,
   terminalGlobal = true,
 ): ServerDetail {
+  const ports = mapServerPorts(b.template, b.allocations);
   return {
     ...toSummary(b, viewer.id, live?.status, live?.lastSeenAt),
     permissions,
-    allocations: b.allocations.map((a, i) => ({ id: a.id, nodeId: a.nodeId, ip: a.ip, port: a.port, serverUuid: b.server.uuid, primary: i === 0, role: a.id === b.server.bedrockAllocationId ? "bedrock" as const : "game" as const })),
+    allocations: b.allocations.map((a, i) => {
+      // Protocol en rol zoals de template de poort beschrijft (zelfde koppeling als in de ServerSpec).
+      const m = ports.allocations.find((p) => p.ip === a.ip && p.port === a.port);
+      return { id: a.id, nodeId: a.nodeId, ip: a.ip, port: a.port, serverUuid: b.server.uuid, primary: i === 0, role: a.id === b.server.bedrockAllocationId ? "bedrock" as const : "game" as const, protocol: m?.protocol ?? a.protocol, label: m?.name ?? null };
+    }),
     variables: b.template.variables.map((v) => ({
       key: v.key,
       name: v.name,

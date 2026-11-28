@@ -415,7 +415,7 @@ async function importOne(r: SessionRow, item: ItemRow): Promise<void> {
       return srv!.id;
     });
     await setItem(r.id, item.sourceServerId, { serverId, newUuid: uuid });
-    const spec = buildServerSpec({ uuid, template: t, variables: p.values, limits: p.limits, allocations: p.allocations.map((a, i) => ({ ip: a.ip, port: a.port, isPrimary: i === 0 })), skipInstall: p.method !== "none", startOnInstall: false });
+    const spec = buildServerSpec({ uuid, template: t, variables: p.values, limits: p.limits, allocations: p.allocations.map((a, i) => ({ ip: a.ip, port: a.port, protocol: a.protocol, isPrimary: i === 0 })), skipInstall: p.method !== "none", startOnInstall: false });
     const d = daemonFor(node);
     await call(() => d.createServer(spec));
     created = true;

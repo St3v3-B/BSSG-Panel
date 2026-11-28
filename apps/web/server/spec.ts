@@ -2,7 +2,7 @@
  * Template + servervariabelen + limieten + allocations → ServerSpec voor de daemon.
  * `{{VAR}}` laat het panel staan; de daemon vervangt die (startup en config_files).
  */
-import { parseTemplate, resolvePlayerEvents, type DaemonServerSpec, type Limits, type PlayerEventPatterns } from "@panel/api";
+import { mapTemplatePorts, parseTemplate, resolvePlayerEvents, type DaemonServerSpec, type Limits, type PlayerEventPatterns, type TemplatePort } from "@panel/api";
 import type { schema } from "./db";
 import { getSleepMotdConfig } from "./sleep-motd";
 
@@ -13,6 +13,8 @@ export interface SpecAllocation {
   ip: string;
   port: number;
   isPrimary: boolean;
+  /** allocations.protocol; geldt als de template de poort niet beschrijft (standaard both). */
+  protocol?: "tcp" | "udp" | "both" | null;
 }
 
 export interface SpecInput {
@@ -59,6 +61,34 @@ export function templateImageVersionEnv(t: Pick<TemplateRow, "id" | "version" | 
     versionEnvCache.set(k, v);
   }
   return v;
+}
+
+type ParsedTemplate = Pick<TemplateRow, "id" | "version" | "sourceYaml">;
+const extrasCache = new Map<string, { ports: TemplatePort[]; recommended: { ramMb: number | null; diskMb: number | null } | null; stopTimeout: number | null; installTimeout: number | null }>();
+/** `ports`, `recommended` en de timeouts uit de template-YAML (geen kolommen; gecachet per template-id + versie). */
+export function templateExtras(t: ParsedTemplate) {
+  const k = `${t.id}:${t.version}`;
+  let v = extrasCache.get(k);
+  if (!v) {
+    const r = parseTemplate(t.sourceYaml);
+    const rec = r.ok ? r.spec.recommended : undefined;
+    v = {
+      ports: r.ok ? r.spec.ports : [],
+      recommended: rec ? { ramMb: rec.memory_mb ?? null, diskMb: rec.disk_mb ?? null } : null,
+      stopTimeout: r.ok ? (r.spec.stop.timeout ?? null) : null,
+      installTimeout: r.ok ? (r.spec.install.timeout_minutes ?? null) : null,
+    };
+    extrasCache.set(k, v);
+  }
+  return v;
+}
+/** Poorten van de template (leeg = elke allocation tcp + udp of het protocol van de allocation). */
+export const templatePorts = (t: ParsedTemplate & Pick<TemplateRow, "type">): TemplatePort[] => (t.type === "game" ? templateExtras(t).ports : []);
+
+/** Sorteert allocations (primair eerst, dan op poort) en koppelt ze aan de template-poorten. */
+export function mapServerPorts(t: ParsedTemplate & Pick<TemplateRow, "type">, allocs: readonly SpecAllocation[]) {
+  const sorted = [...allocs].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.port - b.port);
+  return mapTemplatePorts(templatePorts(t), sorted.map((a) => ({ ip: a.ip, port: a.port, protocol: a.protocol ?? null })));
 }
 
 /** Spec-veld `image_update`; zonder keuze (undefined) stuurt het panel geen policy mee. */
@@ -131,21 +161,23 @@ export function validateVariables(vars: TemplateVar[], values: Record<string, st
 
 export function buildServerSpec(i: SpecInput): DaemonServerSpec {
   const t = i.template;
-  const allocations = [...i.allocations]
-    .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.port - b.port)
-    .map((a, idx) => ({ ip: a.ip, port: a.port, primary: idx === 0 }));
+  const ports = mapServerPorts(t, i.allocations);
+  // `both` laat het panel weg (= ontbrekend veld, zoals vóór de protocol-kolom): bestaande specs blijven gelijk.
+  const allocations = ports.allocations.map((a) => ({ ip: a.ip, port: a.port, primary: a.primary, ...(a.protocol !== "both" ? { protocol: a.protocol } : {}) })) as DaemonServerSpec["allocations"];
+  const extras = templateExtras(t);
   return {
     uuid: i.uuid,
     type: t.type,
     image: t.image,
     startup: t.startup,
-    stop: { type: t.stop.type, value: t.stop.value },
+    stop: { type: t.stop.type, value: t.stop.value, ...(extras.stopTimeout ? { timeout_seconds: extras.stopTimeout } : {}) },
     ready_pattern: t.readyPattern,
-    environment: resolveVariables(t.variables, i.variables),
+    // Extra template-poorten (QUERY_PORT, ...) als variabelen; geen web: daar zijn geen allocations.
+    environment: { ...resolveVariables(t.variables, i.variables), ...(t.type === "web" ? {} : ports.env) },
     limits: { cpu_pct: i.limits.cpuPct, memory_mb: i.limits.ramMb, swap_mb: i.limits.swapMb, disk_mb: i.limits.diskMb, pids: 512 },
     allocations: t.type === "web" ? [] : allocations,
     http_port: t.type === "web" ? (t.httpPort ?? null) : null,
-    install: { image: t.installImage, script: t.installScript },
+    install: { image: t.installImage, script: t.installScript, ...(extras.installTimeout ? { timeout_minutes: extras.installTimeout } : {}) },
     config_files: t.configFiles.map((c) => ({ path: c.path, format: c.format, set: { ...c.set } })),
     start_on_install: i.startOnInstall ?? false,
     skip_install: i.skipInstall ?? false,

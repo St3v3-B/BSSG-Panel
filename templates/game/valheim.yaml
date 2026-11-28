@@ -1,0 +1,98 @@
+schema: 1
+slug: valheim
+name: Valheim
+description: >-
+  Valheim dedicated server (Steam app 896660, installed with SteamCMD). Ports: the game port (UDP)
+  and the Steam query port directly after it (UDP, game port + 1; give the server two consecutive
+  allocations, otherwise it only works via direct connect). The password must be at least 5
+  characters and must not contain the server name. Worlds are in `saves/worlds_local`. Updating:
+  reinstall (SteamCMD updates the game files, your worlds stay). Recommended: 4 GB RAM, 4 GB disk.
+type: game
+version: 1
+# ptero-eggs/games:valheim: Pterodactyl-image (Ubuntu, glibc) met libatomic1/libpulse die Valheim nodig heeft.
+# De daemon start hem als 1000:1000 met eigen entrypoint (/bin/sh -c), read-only rootfs en HOME=/home/container.
+image: ghcr.io/ptero-eggs/games:valheim
+# Gebruikerstekst via de env ("$SERVER_NAME"), niet via {{...}}: dan kan geen waarde de shell-regel breken.
+startup: >-
+  export LD_LIBRARY_PATH="/home/container/linux64:${LD_LIBRARY_PATH:-}" SteamAppId=892970;
+  if [ ${#SERVER_PASSWORD} -lt 5 ]; then echo "[panel] SERVER_PASSWORD must be at least 5 characters"; exit 1; fi;
+  set -- ;
+  if [ "{{CROSSPLAY}}" = true ]; then set -- -crossplay; fi;
+  exec ./valheim_server.x86_64 -nographics -batchmode
+  -name "$SERVER_NAME" -port {{SERVER_PORT}} -world "$WORLD_NAME" -password "$SERVER_PASSWORD"
+  -public {{PUBLIC}} -savedir /home/container/saves "$@"
+# SIGINT = Ctrl+C: Valheim slaat de wereld op en stopt.
+stop:
+  type: signal
+  value: SIGINT
+  timeout: 90
+# Valheim logt: Game server connected (na het aanmelden bij Steam)
+ready_pattern: "Game server connected"
+recommended:
+  memory_mb: 4096
+  disk_mb: 4096
+ports:
+  - env: SERVER_PORT
+    name: Game
+    protocol: udp
+  - env: QUERY_PORT
+    name: Steam query
+    protocol: udp
+    offset: 1
+    exact: true
+variables:
+  - key: SERVER_NAME
+    name: Server name
+    description: Name in the server browser.
+    default: My Valheim server
+    user_editable: true
+    pattern: "^[A-Za-z0-9 _.,!?#()+:'-]{1,64}$"
+  - key: SERVER_PASSWORD
+    name: Password
+    description: At least 5 characters; must not contain the server name. Restart required.
+    default: ""
+    user_editable: true
+    pattern: "^[A-Za-z0-9!#%()*+,.:;=?@^_~-]{5,64}$"
+  - key: WORLD_NAME
+    name: World
+    description: Name of the world file; a new name creates a new world. Restart required.
+    default: Dedicated
+    user_editable: true
+    pattern: "^[A-Za-z0-9_-]{1,32}$"
+  - key: PUBLIC
+    name: Public
+    description: "`1` = listed in the community server browser, `0` = only via join code / IP."
+    default: "1"
+    user_editable: true
+    pattern: "^[01]$"
+  - key: CROSSPLAY
+    name: Crossplay
+    description: "`true` = also Xbox/Game Pass players (via PlayFab; players then join with a code)."
+    default: "false"
+    user_editable: true
+    pattern: "^(true|false)$"
+install:
+  image: steamcmd/steamcmd:debian-12
+  timeout_minutes: 60
+  script: |
+    #!/bin/sh
+    # SteamCMD (anoniem) installeert of werkt bij naar /home/container. Alleen de bestanden van de game zelf
+    # worden gecontroleerd (validate); werelden in saves/ en eigen bestanden blijven staan.
+    set -eu
+    APP=896660
+    cd /home/container
+    # steamcmd staat voorgeïnstalleerd onder /root in de image: niet opnieuw in de servermap zetten.
+    export HOME=/root
+    ok() { grep -qE '"StateFlags"[[:space:]]+"4"' "steamapps/appmanifest_$APP.acf" 2>/dev/null; }
+    for n in 1 2 3; do
+      steamcmd +force_install_dir /home/container +login anonymous +app_update "$APP" validate +quit || true
+      ok && break
+      echo "SteamCMD did not finish (attempt $n of 3)"; [ "$n" = 3 ] || sleep 10
+    done
+    ok || { echo "SteamCMD could not install app $APP" >&2; exit 1; }
+    mkdir -p .steam/sdk64 .steam/sdk32 saves
+    cp -f /root/.local/share/Steam/steamcmd/linux64/steamclient.so .steam/sdk64/steamclient.so
+    cp -f /root/.local/share/Steam/steamcmd/linux32/steamclient.so .steam/sdk32/steamclient.so
+    chmod +x valheim_server.x86_64
+    echo "Installation complete: Valheim (app $APP)"
+config_files: []

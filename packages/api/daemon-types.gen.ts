@@ -1580,6 +1580,12 @@ export interface components {
              * @default false
              */
             primary: boolean;
+            /**
+             * @description Welke protocollen Docker publiceert (ontbreekt = both, zoals vóór dit veld)
+             * @default both
+             * @enum {string}
+             */
+            protocol: "tcp" | "udp" | "both";
         };
         /**
          * @description Volledige, al opgeloste spec: het panel zet template + servervariabelen om naar deze vorm.
@@ -1600,6 +1606,8 @@ export interface components {
                 type: "command" | "signal";
                 /** @description commando voor stdin, of SIGTERM/SIGINT/SIGKILL/SIGQUIT */
                 value: string;
+                /** @description Wachttijd tot kill (ontbreekt = standaard van de daemon, 30 s) */
+                timeout_seconds?: number;
             };
             /** @description Go-regex (RE2) op stdout */
             ready_pattern: string;
@@ -1614,6 +1622,8 @@ export interface components {
             install: {
                 image: string;
                 script: string;
+                /** @description Maximale duur (ontbreekt = standaard van de daemon, 30 min) */
+                timeout_minutes?: number;
             };
             config_files?: {
                 path: string;

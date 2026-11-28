@@ -1944,6 +1944,11 @@ components:
         ip: { type: string, description: "IPv4 om op te binden; 0.0.0.0 = alle" }
         port: { type: integer, minimum: 1, maximum: 65535 }
         primary: { type: boolean, default: false, description: "Bepaalt SERVER_IP/SERVER_PORT" }
+        protocol:
+          type: string
+          enum: [tcp, udp, both]
+          default: both
+          description: "Welke protocollen Docker publiceert (ontbreekt = both, zoals vóór dit veld)"
 
     ServerSpec:
       type: object
@@ -1965,6 +1970,7 @@ components:
           properties:
             type: { type: string, enum: [command, signal] }
             value: { type: string, description: "commando voor stdin, of SIGTERM/SIGINT/SIGKILL/SIGQUIT" }
+            timeout_seconds: { type: integer, minimum: 5, maximum: 600, description: "Wachttijd tot kill (ontbreekt = standaard van de daemon, 30 s)" }
         ready_pattern: { type: string, description: "Go-regex (RE2) op stdout" }
         environment:
           type: object
@@ -1981,6 +1987,7 @@ components:
           properties:
             image: { type: string }
             script: { type: string }
+            timeout_minutes: { type: integer, minimum: 1, maximum: 720, description: "Maximale duur (ontbreekt = standaard van de daemon, 30 min)" }
         config_files:
           type: array
           items:

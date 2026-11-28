@@ -17,7 +17,7 @@ import { activityPage } from "../activity-query";
 import { DaemonHttpError, call, daemonFor } from "../daemon";
 import { getDb, schema, type Db } from "../db";
 import { getEnv } from "../env";
-import { buildServerSpec, validateVariables } from "../spec";
+import { buildServerSpec, mapServerPorts, templateExtras, templatePorts, validateVariables } from "../spec";
 import { imagePolicyOf, fetchServerByUuid, fetchServers, limitsOf, sleepOf, autoRestartOf, serverVariables, toDetail, toSummary, liveViews, userPublic, type ServerBundle } from "../servers-data";
 import { adminImageRows, checkAllNodes } from "../image-updates";
 import { getSettings } from "../settings";
@@ -125,6 +125,12 @@ export function parsePorts(spec: string): number[] {
   }
   if (!out.size) throw bad("INVALID_PORTS");
   return [...out].sort((x, y) => x - y);
+}
+
+/** Verplichte template-poorten (`ports[].required`) moeten een allocation hebben: anders `PORTS_REQUIRED: <ENV>, ...`. */
+function assertTemplatePorts(t: Parameters<typeof mapServerPorts>[0], allocs: Array<{ ip: string; port: number; protocol: "tcp" | "udp" | "both" }>) {
+  const { missing } = mapServerPorts(t, allocs.map((a, i) => ({ ip: a.ip, port: a.port, protocol: a.protocol, isPrimary: i === 0 })));
+  if (missing.length) throw bad(`PORTS_REQUIRED: ${missing.join(", ")}`);
 }
 
 /** Controleert allocation-ID's: bestaan, op deze node, vrij (of al van `serverId`). */
@@ -242,6 +248,8 @@ async function templateDetails(where: SQL | undefined): Promise<TemplateDetail[]
     serverCount: Number(n ?? 0),
     yaml: t.sourceYaml,
     variables: t.variables.map((v) => ({ key: v.key, name: v.name, description: v.description ?? null, default: v.default, userEditable: v.user_editable, pattern: v.pattern ?? null })),
+    ports: templatePorts(t).map((p) => ({ env: p.env, name: p.name ?? null, protocol: p.protocol, offset: p.offset ?? null, exact: p.exact, required: p.required })),
+    recommended: templateExtras(t).recommended,
   }));
 }
 
@@ -334,17 +342,17 @@ export const admin = {
         .leftJoin(schema.servers, eq(schema.servers.id, schema.allocations.serverId))
         .where(eq(schema.allocations.nodeId, input.nodeId))
         .orderBy(asc(schema.allocations.ip), asc(schema.allocations.port));
-      return rows.map(({ a, uuid, bedrockId }) => ({ id: a.id, nodeId: a.nodeId, ip: a.ip, port: a.port, serverUuid: uuid, primary: a.isPrimary, role: uuid && bedrockId === a.id ? ("bedrock" as const) : ("game" as const) }));
+      return rows.map(({ a, uuid, bedrockId }) => ({ id: a.id, nodeId: a.nodeId, ip: a.ip, port: a.port, serverUuid: uuid, primary: a.isPrimary, role: uuid && bedrockId === a.id ? ("bedrock" as const) : ("game" as const), protocol: a.protocol, label: null }));
     },
     create: async ({ input, ctx }) => {
       await nodeById(input.nodeId);
       const ports = parsePorts(input.ports);
       const rows = await getDb()
         .insert(schema.allocations)
-        .values(ports.map((port) => ({ nodeId: input.nodeId, ip: input.ip, port })))
+        .values(ports.map((port) => ({ nodeId: input.nodeId, ip: input.ip, port, protocol: input.protocol })))
         .onConflictDoNothing()
         .returning({ id: schema.allocations.id });
-      await logActivity({ action: "admin.allocation.create", userId: uid(ctx), metadata: { nodeId: input.nodeId, ip: input.ip, ports: input.ports, created: rows.length }, ip: ctx.ip, ctx });
+      await logActivity({ action: "admin.allocation.create", userId: uid(ctx), metadata: { nodeId: input.nodeId, ip: input.ip, ports: input.ports, protocol: input.protocol, created: rows.length }, ip: ctx.ip, ctx });
       return { created: rows.length };
     },
     delete: async ({ input, ctx }) => {
@@ -390,6 +398,7 @@ export const admin = {
       if (template.type === "web" && !node.supportsDomains) throw bad("NODE_HAS_NO_DOMAINS: this node does not support websites");
       assertNotInMaintenance(node);
       const allocs = await checkAllocations(db, input.allocationIds, node.id, null);
+      assertTemplatePorts(template, allocs);
       const errors = validateVariables(template.variables, input.variables, { onlyUserEditable: false });
       if (errors.length) throw bad(`INVALID_VARIABLES: ${errors.join("; ")}`);
 
@@ -422,7 +431,7 @@ export const admin = {
         template,
         variables: input.variables,
         limits: input.limits,
-        allocations: allocs.map((a, i) => ({ ip: a.ip, port: a.port, isPrimary: i === 0 })),
+        allocations: allocs.map((a, i) => ({ ip: a.ip, port: a.port, protocol: a.protocol, isPrimary: i === 0 })),
         startOnInstall: input.startOnInstall,
       });
       try {
@@ -480,13 +489,14 @@ export const admin = {
       const allocationIds = bedrockId !== undefined && !input.allocationIds.includes(bedrockId) ? [...input.allocationIds, bedrockId] : input.allocationIds;
       await getDb().transaction(async (tx) => {
         const allocs = await checkAllocations(tx, allocationIds, b.node.id, b.server.id);
+        assertTemplatePorts(b.template, allocs);
         await assignAllocations(tx, b.server.id, allocationIds);
         const spec = buildServerSpec({
           uuid: b.server.uuid,
           template: b.template,
           variables: vars,
           limits: limitsOf(b.server),
-          allocations: allocs.map((a, i) => ({ ip: a.ip, port: a.port, isPrimary: i === 0 })),
+          allocations: allocs.map((a, i) => ({ ip: a.ip, port: a.port, protocol: a.protocol, isPrimary: i === 0 })),
           skipInstall: true,
           sleep: sleepOf(b.server), autoRestart: autoRestartOf(b.server), imagePolicy: imagePolicyOf(b.server),
         });

@@ -1,13 +1,14 @@
 /** Quota's per gebruiker: zelf servers maken/wijzigen/verwijderen binnen het quotum, en het beheer ervan door admins. */
 import { randomUUID } from "node:crypto";
-import { ALL_PERMISSIONS, type Implementation, type QuotaInput, type QuotaUsage } from "@panel/api";
+import { ALL_PERMISSIONS, minTemplatePorts, type Implementation, type QuotaInput, type QuotaUsage } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { and, asc, count, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { logActivity } from "../activity";
 import { forbidApiKey } from "../apikey";
 import { call, daemonFor } from "../daemon";
 import { getDb, schema, type Db } from "../db";
-import { buildServerSpec, validateVariables } from "../spec";
+import { buildServerSpec, templatePorts, validateVariables } from "../spec";
+import { pickFreeAllocations } from "../port-pick";
 import { fetchServerByUuid, imagePolicyOf, requireServer, serverVariables, toDetail, userPublic } from "../servers-data";
 import { deleteServerFully } from "./admin";
 import { assertPlanDatabaseRoom, planForServer } from "../billing/plans";
@@ -125,7 +126,9 @@ export const quotaServers: Pick<Implementation["servers"], "create" | "updateOwn
     if (!name) throw bad("NAME_EMPTY");
     const limits = { ...input.limits, swapMb: 0 };
     const uuid = randomUUID();
-    const wanted = template.type === "game" ? input.ports : 0;
+    // Minstens de verplichte poorten van de template (bv. Satisfactory: game + reliable port).
+    const tplPorts = templatePorts(template);
+    const wanted = template.type === "game" ? Math.max(input.ports, minTemplatePorts(tplPorts)) : 0;
 
     const { serverId, allocs } = await db.transaction(async (tx) => {
       const q = await lockQuota(tx, userId);
@@ -138,13 +141,7 @@ export const quotaServers: Pick<Implementation["servers"], "create" | "updateOwn
       checkLimits(q, used, limits);
       let picked: Array<typeof schema.allocations.$inferSelect> = [];
       if (wanted) {
-        picked = await tx
-          .select()
-          .from(schema.allocations)
-          .where(and(eq(schema.allocations.nodeId, node.id), isNull(schema.allocations.serverId)))
-          .orderBy(asc(schema.allocations.port), asc(schema.allocations.id))
-          .limit(wanted)
-          .for("update", { skipLocked: true });
+        picked = await pickFreeAllocations(tx, node.id, tplPorts, wanted);
         if (picked.length < wanted) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_FREE_ALLOCATIONS" });
       }
       const [srv] = await tx
@@ -157,7 +154,7 @@ export const quotaServers: Pick<Implementation["servers"], "create" | "updateOwn
       return { serverId: srv!.id, allocs: picked };
     });
 
-    const spec = buildServerSpec({ uuid, template, variables: input.variables, limits, allocations: allocs.map((a, i) => ({ ip: a.ip, port: a.port, isPrimary: i === 0 })), startOnInstall: true });
+    const spec = buildServerSpec({ uuid, template, variables: input.variables, limits, allocations: allocs.map((a, i) => ({ ip: a.ip, port: a.port, protocol: a.protocol, isPrimary: i === 0 })), startOnInstall: true });
     try {
       await call(() => daemonFor(node).createServer(spec));
     } catch (e) {
