@@ -17,6 +17,8 @@ import (
 type Stop struct {
 	Type  string `json:"type"`
 	Value string `json:"value"`
+	// TimeoutSeconds: zo lang wachten voordat de daemon killt (0 = standaard van de daemon, 30 s).
+	TimeoutSeconds int `json:"timeout_seconds,omitempty"`
 }
 
 // Limits uit openapi.yaml.
@@ -41,12 +43,28 @@ type Allocation struct {
 	IP      string `json:"ip"`
 	Port    int    `json:"port"`
 	Primary bool   `json:"primary,omitempty"`
+	// Protocol: tcp, udp of both (leeg = both, zoals vóór dit veld).
+	Protocol string `json:"protocol,omitempty"`
+}
+
+// Protocols geeft de Docker-protocollen van de allocation ("tcp", "udp").
+func (a Allocation) Protocols() []string {
+	switch a.Protocol {
+	case "tcp":
+		return []string{"tcp"}
+	case "udp":
+		return []string{"udp"}
+	default:
+		return []string{"tcp", "udp"}
+	}
 }
 
 // Install is het install-script.
 type Install struct {
 	Image  string `json:"image"`
 	Script string `json:"script"`
+	// TimeoutMinutes: maximale duur (0 = standaard van de daemon, 30 min).
+	TimeoutMinutes int `json:"timeout_minutes,omitempty"`
 }
 
 // ConfigFile wordt vóór elke start bijgewerkt.
@@ -161,6 +179,12 @@ func (s *ServerSpec) Validate() error {
 	default:
 		add("stop.type must be command or signal")
 	}
+	if t := s.Stop.TimeoutSeconds; t != 0 && (t < 5 || t > 600) {
+		add("stop.timeout_seconds must be between 5 and 600")
+	}
+	if t := s.Install.TimeoutMinutes; t < 0 || t > 720 {
+		add("install.timeout_minutes must be between 0 and 720")
+	}
 	if _, err := regexp.Compile(s.ReadyPattern); err != nil {
 		add("ready_pattern: %v", err)
 	}
@@ -191,6 +215,9 @@ func (s *ServerSpec) Validate() error {
 		}
 		if a.Port < 1 || a.Port > 65535 {
 			add("allocations[%d].port invalid", i)
+		}
+		if a.Protocol != "" && a.Protocol != "tcp" && a.Protocol != "udp" && a.Protocol != "both" {
+			add("allocations[%d].protocol must be tcp, udp or both", i)
 		}
 	}
 	seen := map[string]bool{}
@@ -270,6 +297,16 @@ func (s ServerSpec) SameAs(o ServerSpec) bool {
 		}
 		if len(x.Allocations) == 0 {
 			x.Allocations = nil
+		} else {
+			// "both" en leeg betekenen hetzelfde (oude specs hebben geen protocol).
+			al := make([]Allocation, len(x.Allocations))
+			copy(al, x.Allocations)
+			for i := range al {
+				if al[i].Protocol == "both" {
+					al[i].Protocol = ""
+				}
+			}
+			x.Allocations = al
 		}
 		if len(x.ConfigFiles) == 0 {
 			x.ConfigFiles = nil

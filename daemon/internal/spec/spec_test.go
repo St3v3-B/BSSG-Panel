@@ -200,3 +200,43 @@ func TestApplyConfigFiles(t *testing.T) {
 		t.Fatalf("%s", b)
 	}
 }
+
+func TestAllocationProtocolAndTimeouts(t *testing.T) {
+	for _, c := range []struct {
+		proto string
+		want  string
+	}{{"", "tcp,udp"}, {"both", "tcp,udp"}, {"tcp", "tcp"}, {"udp", "udp"}} {
+		if got := strings.Join(Allocation{Protocol: c.proto}.Protocols(), ","); got != c.want {
+			t.Errorf("%q: %s", c.proto, got)
+		}
+	}
+	s := validSpec()
+	s.Allocations[0].Protocol = "udp"
+	s.Stop.TimeoutSeconds = 120
+	s.Install.TimeoutMinutes = 360
+	if err := s.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for i, f := range []func(*ServerSpec){
+		func(s *ServerSpec) { s.Allocations[0].Protocol = "sctp" },
+		func(s *ServerSpec) { s.Stop.TimeoutSeconds = 4 },
+		func(s *ServerSpec) { s.Stop.TimeoutSeconds = 601 },
+		func(s *ServerSpec) { s.Install.TimeoutMinutes = 721 },
+	} {
+		s := validSpec()
+		f(&s)
+		if s.Validate() == nil {
+			t.Errorf("geval %d: verwacht fout", i)
+		}
+	}
+	// Oude spec zonder protocol is gelijk aan "both"; een ander protocol niet.
+	a, b := validSpec(), validSpec()
+	b.Allocations[0].Protocol, b.Allocations[1].Protocol = "both", "both"
+	if !a.SameAs(b) || a.Allocations[0].Protocol != "" || b.Allocations[0].Protocol != "both" {
+		t.Fatal("both == leeg (zonder de specs te wijzigen)")
+	}
+	b.Allocations[0].Protocol = "udp"
+	if a.SameAs(b) {
+		t.Fatal("udp telt mee")
+	}
+}

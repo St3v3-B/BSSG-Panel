@@ -20,6 +20,14 @@ func ContainerName(uuid string) string { return "panel-" + uuid }
 
 func installName(uuid string) string { return "panel-" + uuid + "-install" }
 
+// stopTimeout: stop.timeout_seconds uit de spec, anders de standaard van de daemon.
+func stopTimeout(sp spec.ServerSpec, def time.Duration) time.Duration {
+	if sp.Stop.TimeoutSeconds > 0 {
+		return time.Duration(sp.Stop.TimeoutSeconds) * time.Second
+	}
+	return def
+}
+
 const mib = 1024 * 1024
 
 func resources(l spec.Limits) engine.Resources {
@@ -45,7 +53,7 @@ func (s *Server) containerConfig(sp spec.ServerSpec) engine.ContainerConfig {
 	}
 	var ports []engine.PortBinding
 	for _, a := range sp.Allocations {
-		for _, proto := range []string{"tcp", "udp"} {
+		for _, proto := range a.Protocols() {
 			ports = append(ports, engine.PortBinding{HostIP: a.IP, HostPort: a.Port, ContainerPort: a.Port, Proto: proto})
 		}
 	}
@@ -397,7 +405,7 @@ func (s *Server) doStop(kill bool) error {
 				return nil
 			case <-s.ctx.Done():
 				return s.ctx.Err()
-			case <-time.After(s.m.cfg.StopTimeout):
+			case <-time.After(stopTimeout(sp, s.m.cfg.StopTimeout)):
 				s.DaemonMessage("warning", "server did not stop in time; it will be killed")
 			}
 		}
@@ -439,7 +447,13 @@ func (s *Server) Reinstall() error {
 
 // doInstall draait het install-script (opMu vastgehouden).
 func (s *Server) doInstall(startAfter bool) {
-	ctx, cancel := context.WithTimeout(s.ctx, s.m.cfg.InstallTimeout)
+	s.mu.Lock()
+	timeout := s.m.cfg.InstallTimeout
+	if m := s.spec.Install.TimeoutMinutes; m > 0 {
+		timeout = time.Duration(m) * time.Minute
+	}
+	s.mu.Unlock()
+	ctx, cancel := context.WithTimeout(s.ctx, timeout)
 	defer cancel()
 	s.mu.Lock()
 	s.installing = true
