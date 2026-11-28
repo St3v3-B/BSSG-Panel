@@ -18,6 +18,7 @@
  */
 import { z } from "zod";
 import * as s from "./schemas";
+import * as pl from "./players";
 
 export type Access = "public" | "pending" | "user" | "admin";
 
@@ -312,6 +313,22 @@ export const contract = {
     importModpack: mutation("user", server.extend({ source: s.ModpackSource, reinstall: z.boolean().default(true) }), s.ModpackResult),
     /** Versiekiezer; `minecraftVersion` bepaalt de builds (Paper/Folia/Velocity). Eigenaar of admin. */
     versionOptions: query("user", server.extend({ minecraftVersion: z.string().max(40).optional() }), s.VersionOptions),
+  },
+
+  /**
+   * Minecraft-spelers (Paper/Folia/Fabric/generiek Java; Velocity alleen `online`). Lezen: players.read, wijzigen: players.manage.
+   * Draaiende server (`online`): consolecommando's (`whitelist add`, `op`, `ban`, …; Floodgate-namen via `fwhitelist`).
+   * Gestopt/slapend: direct in whitelist.json/ops.json/banned-*.json en server.properties (`white-list`), met de UUID uit
+   * usercache.json, Mojang (online-mode) of afgeleid (`OfflinePlayer:<naam>`, offline-mode). Starten/stoppen: CONFLICT `SERVER_BUSY`.
+   * Fouten: BAD_REQUEST `INVALID_PLAYER_NAME`, `BEDROCK_NOT_AVAILABLE` (geen Floodgate), `NOT_SUPPORTED` (proxy/geen Minecraft),
+   * `IP_REQUIRED` (ban-ip op een gestopte server); PRECONDITION_FAILED `SERVER_NOT_RUNNING` (kick), `PLAYER_NOT_FOUND`, `BEDROCK_PLAYER_UNKNOWN`.
+   */
+  players: {
+    info: query("user", server, pl.PlayersInfo),
+    /** Live: ping-sample als die compleet is, anders `list uuids` (Velocity: `glist all`) op de console; 5 s gecachet. */
+    online: query("user", server, pl.PlayersOnline),
+    /** Voert de actie uit en geeft de nieuwe stand terug. */
+    manage: mutation("user", server.extend({ op: pl.PlayerOp }), pl.PlayersInfo),
   },
 
   domains: {

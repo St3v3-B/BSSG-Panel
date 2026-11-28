@@ -57,7 +57,13 @@ export class FakeDaemon {
   tunnelsOpened = 0;
   private readonly tunnelSockets = new Set<Socket>();
   /** Antwoord van GET /players voor een server die online is. */
-  players: { online: number | null; max: number | null; version: string | null } = { online: 2, max: 20, version: "Paper 1.21.4" };
+  players: { online: number | null; max: number | null; version: string | null; sample?: Array<{ name: string; id: string }> } = { online: 2, max: 20, version: "Paper 1.21.4" };
+  /** Console-backlog per server (GET /logs); POST /commands voegt toe wat `onCommand` teruggeeft. */
+  readonly consoleLines = new Map<string, string[]>();
+  /** Alle commando's per server, in volgorde. */
+  readonly commands = new Map<string, string[]>();
+  /** Uitvoer op de console voor een commando (bv. een nagebootste `list uuids`). */
+  onCommand: ((uuid: string, command: string) => string[] | void) | null = null;
   /** Antwoord van GET /api/relay (HTTP(S)-relay). */
   relayState: { http_mode: "direct" | "relay"; edge: Record<string, unknown> | null; clients: Array<Record<string, unknown>> } = { http_mode: "direct", edge: null, clients: [] };
   private server: Server | null = null;
@@ -356,9 +362,19 @@ export class FakeDaemon {
       }
       case "POST /image-update":
         return send(202);
-      case "POST /commands":
+      case "POST /commands": {
         if (s.state !== "online" && s.state !== "starting") return send(409, { error: "not_running" });
+        for (const c of ((r.body as { commands?: string[] } | undefined)?.commands ?? [])) {
+          this.commands.set(uuid, [...(this.commands.get(uuid) ?? []), c]);
+          const out = this.onCommand?.(uuid, c);
+          if (out?.length) this.consoleLines.set(uuid, [...(this.consoleLines.get(uuid) ?? []), ...out].slice(-500));
+        }
         return send(204);
+      }
+      case "GET /logs": {
+        const n = Math.min(500, Math.max(1, Number(query.get("lines") ?? "100")));
+        return send(200, { lines: (this.consoleLines.get(uuid) ?? []).slice(-n) });
+      }
       case "POST /exec":
         if (s.state !== "online" && s.state !== "starting") return send(409, { error: "not_running" });
         return send(200, this.execResult);

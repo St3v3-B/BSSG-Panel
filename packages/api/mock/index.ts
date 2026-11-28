@@ -15,6 +15,7 @@ import * as data from "./data";
 import { mockHistory, mockSparkline } from "./stats";
 import { createNotifyMock } from "./notify";
 import { createBillingMock } from "./billing";
+import { createPlayersMock } from "./players";
 
 const MOCK_HITS: s.ContentHit[] = [
   { source: "modrinth", projectId: "fabric-api", name: "Fabric API", description: "Core API for Fabric mods", author: "modmuss50", downloads: 100000000, iconUrl: null, url: "https://modrinth.com/mod/fabric-api" },
@@ -411,6 +412,7 @@ export function createMock(): Implementation {
         };
       },
     },
+    players: createPlayersMock({ server: srv }),
     content: {
       info: ({ input }) => {
         const p = contentProfile(srv(input.uuid).templateName.toLowerCase());

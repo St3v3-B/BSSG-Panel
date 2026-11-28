@@ -10,6 +10,7 @@
     "./mock": "./mock/index.ts",
     "./schemas": "./schemas.ts",
     "./network": "./network.ts",
+    "./players": "./players.ts",
     "./template-schema": "./template-schema.ts",
     "./openapi.yaml": "./openapi.yaml"
   },

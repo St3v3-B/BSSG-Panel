@@ -1336,7 +1336,7 @@ components:
 
     Permission:
       type: string
-      enum: [console.read, console.write, files.read, files.write, backup.create, backup.restore, database.manage, domain.manage, schedule.manage, power]
+      enum: [console.read, console.write, files.read, files.write, backup.create, backup.restore, database.manage, domain.manage, schedule.manage, power, players.read, players.manage]
 
     PowerAction:
       type: string
@@ -1419,6 +1419,18 @@ components:
         online: { type: [integer, "null"], description: "null = geen antwoord op de ping" }
         max: { type: [integer, "null"] }
         version: { type: [string, "null"], description: "versienaam uit het antwoord" }
+        sample:
+          type: array
+          description: >-
+            Spelers uit het ping-antwoord (meestal max 12; anonieme spelers hebben een nul-UUID).
+            Alleen geldige namen (`^\.?[A-Za-z0-9_]{1,16}$`) en UUID's (kleine letters), max 100. Leeg zonder antwoord.
+            Ontbreekt bij een oudere daemon.
+          items:
+            type: object
+            required: [name, id]
+            properties:
+              name: { type: string }
+              id: { type: string, format: uuid }
 
     ProxyNetwork:
       type: object

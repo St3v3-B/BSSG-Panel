@@ -65,7 +65,7 @@ describe("servers.list / get", () => {
     await pollAllNow();
     const d = await player.api.servers.get({ uuid });
     expect(d.status).toBe("online");
-    expect(d.permissions).toHaveLength(10);
+    expect(d.permissions).toHaveLength(12);
     expect(d.sftp).toEqual({ host: "node1.test", port: 2222, username: `speler.${uuid.slice(0, 8)}` });
     expect(d.variables.find((v) => v.key === "JAR_FILE")).toMatchObject({ value: "server.jar", userEditable: true });
     const [row] = await getDb().select().from(schema.servers).where(eq(schema.servers.uuid, uuid));
@@ -163,7 +163,7 @@ describe("servers.stats / power / sendCommand / consoleToken", () => {
     expect(v.claims.exp - v.claims.iat).toBe(600);
     expect(t.expiresAt.getTime()).toBe(v.claims.exp * 1000);
     expect(v.claims.jti).toMatch(/^[0-9a-f-]{36}$/);
-    expect((verifyJwt((await player.api.servers.consoleToken({ uuid })).token, key.publicKey))!.claims.permissions).toHaveLength(10);
+    expect((verifyJwt((await player.api.servers.consoleToken({ uuid })).token, key.publicKey))!.claims.permissions).toHaveLength(12);
     await expect(subNone.api.servers.consoleToken({ uuid })).rejects.toThrow(/MISSING_PERMISSION/);
     await expect(stranger.api.servers.consoleToken({ uuid })).rejects.toThrow(/NO_ACCESS/);
   });

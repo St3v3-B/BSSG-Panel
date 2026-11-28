@@ -56,6 +56,8 @@ export const Permission = z.enum([
   "domain.manage",
   "schedule.manage",
   "power",
+  "players.read",
+  "players.manage",
 ]);
 export type Permission = z.infer<typeof Permission>;
 export const ALL_PERMISSIONS = Permission.options;
