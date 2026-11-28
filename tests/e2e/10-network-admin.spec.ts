@@ -104,3 +104,15 @@ test("bedrock tab on a Fabric server: Fabric text, port picker, no download yet"
   await expect(mgr.getByLabel("Bedrock port")).toBeVisible();
   await expect(mgr.getByRole("button", { name: "Turn on Bedrock" })).toBeEnabled();
 });
+
+test("admin node page: the 'HTTP(S) entry' card renders without errors (local node)", async ({ page, context, consoleErrors }) => {
+  const admin = await asAdmin(context);
+  const node = (await admin.api.admin.nodes.list.query()).find((n) => n.isLocal)!;
+  await page.goto(`/admin/nodes/${node.id}`);
+  const card = page.getByTestId("node-http-relay");
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("HTTP(S) entry");
+  await expect(card).toContainText("The local node runs the panel and always uses its own ports 80/443.");
+  await page.waitForLoadState("networkidle").catch(() => {});
+  expect(consoleErrors, "console errors on the node page").toEqual([]);
+});
