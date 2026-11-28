@@ -61,6 +61,20 @@ export const contract = {
      * TOO_MANY_REQUESTS `TOO_MANY_ATTEMPTS` (per IP en per gebruikersnaam). Niet voor het noodaccount.
      */
     passwordLogin: mutation("public", z.object({ username: z.string().trim().toLowerCase().min(1).max(64), password: z.string().min(1).max(200) }), s.Ok),
+    // ---- passkeys (WebAuthn) ----
+    /** Opties voor een login met passkey zonder gebruikersnaam (discoverable, userVerification required). Challenge 5 min, eenmalig. TOO_MANY_REQUESTS per IP. */
+    passkeyLoginOptions: mutation("public", none, s.PasskeyOptions),
+    /**
+     * Login met passkey: zet het sessiecookie. Met user verification telt de sessie als geverifieerd (geen TOTP-stap).
+     * Fouten: UNAUTHORIZED `INVALID_PASSKEY` (onbekend, verkeerde challenge/origin/handtekening/teller), FORBIDDEN `BLOCKED`,
+     * TOO_MANY_REQUESTS `TOO_MANY_ATTEMPTS`.
+     */
+    passkeyLogin: mutation("public", z.object({ response: s.PasskeyResponse }), s.Ok),
+    /** Tweede stap met een passkey in plaats van een TOTP-code (pending sessie). PRECONDITION_FAILED `NO_PASSKEYS`, BAD_REQUEST `TOTP_NOT_ENABLED`. */
+    passkeyVerifyOptions: mutation("pending", none, s.PasskeyOptions),
+    /** Verifieert de pending sessie met een passkey van dezelfde gebruiker; roteert het sessietoken. BAD_REQUEST `INVALID_PASSKEY`, TOO_MANY_REQUESTS (zelfde teller als TOTP). */
+    passkeyVerify: mutation("pending", z.object({ response: s.PasskeyResponse }), s.Ok),
+    // ---- einde passkeys ----
     logout: mutation("pending", none, s.Ok),
     /** Verificatielink uit de e-mail (/verify-email?token=…); werkt ook zonder sessie. Ongeldig of verlopen → BAD_REQUEST `INVALID_TOKEN`. */
     verifyEmail: mutation("public", z.object({ token: z.string().min(20).max(200) }), z.object({ ok: z.literal(true), email: z.string() })),
@@ -105,6 +119,16 @@ export const contract = {
     setPasswordLogin: mutation("user", z.object({ username: s.LoginUsername, password: s.LoginPassword, code: z.string().regex(/^\d{6}$/).optional() }), s.PasswordLoginStatus),
     /** Uitzetten: naam en wachtwoord worden gewist. */
     disablePasswordLogin: mutation("user", none, s.PasswordLoginStatus),
+    /** Eigen passkeys (WebAuthn). Geen API-sleutels; niet voor het noodaccount (FORBIDDEN `EMERGENCY_ACCOUNT`). */
+    passkeys: {
+      list: query("user", none, z.array(s.Passkey)),
+      /** Opties voor navigator.credentials.create (challenge 5 min, eenmalig). Max 20 per gebruiker (CONFLICT `TOO_MANY_PASSKEYS`). */
+      registerOptions: mutation("user", none, s.PasskeyOptions),
+      /** BAD_REQUEST `INVALID_PASSKEY` bij een ongeldige of verlopen registratie; CONFLICT `PASSKEY_EXISTS`. */
+      register: mutation("user", z.object({ name: s.PasskeyName, response: s.PasskeyResponse }), s.Passkey),
+      rename: mutation("user", byId.extend({ name: s.PasskeyName }), s.Passkey),
+      delete: mutation("user", byId, s.Ok),
+    },
     /** Eigen quotum met verbruik en keuzelijsten; null = geen quotum (kan zelf geen servers maken). */
     quota: query("user", none, s.QuotaOverview.nullable()),
     /** Eigen Discord-webhook voor meldingen (nooit de volledige URL terug). */
@@ -721,6 +745,10 @@ export const contract = {
        */
       setPasswordLogin: mutation("admin", byId.extend({ username: s.LoginUsername }), z.object({ password: z.string(), status: s.PasswordLoginStatus })),
       disablePasswordLogin: mutation("admin", byId, s.PasswordLoginStatus),
+      /** Passkeys van een gebruiker (aantal = lengte). */
+      passkeys: query("admin", byId, z.array(s.Passkey)),
+      /** Verwijdert alle passkeys van een gebruiker. */
+      deletePasskeys: mutation("admin", byId, z.object({ deleted: z.number().int() })),
       /** Beëindigt alle sessies van een gebruiker. */
       revokeSessions: mutation("admin", byId, z.object({ revoked: z.number().int() })),
       /** null = geen quotum. */

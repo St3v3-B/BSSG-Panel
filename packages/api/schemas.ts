@@ -127,6 +127,32 @@ export const PasswordLoginStatus = z.object({
 });
 export type PasswordLoginStatus = z.infer<typeof PasswordLoginStatus>;
 
+// ---------- passkeys (WebAuthn) ----------
+
+export const PasskeyName = z.string().trim().min(1).max(64);
+export const Passkey = z.object({
+  id: Id,
+  name: z.string(),
+  createdAt: z.date(),
+  lastUsedAt: z.date().nullable(),
+  /** usb, nfc, ble, internal, hybrid, … zoals de browser meldt. */
+  transports: z.array(z.string()),
+  /** Gesynchroniseerde passkey (bv. iCloud/Google), uit de backup-flags. */
+  backedUp: z.boolean(),
+});
+export type Passkey = z.infer<typeof Passkey>;
+/** PublicKeyCredential{Creation,Request}OptionsJSON voor @simplewebauthn/browser (vorm niet verder vastgelegd). */
+export const PasskeyOptions = z.looseObject({ challenge: z.string() });
+export type PasskeyOptions = z.infer<typeof PasskeyOptions>;
+/** RegistrationResponseJSON / AuthenticationResponseJSON van @simplewebauthn/browser. */
+export const PasskeyResponse = z.looseObject({
+  id: z.string().min(1).max(1400),
+  rawId: z.string().min(1).max(1400),
+  type: z.literal("public-key"),
+  response: z.looseObject({ clientDataJSON: z.string().max(10_000) }),
+});
+export type PasskeyResponse = z.infer<typeof PasskeyResponse>;
+
 // ---------- servers ----------
 
 export const ServerType = z.enum(["game", "web"]);

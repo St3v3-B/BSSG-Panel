@@ -61,6 +61,9 @@ export const AUTH_HARDENING = [
   "account.sessions", "account.revokeSession", "account.revokeOtherSessions", "admin.users.revokeSessions",
   "auth.passwordLogin", "account.passwordLogin", "account.setPasswordLogin", "account.disablePasswordLogin",
   "admin.users.getPasswordLogin", "admin.users.setPasswordLogin", "admin.users.disablePasswordLogin",
+  "auth.passkeyLoginOptions", "auth.passkeyLogin", "auth.passkeyVerifyOptions", "auth.passkeyVerify",
+  "account.passkeys.list", "account.passkeys.registerOptions", "account.passkeys.register", "account.passkeys.rename", "account.passkeys.delete",
+  "admin.users.passkeys", "admin.users.deletePasskeys",
 ];
 
 /** Admin-beheer (opschorten, template wisselen, instellingen). */

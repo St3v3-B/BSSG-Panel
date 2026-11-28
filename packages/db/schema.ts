@@ -113,6 +113,40 @@ export const recoveryCodes = pgTable("recovery_codes", {
   createdAt: createdAt(),
 }, (t) => [index("recovery_codes_user_idx").on(t.userId)]);
 
+/** Passkeys (WebAuthn-credentials). Nooit voor het noodaccount. */
+export const passkeys = pgTable("passkeys", {
+  id: pk(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  /** Credential-ID (base64url), wereldwijd uniek */
+  credentialId: text("credential_id").notNull().unique(),
+  /** COSE-publieke sleutel (base64url) */
+  publicKey: text("public_key").notNull(),
+  /** signCount; moet bij elke login stijgen (tenzij de authenticator altijd 0 meldt) */
+  counter: bigint("counter", { mode: "number" }).notNull().default(0),
+  transports: jsonb("transports").$type<string[]>().notNull().default([]),
+  /** WebAuthn user handle (base64url, willekeurig per gebruiker; gelijk voor al zijn passkeys) */
+  userHandle: text("user_handle").notNull(),
+  name: text("name").notNull(),
+  aaguid: text("aaguid"),
+  /** singleDevice | multiDevice */
+  deviceType: text("device_type").notNull().default("singleDevice"),
+  backedUp: boolean("backed_up").notNull().default(false),
+  createdAt: createdAt(),
+  lastUsedAt: ts("last_used_at"),
+}, (t) => [index("passkeys_user_idx").on(t.userId)]);
+
+/** Kortlevende, eenmalige WebAuthn-challenges (5 min). */
+export const webauthnChallenges = pgTable("webauthn_challenges", {
+  /** base64url-challenge zoals in clientDataJSON */
+  challenge: text("challenge").primaryKey(),
+  /** register | login | verify */
+  purpose: text("purpose").notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
+  sessionId: uuid("session_id").references(() => sessions.id, { onDelete: "cascade" }),
+  expiresAt: ts("expires_at").notNull(),
+  createdAt: createdAt(),
+}, (t) => [index("webauthn_challenges_expires_idx").on(t.expiresAt)]);
+
 export const apiKeys = pgTable("api_keys", {
   id: pk(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
