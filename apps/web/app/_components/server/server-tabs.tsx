@@ -1,11 +1,12 @@
 "use client";
-import { Archive, CalendarClock, ChartLine, Database, FolderOpen, Globe, Network, Smartphone, PackagePlus, Puzzle, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
+import { Archive, CalendarClock, ChartLine, Contact, Database, FolderOpen, Globe, Network, Smartphone, PackagePlus, Puzzle, ScrollText, Settings, SquareTerminal, Users } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import type { ContentKind, Permission, ServerDetail } from "@panel/api";
 import { ALL_PERMISSIONS } from "@panel/api/schemas";
 import { bedrockPlatform } from "@panel/api/network";
+import { playersPlatform } from "@panel/api/players";
 import { trpc } from "@/lib/trpc";
 import { cn } from "@/lib/utils";
 import { getT, useT } from "@/app/_lib/i18n";
@@ -18,13 +19,14 @@ export interface ServerTab {
 }
 
 /** Welke tabbladen deze gebruiker op deze server ziet (op basis van type en rechten). */
-export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner" | "permissions"> & { domainsAllowed?: boolean; network?: Pick<ServerDetail["network"], "role">; content?: ContentKind | null; bedrock?: boolean }): ServerTab[] {
+export function serverTabs(server: Pick<ServerDetail, "uuid" | "type" | "isOwner" | "permissions"> & { domainsAllowed?: boolean; network?: Pick<ServerDetail["network"], "role">; content?: ContentKind | null; bedrock?: boolean; players?: boolean }): ServerTab[] {
   const base = `/servers/${server.uuid}`;
   const has = (p: Permission) => server.permissions.includes(p);
   const l = getT().server.tabs;
   const tabs: ServerTab[] = [server.type === "web" ? { key: "console", href: base, label: l.logs, icon: ScrollText } : { key: "console", href: base, label: l.console, icon: SquareTerminal }];
   if (has("console.read")) tabs.push({ key: "stats", href: `${base}/stats`, label: l.stats, icon: ChartLine });
   if (has("files.read")) tabs.push({ key: "files", href: `${base}/files`, label: l.files, icon: FolderOpen });
+  if (server.players && has("players.read")) tabs.push({ key: "players", href: `${base}/players`, label: l.players, icon: Contact });
   if (server.content && has("files.read")) tabs.push({ key: "content", href: `${base}/content`, label: server.content === "plugin" ? l.plugins : l.mods, icon: Puzzle });
   if ((server.type === "web" || server.domainsAllowed) && has("domain.manage")) tabs.push({ key: "domains", href: `${base}/domains`, label: l.domains, icon: Globe });
   if (server.network?.role === "proxy" && (server.isOwner || ALL_PERMISSIONS.every(has))) tabs.push({ key: "network", href: `${base}/network`, label: l.network, icon: Network });
@@ -48,7 +50,7 @@ export function ServerTabs({ server }: { server: ServerDetail }) {
   }, [pathname]);
   const hasFiles = server.type === "game" && server.permissions.includes("files.read");
   const info = trpc.content.info.useQuery({ uuid: server.uuid }, { enabled: hasFiles, staleTime: 5 * 60_000, retry: false });
-  const tabs = serverTabs({ ...server, content: info.data?.supported ? info.data.kind : null, bedrock: server.type === "game" && !!bedrockPlatform(server.templateSlug) });
+  const tabs = serverTabs({ ...server, content: info.data?.supported ? info.data.kind : null, bedrock: server.type === "game" && !!bedrockPlatform(server.templateSlug), players: server.type === "game" && !!playersPlatform(server.templateSlug) });
   return (
     <nav ref={nav} className="scrollbar-none -mx-4 flex snap-x gap-1 overflow-x-auto border-b border-border px-4 sm:mx-0 sm:px-0" aria-label={t.server.tabsLabel}>
       {tabs.map((t) => {
