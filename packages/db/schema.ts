@@ -15,6 +15,7 @@ import {
   integer,
   jsonb,
   pgEnum,
+  pgSchema,
   pgTable,
   primaryKey,
   real,
@@ -984,3 +985,95 @@ export const serverEvents = pgTable("server_events", {
   kind: text("kind").notNull(),
   at: ts("at").notNull().defaultNow(),
 }, (t) => [index("server_events_server_idx").on(t.serverId, t.at), index("server_events_at_idx").on(t.at)]);
+
+// ---------- mail (schema `mail`) ----------
+// Het panel schrijft; Postfix/Dovecot lezen alleen de views met de rol `mail_reader` (boot.ts).
+// Adressen en domeinen staan altijd in kleine letters.
+
+export const mail = pgSchema("mail");
+
+export const mailDomains = mail.table("domains", {
+  id: pk(),
+  domain: text("domain").notNull().unique(),
+  description: text("description"),
+  /** 0 = onbeperkt */
+  maxMailboxes: integer("max_mailboxes").notNull().default(0),
+  /** 0 = onbeperkt; bovengrens voor de som van mailboxes.quota_mb */
+  maxQuotaMb: integer("max_quota_mb").notNull().default(0),
+  /** pending | ok | error */
+  dnsStatus: text("dns_status").notNull().default("pending"),
+  dnsCheckedAt: ts("dns_checked_at"),
+  /** Laatste DNS-controle per record-id (voor dnsRecords zonder live lookup). */
+  dnsLastCheck: jsonb("dns_last_check").$type<Record<string, { status: string; actual: string[] }>>(),
+  active: boolean("active").notNull().default(true),
+  ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: createdAt(),
+});
+
+export const mailMailboxes = mail.table("mailboxes", {
+  id: pk(),
+  domainId: integer("domain_id").notNull().references(() => mailDomains.id, { onDelete: "cascade" }),
+  localPart: text("local_part").notNull(),
+  /** local_part@domain */
+  address: text("address").notNull().unique(),
+  name: text("name").notNull().default(""),
+  /** Dovecot-formaat: {ARGON2ID}$argon2id$v=19$m=65536,t=3,p=1$… */
+  passwordHash: text("password_hash").notNull(),
+  quotaMb: integer("quota_mb").notNull().default(1024),
+  lastLogin: ts("last_login"),
+  active: boolean("active").notNull().default(true),
+  createdAt: createdAt(),
+}, (t) => [uniqueIndex("mail_mailboxes_domain_local_unique").on(t.domainId, t.localPart)]);
+
+export const mailAliases = mail.table("aliases", {
+  id: pk(),
+  domainId: integer("domain_id").notNull().references(() => mailDomains.id, { onDelete: "cascade" }),
+  /** local@domein, of @domein voor de catch-all */
+  address: text("address").notNull().unique(),
+  /** Komma-gescheiden doeladressen */
+  goto: text("goto").notNull(),
+  active: boolean("active").notNull().default(true),
+  createdAt: createdAt(),
+}, (t) => [index("mail_aliases_domain_idx").on(t.domainId)]);
+
+export const mailDkimKeys = mail.table("dkim_keys", {
+  id: pk(),
+  domainId: integer("domain_id").notNull().references(() => mailDomains.id, { onDelete: "cascade" }),
+  selector: text("selector").notNull(),
+  privateKeyEnc: text("private_key_enc").notNull(),
+  /** Base64 DER (SubjectPublicKeyInfo), voor het p=-veld */
+  publicKey: text("public_key").notNull(),
+  active: boolean("active").notNull().default(false),
+  createdAt: createdAt(),
+  rotatedAt: ts("rotated_at"),
+}, (t) => [index("mail_dkim_domain_idx").on(t.domainId)]);
+
+/** Actieve domeinen. */
+export const mailVDomains = mail.view("v_domains", { domain: text("domain").notNull() }).as(sql`select domain from mail.domains where active`);
+
+/** Actieve mailboxen van actieve domeinen; maildir relatief t.o.v. /var/vmail. */
+export const mailVMailboxes = mail
+  .view("v_mailboxes", {
+    address: text("address").notNull(),
+    domain: text("domain").notNull(),
+    localPart: text("local_part").notNull(),
+    passwordHash: text("password_hash").notNull(),
+    quotaMb: integer("quota_mb").notNull(),
+    maildir: text("maildir").notNull(),
+  })
+  .as(sql`select m.address, d.domain, m.local_part, m.password_hash, m.quota_mb, d.domain || '/' || m.local_part || '/' as maildir from mail.mailboxes m join mail.domains d on d.id = m.domain_id where m.active and d.active`);
+
+/** Actieve aliassen van actieve domeinen (goto komma-gescheiden). */
+export const mailVAliases = mail
+  .view("v_aliases", { address: text("address").notNull(), goto: text("goto").notNull() })
+  .as(sql`select a.address, a.goto from mail.aliases a join mail.domains d on d.id = a.domain_id where a.active and d.active`);
+
+/**
+ * smtpd_sender_login_maps: elke mailbox mag als zichzelf versturen; een aliasadres mag versturen door elke actieve
+ * mailbox in goto. Catch-all-aliassen (`@domein`) tellen niet mee (anders mag zo'n mailbox als elk adres versturen).
+ */
+export const mailVSenders = mail
+  .view("v_senders", { sender: text("sender").notNull(), login: text("login").notNull() })
+  .as(
+    sql`select m.address as sender, m.address as login from mail.mailboxes m join mail.domains d on d.id = m.domain_id where m.active and d.active union select a.address as sender, mb.address as login from mail.aliases a join mail.domains d on d.id = a.domain_id cross join lateral unnest(string_to_array(a.goto, ',')) as g(target) join mail.mailboxes mb on mb.address = lower(trim(g.target)) and mb.active join mail.domains md on md.id = mb.domain_id and md.active where a.active and d.active and a.address not like '@%'`,
+  );
