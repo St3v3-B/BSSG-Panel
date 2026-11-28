@@ -38,7 +38,7 @@ export const PHASE3 = [
 ];
 
 /** One-click apps. */
-export const UPDATES = ["admin.updates.status", "admin.updates.start", "admin.updates.setEnabled"];
+export const UPDATES = ["admin.updates.status", "admin.updates.start", "admin.updates.setEnabled", "admin.updates.summary"];
 
 /** Git-deploy voor websites. */
 export const DEPLOY = ["deploy.config", "deploy.configure", "deploy.disconnect", "deploy.generateKey", "deploy.scanHostKey", "deploy.trustHostKey", "deploy.rotateWebhookSecret", "deploy.start", "deploy.cancel", "deploy.list", "deploy.get"];
