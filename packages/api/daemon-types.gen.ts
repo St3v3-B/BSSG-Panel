@@ -635,6 +635,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/servers/{uuid}/deploy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        /** Lopende deploy van deze server (null als er niets loopt), met de laatste logregels */
+        get: operations["getDeployProgress"];
+        put?: never;
+        /**
+         * Git-deploy van een website starten (op de achtergrond)
+         * @description Alleen websites (`type: web`). Stappen: `fetching` (git fetch --depth 1 in een tijdelijke container,
+         *     `panel.role=install`, naam `panel-<uuid>-deploy-*`, uid 1000, geen capabilities, netwerk `panel-site-<uuid>`, limieten van de server) →
+         *     `building` (optioneel `build.command` in `build.image` op een kopie van de repo) → `publishing`
+         *     (gedeelde paden uit de huidige `target_dir` overnemen, dan `target_dir` atomisch omwisselen met renameat2
+         *     RENAME_EXCHANGE). Faalt iets vóór het omwisselen, dan blijft de vorige versie ongewijzigd staan.
+         *     Geheimen (token, privésleutel) komen alleen in de omgeving van de git-container en nooit in de log.
+         *     Resultaat via `POST /api/remote/deploys/{deploy_id}` (panel-remote.yaml). Eén deploy tegelijk per server.
+         */
+        post: operations["startDeploy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/deploy/{deploy_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                deploy_id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lopende deploy afbreken (vóór het omwisselen; daarna `not_cancellable`)
+         * @description Resultaat via `POST /api/remote/deploys/{deploy_id}` met `status: cancelled`.
+         */
+        post: operations["cancelDeploy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/git/host-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * SSH-hostsleutels van een git-host ophalen (voor TOFU in het panel)
+         * @description De daemon maakt een SSH-verbinding (zonder in te loggen) per sleuteltype en geeft de sleutels met hun
+         *     SHA256-fingerprint en een known_hosts-regel. Het panel toont de fingerprint; pas na bevestiging gaat de
+         *     regel mee in `DeployRequest.auth.known_hosts`.
+         */
+        post: operations["scanGitHostKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/servers/{uuid}/backups/progress": {
         parameters: {
             query?: never;
@@ -1358,6 +1432,68 @@ export interface components {
             ignore?: string[];
             /** @description Dumps komen in het archief onder `_databases/{name}.sql` */
             databases: components["schemas"]["DatabaseCredentials"][];
+        };
+        DeployRequest: {
+            deploy_id: number;
+            /** @description `https://…` of SSH (`ssh://git@host[:port]/pad` of `git@host:pad`). Geen inloggegevens in de URL; geen `file://`, `ext::`, lokale paden of opties. */
+            repo_url: string;
+            /** @description Branchnaam (git check-ref-format), geen `-` vooraan */
+            branch: string;
+            auth: components["schemas"]["DeployAuth"];
+            /** @description Map binnen de serverdata die vervangen wordt, bv. `/public`; niet `/` */
+            target_dir: string;
+            /** @description Map binnen de repo (na de build) die gepubliceerd wordt; `/` = de hele repo */
+            source_dir: string;
+            /** @description Paden relatief aan target_dir (bv. `.env`, `uploads`) die uit de huidige versie worden overgenomen en nooit overschreven */
+            shared_paths: string[];
+            build: {
+                command: string;
+                image: string;
+            } | null;
+            /** @description Draaiende site na het omwisselen herstarten */
+            restart: boolean;
+            /** @description Standaard 1800 */
+            timeout_seconds?: number;
+            /** @description Lengte van log_tail in het resultaat (standaard 300) */
+            log_lines?: number;
+        };
+        DeployAuth: {
+            /** @enum {string} */
+            type: "none" | "token" | "ssh";
+            /** @description token: gebruikersnaam voor HTTP Basic (standaard x-access-token) */
+            username?: string;
+            /** @description token: wachtwoord/token voor HTTP Basic */
+            token?: string;
+            /** @description ssh: privésleutel (OpenSSH-formaat) */
+            private_key?: string;
+            /** @description ssh: known_hosts-regels; StrictHostKeyChecking=yes */
+            known_hosts?: string;
+        };
+        DeployProgress: {
+            deploy_id: number;
+            /** @enum {string} */
+            phase: "fetching" | "building" | "publishing";
+            /** Format: date-time */
+            started_at: string;
+            cancellable: boolean;
+            /** @description Laatste regels (hoogstens 500), geheimen geredacteerd */
+            log: string[];
+            commit?: components["schemas"]["DeployCommit"] | null;
+        };
+        DeployCommit: {
+            sha: string;
+            author: string;
+            /** @description Eerste regel */
+            message: string;
+            /** Format: date-time */
+            date: string | null;
+        };
+        GitHostKey: {
+            /** @description bv. ssh-ed25519 */
+            type: string;
+            /** @description SHA256:… (zoals ssh-keygen -l) */
+            fingerprint: string;
+            known_hosts_line: string;
         };
         BackupProgress: {
             backup_id: number;
@@ -2650,6 +2786,148 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getDeployProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        deploy: components["schemas"]["DeployProgress"] | null;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    startDeploy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeployRequest"];
+            };
+        };
+        responses: {
+            /** @description Gestart */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description `deploy_running` (er loopt al een deploy) of `invalid_state` (installatie loopt) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    cancelDeploy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                deploy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Annuleren gestart */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Server onbekend, of `not_running`: deze deploy loopt niet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `not_cancellable`: de deploy wisselt al om */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    scanGitHostKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    host: string;
+                    port: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        keys: components["schemas"]["GitHostKey"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description `unreachable`: geen SSH-server op host:port */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getBackupProgress: {

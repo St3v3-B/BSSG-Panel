@@ -258,6 +258,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/remote/deploys/{deploy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploy_id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resultaat van een git-deploy (POST /api/servers/{uuid}/deploy) */
+        post: operations["reportDeploy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/remote/backups/{backup_id}": {
         parameters: {
             query?: never;
@@ -804,6 +823,48 @@ export interface operations {
                     disk_bytes?: number;
                     /** Format: int64 */
                     disk_limit_bytes?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reportDeploy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deploy_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    status: "succeeded" | "failed" | "cancelled";
+                    /** @description Korte reden (geheimen geredacteerd) */
+                    error?: string | null;
+                    commit?: {
+                        sha: string;
+                        author: string;
+                        message: string;
+                        /** Format: date-time */
+                        date?: string | null;
+                    } | null;
+                    /** @description Laatste regels van de deploy-log (geredacteerd) */
+                    log_tail: string[];
+                    /** Format: int64 */
+                    duration_ms?: number;
                 };
             };
         };
