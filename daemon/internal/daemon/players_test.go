@@ -26,6 +26,12 @@ func TestPlayersEndpoint(t *testing.T) {
 			var st mcproto.Status
 			st.Players.Online, st.Players.Max = 3, 20
 			st.Version.Name = "Paper 1.21.4"
+			st.Players.Sample = []mcproto.Sample{
+				{Name: "Steve", ID: "069A79F4-44E9-4726-A5BE-FCA90E38AAF5"},
+				{Name: "bad name;op", ID: "00000000-0000-0000-0000-000000000001"},
+				{Name: "Alex", ID: "geen-uuid"},
+				{Name: ".BedrockKid", ID: "00000000-0000-0000-0009-01f2a3b4c5d6"},
+			}
 			return st, nil
 		}
 	}
@@ -48,10 +54,17 @@ func TestPlayersEndpoint(t *testing.T) {
 		Online  *int    `json:"online"`
 		Max     *int    `json:"max"`
 		Version *string `json:"version"`
+		Sample  []struct {
+			Name string `json:"name"`
+			ID   string `json:"id"`
+		} `json:"sample"`
 	}
 	h.expect("GET", "/api/servers/"+u1+"/players", nil, 200).json(t, &p)
 	if p.Online == nil || *p.Online != 3 || *p.Max != 20 || p.Version == nil || *p.Version != "Paper 1.21.4" {
 		t.Fatalf("spelers: %+v", p)
+	}
+	if len(p.Sample) != 2 || p.Sample[0].Name != "Steve" || p.Sample[0].ID != "069a79f4-44e9-4726-a5be-fca90e38aaf5" || p.Sample[1].Name != ".BedrockKid" {
+		t.Fatalf("sample (ongeldige namen/UUID's eruit, UUID kleine letters): %+v", p.Sample)
 	}
 	if a, _ := pinged.Load().(string); a != net.JoinHostPort("127.0.0.1", strconv.Itoa(port)) {
 		t.Fatal("ping-adres (0.0.0.0 → 127.0.0.1)", a)
@@ -60,8 +73,8 @@ func TestPlayersEndpoint(t *testing.T) {
 	fail.Store(true)
 	p.Online, p.Max = nil, nil
 	h.expect("GET", "/api/servers/"+u1+"/players", nil, 200).json(t, &p)
-	if p.Online != nil || p.Max != nil {
-		t.Fatalf("geen antwoord moet null geven: %+v", p)
+	if p.Online != nil || p.Max != nil || p.Sample == nil || len(p.Sample) != 0 {
+		t.Fatalf("geen antwoord moet null geven (sample []): %+v", p)
 	}
 
 	// Gestopt: geen ping.

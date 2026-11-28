@@ -1050,7 +1050,7 @@ export interface components {
             message?: string;
         };
         /** @enum {string} */
-        Permission: "console.read" | "console.write" | "files.read" | "files.write" | "backup.create" | "backup.restore" | "database.manage" | "domain.manage" | "schedule.manage" | "power";
+        Permission: "console.read" | "console.write" | "files.read" | "files.write" | "backup.create" | "backup.restore" | "database.manage" | "domain.manage" | "schedule.manage" | "power" | "players.read" | "players.manage";
         /** @enum {string} */
         PowerAction: "start" | "stop" | "restart" | "kill";
         ServerState: {
@@ -1125,6 +1125,12 @@ export interface components {
             max: number | null;
             /** @description versienaam uit het antwoord */
             version?: string | null;
+            /** @description Spelers uit het ping-antwoord (meestal max 12; anonieme spelers hebben een nul-UUID). Alleen geldige namen (`^\.?[A-Za-z0-9_]{1,16}$`) en UUID's (kleine letters), max 100. Leeg zonder antwoord. Ontbreekt bij een oudere daemon. */
+            sample?: {
+                name: string;
+                /** Format: uuid */
+                id: string;
+            }[];
         };
         ProxyNetwork: {
             members: string[];
