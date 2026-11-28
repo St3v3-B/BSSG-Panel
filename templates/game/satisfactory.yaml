@@ -16,7 +16,7 @@ image: ghcr.io/ptero-eggs/steamcmd:debian
 startup: >-
   exec ./Engine/Binaries/Linux/FactoryServer-Linux-Shipping FactoryGame
   -Port={{SERVER_PORT}} -ReliablePort={{RELIABLE_PORT}} -multihome=0.0.0.0 -log -unattended
-  -ini:Game:[/Script/Engine.GameSession]:MaxPlayers={{MAX_PLAYERS}}
+  "-ini:Game:[/Script/Engine.GameSession]:MaxPlayers={{MAX_PLAYERS}}"
 stop:
   type: signal
   value: SIGINT
