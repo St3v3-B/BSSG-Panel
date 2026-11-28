@@ -197,6 +197,13 @@
       "when": 1795866299947,
       "tag": "0027_nappy_maria_hill",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1795879675925,
+      "tag": "0028_lovely_red_skull",
+      "breakpoints": true
     }
   ]
 }

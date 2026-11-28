@@ -91,6 +91,8 @@ export function createMock(): Implementation {
     admins: ["100000000000000001"],
     settings: { panelName: "Blokgenoten Panel", logoUrl: null, accentColor: "#22c55e", defaultLimits: { cpuPct: 200, ramMb: 4096, swapMb: 0, diskMb: 20_000 }, imageUpdates: { defaultPolicy: "notify", windowStart: "04:00", windowEnd: "05:00" }, sleepMotd: { promo: "&e⚡ &fJoin to wake it up &8• &7Hosted on &b&lBSSG Panel", showLogoIcon: true, seedLogoIcon: true }, activityRetentionDays: 90, terminalEnabled: true } as s.Settings,
     totpEnabled: new Map<number, boolean>([[1, true]]),
+    /** Backup-login per gebruiker (standaard uit). */
+    passwordLogins: new Map<number, { username: string; updatedAt: Date; setByAdmin: boolean }>(),
     quotas: new Map<number, s.QuotaInput>([[2, { maxRamMb: 4096, maxDiskMb: 50_000, maxCpuPct: 300, maxServers: 3, maxDatabases: 2, templateIds: null, nodeIds: null, maxPortsPerServer: 2 }]]),
     webhooks: new Map<string, s.WebhookStatus>(),
     notif: new Map<string, s.ServerNotifications>(),
@@ -167,7 +169,17 @@ export function createMock(): Implementation {
     createdAt: new Date("2026-11-20T09:00:00Z"),
     lastLoginAt: u.name ? new Date("2026-11-26T08:00:00Z") : null,
     serverCount: db.servers.filter((x) => x.ownerId === u.id).length,
+    passwordLogin: db.passwordLogins.has(u.id),
   });
+  const pwStatus = (userId: number): s.PasswordLoginStatus => {
+    const p = db.passwordLogins.get(userId);
+    return p ? { enabled: true, username: p.username, updatedAt: p.updatedAt, setByAdmin: p.setByAdmin } : { enabled: false, username: null, updatedAt: null, setByAdmin: false };
+  };
+  const setPw = (userId: number, username: string, setByAdmin: boolean) => {
+    if ([...db.passwordLogins].some(([k, v]) => k !== userId && v.username === username)) throw new TRPCError({ code: "CONFLICT", message: "USERNAME_TAKEN" });
+    db.passwordLogins.set(userId, { username, updatedAt: new Date(), setByAdmin });
+    return pwStatus(userId);
+  };
   const usageOf = (uid: number): s.QuotaUsage => {
     const own = db.servers.filter((x) => x.ownerId === uid);
     return { ramMb: own.reduce((a, x) => a + x.limits.ramMb, 0), diskMb: own.reduce((a, x) => a + x.limits.diskMb, 0), cpuPct: own.reduce((a, x) => a + x.limits.cpuPct, 0), servers: own.length, databases: 0 };
@@ -277,6 +289,10 @@ export function createMock(): Implementation {
         return { ...ok, recoveryCodesLeft: null };
       },
       emergencyLogin: () => ok,
+      passwordLogin: ({ input }) => {
+        if (![...db.passwordLogins.values()].some((p) => p.username === input.username)) throw new TRPCError({ code: "UNAUTHORIZED", message: "INVALID_CREDENTIALS" });
+        return ok;
+      },
       logout: () => ok,
       verifyEmail: nm.verifyEmail,
     },
@@ -313,6 +329,12 @@ export function createMock(): Implementation {
       },
       revokeApiKey: ({ input }) => ((db.apiKeys = db.apiKeys.filter((k) => k.id !== input.id)), ok),
       setSftpPassword: () => ok,
+      passwordLogin: ({ ctx }) => pwStatus(uid(ctx)),
+      setPasswordLogin: ({ input, ctx }) => {
+        if ((db.totpEnabled.get(uid(ctx)) ?? false) && input.code !== "123456") throw new TRPCError({ code: "BAD_REQUEST", message: "INVALID_CODE (mock: use 123456)" });
+        return setPw(uid(ctx), input.username, false);
+      },
+      disablePasswordLogin: ({ ctx }) => (db.passwordLogins.delete(uid(ctx)), pwStatus(uid(ctx))),
       webhook: () => db.webhooks.get("user") ?? { set: false, hint: null },
       setWebhook: ({ input }) => {
         const w = hookStatus(input.url);
@@ -880,6 +902,9 @@ export function createMock(): Implementation {
         },
         setBlocked: () => ok,
         resetTotp: ({ input }) => (db.totpEnabled.set(input.id, false), ok),
+        getPasswordLogin: ({ input }) => (user(input.id), pwStatus(input.id)),
+        setPasswordLogin: ({ input }) => (user(input.id), { password: "mock-Wachtwoord-1234", status: setPw(input.id, input.username, true) }),
+        disablePasswordLogin: ({ input }) => (user(input.id), db.passwordLogins.delete(input.id), pwStatus(input.id)),
         getQuota: ({ input }) => db.quotas.get(input.id) ?? null,
         setQuota: ({ input }) => {
           const { id: uidIn, ...q } = input;

@@ -54,6 +54,13 @@ export const contract = {
     verifyTotp: mutation("pending", z.object({ code: z.string().min(6).max(20) }), s.VerifyTotpResult),
     /** Noodaccount (fase 4): wachtwoord + verplichte TOTP. Werkt ook als Discord plat ligt. */
     emergencyLogin: mutation("public", z.object({ password: z.string().min(1), code: z.string().regex(/^\d{6}$/) }), s.Ok),
+    /**
+     * Backup-login met eigen gebruikersnaam + wachtwoord (standaard uit per gebruiker, zie account.passwordLogin).
+     * Zet het sessiecookie zoals een Discord-login: met TOTP aan is de sessie daarna `pending` (auth.verifyTotp).
+     * Fouten: UNAUTHORIZED `INVALID_CREDENTIALS` (ook bij onbekende naam of uitgeschakeld), FORBIDDEN `BLOCKED`,
+     * TOO_MANY_REQUESTS `TOO_MANY_ATTEMPTS` (per IP en per gebruikersnaam). Niet voor het noodaccount.
+     */
+    passwordLogin: mutation("public", z.object({ username: z.string().trim().toLowerCase().min(1).max(64), password: z.string().min(1).max(200) }), s.Ok),
     logout: mutation("pending", none, s.Ok),
     /** Verificatielink uit de e-mail (/verify-email?token=…); werkt ook zonder sessie. Ongeldig of verlopen → BAD_REQUEST `INVALID_TOKEN`. */
     verifyEmail: mutation("public", z.object({ token: z.string().min(20).max(200) }), z.object({ ok: z.literal(true), email: z.string() })),
@@ -89,6 +96,15 @@ export const contract = {
     ),
     revokeApiKey: mutation("user", byId, s.Ok),
     setSftpPassword: mutation("user", server.extend({ password: z.string().min(12).max(200) }), s.Ok),
+    /** Status van de eigen backup-login (gebruikersnaam + wachtwoord). */
+    passwordLogin: query("user", none, s.PasswordLoginStatus),
+    /**
+     * Aanzetten of naam/wachtwoord wijzigen. Met TOTP aan is `code` verplicht (BAD_REQUEST `INVALID_CODE`).
+     * CONFLICT `USERNAME_TAKEN`; FORBIDDEN voor het noodaccount. Andere sessies blijven; API-sleutels niet toegestaan.
+     */
+    setPasswordLogin: mutation("user", z.object({ username: s.LoginUsername, password: s.LoginPassword, code: z.string().regex(/^\d{6}$/).optional() }), s.PasswordLoginStatus),
+    /** Uitzetten: naam en wachtwoord worden gewist. */
+    disablePasswordLogin: mutation("user", none, s.PasswordLoginStatus),
     /** Eigen quotum met verbruik en keuzelijsten; null = geen quotum (kan zelf geen servers maken). */
     quota: query("user", none, s.QuotaOverview.nullable()),
     /** Eigen Discord-webhook voor meldingen (nooit de volledige URL terug). */
@@ -697,6 +713,14 @@ export const contract = {
       create: mutation("admin", z.object({ discordId: s.DiscordId }), s.AdminUser),
       setBlocked: mutation("admin", byId.extend({ blocked: z.boolean() }), s.Ok),
       resetTotp: mutation("admin", byId, s.Ok),
+      /** Backup-login van een gebruiker (ook van de admin zelf). */
+      getPasswordLogin: query("admin", byId, s.PasswordLoginStatus),
+      /**
+       * Aanzetten of wachtwoord resetten: het panel genereert een wachtwoord dat maar één keer terugkomt.
+       * CONFLICT `USERNAME_TAKEN`; FORBIDDEN voor het noodaccount.
+       */
+      setPasswordLogin: mutation("admin", byId.extend({ username: s.LoginUsername }), z.object({ password: z.string(), status: s.PasswordLoginStatus })),
+      disablePasswordLogin: mutation("admin", byId, s.PasswordLoginStatus),
       /** Beëindigt alle sessies van een gebruiker. */
       revokeSessions: mutation("admin", byId, z.object({ revoked: z.number().int() })),
       /** null = geen quotum. */

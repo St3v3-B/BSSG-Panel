@@ -59,8 +59,14 @@ export const users = pgTable("users", {
   totpEnabled: boolean("totp_enabled").notNull().default(false),
   blocked: boolean("blocked").notNull().default(false),
   isEmergency: boolean("is_emergency").notNull().default(false),
-  /** Argon2id; alleen voor het noodaccount */
+  /** Argon2id; voor het noodaccount en voor de backup-login (login_username) */
   passwordHash: text("password_hash"),
+  /** Backup-login: eigen loginnaam (kleine letters). null = backup-login uit (standaard). Nooit bij het noodaccount. */
+  loginUsername: text("login_username").unique(),
+  /** Laatste keer dat het backup-wachtwoord gezet is. */
+  passwordSetAt: ts("password_set_at"),
+  /** Het backup-wachtwoord is door een admin gegenereerd (en nog niet door de gebruiker zelf veranderd). */
+  passwordSetByAdmin: boolean("password_set_by_admin").notNull().default(false),
   createdAt: createdAt(),
   lastLoginAt: ts("last_login_at"),
   /** Discord-webhook voor eigen meldingen (versleuteld; bevat het token in de URL) */
@@ -73,6 +79,7 @@ export const users = pgTable("users", {
 }, (t) => [
   check("users_discord_or_emergency", sql`${t.discordId} is not null or ${t.isEmergency}`),
   uniqueIndex("users_one_emergency").on(t.isEmergency).where(sql`${t.isEmergency}`),
+  check("users_login_username_not_emergency", sql`${t.loginUsername} is null or not ${t.isEmergency}`),
 ]);
 
 /** Enige bron voor admin-schap; er is geen is_admin-kolom. */

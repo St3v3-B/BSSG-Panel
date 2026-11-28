@@ -104,8 +104,28 @@ export const AdminUser = UserPublic.extend({
   createdAt: z.date(),
   lastLoginAt: z.date().nullable(),
   serverCount: z.number().int(),
+  /** Backup-login met gebruikersnaam + wachtwoord staat aan (zie PasswordLoginStatus). */
+  passwordLogin: z.boolean(),
 });
 export type AdminUser = z.infer<typeof AdminUser>;
+
+// ---------- backup-login (gebruikersnaam + wachtwoord) ----------
+
+/** Eigen loginnaam, los van de Discord-naam; uniek, kleine letters. */
+export const LoginUsername = z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9._-]{2,31}$/, "3-32 tekens: a-z, 0-9, . _ -");
+export const LOGIN_PASSWORD_MIN = 12;
+export const LoginPassword = z.string().min(LOGIN_PASSWORD_MIN).max(200);
+
+/** Standaard uit. `enabled` ⇔ er is een loginnaam én een wachtwoord. */
+export const PasswordLoginStatus = z.object({
+  enabled: z.boolean(),
+  username: z.string().nullable(),
+  /** Laatste keer dat het wachtwoord gezet is (door de gebruiker of een admin). */
+  updatedAt: z.date().nullable(),
+  /** true als een admin het wachtwoord zette en de gebruiker het sindsdien niet zelf veranderde. */
+  setByAdmin: z.boolean(),
+});
+export type PasswordLoginStatus = z.infer<typeof PasswordLoginStatus>;
 
 // ---------- servers ----------
 

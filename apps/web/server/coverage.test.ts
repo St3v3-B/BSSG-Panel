@@ -59,6 +59,8 @@ export const PHASE4 = [
 export const AUTH_HARDENING = [
   "auth.emergencyLogin", "account.recoveryCodesStatus", "account.regenerateRecoveryCodes",
   "account.sessions", "account.revokeSession", "account.revokeOtherSessions", "admin.users.revokeSessions",
+  "auth.passwordLogin", "account.passwordLogin", "account.setPasswordLogin", "account.disablePasswordLogin",
+  "admin.users.getPasswordLogin", "admin.users.setPasswordLogin", "admin.users.disablePasswordLogin",
 ];
 
 /** Admin-beheer (opschorten, template wisselen, instellingen). */
