@@ -63,6 +63,29 @@ type Config struct {
 	NPMCaddyAddr string
 	// ImageCheckInterval: hoe vaak op nieuwe images gecontroleerd wordt (IMAGE_CHECK_INTERVAL, 0 = uit).
 	ImageCheckInterval time.Duration
+	// Mail: de mailmodule (alleen op de lokale node, zie internal/mail).
+	Mail MailConfig
+}
+
+// MailConfig zijn de mail-instellingen; lege waarden krijgen in internal/mail hun standaard.
+type MailConfig struct {
+	Hostname   string // MAIL_HOSTNAME (leeg = mail uit)
+	PublicIPv4 string // MAIL_PUBLIC_IPV4
+	PublicIPv6 string // MAIL_PUBLIC_IPV6
+	// EnvFile (PANEL_ENV_FILE, standaard /etc/panel/panel.env): --env-file voor compose; MAIL_HOSTNAME en
+	// MAIL_PUBLIC_IPV4/6 worden daar bij elke aanroep opnieuw uit gelezen.
+	EnvFile       string
+	Profile       string // MAIL_COMPOSE_PROFILE (mail)
+	Postfix       string // MAIL_POSTFIX_CONTAINER (panel-postfix)
+	Dovecot       string // MAIL_DOVECOT_CONTAINER (panel-dovecot)
+	Rspamd        string // MAIL_RSPAMD_CONTAINER (panel-rspamd)
+	Unbound       string // MAIL_UNBOUND_CONTAINER (panel-unbound)
+	DKIMDir       string // MAIL_DKIM_DIR (/var/lib/rspamd/dkim, in panel-rspamd)
+	DKIMOwner     string // MAIL_DKIM_OWNER (leeg = eigenaar van MAIL_DKIM_DIR)
+	VmailDir      string // MAIL_VMAIL_DIR (/var/vmail, in panel-dovecot)
+	DNSBLResolver string // MAIL_DNSBL_RESOLVER (leeg = panel-unbound, "system", of host[:poort])
+	NTPServer     string // MAIL_NTP_SERVER (pool.ntp.org)
+	DiskPath      string // MAIL_DISK_PATH (/var/lib/docker)
 }
 
 // Load leest de configuratie met getenv (os.Getenv in productie).
@@ -88,6 +111,16 @@ func Load(getenv func(string) string) (Config, error) {
 		MariaDBContainer:    get("MARIADB_CONTAINER", "panel-mariadb"),
 		MariaDBRootPassword: get("MARIADB_ROOT_PASSWORD", ""),
 		TerminalImage:       get("TERMINAL_IMAGE", ""),
+	}
+	c.Mail = MailConfig{
+		Hostname: strings.ToLower(get("MAIL_HOSTNAME", "")), PublicIPv4: get("MAIL_PUBLIC_IPV4", ""),
+		PublicIPv6: get("MAIL_PUBLIC_IPV6", ""), EnvFile: get("PANEL_ENV_FILE", "/etc/panel/panel.env"),
+		Profile: get("MAIL_COMPOSE_PROFILE", "mail"), Postfix: get("MAIL_POSTFIX_CONTAINER", "panel-postfix"),
+		Dovecot: get("MAIL_DOVECOT_CONTAINER", "panel-dovecot"), Rspamd: get("MAIL_RSPAMD_CONTAINER", "panel-rspamd"),
+		Unbound: get("MAIL_UNBOUND_CONTAINER", "panel-unbound"), DKIMDir: get("MAIL_DKIM_DIR", "/var/lib/rspamd/dkim"),
+		DKIMOwner: get("MAIL_DKIM_OWNER", ""), VmailDir: get("MAIL_VMAIL_DIR", "/var/vmail"),
+		DNSBLResolver: get("MAIL_DNSBL_RESOLVER", ""), NTPServer: get("MAIL_NTP_SERVER", "pool.ntp.org"),
+		DiskPath: get("MAIL_DISK_PATH", "/var/lib/docker"),
 	}
 	sockDir := "/run/panel"
 	if c.DaemonSocket != "" {
