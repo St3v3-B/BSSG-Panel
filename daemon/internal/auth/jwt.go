@@ -36,6 +36,8 @@ type Claims struct {
 	Directory *string `json:"directory,omitempty"`
 	// Archive staat alleen in archief-downloadtokens: wat er ingepakt wordt.
 	Archive *ArchiveClaim `json:"archive,omitempty"`
+	// Purpose is "terminal" bij een webterminal-token; die tokens gelden alleen voor /terminal.
+	Purpose string `json:"purpose,omitempty"`
 }
 
 // ArchiveClaim beschrijft een archief-download (GET /files/archive).

@@ -1,5 +1,5 @@
 "use client";
-import { Activity, Database, FileCode2, Globe, LayoutDashboard, Package, Receipt, Server, Settings, Users, type LucideIcon } from "lucide-react";
+import { Activity, BookOpen, Database, FileCode2, Globe, LayoutDashboard, Package, Receipt, Server, Settings, Users, type LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { usePathname } from "next/navigation";
 import { usePhpMyAdmin } from "@/app/_hooks/use-phpmyadmin";
@@ -45,6 +45,7 @@ export function useNav(isAdmin: boolean) {
   const pma = usePhpMyAdmin();
   const panelItems: NavItem[] = [{ ...mk("/", t.nav.myServers, Server, pathname === "/" || under("/servers")), current: pathname === "/" }];
   panelItems.push(mk("/status-pages", t.statusPage.navTitle, Globe, under("/status-pages")));
+  panelItems.push(mk("/developers", t.devaccess.developers.nav, BookOpen, under("/developers")));
   if (pma.info?.visible) {
     panelItems.push(mk("/databases", t.phpmyadmin.nav, Database, under("/databases")));
   }

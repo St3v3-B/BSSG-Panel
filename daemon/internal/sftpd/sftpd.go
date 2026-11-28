@@ -196,6 +196,7 @@ func (s *Server) handle(c net.Conn) {
 	uuid := sc.Permissions.Extensions[extUUID]
 	perms := strings.Split(sc.Permissions.Extensions[extPerms], ",")
 	s.Log.Info("sftp-sessie", "user", sc.User(), "server", uuid, "ip", c.RemoteAddr().String())
+	// Geen port-forwarding of andere kanalen: alleen "session".
 	for nc := range chans {
 		if nc.ChannelType() != "session" {
 			_ = nc.Reject(ssh.UnknownChannelType, "alleen sessies")
@@ -211,21 +212,117 @@ func (s *Server) handle(c net.Conn) {
 
 func (s *Server) session(ch ssh.Channel, reqs <-chan *ssh.Request, uuid string, perms []string) {
 	defer ch.Close()
+	var pty *ptyReq
+	var sh *server.Shell
+	defer func() {
+		if sh != nil {
+			sh.Close()
+		}
+	}()
 	for req := range reqs {
-		ok := req.Type == "subsystem" && len(req.Payload) >= 4 && string(req.Payload[4:]) == "sftp"
-		_ = req.Reply(ok, nil)
-		if !ok {
-			continue
+		switch req.Type {
+		case "subsystem":
+			ok := sh == nil && len(req.Payload) >= 4 && string(req.Payload[4:]) == "sftp"
+			_ = req.Reply(ok, nil)
+			if !ok {
+				continue
+			}
+			go ssh.DiscardRequests(reqs)
+			h := &handler{m: s.Servers, uuid: uuid, write: slices.Contains(perms, "files.write")}
+			rs := sftp.NewRequestServer(ch, sftp.Handlers{FileGet: h, FilePut: h, FileCmd: h, FileList: h})
+			if err := rs.Serve(); err != nil && !errors.Is(err, io.EOF) {
+				s.Log.Debug("sftp-sessie eindigt", "err", err)
+			}
+			rs.Close()
+			return
+		case "pty-req":
+			p, ok := parsePty(req.Payload)
+			if ok {
+				pty = &p
+			}
+			_ = req.Reply(ok, nil)
+		case "window-change":
+			if len(req.Payload) >= 8 && sh != nil {
+				_ = sh.Resize(int(be32(req.Payload[0:4])), int(be32(req.Payload[4:8])))
+			} else if len(req.Payload) >= 8 && pty != nil {
+				pty.cols, pty.rows = be32(req.Payload[0:4]), be32(req.Payload[4:8])
+			}
+			if req.WantReply {
+				_ = req.Reply(true, nil)
+			}
+		case "shell":
+			// SSH-shell: alleen met terminal + files.write (de shell kan alle bestanden wijzigen).
+			if sh != nil || !CanShell(perms) {
+				_ = req.Reply(false, nil)
+				if sh == nil {
+					_, _ = io.WriteString(ch.Stderr(), "This login has no shell access (permission terminal). Use SFTP.\r\n")
+					return
+				}
+				continue
+			}
+			cols, rows := 80, 24
+			if pty != nil {
+				cols, rows = int(pty.cols), int(pty.rows)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			opened, err := s.Servers.OpenShell(ctx, uuid, cols, rows)
+			cancel()
+			if err != nil {
+				_ = req.Reply(false, nil)
+				_, _ = io.WriteString(ch.Stderr(), "shell could not be started: "+err.Error()+"\r\n")
+				s.Log.Warn("ssh-shell mislukt", "server", uuid, "err", err)
+				return
+			}
+			sh = opened
+			_ = req.Reply(true, nil)
+			s.Log.Info("ssh-shell geopend", "server", uuid, "container", sh.Name())
+			go func() { _, _ = io.Copy(ch, sh) }()
+			go func() {
+				_, _ = io.Copy(sh, ch)
+			}()
+			go func(sh *server.Shell) {
+				<-sh.Done()
+				status := make([]byte, 4)
+				code := sh.ExitCode()
+				if code < 0 {
+					code = 255
+				}
+				status[0], status[1], status[2], status[3] = byte(code>>24), byte(code>>16), byte(code>>8), byte(code)
+				time.Sleep(100 * time.Millisecond) // laatste uitvoer laten doorkomen
+				_, _ = ch.SendRequest("exit-status", false, status)
+				ch.Close()
+			}(sh)
+		case "env":
+			_ = req.Reply(false, nil)
+		default:
+			// exec, x11, port-forwarding: niet ondersteund
+			_ = req.Reply(false, nil)
 		}
-		go ssh.DiscardRequests(reqs)
-		h := &handler{m: s.Servers, uuid: uuid, write: slices.Contains(perms, "files.write")}
-		rs := sftp.NewRequestServer(ch, sftp.Handlers{FileGet: h, FilePut: h, FileCmd: h, FileList: h})
-		if err := rs.Serve(); err != nil && !errors.Is(err, io.EOF) {
-			s.Log.Debug("sftp-sessie eindigt", "err", err)
-		}
-		rs.Close()
-		return
 	}
+}
+
+// CanShell: de rechten uit /api/remote/sftp/auth staan een SSH-shell toe.
+func CanShell(perms []string) bool {
+	return slices.Contains(perms, "terminal") && slices.Contains(perms, "files.write")
+}
+
+type ptyReq struct{ cols, rows uint32 }
+
+func be32(b []byte) uint32 {
+	return uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
+}
+
+// parsePty leest RFC 4254 6.2: string term, uint32 cols, rows, px, py, string modes.
+func parsePty(b []byte) (ptyReq, bool) {
+	if len(b) < 4 {
+		return ptyReq{}, false
+	}
+	n := int(be32(b))
+	if len(b) < 4+n+8 {
+		return ptyReq{}, false
+	}
+	b = b[4+n:]
+	return ptyReq{cols: be32(b[0:4]), rows: be32(b[4:8])}, true
 }
 
 // ---------- handlers ----------

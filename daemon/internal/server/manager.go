@@ -68,6 +68,10 @@ type Config struct {
 	// StatusPinger vraagt het volledige statusantwoord (spelers/max/versie) voor
 	// GET /players (standaard mcproto.PingStatus).
 	StatusPinger func(ctx context.Context, addr string) (mcproto.Status, error)
+	// TerminalImage is de image voor webterminal/SSH-shells (TERMINAL_IMAGE); leeg = de image van de server.
+	TerminalImage string
+	// ShellsPerServer en ShellsTotal: maximaal tegelijk open shells (standaard 3 en 20).
+	ShellsPerServer, ShellsTotal int
 }
 
 func (c *Config) defaults() {
@@ -107,6 +111,12 @@ func (c *Config) defaults() {
 	if c.Instance == "" {
 		c.Instance = "main"
 	}
+	if c.ShellsPerServer == 0 {
+		c.ShellsPerServer = DefaultShellsPerServer
+	}
+	if c.ShellsTotal == 0 {
+		c.ShellsTotal = DefaultShellsTotal
+	}
 }
 
 // Manager beheert alle servers.
@@ -129,6 +139,10 @@ type Manager struct {
 	netMu sync.Mutex
 	// proxyNets: proxy-uuid → backend-uuids (onder mu).
 	proxyNets map[string][]string
+
+	// shells: open webterminal/SSH-shells (zie shell.go).
+	shellMu sync.Mutex
+	shells  map[*Shell]struct{}
 }
 
 // OnState registreert een functie die bij elke statuswijziging wordt aangeroepen (onder
@@ -139,12 +153,13 @@ func (m *Manager) OnState(fn func(uuid, state string)) { m.onState = fn }
 func NewManager(cfg Config, eng engine.Engine, rep Reporter, log *slog.Logger) *Manager {
 	cfg.defaults()
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Manager{cfg: cfg, eng: eng, rep: rep, log: log, ctx: ctx, cancel: cancel, servers: map[string]*Server{}, proxyNets: map[string][]string{}}
+	return &Manager{cfg: cfg, eng: eng, rep: rep, log: log, ctx: ctx, cancel: cancel, servers: map[string]*Server{}, proxyNets: map[string][]string{}, shells: map[*Shell]struct{}{}}
 }
 
-// Close stopt alle achtergrondtaken. Containers blijven draaien.
+// Close stopt alle achtergrondtaken. Servercontainers blijven draaien; open shells gaan dicht.
 func (m *Manager) Close() {
 	m.cancel()
+	m.closeShells("")
 	for _, s := range m.List() {
 		s.stopSleepListener() // poort vrijgeven; na een herstart bindt Recover opnieuw
 	}
@@ -301,6 +316,7 @@ func (m *Manager) Delete(uuid string) error {
 	if !ok {
 		return ErrNotFound
 	}
+	m.closeShells(uuid)
 	if err := s.destroy(); err != nil {
 		return err
 	}
@@ -353,6 +369,8 @@ func (m *Manager) Recover(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// Shells overleven een herstart van de daemon niet (de websocket/SSH-verbinding is weg).
+	m.removeOrphanShells(ctx)
 	for _, c := range list {
 		role := c.Labels[LabelRole]
 		if role != RoleServer && role != RoleInstall {

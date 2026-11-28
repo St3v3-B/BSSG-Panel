@@ -38,6 +38,8 @@ type Config struct {
 	MariaDBContainer string
 	// MariaDBRootPassword (MARIADB_ROOT_PASSWORD): rootwachtwoord van de MariaDB van deze node; blijft op de node.
 	MariaDBRootPassword string
+	// TerminalImage (TERMINAL_IMAGE): image voor webterminal/SSH-shells; leeg = de image van de server.
+	TerminalImage string
 	// NetworkPool (DOCKER_NETWORK_POOL): IPv4-blok waaruit elk netwerk van de daemon een eigen
 	// subnet krijgt (standaard 10.213.0.0/16; "docker" = Docker kiest zelf). Nul = Docker kiest.
 	NetworkPool netip.Prefix
@@ -79,6 +81,7 @@ func Load(getenv func(string) string) (Config, error) {
 		Instance:            get("PANEL_INSTANCE", "main"),
 		MariaDBContainer:    get("MARIADB_CONTAINER", "panel-mariadb"),
 		MariaDBRootPassword: get("MARIADB_ROOT_PASSWORD", ""),
+		TerminalImage:       get("TERMINAL_IMAGE", ""),
 	}
 	sockDir := "/run/panel"
 	if c.DaemonSocket != "" {

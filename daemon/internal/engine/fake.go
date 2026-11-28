@@ -314,6 +314,10 @@ func (c *FakeContainer) Updates() []Resources {
 // containers printen een startregel en "Done (1.0s)!", echoën stdin als
 // "[Server] <regel>" en stoppen bij "stop".
 func DefaultBehavior(c *FakeContainer) {
+	if c.Config.Labels["panel.role"] == "shell" {
+		ShellBehavior(c)
+		return
+	}
 	if c.Config.Labels["panel.role"] == "install" {
 		c.Println("installing")
 		c.Println("install done")

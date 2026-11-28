@@ -16,9 +16,15 @@ import { formatDate } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
 import { Table } from "@/app/_components/ui/table";
 
-/** Korte weergave van de metadata: key=value, lange waarden ingekort. */
+/** Naam van de API-sleutel als de actie via een sleutel ging (anders null). */
+export function apiKeyName(m: Record<string, unknown>): string | null {
+  return m.method === "api_key" ? (typeof m.apiKeyName === "string" ? m.apiKeyName : `#${String(m.apiKeyId ?? "?")}`) : null;
+}
+
+/** Korte weergave van de metadata: key=value, lange waarden ingekort (zonder de sleutelvelden). */
 export function metadataText(m: Record<string, unknown>): string {
   return Object.entries(m)
+    .filter(([k]) => !(m.method === "api_key" && (k === "method" || k === "apiKeyId" || k === "apiKeyName")))
     .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`.slice(0, 80))
     .join(" · ");
 }
@@ -105,7 +111,8 @@ export function ActivityAdmin() {
                     <td className="px-4 py-2.5">{e.user ? displayName(e.user) : <span className="text-muted-foreground">{a.system}</span>}</td>
                     <td className="px-4 py-2.5">
                       <code className="font-mono text-xs">{e.action}</code>
-                      {Object.keys(e.metadata).length > 0 && <div className="mt-0.5 break-all font-mono text-xs text-muted-foreground">{metadataText(e.metadata)}</div>}
+                      {apiKeyName(e.metadata) && <div className="mt-0.5 text-xs text-info" data-testid="activity-api-key">{t.devaccess.viaApiKey(apiKeyName(e.metadata)!)}</div>}
+                      {metadataText(e.metadata) && <div className="mt-0.5 break-all font-mono text-xs text-muted-foreground">{metadataText(e.metadata)}</div>}
                     </td>
                     <td className="px-4 py-2.5">
                       {e.serverUuid ? (
