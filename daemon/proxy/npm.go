@@ -96,6 +96,8 @@ type NPMOptions struct {
 	CertTimeout time.Duration
 	// Interval van de achtergrondlus. Standaard 1 minuut.
 	Interval time.Duration
+	// NoCertificates: geen certificaten aanvragen (tests tegen een echte NPM: nooit Let's Encrypt-productie).
+	NoCertificates bool
 	// OnStatus wordt aangeroepen na elke ronde waarin de status veranderde.
 	OnStatus func(NPMStatus)
 	Now      func() time.Time
@@ -690,7 +692,7 @@ func (n *NPM) Reconcile(ctx context.Context) error {
 				s.certErr = ""
 			}
 		})
-		if certID == 0 {
+		if certID == 0 && !n.opt.NoCertificates {
 			key := w.cf
 			if st.certKey != key || st.certTried.IsZero() || now.Sub(st.certTried) >= n.opt.CertRetry {
 				needCert = append(needCert, w)
