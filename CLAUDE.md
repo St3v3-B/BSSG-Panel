@@ -136,6 +136,10 @@ Toolchain: Go 1.27 (module vereist 1.23+), Node 22, pnpm 12, TypeScript 5.9
     op dat infra-object: network connect/disconnect, en `docker exec` met de mariadb-client voor databasebeheer
     via de daemon-endpoints `/api/db/*`; nooit herstarten, verwijderen of anders aanraken). Zo zien sites elkaar nooit.
     Vanuit de site heet de database `panel-mariadb:3306`.
+  - phpMyAdmin (`panel-phpmyadmin`, `/phpmyadmin/`, ingebed op de panelpagina `/databases`) bereikt de MariaDB
+    van remote nodes uitsluitend via de daemon-tunnel `GET /api/db/tunnel` (HTTP-upgrade `panel-mariadb`,
+    node-token, doel vast = `MARIADB_CONTAINER:3306`); het panel luistert per node op
+    `PMA_TUNNEL_PORT_BASE + node-id` (alleen intern, allowlist `PMA_TUNNEL_ALLOW`). Geen MariaDB-poort naar buiten.
   - Instelbaar: `MARIADB_CONTAINER` (standaard `panel-mariadb`; daemon koppelt hem, sites gebruiken
     hem als host, database_hosts.host) en `MARIADB_ADMIN_ADDR` (hoe het panel zelf verbindt,
     standaard `$MARIADB_CONTAINER:3306`). Tests gebruiken een eigen container en nooit de echte.
