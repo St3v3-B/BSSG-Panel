@@ -11,7 +11,7 @@ description: >-
   Step-by-step: deploy/README.md, "Velocity with two Paper servers". Java 25, heap = 80% of
   the RAM limit (512 MB is usually enough).
 type: game
-version: 2
+version: 3
 image: eclipse-temurin:25-jre
 # Aanbevolen flags van Velocity; netty-workdir en user.home in /home/container (read-only rootfs).
 startup: >-
@@ -28,6 +28,7 @@ stop:
   value: end
 # Velocity logt: [12:00:00 INFO]: Done (1.23s)!
 ready_pattern: "Done \\([0-9.,]+s\\)!"
+player_events: velocity
 variables:
   - key: VELOCITY_VERSION
     name: Velocity version

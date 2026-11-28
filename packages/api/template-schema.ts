@@ -4,6 +4,7 @@
  */
 import { z } from "zod";
 import { parse } from "yaml";
+import { TemplatePlayerEvents, playerEventErrors } from "./player-activity";
 
 const VarKey = z.string().regex(/^[A-Z][A-Z0-9_]*$/, "variabelen in HOOFDLETTERS_MET_UNDERSCORES");
 
@@ -39,6 +40,11 @@ export const TemplateSpec = z
      * herinstallatie nodig (extensies zijn tegen de oude minor gebouwd) en meldt de daemon alleen.
      */
     image_version_env: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),
+    /**
+     * Speleractiviteit: `minecraft` of `velocity` (presets), `none`, of eigen RE2-patronen `{join, leave, uuid?}` met
+     * groepen `(?<name>…)` (en `(?<uuid>…)`). Ontbreekt: standaard per slug (Paper/Folia/Fabric/… minecraft, Velocity velocity).
+     */
+    player_events: TemplatePlayerEvents.optional(),
     variables: z
       .array(
         z.object({
@@ -75,6 +81,7 @@ export const TemplateSpec = z
       if ((BUILTIN_VARIABLES as readonly string[]).includes(v.key))
         ctx.addIssue({ code: "custom", message: `${v.key} is built in and may not be defined as a variable`, path: ["variables"] });
     }
+    for (const e of playerEventErrors(t.player_events)) ctx.addIssue({ code: "custom", message: e, path: ["player_events"] });
     if (t.type === "web" && !t.http_port) ctx.addIssue({ code: "custom", message: "web templates require http_port", path: ["http_port"] });
   });
 

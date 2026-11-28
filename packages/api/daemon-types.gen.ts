@@ -1477,6 +1477,18 @@ export interface components {
                 max_per_10min: number;
             } | null;
             /**
+             * @description Speleractiviteit: RE2-patronen op consoleregels (zonder ANSI-kleuren), uit de template
+             *     (`player_events`, met presets voor Minecraft en Velocity). `join` en `leave` hebben een
+             *     groep `(?<name>…)`, `uuid` (optioneel) `name` en `uuid`. Patronen dekken de hele regel
+             *     (^…$), zodat chattekst niet matcht. De daemon meldt matches, en het stoppen van de server,
+             *     via `POST /api/remote/servers/{uuid}/players` (panel-remote.yaml). Ontbreekt = uit.
+             */
+            player_events?: {
+                join: string;
+                leave: string;
+                uuid?: string;
+            } | null;
+            /**
              * @description Alleen bij POST: niet installeren. PUT installeert nooit; herinstallatie gaat via POST /install.
              * @default false
              */

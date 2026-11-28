@@ -391,6 +391,44 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/remote/servers/{uuid}/players:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      operationId: reportPlayers
+      summary: Speleractiviteit (join/leave uit de console, server gestopt)
+      description: |
+        Alleen voor servers met `player_events` in de spec. Per server in volgorde, hooguit één
+        verzoek tegelijk, met retry; het panel verwerkt dubbele events idempotent (join van een
+        speler met een open sessie of met dezelfde `at` wordt genegeerd, leave zonder open sessie ook).
+        `leave.reason`: `leave` (gewoon weg), `server_stop` (tijdens het stoppen), `sleep` (slaapstand).
+        `stopped`: de server draait niet meer; het panel sluit alle open sessies met `reason`
+        (`server_stop`, `sleep` of `crash`). `at` is de tijd van de daemon (RFC 3339).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [type, at]
+                    properties:
+                      type: { type: string, enum: [join, leave, stopped] }
+                      at: { type: string, format: date-time }
+                      name: { type: string, maxLength: 64 }
+                      player_uuid: { type: string }
+                      reason: { type: string, enum: [leave, server_stop, sleep, crash] }
+      responses:
+        "204": { description: OK }
+        "400": { description: Ongeldig verzoek }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/remote/deploys/{deploy_id}:
     parameters:
       - name: deploy_id

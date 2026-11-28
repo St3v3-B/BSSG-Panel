@@ -69,6 +69,20 @@ are validated strictly. Bedrock players (Floodgate prefix `.`) can be added when
 shows who is on which backend; whitelists and bans are managed on the backends. Plugins that replace `/list` (for example Essentials)
 can hide the player names; the count is still shown.
 
+## Player activity
+
+The **Activity** tab (permission to view players) shows who is online now, a timeline per player for a day or a week with
+markers for server start, stop, crash, sleep and wake, a heatmap of peak hours (average players per weekday and hour over four
+weeks, Europe/Amsterdam) and a table with playtime, sessions and last seen. Data is kept for 90 days.
+
+- The daemon reads join and leave lines from the console with the `player_events` patterns of the template (built in for
+  Minecraft and Velocity; see `templates/SCHEMA.md`). The patterns cover the whole line and need the player name right after the
+  log prefix, so chat such as `<Griefer> Steve joined the game` is ignored. When the server stops, crashes or goes to sleep, the
+  daemon reports it and open sessions are closed with that reason.
+- Safety net: if the daemon missed something (for example while it was restarting), the panel closes sessions of servers that are
+  no longer running and compares a server-list ping every 5 minutes with the open sessions.
+- Velocity records connecting to and leaving the proxy, not switching between backend servers.
+
 ## Domains for game servers
 
 If an admin allows it for a server, you can attach a domain to a game server. Choose the `minecraft` protocol to get a SRV record so players

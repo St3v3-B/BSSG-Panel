@@ -314,6 +314,7 @@ func (s *Server) attachRun(id string, att engine.Attachment, startedAt time.Time
 		s.mu.Lock()
 		var crashTail []string
 		crashed := false
+		stopReason := ""
 		if s.run == r {
 			s.run = nil
 			s.startedAt = nil
@@ -322,6 +323,14 @@ func (s *Server) attachRun(id string, att engine.Attachment, startedAt time.Time
 			crashed = isCrash(wasStopping, s.sleepPending, s.diskExceeded, s.deleted, code, err, oom)
 			if crashed {
 				crashTail = s.console.Last(crashLogLines)
+			}
+			switch {
+			case crashed:
+				stopReason = "crash"
+			case s.sleepPending:
+				stopReason = "sleep"
+			default:
+				stopReason = "server_stop"
 			}
 			if s.diskExceeded {
 				s.setStateLocked(StateDiskExceeded)
@@ -335,6 +344,9 @@ func (s *Server) attachRun(id string, att engine.Attachment, startedAt time.Time
 			}
 		}
 		s.mu.Unlock()
+		if stopReason != "" {
+			s.reportStopped(stopReason)
+		}
 		if crashed {
 			s.onCrash(code, oom, crashTail, t)
 		}
@@ -565,6 +577,7 @@ func (s *Server) Update(sp spec.ServerSpec) error {
 	}
 	s.spec = sp
 	s.ready = compileReady(sp.ReadyPattern)
+	s.playerMatch = CompilePlayerEvents(sp.PlayerEvents)
 	r := s.run
 	err := s.persistLocked()
 	stop := s.evaluateDiskLocked()

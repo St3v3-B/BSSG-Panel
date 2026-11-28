@@ -19,6 +19,7 @@
 import { z } from "zod";
 import * as s from "./schemas";
 import * as pl from "./players";
+import * as pa from "./player-activity";
 
 export type Access = "public" | "pending" | "user" | "admin";
 
@@ -404,6 +405,21 @@ export const contract = {
     online: query("user", server, pl.PlayersOnline),
     /** Voert de actie uit en geeft de nieuwe stand terug. */
     manage: mutation("user", server.extend({ op: pl.PlayerOp }), pl.PlayersInfo),
+  },
+
+  /**
+   * Speleractiviteit (tab Activiteit). Vereist players.read. Servers zonder player_events in de template geven
+   * `tracked: false` en lege gegevens. Bewaard: PLAYER_ACTIVITY_RETENTION_DAYS (90 dagen).
+   */
+  playerActivity: {
+    /** Sessies en servergebeurtenissen (start/stop/crash/sleep/wake) in een dag of week tot `end`. */
+    timeline: query("user", pa.TimelineInput, pa.ActivityTimeline),
+    /** Per speler: speeltijd, sessies, eerst/laatst gezien in de laatste `days` dagen (max 500, laatst gezien eerst). */
+    players: query("user", pa.PlayersInput, pa.ActivityPlayers),
+    /** Piekuren: gemiddeld aantal spelers per weekdag × uur (Europe/Amsterdam) over de laatste `days` dagen. */
+    heatmap: query("user", pa.HeatmapInput, pa.ActivityHeatmap),
+    /** Open sessies (wie nu online is, sinds wanneer). */
+    current: query("user", server, pa.ActivityCurrent),
   },
 
   domains: {

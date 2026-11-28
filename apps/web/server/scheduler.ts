@@ -18,6 +18,7 @@ import { cleanupInbox } from "./routers/notify-center";
 import { cleanupUptime } from "./status-pages";
 import { fetchServerByUuid, type ServerBundle } from "./servers-data";
 import { statsTick } from "./stats-history";
+import { playerActivityTick } from "./player-activity";
 import { alarmsTick } from "./alarms";
 import { billingTick } from "./billing/core";
 
@@ -116,6 +117,7 @@ export async function tick(now: Date = new Date()): Promise<number> {
   if (!process.env.VITEST) await maybeRunRetention(now).catch((e) => console.error("[scheduler] retention:", e));
   if (!process.env.VITEST) await billingTick(now).catch((e) => console.error("[scheduler] billing:", e));
   if (!process.env.VITEST) await statsTick().catch((e) => console.error("[scheduler] stats:", e));
+  if (!process.env.VITEST) await playerActivityTick(now).catch((e) => console.error("[scheduler] player activity:", e));
   // Na de stats: verbruiksalarmen op de verse metingen.
   if (!process.env.VITEST) await alarmsTick().catch((e) => console.error("[scheduler] alarms:", e));
   if (!process.env.VITEST) {

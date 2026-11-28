@@ -11,7 +11,7 @@ description: >-
   SIGTERM (the JVM shuts down cleanly via shutdown hooks; a Minecraft server saves first).
   Heap = 80% of the RAM limit.
 type: game
-version: 2
+version: 3
 # Eén image (Ubuntu + glibc + Java 25); andere versies als JRE in /home/container/.java,
 # omdat image geen variabele kan zijn.
 image: eclipse-temurin:25-jre
@@ -26,6 +26,7 @@ stop:
   type: signal
   value: SIGTERM
 ready_pattern: "^\\[panel\\] starting "
+player_events: minecraft
 variables:
   - key: JAVA_VERSION
     name: Java version

@@ -8,7 +8,7 @@ description: >-
   fetches the jar via the PaperMC API and verifies the SHA-256. Java 25, heap = RAM limit minus
   max(25%, 512 MB), at least 512 MB heap; recommended minimum: 1.5 GB RAM. Behind Velocity: same as Paper (`VELOCITY_FORWARDING` + `VELOCITY_SECRET`).
 type: game
-version: 4
+version: 5
 image: eclipse-temurin:25-jre
 # Heap: SERVER_MEMORY min max(25%, 512 MB), heap minstens 512 MB; direct memory en code cache begrensd voor metaspace, threads, netty-buffers en
 # /tmp (tmpfs, telt mee); met 80% werd Paper 1.21.x bij 1280 MB door de cgroup OOM-killed.
@@ -39,6 +39,7 @@ stop:
   value: stop
 # Folia logt (zoals Paper): [12:00:00 INFO]: Done (12.345s)! For help, type "help"
 sleep_capable: true
+player_events: minecraft
 ready_pattern: "Done \\([0-9.,]+s\\)!"
 variables:
   - key: MINECRAFT_VERSION

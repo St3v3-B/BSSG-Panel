@@ -42,9 +42,10 @@ type Client struct {
 	// MinBackoff/MaxBackoff voor herhalingen (tests zetten ze laag).
 	MinBackoff, MaxBackoff time.Duration
 
-	mu     sync.Mutex
-	status map[string]*statusSlot
-	wg     sync.WaitGroup
+	mu      sync.Mutex
+	status  map[string]*statusSlot
+	players map[string]*playerQueue
+	wg      sync.WaitGroup
 }
 
 type statusSlot struct {

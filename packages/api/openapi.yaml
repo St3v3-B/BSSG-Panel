@@ -1834,6 +1834,19 @@ components:
           required: [max_per_10min]
           properties:
             max_per_10min: { type: integer, minimum: 1, maximum: 20 }
+        player_events:
+          type: [object, "null"]
+          description: |
+            Speleractiviteit: RE2-patronen op consoleregels (zonder ANSI-kleuren), uit de template
+            (`player_events`, met presets voor Minecraft en Velocity). `join` en `leave` hebben een
+            groep `(?<name>…)`, `uuid` (optioneel) `name` en `uuid`. Patronen dekken de hele regel
+            (^…$), zodat chattekst niet matcht. De daemon meldt matches, en het stoppen van de server,
+            via `POST /api/remote/servers/{uuid}/players` (panel-remote.yaml). Ontbreekt = uit.
+          required: [join, leave]
+          properties:
+            join: { type: string, maxLength: 1000 }
+            leave: { type: string, maxLength: 1000 }
+            uuid: { type: string, maxLength: 1000 }
         skip_install: { type: boolean, default: false, description: "Alleen bij POST: niet installeren. PUT installeert nooit; herinstallatie gaat via POST /install." }
 
     FileEntry:

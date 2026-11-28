@@ -23,6 +23,7 @@ import { applyServerState } from "./node-cache";
 import { relayConfigFor, storeRelayReport } from "./relay";
 import { npmConfigFor, storeNpmReport } from "./npm";
 import { finishDeploy, runPendingRedeploy } from "./deploy";
+import { ingestPlayerEvents, recordStateTransition } from "./player-activity";
 
 type NodeRow = typeof schema.nodes.$inferSelect;
 
@@ -114,6 +115,31 @@ export const reportStatus = remoteHandler<{ uuid: string }>(async (req, node, { 
   if (!s) return error(404, "not_found");
   await getDb().update(schema.servers).set({ status: b.state as ServerStatus }).where(eq(schema.servers.id, s.id));
   await applyServerState(node.id, uuid, b.state as ServerStatus).catch(() => {});
+  await recordStateTransition(s.id, s.status, b.state).catch((e) => console.error("[remote] server event:", e));
+  return noContent();
+});
+
+const PlayerEvents = z.object({
+  events: z
+    .array(
+      z.object({
+        type: z.enum(["join", "leave", "stopped"]),
+        at: z.coerce.date(),
+        name: z.string().max(64).optional(),
+        player_uuid: z.string().max(64).optional(),
+        reason: z.enum(["leave", "server_stop", "sleep", "crash"]).optional(),
+      }),
+    )
+    .max(100),
+});
+
+/** Speleractiviteit uit de console (zie player-activity.ts). */
+export const reportPlayers = remoteHandler<{ uuid: string }>(async (req, node, { uuid }) => {
+  const b = await body(req, PlayerEvents);
+  if (!b || b.events.some((e) => Number.isNaN(e.at.getTime()))) return error(400, "bad_request");
+  const s = await serverOnNode(uuid, node);
+  if (!s) return error(404, "not_found");
+  await ingestPlayerEvents(s.id, b.events);
   return noContent();
 });
 

@@ -11,7 +11,7 @@ description: >-
   Behind a Velocity proxy: set `VELOCITY_FORWARDING` to `true` and `VELOCITY_SECRET` to the proxy's
   secret, then reinstall: the installer then adds FabricProxy-Lite (Modrinth, SHA-512 verified) to `mods/`.
 type: game
-version: 5
+version: 6
 image: eclipse-temurin:25-jre
 # Achter Velocity moet online-mode uit (Velocity doet de login; FabricProxy-Lite controleert de secret).
 startup: >-
@@ -34,6 +34,7 @@ stop:
   value: stop
 # Vanilla/Fabric logt: [12:00:00] [Server thread/INFO]: Done (12.345s)! For help, type "help"
 sleep_capable: true
+player_events: minecraft
 ready_pattern: "Done \\([0-9.,]+s\\)!"
 variables:
   - key: MINECRAFT_VERSION
