@@ -20,6 +20,12 @@ export type DaemonRouteWithStatus = D["schemas"]["RouteWithStatus"];
 export type DaemonFileEntry = D["schemas"]["FileEntry"];
 export type DaemonSearchResult = D["schemas"]["SearchResult"];
 export type DaemonChmodRequest = D["schemas"]["ChmodRequest"];
+export type DaemonMailCheckRequest = D["schemas"]["MailCheckRequest"];
+export type DaemonMailCheckReport = D["schemas"]["MailCheckReport"];
+export type DaemonMailCheck = D["schemas"]["MailCheck"];
+export type DaemonMailStatus = D["schemas"]["MailStatus"];
+export type DaemonMailQueueItem = D["schemas"]["MailQueueItem"];
+export type DaemonMailQuotaItem = D["schemas"]["MailQuotaItem"];
 export type WsClientMessage = D["schemas"]["WsClientMessage"];
 export type WsServerMessage = D["schemas"]["WsServerMessage"];
 

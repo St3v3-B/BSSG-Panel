@@ -1263,6 +1263,239 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mail/checks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Systeemcheck voor de mailserver (vereist voordat mail aangaat)
+         * @description Alle checks lopen parallel, elk hoogstens 10 s, samen hoogstens 30 s. De ids staan vast (de UI vertaalt ze);
+         *     `detail` is een korte technische uitleg (Engels), `hint` wat de beheerder kan doen, `data` de ruwe gegevens.
+         *     Verplicht (`required: true`) zijn alle checks behalve `clock` en `disk`.
+         *
+         *     | id | Hoe |
+         *     |---|---|
+         *     | `outbound_25` | MX van gmail.com en outlook.com opzoeken, TCP 25 verbinden en de 220-groet lezen; ok als minstens één lukt. `data.targets[]` |
+         *     | `inbound_ports` | Verbinden met het eigen publieke IP (v4, en v6 indien bekend) op 25/465/587/993. Is een poort lokaal vrij (mailstack uit), dan luistert de daemon er kort zelf op en telt alleen een verbinding die echt binnenkomt (`probe: temporary_listener`); anders `probe: service` (bij 25/587 met banner). `data.ports[]`, `data.closed[]`, `data.ip_on_this_host` |
+         *     | `ptr` | Reverse lookup van elk publiek IP; moet exact `mail_hostname` zijn (hoofdletterongevoelig, zonder punt aan het eind). `data.ipv4` / `data.ipv6` = `{ip, names[], error?}` |
+         *     | `fcrdns` | A/AAAA van de PTR-naam bevat hetzelfde IP. `data.results[]` |
+         *     | `helo` | `postconf -h myhostname` in panel-postfix als die draait (`data.source: postfix`), anders `mail_hostname` (`source: MAIL_HOSTNAME`); moet gelijk zijn aan de PTR-naam |
+         *     | `blacklists` | Spamhaus ZEN (ook IPv6), Barracuda, SpamCop, UCEPROTECT-1 via panel-unbound (of `MAIL_DNSBL_RESOLVER`). Gelist: niet ok, met delisting-link. Spamhaus-antwoord 127.255.255.x = resolver geweigerd: niet ok (niet geverifieerd). Een fout bij een andere lijst wordt alleen gemeld. `data.resolver`, `data.results[]` = `{list, zone, ip, status: clean/listed/refused/error, answers?, error?, delist?}` |
+         *     | `certificate` | TLS-handshake op `CADDY_TLS_ADDR` met SNI `mail_hostname`; keten en naam gecontroleerd. `data` = `{valid, days_left, not_before, not_after, issuer, subject, dns_names}` |
+         *     | `ports_free` | Luistert er op de host iets anders dan panel-postfix/panel-dovecot op 25/465/587/993 (`/proc/net/tcp{,6}` en de gepubliceerde poorten van alle containers)? `data.conflicts[]` = `{port, addr?, pid?, process?, container?}` |
+         *     | `clock` | SNTP-query naar `MAIL_NTP_SERVER` (pool.ntp.org); ok bij afwijking tot 2 s. `data.offset_ms` |
+         *     | `disk` | Vrije ruimte op `MAIL_DISK_PATH` (standaard de Docker-datamap, waar het vmail-volume staat); ok bij minstens 10% vrij. `data` = `{path, total_bytes, free_bytes, free_pct}` |
+         *
+         *     Publiek IP: uit de aanvraag, anders `MAIL_PUBLIC_IPV4` / `MAIL_PUBLIC_IPV6` (panel.env), anders detectie via
+         *     api.ipify.org / api6.ipify.org. Lukt dat voor IPv4 niet, dan falen de IP-afhankelijke checks met die reden in `detail`.
+         */
+        post: operations["runMailChecks"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mailcontainers, wachtrij en grootte van de mailboxen
+         * @description `containers` zijn alle containers met `panel.managed=true`, het eigen `panel.instance` en `panel.role=mail`.
+         *     `enabled` = panel-postfix draait. `queue` komt uit `postqueue -j` (incoming/maildrop tellen als active);
+         *     `vmail_bytes` uit `du` in panel-dovecot (ontbreekt als dat niet lukt).
+         */
+        get: operations["getMailStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mailstack starten (compose-profiel mail)
+         * @description `docker compose --env-file $PANEL_ENV_FILE -f deploy/docker-compose.yml [-f docker-compose.npm.yml] --profile mail up -d <diensten>`,
+         *     waarbij `<diensten>` precies de diensten zijn die alleen met het profiel bestaan (de rest van de stack wordt niet
+         *     aangeraakt). Synchroon; kan minuten duren als images gebouwd of opgehaald worden. Na het aanzetten zet het panel
+         *     de DKIM-sleutels opnieuw (`PUT /api/mail/dkim/{domain}`) die eerder met 409 geweigerd werden.
+         */
+        post: operations["enableMail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mailstack stoppen (`compose --profile mail stop <diensten>`; containers en volumes blijven) */
+        post: operations["disableMail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Postfix, Dovecot en Rspamd herladen (bv. na een nieuw certificaat)
+         * @description `postfix reload`, `doveadm reload` en `rspamadm control reload` (lukt dat niet: SIGHUP aan panel-rspamd).
+         *     Containers die niet draaien worden overgeslagen; draait er geen, dan 409 `mail_not_running`.
+         */
+        post: operations["reloadMail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail/dkim/{domain}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Maildomein (lowercase) */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * DKIM-sleutel van een domein zetten
+         * @description Schrijft `<MAIL_DKIM_DIR>/<domain>.<selector>.key` (0640, eigenaar = die van de map of `MAIL_DKIM_OWNER`) in
+         *     panel-rspamd, zet `<domain> <selector>` in `selectors.map`, verwijdert sleutels van het domein met een andere
+         *     selector en herlaadt Rspamd. De sleutel gaat via stdin, nooit via argv of de log. PEM: PKCS#1 of PKCS#8, RSA
+         *     van minstens 1024 bit of Ed25519. Rspamd draait niet: 409 `mail_not_running`.
+         */
+        put: operations["putMailDkim"];
+        post?: never;
+        /** DKIM-sleutel(s) van een domein verwijderen (bestaat niets, dan ook 204) */
+        delete: operations["deleteMailDkim"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Postfix-wachtrij (`postqueue -j`) */
+        get: operations["getMailQueue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail/queue/flush": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Alle uitgestelde berichten opnieuw proberen (`postqueue -f`) */
+        post: operations["flushMailQueue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail/queue/{queue_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Eén bericht uit de wachtrij verwijderen (`postsuper -d <queue_id>`) */
+        delete: operations["deleteMailQueueItem"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail/mailboxes/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quotagebruik van mailboxen (`doveadm -f json quota get -u <adres>`) */
+        post: operations["getMailQuota"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mail/mailboxes/{address}/data": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Maildir van een gewiste mailbox verwijderen (`<MAIL_VMAIL_DIR>/<domein>/<local>` in panel-dovecot) */
+        delete: operations["deleteMailboxData"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/relay": {
         parameters: {
             query?: never;
@@ -1418,6 +1651,99 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        MailCheckRequest: {
+            /** @description MAIL_HOSTNAME, bv. mail.voorbeeld.nl */
+            mail_hostname: string;
+            /** @description Leeg of null: MAIL_PUBLIC_IPV4, anders detectie */
+            public_ipv4?: string | null;
+            /** @description Leeg of null: MAIL_PUBLIC_IPV6, anders detectie (mag ontbreken) */
+            public_ipv6?: string | null;
+        };
+        MailCheck: {
+            /** @enum {string} */
+            id: "outbound_25" | "inbound_ports" | "ptr" | "fcrdns" | "helo" | "blacklists" | "certificate" | "ports_free" | "clock" | "disk";
+            ok: boolean;
+            /** @description Verplicht voor het aanzetten van mail (alles behalve clock en disk) */
+            required: boolean;
+            detail: string;
+            /** @description Wat de beheerder kan doen */
+            hint?: string;
+            /** @description Ruwe gegevens per check (zie de tabel bij POST /api/mail/checks) */
+            data?: {
+                [key: string]: unknown;
+            };
+        };
+        MailCheckReport: {
+            /** Format: date-time */
+            checked_at: string;
+            /** @description Alle tien checks, altijd in deze volgorde */
+            checks: components["schemas"]["MailCheck"][];
+        };
+        MailContainer: {
+            /** @example panel-postfix */
+            name: string;
+            /** @description running, exited, restarting, created, paused of dead */
+            state: string;
+            /** @enum {string} */
+            health?: "healthy" | "unhealthy" | "starting";
+        };
+        MailQueueCounts: {
+            active: number;
+            deferred: number;
+            hold: number;
+        };
+        MailStatus: {
+            /** @description panel-postfix draait */
+            enabled: boolean;
+            /** @description MAIL_HOSTNAME is gezet */
+            configured: boolean;
+            /** @description MAIL_HOSTNAME */
+            hostname?: string;
+            containers: components["schemas"]["MailContainer"][];
+            queue: components["schemas"]["MailQueueCounts"];
+            /** Format: int64 */
+            vmail_bytes?: number;
+        };
+        MailQueueItem: {
+            queue_id: string;
+            /** @description active, deferred, hold, incoming of maildrop */
+            queue: string;
+            /** @description Leeg bij een bounce */
+            sender: string;
+            recipients: string[];
+            /** Format: int64 */
+            size: number;
+            /** Format: date-time */
+            arrival_time: string;
+            /** @description delay_reason van de eerste ontvanger die er een heeft */
+            reason?: string;
+        };
+        MailQueue: {
+            items: components["schemas"]["MailQueueItem"][];
+        };
+        MailDkimPut: {
+            /** @example dkim */
+            selector: string;
+            private_key_pem: string;
+        };
+        MailQuotaRequest: {
+            addresses: string[];
+        };
+        MailQuotaItem: {
+            address: string;
+            /** Format: int64 */
+            used_bytes: number;
+            /**
+             * Format: int64
+             * @description null = onbeperkt
+             */
+            limit_bytes: number | null;
+            /** @description `unknown_user` (Dovecot kent de mailbox niet), `no_quota` of een foutmelding */
+            error?: string;
+        };
+        MailQuota: {
+            items: components["schemas"]["MailQuotaItem"][];
+        };
         DbCreate: {
             name: string;
             username: string;
@@ -2169,6 +2495,33 @@ export interface components {
         };
         /** @description Disk-limiet van de server bereikt; schrijven geweigerd */
         DiskFull: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description `not_local`: mail bestaat alleen op de lokale node (met panel-checkout) */
+        MailNotLocal: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description `mail_not_running`: de benodigde mailcontainer draait niet */
+        MailNotRunning: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description `mail_command_failed`: het commando in de mailcontainer faalde (`message` met het einde van de uitvoer) */
+        MailCommandFailed: {
             headers: {
                 [name: string]: unknown;
             };
@@ -4083,6 +4436,322 @@ export interface operations {
                 };
             };
             503: components["responses"]["DbUnavailable"];
+        };
+    };
+    runMailChecks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailCheckRequest"];
+            };
+        };
+        responses: {
+            /** @description Rapport */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailCheckReport"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["MailNotLocal"];
+        };
+    };
+    getMailStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailStatus"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["MailNotLocal"];
+        };
+    };
+    enableMail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gestart */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["MailNotLocal"];
+            /** @description `mail_not_configured`: MAIL_HOSTNAME is leeg */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description compose faalde (`message` bevat het einde van de uitvoer) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    disableMail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gestopt */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["MailNotLocal"];
+        };
+    };
+    reloadMail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Herladen */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["MailNotLocal"];
+            409: components["responses"]["MailNotRunning"];
+            502: components["responses"]["MailCommandFailed"];
+        };
+    };
+    putMailDkim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Maildomein (lowercase) */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailDkimPut"];
+            };
+        };
+        responses: {
+            /** @description Gezet */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["MailNotLocal"];
+            409: components["responses"]["MailNotRunning"];
+            502: components["responses"]["MailCommandFailed"];
+        };
+    };
+    deleteMailDkim: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Maildomein (lowercase) */
+                domain: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verwijderd */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["MailNotLocal"];
+            409: components["responses"]["MailNotRunning"];
+            502: components["responses"]["MailCommandFailed"];
+        };
+    };
+    getMailQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Wachtrij */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailQueue"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["MailNotLocal"];
+            409: components["responses"]["MailNotRunning"];
+        };
+    };
+    flushMailQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Gestart */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["MailNotLocal"];
+            409: components["responses"]["MailNotRunning"];
+            502: components["responses"]["MailCommandFailed"];
+        };
+    };
+    deleteMailQueueItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Postfix-queue-id; `ALL` wordt geweigerd */
+                queue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verwijderd */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            /** @description `not_found` (bericht niet in de wachtrij) of `not_local` */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            409: components["responses"]["MailNotRunning"];
+        };
+    };
+    getMailQuota: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MailQuotaRequest"];
+            };
+        };
+        responses: {
+            /** @description Per adres, in de volgorde van de aanvraag */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MailQuota"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["MailNotLocal"];
+            409: components["responses"]["MailNotRunning"];
+        };
+    };
+    deleteMailboxData: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Mailadres (lowercase; geen `/`, `*`, `..` of een punt aan begin of eind van het local part) */
+                address: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verwijderd (of bestond niet) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["MailNotLocal"];
+            409: components["responses"]["MailNotRunning"];
         };
     };
     getRelay: {
