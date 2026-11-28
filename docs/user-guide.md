@@ -15,7 +15,11 @@ panel has its own domains.
 - [Databases and phpMyAdmin](#databases-and-phpmyadmin)
 - [Statistics (usage graphs)](#statistics-usage-graphs)
 - [Subusers and permissions](#subusers-and-permissions)
+- [Duplicating a server](#duplicating-a-server)
+- [Usage alarms](#usage-alarms)
+- [Web terminal and SSH](#web-terminal-and-ssh)
 - [API keys](#api-keys)
+- [REST API](#rest-api)
 - [Notifications and the Discord bot](#notifications-and-the-discord-bot)
 - [Quotas: creating your own servers](#quotas-creating-your-own-servers)
 
@@ -200,8 +204,48 @@ As the owner of a server you invite people by Discord ID on the **Users** tab an
 | `database.manage` | Create databases, reset passwords, phpMyAdmin |
 | `domain.manage` | Add domains, change redirects |
 | `schedule.manage` | Manage schedules |
+| `players.read`, `players.manage` | Minecraft: see online players, whitelist, operators and bans; change them |
+| `deploy.read`, `deploy.manage` | Websites: see Git deploys and logs; connect a repository and deploy |
+| `terminal` | Web terminal and SSH shell (implies `files.read` and `files.write`) |
 
 Only the owner manages subusers and can delete the server.
+
+## Duplicating a server
+
+On **Settings, Duplicate** you make a copy of a server, for example a staging copy of a website or a test copy of a world.
+
+- The copy gets the same template, variables, limits and settings, and counts against your quota. Game servers get new ports;
+  websites get no domains (add a new one in the same dialog if you like).
+- Files are copied while the source keeps running (Minecraft saves are paused for a moment, like during a backup). Stop the source
+  first if files change a lot.
+- **Databases** can be copied too: each gets a new name and user. Config files that point to the old database (for example
+  `wp-config.php` or `.env`) are **not** rewritten; the progress screen lists old and new names so you can change them.
+- Subusers, domains, webhooks and network membership are not copied. You can follow and cancel the copy; a cancelled or failed copy
+  is removed again.
+
+Admins can also pick another owner and node.
+
+## Usage alarms
+
+On **Settings, Usage alarms** you get a notification when a server stays above a limit: CPU or memory above a percentage of its
+limit for a number of minutes, or disk above a percentage. You get one message when the alarm starts and one when it is back to
+normal (after dropping 10 points below the threshold, 5 for disk), with a cooldown so a server hovering around the threshold does not
+flood you. Crashes and unexpected stops are reported by the normal crash notification. Admins set the defaults.
+
+## Web terminal and SSH
+
+The **Terminal** tab opens a shell in the browser. It runs in a short-lived tools container that only sees the files of this server
+(mounted at `/home/container`) and its own network, so the site's database is reachable at `panel-mariadb:3306`. It has the server's
+limits, no root and no access to other servers or the host. For PHP sites the PHP version of the site and `composer` are available.
+
+The same shell is available over SSH with your SFTP login:
+
+```bash
+ssh -p 2022 <your discord name>.<shortId>@node1.example.com
+```
+
+You need the `terminal` permission (which includes file access). A shell closes after 15 minutes without input or after 4 hours.
+Admins can turn the terminal off per server or for the whole panel; SFTP keeps working.
 
 ## API keys
 
@@ -211,7 +255,23 @@ Under **Account, API keys** you create keys for scripts and tools.
 - A key never gives more than you have yourself: on each server it gets the overlap of its permissions and yours. A key never
   gives admin access.
 - Send it as a bearer token (`Authorization: Bearer <key>`), or use it as the SFTP password.
+- Optionally limit a key to some of your servers. Keys are rate limited (120 requests per minute).
 - The list shows the first characters of each key and when it was last used. Delete a key to revoke it immediately.
+
+## REST API
+
+The panel has a small, stable REST API at `https://panel.example.com/api/v1` for scripts: list servers and their stats, power
+actions, console commands, files (list, read, write, delete), backups (list, create, restore) and databases. It uses the same
+permissions as the panel and only accepts API keys (`Authorization: Bearer <key>`), never your browser session.
+
+The **Developers** page in the panel documents every endpoint with examples in curl, Python and JavaScript for your own domain,
+and lets you try GET requests with a key. The OpenAPI 3.1 description is at `/api/v1/openapi.json`.
+
+```bash
+curl -H "Authorization: Bearer $KEY" https://panel.example.com/api/v1/servers
+curl -H "Authorization: Bearer $KEY" -X POST -H 'content-type: application/json' \
+  -d '{"action":"restart"}' https://panel.example.com/api/v1/servers/<uuid>/power
+```
 
 ## Notifications and the Discord bot
 

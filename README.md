@@ -36,7 +36,7 @@ two logins, two update cycles and two sets of quirks. BSSG Panel replaces both:
 
 - **One model for everything.** A game server and a website are both a container from a template, so console,
   files, SFTP, limits, backups and permissions work the same for both.
-- **Built for trusted communities.** No billing and no public sign-up. Real isolation anyway, so one compromised
+- **Built for trusted communities.** No public sign-up, and billing is optional (off by default). Real isolation anyway, so one compromised
   WordPress plugin cannot reach anything else.
 - **Light to run.** One install script, one env file, one Go daemon per machine. Add a second machine with a single command.
 - **Pleasant to use.** Modern sidebar UI, light and dark themes, English and Dutch, works well on a phone.
@@ -75,6 +75,7 @@ two logins, two update cycles and two sets of quirks. BSSG Panel replaces both:
 - **Plugins, mods and modpacks** from Modrinth and Hangar, with update detection.
 - **Crash detection** with exit code, out-of-memory and crash-report capture, and automatic restart with backoff.
 - **Domains for game servers** with SRV records, so players do not type a port.
+- **Player management**: online players, whitelist, operators, bans and kicks, also while the server is stopped.
 
 ### Networks and Bedrock
 
@@ -87,7 +88,9 @@ two logins, two update cycles and two sets of quirks. BSSG Panel replaces both:
 - **Domains and SSL.** The panel shows the exact DNS records, checks them live and issues Let's Encrypt certificates through Caddy, including wildcards via Cloudflare.
 - **One-click apps**: WordPress, Grav and Nextcloud, with database, config and admin login created for you.
 - **PHP settings** (memory, upload size, timeouts, extensions), **cron** schedules and a log viewer.
-- **MariaDB databases**, one user per database with rights on that database only.
+- **MariaDB databases**, one user per database with rights on that database only, and phpMyAdmin built into the panel.
+- **Git deploy** with deploy keys, webhooks for GitHub, GitLab, Gitea and Bitbucket, build commands and atomic publishing.
+- **Web terminal and SSH** into a locked-down tools container with the site's files and database.
 
 ### Operations
 
@@ -97,12 +100,19 @@ two logins, two update cycles and two sets of quirks. BSSG Panel replaces both:
 - **Discord webhooks and bot** for crashes, failed backups, full disks and offline nodes, plus `/start`, `/stop` and `/restart` commands.
 - **File manager** with a Monaco editor, drag and drop upload and zip support, plus built-in **SFTP**.
 - **Activity log** of every action.
+- **Duplicate servers** (staging copies, optionally with databases) and **usage alarms** for CPU, memory and disk.
+- **Notifications** in the panel, by e-mail and on Discord, plus public **status pages**.
+- **REST API** with documentation in the panel, for API keys limited by permission and server.
+- Optional **plans and billing** (Stripe or Mollie), off by default.
 
 ### Multi-node
 
 - **Join a machine with one command** (`install.sh --node-only`). Each node brings its own daemon, Caddy and MariaDB.
 - **Per-node domains** and a background monitor that notices when a node goes offline.
 - **Move servers between nodes**, including their databases.
+- **Maintenance mode** per node with one-click evacuation to other nodes.
+- Nodes without ports 80/443: route their HTTP(S) **through another node (relay)** or run them **behind Nginx Proxy Manager**.
+- **Import from Pterodactyl or Pelican**: users, eggs (as templates) and servers with their files.
 
 ### Security
 
@@ -320,17 +330,18 @@ wrote the contracts first and reviewed and merged the results. The rules they fo
 ## Roadmap
 
 Done: contracts, Minecraft end to end, files and SFTP, subusers, websites with domains and SSL, databases, sleep mode, backups and schedules, quotas, multi-node,
-Velocity and Bedrock, plugins and modpacks, one-click apps, image updates, notifications.
+Velocity and Bedrock, plugins and modpacks, one-click apps, image updates, notifications and status pages, HTTP(S) relay and Nginx Proxy Manager mode,
+player management, Git deploy, web terminal and SSH, REST API, server duplication, usage alarms, node maintenance, Pterodactyl/Pelican import, optional billing.
 
 Ideas:
 
 - A first tagged release, prebuilt daemon binaries and container images.
-- **Behind Nginx Proxy Manager** mode, for machines where another proxy already owns ports 80 and 443.
-- Game-only nodes without ports 80 and 443.
+- SSH login with public keys.
+- Git submodules for deploys.
 - IPv6.
 - More one-click apps and game templates.
 
-Out of scope: e-mail hosting, billing and public sign-up, running your own nameservers.
+Out of scope: e-mail hosting, public sign-up, running your own nameservers.
 
 ## FAQ
 

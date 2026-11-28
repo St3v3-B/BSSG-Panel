@@ -40,6 +40,9 @@ export const PHASE3 = [
 /** One-click apps. */
 export const UPDATES = ["admin.updates.status", "admin.updates.start", "admin.updates.setEnabled"];
 
+/** Git-deploy voor websites. */
+export const DEPLOY = ["deploy.config", "deploy.configure", "deploy.disconnect", "deploy.generateKey", "deploy.scanHostKey", "deploy.trustHostKey", "deploy.rotateWebhookSecret", "deploy.start", "deploy.cancel", "deploy.list", "deploy.get"];
+
 export const APPS = ["apps.catalog", "apps.check", "apps.install", "apps.job", "apps.jobs"];
 
 /** Website-instellingen (PHP). */
@@ -100,7 +103,7 @@ export const DEVACCESS = ["servers.terminalToken", "admin.servers.setTerminalAll
 describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES, ...STATS, ...NOTIFY2, ...BILLING, ...PLAYERS, ...CLONE_ALARMS, ...HOSTOPS, ...DEVACCESS];
+    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES, ...STATS, ...NOTIFY2, ...BILLING, ...PLAYERS, ...CLONE_ALARMS, ...HOSTOPS, ...DEVACCESS, ...DEPLOY];
     for (const p of all) expect(contract.has(p), p).toBe(true);
     expect(implementedPaths().sort()).toEqual(all.sort());
   });

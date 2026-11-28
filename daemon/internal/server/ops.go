@@ -3,8 +3,10 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"panel/daemon/internal/engine"
+	"panel/daemon/internal/spec"
 )
 
 // Hulpfuncties voor het backup-pakket: dat bouwt op de manager maar hoort niet in de
@@ -21,6 +23,22 @@ func (m *Manager) DataDir() string { return m.cfg.DataDir }
 
 // Owner is de uid/gid waaronder servers draaien.
 func (m *Manager) Owner() (int, int) { return m.cfg.UID, m.cfg.GID }
+
+// EnsureServerNetwork maakt het eigen netwerk panel-site-<uuid> als het ontbreekt.
+func (m *Manager) EnsureServerNetwork(ctx context.Context, uuid string) error {
+	return m.ensureServerNetwork(ctx, uuid)
+}
+
+// EnsureImage haalt een image op als hij lokaal ontbreekt (met statusregels naar progress).
+func (m *Manager) EnsureImage(ctx context.Context, image string, progress func(string)) error {
+	return m.ensureImage(ctx, image, progress)
+}
+
+// ReadLines roept fn aan voor elke regel uit r (zoals de console: lange regels afgekapt).
+func ReadLines(r io.Reader, fn func(string)) { readLines(r, fn) }
+
+// Resources zet serverlimieten om naar cgroup-limieten (zoals voor de servercontainer).
+func Resources(l spec.Limits) engine.Resources { return resources(l) }
 
 // MariaDBName is de containernaam van de gedeelde MariaDB.
 func (m *Manager) MariaDBName() string { return m.cfg.MariaDB }

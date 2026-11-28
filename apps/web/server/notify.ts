@@ -100,7 +100,9 @@ export type NotifyEvent =
   | { kind: "server_cloned"; result: "succeeded" | "failed"; sourceName: string; targetName: string; error: string | null }
   | { kind: "node_maintenance"; nodeName: string; message: string | null; plannedStart: Date | null; plannedEnd: Date | null; ended: boolean; servers: string[] }
   | { kind: "server_moved"; fromNode: string; toNode: string; newAddress: string | null; dnsChanged: string[] }
-  | { kind: "server_move_failed"; nodeName: string; error: string };
+  | { kind: "server_move_failed"; nodeName: string; error: string }
+  | { kind: "deploy_failed"; branch: string; commit: string | null; error: string; logTail: string[] }
+  | { kind: "deploy_succeeded"; branch: string; commit: string | null };
 
 export interface Target {
   /** Voor de titel en de link; null bij node- en accountgebeurtenissen. */
@@ -141,7 +143,7 @@ export function adminPrefKeyOf(e: NotifyEvent): NotificationEvent | null {
 /** Persoonlijk: nooit naar server- of admin-webhooks. */
 const isPersonal = (e: NotifyEvent) => e.kind === "login_new_ip";
 /** Te veel ruis voor gedeelde kanalen (alleen wie het zelf aanzet). */
-const isQuiet = (e: NotifyEvent) => e.kind === "backup_completed";
+const isQuiet = (e: NotifyEvent) => e.kind === "backup_completed" || e.kind === "deploy_succeeded";
 
 /** Per soort: hoe lang herhalingen samengevoegd worden. */
 export const COALESCE_MS: Record<NotifyEvent["kind"], number> = {
@@ -162,6 +164,8 @@ export const COALESCE_MS: Record<NotifyEvent["kind"], number> = {
   node_maintenance: 60_000,
   server_moved: 1_000,
   server_move_failed: 0,
+  deploy_failed: 60_000,
+  deploy_succeeded: 10_000,
 };
 
 // ---------- opmaak (kanaalonafhankelijk) ----------
@@ -323,6 +327,21 @@ export function buildMessage(e: NotifyEvent, server: Target["server"], opts: { r
       describe = (b) => `${b(sname)} could not be moved off node ${b(clip(e.nodeName, 100))} and stays there.`;
       f.push({ name: "Error", value: e.error, code: true, limit: 900 });
       if (server) link = `/admin/servers/${server.uuid}`;
+      break;
+    case "deploy_failed":
+      title = "Deploy failed";
+      describe = (b, c) => `The Git deploy of ${b(sname)} (branch ${c(clip(e.branch, 100))}) failed. The previous version is still online.`;
+      if (e.commit) f.push({ name: "Commit", value: e.commit, inline: true });
+      f.push({ name: "Error", value: e.error, code: true, limit: 900 });
+      if (e.logTail.length) f.push({ name: "Last log lines", value: e.logTail.join("\n"), code: true, limit: 1000 });
+      if (server) link = `/servers/${server.uuid}/deploy`;
+      break;
+    case "deploy_succeeded":
+      title = "Deploy succeeded";
+      level = "success";
+      describe = (b, c) => `${b(sname)} was deployed from branch ${c(clip(e.branch, 100))}.`;
+      if (e.commit) f.push({ name: "Commit", value: e.commit, inline: true });
+      if (server) link = `/servers/${server.uuid}/deploy`;
       break;
   }
   if (opts.repeats && opts.repeats > 0) f.push({ name: "Repeats", value: `${opts.repeats} more since the previous message (merged)`, inline: true });

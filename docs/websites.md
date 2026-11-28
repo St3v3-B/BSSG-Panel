@@ -45,6 +45,23 @@ The **Apps** tab installs ready-made applications into an empty PHP site: **Word
 release, verifies its checksum where the project publishes one, creates the database, writes the config and shows the admin login at
 the end. Installs run as a background job, and a failed install is rolled back (database included).
 
+## Git deploy
+
+The **Deploy** tab publishes a website from a Git repository.
+
+1. Enter the repository URL and branch. For a private repository use an HTTPS URL with an access token (stored encrypted), or an
+   SSH URL: the panel then creates a **deploy key**; add its public key to the repository (read-only is enough). For hosts other
+   than GitHub, GitLab and Bitbucket you confirm the host key fingerprint once.
+2. Pick the folder to publish (default `public`, `app` for Node.js), optionally a subfolder of the repository (for example `dist`)
+   and an optional **build command** (`npm ci && npm run build`, `composer install --no-dev`) with a build image.
+3. List **shared paths** that must survive a deploy, such as `.env` or `uploads/`.
+4. Press **Deploy now**, or copy the **webhook URL** and secret into GitHub, GitLab, Gitea or Bitbucket to deploy on every push to
+   the branch.
+
+A deploy fetches and builds in separate, locked-down containers and swaps the folder in one atomic step. If anything fails before
+that, the live site is untouched. History, live log and cancel are on the same tab; failed deploys send a notification.
+Submodules are not supported yet.
+
 ## Databases
 
 The **Databases** tab creates MariaDB databases. Every database gets its own user with rights on that database only. The daemon attaches the MariaDB

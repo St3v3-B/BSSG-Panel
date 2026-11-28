@@ -495,6 +495,9 @@ func (r *Root) Rename(from, to string) error {
 	return r.rename(from, to, unix.RENAME_NOREPLACE)
 }
 
+// Exchange verwisselt a en b atomisch (renameat2 RENAME_EXCHANGE); beide moeten bestaan.
+func (r *Root) Exchange(a, b string) error { return r.rename(a, b, unix.RENAME_EXCHANGE) }
+
 // RenameReplace verplaatst en overschrijft (SFTP posix-rename).
 func (r *Root) RenameReplace(from, to string) error { return r.rename(from, to, 0) }
 

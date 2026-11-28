@@ -8,6 +8,7 @@ import { apps } from "./routers/apps";
 import { backups, s3Targets } from "./routers/backups";
 import { schedules } from "./routers/schedules";
 import { siteSettings } from "./routers/site-settings";
+import { deploy } from "./routers/deploy";
 import { account, auth } from "./routers/auth";
 import { credentials } from "./routers/credentials";
 import { databaseHosts, databases } from "./routers/databases";
@@ -45,7 +46,7 @@ function merge(base: Tree, over: Tree): Tree {
   return out;
 }
 
-const phase1 = { billing, inbox, statusPages, apps, auth: { ...auth, verifyEmail }, backups, schedules, siteSettings, account: { ...account, ...credentials, ...quotaAccount, ...notificationsAccount, ...notifyAccount }, servers: { ...servers, ...stats, ...network, ...bedrock, ...quotaServers, ...notificationsServer, ...cloneProcedures, ...alarmProcedures }, files, content, players, subusers, domains, databases, admin: { ...admin, ...billingAdmin, alarms: alarmAdmin, notifications: notificationsAdmin, smtp: smtpAdmin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, maintenance, importer, databaseHosts, dnsProviders, s3Targets } };
+const phase1 = { deploy, billing, inbox, statusPages, apps, auth: { ...auth, verifyEmail }, backups, schedules, siteSettings, account: { ...account, ...credentials, ...quotaAccount, ...notificationsAccount, ...notifyAccount }, servers: { ...servers, ...stats, ...network, ...bedrock, ...quotaServers, ...notificationsServer, ...cloneProcedures, ...alarmProcedures }, files, content, players, subusers, domains, databases, admin: { ...admin, ...billingAdmin, alarms: alarmAdmin, notifications: notificationsAdmin, smtp: smtpAdmin, users: { ...admin.users, ...quotaAdmin.users }, quotas: quotaAdmin.quotas, nodes: { ...admin.nodes, ...nodeMutations }, maintenance, importer, databaseHosts, dnsProviders, s3Targets } };
 
 /** Paden die echt geïmplementeerd zijn (de rest is NOT_IMPLEMENTED). */
 export function implementedPaths(tree: Tree = phase1 as unknown as Tree, prefix = ""): string[] {

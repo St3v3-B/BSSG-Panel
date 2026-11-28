@@ -60,6 +60,15 @@ network, installs Floodgate and distributes its key to the backends. On Fabric i
 server's Minecraft version (plus Fabric API when it is missing; it stays when you turn Bedrock off); Fabric backends behind a proxy get Floodgate-Fabric. Bedrock uses a UDP port, so you need a free allocation for it.
 Geyser can share the UDP port of the Java port (RakNet) or use its own, depending on the transport you choose.
 
+## Players
+
+The **Players** tab shows who is online (refreshed every 10 seconds) and lets you manage the whitelist, operators and bans, and kick
+players. While the server runs the panel uses console commands (`whitelist add`, `op`, `ban`, ...); while it is stopped it edits
+`whitelist.json`, `ops.json`, `banned-players.json` and `banned-ips.json` directly, so changes apply on the next start. Player names
+are validated strictly. Bedrock players (Floodgate prefix `.`) can be added when Floodgate is installed. On a Velocity proxy the tab
+shows who is on which backend; whitelists and bans are managed on the backends. Plugins that replace `/list` (for example Essentials)
+can hide the player names; the count is still shown.
+
 ## Domains for game servers
 
 If an admin allows it for a server, you can attach a domain to a game server. Choose the `minecraft` protocol to get a SRV record so players

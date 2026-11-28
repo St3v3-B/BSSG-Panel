@@ -106,7 +106,7 @@ func (d *Docker) Create(ctx context.Context, c ContainerConfig) (string, error) 
 	}
 	var mounts []mount.Mount
 	for _, m := range c.Mounts {
-		mounts = append(mounts, mount.Mount{Type: mount.TypeBind, Source: m.Source, Target: m.Target})
+		mounts = append(mounts, mount.Mount{Type: mount.TypeBind, Source: m.Source, Target: m.Target, ReadOnly: m.ReadOnly})
 	}
 	pids := c.Resources.PidsLimit
 	cfg := &container.Config{

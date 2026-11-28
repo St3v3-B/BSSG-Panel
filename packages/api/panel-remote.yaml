@@ -391,6 +391,42 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/remote/deploys/{deploy_id}:
+    parameters:
+      - name: deploy_id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      operationId: reportDeploy
+      summary: Resultaat van een git-deploy (POST /api/servers/{uuid}/deploy)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, log_tail]
+              properties:
+                status: { type: string, enum: [succeeded, failed, cancelled] }
+                error: { type: [string, "null"], description: "Korte reden (geheimen geredacteerd)" }
+                commit:
+                  oneOf:
+                    - type: object
+                      required: [sha, author, message]
+                      properties:
+                        sha: { type: string }
+                        author: { type: string }
+                        message: { type: string }
+                        date: { type: [string, "null"], format: date-time }
+                    - type: "null"
+                log_tail: { type: array, items: { type: string }, description: "Laatste regels van de deploy-log (geredacteerd)" }
+                duration_ms: { type: integer, format: int64 }
+      responses:
+        "204": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/remote/backups/{backup_id}:
     parameters:
       - name: backup_id

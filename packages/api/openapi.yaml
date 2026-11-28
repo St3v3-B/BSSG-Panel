@@ -99,6 +99,8 @@ tags:
   - name: transfer
     description: Directe up/downloads vanuit de browser (JWT in ?token=)
   - name: backups
+  - name: deploy
+    description: Git-deploy van websites (clone/build/atomisch omwisselen)
   - name: databases
     description: Klantdatabases op de MariaDB van deze node (panel-mariadb); het panel beheert ze via de daemon
   - name: routes
@@ -889,6 +891,104 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /api/servers/{uuid}/deploy:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [deploy]
+      operationId: startDeploy
+      summary: Git-deploy van een website starten (op de achtergrond)
+      description: |
+        Alleen websites (`type: web`). Stappen: `fetching` (git fetch --depth 1 in een tijdelijke container,
+        `panel.role=install`, naam `panel-<uuid>-deploy-*`, uid 1000, geen capabilities, netwerk `panel-site-<uuid>`, limieten van de server) →
+        `building` (optioneel `build.command` in `build.image` op een kopie van de repo) → `publishing`
+        (gedeelde paden uit de huidige `target_dir` overnemen, dan `target_dir` atomisch omwisselen met renameat2
+        RENAME_EXCHANGE). Faalt iets vóór het omwisselen, dan blijft de vorige versie ongewijzigd staan.
+        Geheimen (token, privésleutel) komen alleen in de omgeving van de git-container en nooit in de log.
+        Resultaat via `POST /api/remote/deploys/{deploy_id}` (panel-remote.yaml). Eén deploy tegelijk per server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeployRequest" }
+      responses:
+        "202": { description: Gestart }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: "`deploy_running` (er loopt al een deploy) of `invalid_state` (installatie loopt)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+    get:
+      tags: [deploy]
+      operationId: getDeployProgress
+      summary: Lopende deploy van deze server (null als er niets loopt), met de laatste logregels
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deploy]
+                properties:
+                  deploy:
+                    oneOf:
+                      - $ref: "#/components/schemas/DeployProgress"
+                      - type: "null"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/servers/{uuid}/deploy/{deploy_id}/cancel:
+    parameters:
+      - { $ref: "#/components/parameters/Uuid" }
+      - name: deploy_id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      tags: [deploy]
+      operationId: cancelDeploy
+      summary: Lopende deploy afbreken (vóór het omwisselen; daarna `not_cancellable`)
+      description: "Resultaat via `POST /api/remote/deploys/{deploy_id}` met `status: cancelled`."
+      responses:
+        "202": { description: Annuleren gestart }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Server onbekend, of `not_running`: deze deploy loopt niet", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "409": { description: "`not_cancellable`: de deploy wisselt al om", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
+  /api/git/host-key:
+    post:
+      tags: [deploy]
+      operationId: scanGitHostKey
+      summary: SSH-hostsleutels van een git-host ophalen (voor TOFU in het panel)
+      description: |
+        De daemon maakt een SSH-verbinding (zonder in te loggen) per sleuteltype en geeft de sleutels met hun
+        SHA256-fingerprint en een known_hosts-regel. Het panel toont de fingerprint; pas na bevestiging gaat de
+        regel mee in `DeployRequest.auth.known_hosts`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [host, port]
+              properties:
+                host: { type: string, maxLength: 253 }
+                port: { type: integer, minimum: 1, maximum: 65535 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys]
+                properties:
+                  keys:
+                    type: array
+                    items: { $ref: "#/components/schemas/GitHostKey" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { description: "`host_unreachable`: geen SSH-server op host:port", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
   /api/servers/{uuid}/backups/progress:
     parameters: [{ $ref: "#/components/parameters/Uuid" }]
     get:
@@ -1481,7 +1581,7 @@ components:
 
     Permission:
       type: string
-      enum: [console.read, console.write, files.read, files.write, backup.create, backup.restore, database.manage, domain.manage, schedule.manage, power, players.read, players.manage, terminal]
+      enum: [console.read, console.write, files.read, files.write, backup.create, backup.restore, database.manage, domain.manage, schedule.manage, power, players.read, players.manage, terminal, deploy.read, deploy.manage]
 
     PowerAction:
       type: string
@@ -1815,6 +1915,74 @@ components:
           type: array
           description: Dumps komen in het archief onder `_databases/{name}.sql`
           items: { $ref: "#/components/schemas/DatabaseCredentials" }
+
+    DeployRequest:
+      type: object
+      required: [deploy_id, repo_url, branch, auth, target_dir, source_dir, shared_paths, build, restart]
+      properties:
+        deploy_id: { type: integer }
+        repo_url:
+          type: string
+          maxLength: 500
+          description: "`https://…` of SSH (`ssh://git@host[:port]/pad` of `git@host:pad`). Geen inloggegevens in de URL; geen `file://`, `ext::`, lokale paden of opties."
+        branch: { type: string, maxLength: 200, description: "Branchnaam (git check-ref-format), geen `-` vooraan" }
+        auth: { $ref: "#/components/schemas/DeployAuth" }
+        target_dir: { type: string, description: "Map binnen de serverdata die vervangen wordt, bv. `/public`; niet `/`" }
+        source_dir: { type: string, description: "Map binnen de repo (na de build) die gepubliceerd wordt; `/` = de hele repo" }
+        shared_paths:
+          type: array
+          maxItems: 50
+          items: { type: string }
+          description: "Paden relatief aan target_dir (bv. `.env`, `uploads`) die uit de huidige versie worden overgenomen en nooit overschreven"
+        build:
+          oneOf:
+            - type: object
+              required: [command, image]
+              properties:
+                command: { type: string, maxLength: 2000 }
+                image: { type: string, maxLength: 200 }
+            - type: "null"
+        restart: { type: boolean, description: "Draaiende site na het omwisselen herstarten" }
+        timeout_seconds: { type: integer, minimum: 30, maximum: 7200, description: "Standaard 1800" }
+        log_lines: { type: integer, minimum: 10, maximum: 2000, description: "Lengte van log_tail in het resultaat (standaard 300)" }
+
+    DeployAuth:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, enum: [none, token, ssh] }
+        username: { type: string, maxLength: 100, description: "token: gebruikersnaam voor HTTP Basic (standaard x-access-token)" }
+        token: { type: string, maxLength: 1000, description: "token: wachtwoord/token voor HTTP Basic" }
+        private_key: { type: string, maxLength: 10000, description: "ssh: privésleutel (OpenSSH-formaat)" }
+        known_hosts: { type: string, maxLength: 20000, description: "ssh: known_hosts-regels; StrictHostKeyChecking=yes" }
+
+    DeployProgress:
+      type: object
+      required: [deploy_id, phase, started_at, cancellable, log]
+      properties:
+        deploy_id: { type: integer }
+        phase: { type: string, enum: [fetching, building, publishing] }
+        started_at: { type: string, format: date-time }
+        cancellable: { type: boolean }
+        log: { type: array, items: { type: string }, description: "Laatste regels (hoogstens 500), geheimen geredacteerd" }
+        commit: { oneOf: [{ $ref: "#/components/schemas/DeployCommit" }, { type: "null" }] }
+
+    DeployCommit:
+      type: object
+      required: [sha, author, message, date]
+      properties:
+        sha: { type: string }
+        author: { type: string }
+        message: { type: string, description: "Eerste regel" }
+        date: { type: [string, "null"], format: date-time }
+
+    GitHostKey:
+      type: object
+      required: [type, fingerprint, known_hosts_line]
+      properties:
+        type: { type: string, description: "bv. ssh-ed25519" }
+        fingerprint: { type: string, description: "SHA256:… (zoals ssh-keygen -l)" }
+        known_hosts_line: { type: string }
 
     BackupProgress:
       type: object

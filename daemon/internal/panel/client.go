@@ -295,6 +295,14 @@ func (c *Client) ReportBackup(id int, ok bool, sha256 string, size int64, errMsg
 	})
 }
 
+// ReportDeploy meldt het resultaat van een git-deploy (asynchroon met retry). r wordt als JSON
+// verstuurd (deploy.Result); geen import van het deploy-pakket om cycli te vermijden.
+func (c *Client) ReportDeploy(id int, r any) {
+	c.async(fmt.Sprintf("deploy %d", id), func(ctx context.Context) error {
+		return c.do(ctx, http.MethodPost, fmt.Sprintf("/api/remote/deploys/%d", id), r, nil)
+	})
+}
+
 // ReportRestore meldt het resultaat van een herstel (asynchroon met retry).
 func (c *Client) ReportRestore(id int, ok bool, errMsg string) {
 	body := map[string]any{"successful": ok, "error": nil}

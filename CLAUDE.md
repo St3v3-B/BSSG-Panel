@@ -97,7 +97,10 @@ Toolchain: Go 1.27 (module vereist 1.26+), Node 22, pnpm 12, TypeScript 5.9
   aanraken**), `server` (servercontainer, met `panel.server_uuid`), `install` (tijdelijke
   install-container), `site` (eigen netwerk `panel-site-<uuid>` van élke server, ook game-servers; geen
   gedeelde `bridge`) en `proxy-net` (Velocity-netwerk `panel-net-<proxy-uuid>`, alleen de proxy en zijn
-  backends; subnets uit `DOCKER_NETWORK_POOL`). Servers herkent de daemon
+  backends; subnets uit `DOCKER_NETWORK_POOL`), `shell` (kortlevende tools-container van de webterminal/SSH-shell,
+  `panel-<uuid>-shell-<hex>`, met `panel.server_uuid`, alleen `/home/container` gemount, netwerk `panel-site-<uuid>`;
+  de daemon verwijdert hem bij sluiten en verweesde shells bij zijn start). Git-deploy gebruikt `install`
+  (`panel-<uuid>-deploy-{git,build}`, label `panel.deploy_id`). Servers herkent de daemon
   uitsluitend aan `panel.role=server` + `panel.server_uuid`.
 - **Caddy-admin** luistert op de unix-socket `/run/panel/caddy-admin.sock` (gedeelde map met de
   daemon), niet op TCP. `CADDY_ADMIN_URL` mag `unix://…` of (tests) `http://127.0.0.1:<poort>` zijn;

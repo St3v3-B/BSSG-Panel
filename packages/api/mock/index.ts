@@ -18,6 +18,7 @@ import { createBillingMock } from "./billing";
 import { createPlayersMock } from "./players";
 import { createCloneMock } from "./clone";
 import { createHostopsMock } from "./hostops";
+import { createDeployMock } from "./deploy";
 
 const MOCK_HITS: s.ContentHit[] = [
   { source: "modrinth", projectId: "fabric-api", name: "Fabric API", description: "Core API for Fabric mods", author: "modmuss50", downloads: 100000000, iconUrl: null, url: "https://modrinth.com/mod/fabric-api" },
@@ -262,7 +263,9 @@ export function createMock(): Implementation {
     quota: overview,
   });
   const hostops = createHostopsMock({ nodes: () => db.nodes, servers: () => db.servers, users: () => db.users, templates: () => db.templates, id });
+  const deploy = createDeployMock({ servers: () => db.servers, nextId: id, userName: (uid) => db.users.find((u) => u.id === uid)?.name ?? null });
   return {
+    deploy,
     auth: {
       me: ({ ctx }) => (ctx.session ? me(ctx.session) : null),
       branding: () => ({ panelName: db.settings.panelName, logoUrl: db.settings.logoUrl, accentColor: db.settings.accentColor }),

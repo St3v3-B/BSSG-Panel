@@ -1,5 +1,4 @@
-import type { DaemonServerSpec } from "@panel/api";
-import { ALL_PERMISSIONS } from "@panel/api";
+import { ALL_PERMISSIONS, type DaemonServerSpec } from "@panel/api";
 import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { getDb, schema } from "./db";

@@ -240,6 +240,22 @@ export class DaemonClient {
     return this.request<void>("POST", `/api/servers/${uuid}/backups/${backupId}/cancel`, undefined, 10_000);
   }
 
+  // ---------- git-deploy ----------
+  startDeploy(uuid: string, body: DaemonSchemas["DeployRequest"]) {
+    return this.request<void>("POST", `/api/servers/${uuid}/deploy`, body, 30_000);
+  }
+  /** Lopende deploy van deze server (null = niets). */
+  async deployProgress(uuid: string, timeoutMs = 3000): Promise<DaemonSchemas["DeployProgress"] | null> {
+    return (await this.request<{ deploy: DaemonSchemas["DeployProgress"] | null }>("GET", `/api/servers/${uuid}/deploy`, undefined, timeoutMs)).deploy;
+  }
+  cancelDeploy(uuid: string, deployId: number) {
+    return this.request<void>("POST", `/api/servers/${uuid}/deploy/${deployId}/cancel`, undefined, 10_000);
+  }
+  /** SSH-hostsleutels van host:port (via de node). */
+  async scanGitHostKey(host: string, port: number): Promise<DaemonSchemas["GitHostKey"][]> {
+    return (await this.request<{ keys: DaemonSchemas["GitHostKey"][] }>("POST", "/api/git/host-key", { host, port }, 40_000)).keys;
+  }
+
   // ---------- verplaatsen tussen nodes ----------
   /** Tar-stroom van de hele datamap (server moet gestopt zijn). De body moet volledig gelezen worden. */
   async exportData(uuid: string, o: { live?: boolean; signal?: AbortSignal } = {}): Promise<ReadableStream<Uint8Array>> {
