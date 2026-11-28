@@ -2,9 +2,9 @@
 // Unbound, eigen Redis) en voert de systeemcheck uit.
 //
 // De daemon spreekt uitsluitend containers aan met panel.managed=true, panel.instance=<PANEL_INSTANCE> én
-// panel.role=mail, en doet daar alleen `docker exec` (doveadm, postqueue, postsuper, postconf, postfix reload,
-// rspamadm, en bestanden in de DKIM-map), een SIGHUP aan Rspamd als `rspamadm control reload` niet lukt, en
-// `docker compose --profile mail up -d|stop` voor precies de diensten van dat profiel. Alle exec-argumenten gaan
+// panel.role=mail, en doet daar alleen `docker exec` (doveadm, postqueue, postsuper, postconf,
+// mail-reload, en bestanden in de DKIM-map) en een SIGHUP aan Rspamd als `mail-reload` daar niet lukt. Aan- en
+// uitzetten gaat via deploy/mail.sh (compose-profiel mail, --no-deps). Alle exec-argumenten gaan
 // als argv; gebruikersinvoer wordt vooraf strikt gevalideerd en komt nooit in een shell.
 package mail
 
@@ -74,11 +74,9 @@ type Config struct {
 	PublicIPv6 string // MAIL_PUBLIC_IPV6
 	Instance   string // PANEL_INSTANCE
 
-	// Compose: RepoDir/deploy/docker-compose.yml met --env-file EnvFile (zelfde aanroep als install.sh).
-	RepoDir        string
-	EnvFile        string
-	HTTPMode       string // "npm" voegt docker-compose.npm.yml toe
-	ComposeProfile string // standaard "mail"
+	// Aan/uit: RepoDir/deploy/mail.sh enable|disable met PANEL_ENV_FILE=EnvFile.
+	RepoDir string
+	EnvFile string
 
 	Postfix string // MAIL_POSTFIX_CONTAINER
 	Dovecot string // MAIL_DOVECOT_CONTAINER
@@ -104,7 +102,6 @@ func (c *Config) defaults() {
 	}
 	def(&c.Instance, "main")
 	def(&c.EnvFile, "/etc/panel/panel.env")
-	def(&c.ComposeProfile, "mail")
 	def(&c.Postfix, "panel-postfix")
 	def(&c.Dovecot, "panel-dovecot")
 	def(&c.Rspamd, "panel-rspamd")
@@ -121,8 +118,8 @@ type Service struct {
 	cfg  Config
 	dock Docker
 	log  *slog.Logger
-	// Compose draait `docker compose` (tests vervangen dit).
-	Compose ComposeRunner
+	// Script draait deploy/mail.sh (tests vervangen dit; het echte script schrijft panel.env).
+	Script ScriptRunner
 	// Checks: injecteerbare afhankelijkheden van de systeemcheck (nil-velden krijgen de echte implementatie).
 	Checks CheckEnv
 

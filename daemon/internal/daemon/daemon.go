@@ -585,7 +585,7 @@ func mailConfig(cfg config.Config) mail.Config {
 	m := cfg.Mail
 	return mail.Config{
 		Hostname: m.Hostname, PublicIPv4: m.PublicIPv4, PublicIPv6: m.PublicIPv6, Instance: cfg.Instance,
-		RepoDir: cfg.PanelRepoDir, EnvFile: m.EnvFile, HTTPMode: cfg.HTTPMode, ComposeProfile: m.Profile,
+		RepoDir: cfg.PanelRepoDir, EnvFile: m.EnvFile,
 		Postfix: m.Postfix, Dovecot: m.Dovecot, Rspamd: m.Rspamd, Unbound: m.Unbound,
 		DKIMDir: m.DKIMDir, DKIMOwner: m.DKIMOwner, VmailDir: m.VmailDir,
 		CaddyTLSAddr: cfg.CaddyTLSAddr, DNSBLResolver: m.DNSBLResolver, NTPServer: m.NTPServer, DiskPath: m.DiskPath,

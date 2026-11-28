@@ -120,7 +120,7 @@ tags:
       panel-unbound, panel-mail-redis). Alleen met het node-token en alleen op de lokale node (met panel-checkout,
       `PANEL_REPO_DIR`); elders 404 `not_local`. De daemon spreekt uitsluitend containers aan met `panel.managed=true`,
       het eigen `panel.instance` én `panel.role=mail`, en doet daar alleen `docker exec` (doveadm, postqueue, postsuper,
-      postconf, postfix, rspamadm en bestanden in de DKIM-map) met argv zonder shell, plus `compose --profile mail up -d`/`stop`.
+      postconf, `mail-reload` en bestanden in de DKIM-map) met argv zonder shell; aan/uit gaat via `deploy/mail.sh enable|disable`.
       Draait de benodigde container niet: 409 `mail_not_running`. Faalt het commando zelf: 502 `mail_command_failed`.
   - name: npm
     description: |
@@ -1570,21 +1570,22 @@ paths:
       operationId: enableMail
       summary: Mailstack starten (compose-profiel mail)
       description: |
-        `docker compose --env-file $PANEL_ENV_FILE -f deploy/docker-compose.yml [-f docker-compose.npm.yml] --profile mail up -d <diensten>`,
-        waarbij `<diensten>` precies de diensten zijn die alleen met het profiel bestaan (de rest van de stack wordt niet
-        aangeraakt). Synchroon; kan minuten duren als images gebouwd of opgehaald worden. Na het aanzetten zet het panel
+        `$PANEL_REPO_DIR/deploy/mail.sh enable` met `PANEL_ENV_FILE` in de omgeving: zet `mail` in `COMPOSE_PROFILES` in
+        panel.env, bouwt en start de maildiensten met `--no-deps` (de rest van de stack wordt niet aangeraakt) en maakt
+        Caddy alleen opnieuw als zijn mailsite wijzigde. Synchroon (los van de aanvraag, hoogstens 20 min); kan minuten
+        duren als images gebouwd of opgehaald worden. Exitcode 3 van het script = 409 `mail_not_configured`. Na het aanzetten zet het panel
         de DKIM-sleutels opnieuw (`PUT /api/mail/dkim/{domain}`) die eerder met 409 geweigerd werden.
       responses:
         "204": { description: Gestart }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/MailNotLocal" }
         "409":
-          description: "`mail_not_configured`: MAIL_HOSTNAME is leeg"
+          description: "`mail_not_configured`: MAIL_HOSTNAME (of MAIL_DB_PASSWORD) is leeg"
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "500":
-          description: compose faalde (`message` bevat het einde van de uitvoer)
+          description: mail.sh faalde (`message` bevat het einde van stderr)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1593,7 +1594,7 @@ paths:
     post:
       tags: [mail]
       operationId: disableMail
-      summary: Mailstack stoppen (`compose --profile mail stop <diensten>`; containers en volumes blijven)
+      summary: Mailstack stoppen (`deploy/mail.sh disable`, haalt mail uit COMPOSE_PROFILES, containers stoppen; volumes blijven)
       responses:
         "204": { description: Gestopt }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -1605,7 +1606,8 @@ paths:
       operationId: reloadMail
       summary: Postfix, Dovecot en Rspamd herladen (bv. na een nieuw certificaat)
       description: |
-        `postfix reload`, `doveadm reload` en `rspamadm control reload` (lukt dat niet: SIGHUP aan panel-rspamd).
+        `docker exec <container> mail-reload` in panel-postfix, panel-dovecot en panel-rspamd (zoekt het certificaat
+        opnieuw op en herlaadt de dienst; lukt het in panel-rspamd niet: SIGHUP).
         Containers die niet draaien worden overgeslagen; draait er geen, dan 409 `mail_not_running`.
       responses:
         "204": { description: Herladen }

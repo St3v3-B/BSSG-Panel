@@ -121,21 +121,18 @@ func (s *Service) Status(ctx context.Context) (Status, error) {
 	return st, nil
 }
 
-// Reload herlaadt Postfix, Dovecot en Rspamd (bv. na een nieuw certificaat). Containers die niet draaien
-// worden overgeslagen; draait er niets, dan ErrNotRunning.
+// Reload draait `mail-reload` in panel-postfix, panel-dovecot en panel-rspamd (zoekt het certificaat opnieuw op en
+// herlaadt de dienst; bv. na een nieuw certificaat). Containers die niet draaien worden overgeslagen; draait er
+// niets, dan ErrNotRunning.
 func (s *Service) Reload(ctx context.Context) error {
 	var errs []error
 	found := false
-	if s.running(ctx, s.cfg.Postfix) {
-		found = true
-		if _, err := s.exec(ctx, s.cfg.Postfix, nil, "postfix", "reload"); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if s.running(ctx, s.cfg.Dovecot) {
-		found = true
-		if _, err := s.exec(ctx, s.cfg.Dovecot, nil, "doveadm", "reload"); err != nil {
-			errs = append(errs, err)
+	for _, name := range []string{s.cfg.Postfix, s.cfg.Dovecot} {
+		if s.running(ctx, name) {
+			found = true
+			if _, err := s.exec(ctx, name, nil, "mail-reload"); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 	if s.running(ctx, s.cfg.Rspamd) {
@@ -150,8 +147,9 @@ func (s *Service) Reload(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+// reloadRspamd: `mail-reload` in panel-rspamd, anders SIGHUP aan de container.
 func (s *Service) reloadRspamd(ctx context.Context) error {
-	if _, err := s.exec(ctx, s.cfg.Rspamd, nil, "rspamadm", "control", "reload"); err == nil {
+	if _, err := s.exec(ctx, s.cfg.Rspamd, nil, "mail-reload"); err == nil {
 		return nil
 	}
 	c, err := s.container(ctx, s.cfg.Rspamd)

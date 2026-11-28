@@ -1334,9 +1334,10 @@ export interface paths {
         put?: never;
         /**
          * Mailstack starten (compose-profiel mail)
-         * @description `docker compose --env-file $PANEL_ENV_FILE -f deploy/docker-compose.yml [-f docker-compose.npm.yml] --profile mail up -d <diensten>`,
-         *     waarbij `<diensten>` precies de diensten zijn die alleen met het profiel bestaan (de rest van de stack wordt niet
-         *     aangeraakt). Synchroon; kan minuten duren als images gebouwd of opgehaald worden. Na het aanzetten zet het panel
+         * @description `$PANEL_REPO_DIR/deploy/mail.sh enable` met `PANEL_ENV_FILE` in de omgeving: zet `mail` in `COMPOSE_PROFILES` in
+         *     panel.env, bouwt en start de maildiensten met `--no-deps` (de rest van de stack wordt niet aangeraakt) en maakt
+         *     Caddy alleen opnieuw als zijn mailsite wijzigde. Synchroon (los van de aanvraag, hoogstens 20 min); kan minuten
+         *     duren als images gebouwd of opgehaald worden. Exitcode 3 van het script = 409 `mail_not_configured`. Na het aanzetten zet het panel
          *     de DKIM-sleutels opnieuw (`PUT /api/mail/dkim/{domain}`) die eerder met 409 geweigerd werden.
          */
         post: operations["enableMail"];
@@ -1355,7 +1356,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mailstack stoppen (`compose --profile mail stop <diensten>`; containers en volumes blijven) */
+        /** Mailstack stoppen (`deploy/mail.sh disable`, haalt mail uit COMPOSE_PROFILES, containers stoppen; volumes blijven) */
         post: operations["disableMail"];
         delete?: never;
         options?: never;
@@ -1374,7 +1375,8 @@ export interface paths {
         put?: never;
         /**
          * Postfix, Dovecot en Rspamd herladen (bv. na een nieuw certificaat)
-         * @description `postfix reload`, `doveadm reload` en `rspamadm control reload` (lukt dat niet: SIGHUP aan panel-rspamd).
+         * @description `docker exec <container> mail-reload` in panel-postfix, panel-dovecot en panel-rspamd (zoekt het certificaat
+         *     opnieuw op en herlaadt de dienst; lukt het in panel-rspamd niet: SIGHUP).
          *     Containers die niet draaien worden overgeslagen; draait er geen, dan 409 `mail_not_running`.
          */
         post: operations["reloadMail"];
@@ -4505,7 +4507,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["MailNotLocal"];
-            /** @description `mail_not_configured`: MAIL_HOSTNAME is leeg */
+            /** @description `mail_not_configured`: MAIL_HOSTNAME (of MAIL_DB_PASSWORD) is leeg */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -4514,7 +4516,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description compose faalde (`message` bevat het einde van de uitvoer) */
+            /** @description mail.sh faalde (`message` bevat het einde van stderr) */
             500: {
                 headers: {
                     [name: string]: unknown;

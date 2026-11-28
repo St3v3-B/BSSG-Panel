@@ -72,10 +72,9 @@ type MailConfig struct {
 	Hostname   string // MAIL_HOSTNAME (leeg = mail uit)
 	PublicIPv4 string // MAIL_PUBLIC_IPV4
 	PublicIPv6 string // MAIL_PUBLIC_IPV6
-	// EnvFile (PANEL_ENV_FILE, standaard /etc/panel/panel.env): --env-file voor compose; MAIL_HOSTNAME en
+	// EnvFile (PANEL_ENV_FILE, standaard /etc/panel/panel.env): gaat als PANEL_ENV_FILE naar deploy/mail.sh; MAIL_HOSTNAME en
 	// MAIL_PUBLIC_IPV4/6 worden daar bij elke aanroep opnieuw uit gelezen.
 	EnvFile       string
-	Profile       string // MAIL_COMPOSE_PROFILE (mail)
 	Postfix       string // MAIL_POSTFIX_CONTAINER (panel-postfix)
 	Dovecot       string // MAIL_DOVECOT_CONTAINER (panel-dovecot)
 	Rspamd        string // MAIL_RSPAMD_CONTAINER (panel-rspamd)
@@ -115,7 +114,7 @@ func Load(getenv func(string) string) (Config, error) {
 	c.Mail = MailConfig{
 		Hostname: strings.ToLower(get("MAIL_HOSTNAME", "")), PublicIPv4: get("MAIL_PUBLIC_IPV4", ""),
 		PublicIPv6: get("MAIL_PUBLIC_IPV6", ""), EnvFile: get("PANEL_ENV_FILE", "/etc/panel/panel.env"),
-		Profile: get("MAIL_COMPOSE_PROFILE", "mail"), Postfix: get("MAIL_POSTFIX_CONTAINER", "panel-postfix"),
+		Postfix: get("MAIL_POSTFIX_CONTAINER", "panel-postfix"),
 		Dovecot: get("MAIL_DOVECOT_CONTAINER", "panel-dovecot"), Rspamd: get("MAIL_RSPAMD_CONTAINER", "panel-rspamd"),
 		Unbound: get("MAIL_UNBOUND_CONTAINER", "panel-unbound"), DKIMDir: get("MAIL_DKIM_DIR", "/var/lib/rspamd/dkim"),
 		DKIMOwner: get("MAIL_DKIM_OWNER", ""), VmailDir: get("MAIL_VMAIL_DIR", "/var/vmail"),

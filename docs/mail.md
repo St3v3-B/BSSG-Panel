@@ -36,8 +36,8 @@ mailcontainers onderling, met internet voor uitgaande mail, DNS en updates van C
 afhangen); zonder mailcontainers zit daar verder niets op.
 
 Alle mailcontainers, -netwerken en -volumes hebben de labels `panel.managed=true`, `panel.instance=main` en
-`panel.role=mail`. De daemon doet er alleen `docker exec` in (doveadm, postqueue, postfix reload, rspamc) en zet het
-profiel aan of uit.
+`panel.role=mail`. De daemon doet er alleen `docker exec` in (doveadm, postqueue, postsuper, postconf, `mail-reload`
+en de DKIM-bestanden in panel-rspamd) en zet het profiel aan of uit via `deploy/mail.sh enable|disable`.
 
 Configuratie staat in `deploy/mail/` en wordt read-only in de containers gemount. Wachtwoorden en de hostnaam staan
 nooit in die bestanden: de entrypoints vullen ze bij de start in vanuit de omgeving.

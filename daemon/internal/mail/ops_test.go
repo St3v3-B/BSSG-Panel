@@ -161,7 +161,7 @@ func TestDKIM(t *testing.T) {
 	}
 	reloadFails := true
 	fd.Handler = func(c string, argv []string, _ string) (string, string, int, bool) {
-		if argv[0] == "rspamadm" {
+		if argv[0] == "mail-reload" {
 			if reloadFails {
 				return "", "control socket missing", 1, true
 			}
@@ -247,7 +247,7 @@ func TestReload(t *testing.T) {
 	for _, c := range fd.Calls() {
 		got = append(got, c.Container+": "+strings.Join(c.Argv, " "))
 	}
-	want := []string{"panel-postfix: postfix reload", "panel-dovecot: doveadm reload", "panel-rspamd: rspamadm control reload"}
+	want := []string{"panel-postfix: mail-reload", "panel-dovecot: mail-reload", "panel-rspamd: mail-reload"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("%v", got)
 	}
@@ -315,69 +315,88 @@ func TestDeleteMailboxData(t *testing.T) {
 	}
 }
 
-func writeRepo(t *testing.T) string {
+func writeRepo(t *testing.T, script string) string {
 	t.Helper()
 	repo := t.TempDir()
 	os.MkdirAll(filepath.Join(repo, "deploy"), 0o755)
-	os.WriteFile(filepath.Join(repo, "deploy", "docker-compose.yml"), []byte("name: panel\n"), 0o644)
-	os.WriteFile(filepath.Join(repo, "deploy", "docker-compose.npm.yml"), []byte("services: {}\n"), 0o644)
+	os.WriteFile(filepath.Join(repo, "deploy", "mail.sh"), []byte(script), 0o755)
 	return repo
 }
 
 func TestEnableDisable(t *testing.T) {
-	repo := writeRepo(t)
+	// Nep-runner: het echte deploy/mail.sh schrijft panel.env en draait nooit in tests.
+	repo := writeRepo(t, "#!/bin/sh\nexit 99\n")
 	envFile := filepath.Join(t.TempDir(), "panel.env")
 	var mu sync.Mutex
 	var runs []string
 	var envs [][]string
-	runner := func(_ context.Context, env []string, args ...string) (string, error) {
+	code, stderr := 0, ""
+	fd := NewFakeDocker()
+	s := New(Config{RepoDir: repo, EnvFile: envFile}, fd, nil)
+	s.Script = func(ctx context.Context, env []string, name string, args ...string) (string, string, int, error) {
 		mu.Lock()
 		defer mu.Unlock()
-		line := strings.Join(args, " ")
-		runs = append(runs, line)
-		envs = append(envs, env)
-		switch {
-		case strings.Contains(line, "--profile mail config --services"):
-			return "panel\npostgres\npostfix\ndovecot\nrspamd\n", nil
-		case strings.HasSuffix(line, "config --services"):
-			return "panel\npostgres\n", nil
+		if _, ok := ctx.Deadline(); !ok {
+			t.Error("no timeout")
 		}
-		return "", nil
+		runs = append(runs, name+" "+strings.Join(args, " "))
+		envs = append(envs, env)
+		return "", stderr, code, nil
 	}
-	fd := NewFakeDocker()
-	s := New(Config{RepoDir: repo, EnvFile: envFile, HTTPMode: "npm"}, fd, nil)
-	s.Compose = runner
 	ctx := context.Background()
 	if err := s.Enable(ctx); !errors.Is(err, ErrNotConfigured) {
 		t.Fatalf("no hostname: %v", err)
 	}
 	if len(runs) != 0 {
-		t.Fatal("compose ran without hostname")
+		t.Fatal("mail.sh ran without hostname")
 	}
 	// MAIL_HOSTNAME uit het env-bestand (zonder herstart van de daemon).
 	os.WriteFile(envFile, []byte("# x\nMAIL_HOSTNAME=\"Mail.Panel.Test\"\n"), 0o600)
 	if s.Hostname() != "mail.panel.test" {
 		t.Fatalf("hostname %q", s.Hostname())
 	}
-	if err := s.Enable(ctx); err != nil {
+	// Een afgebroken aanvraag stopt het script niet.
+	cctx, cancel := context.WithCancel(ctx)
+	cancel()
+	if err := s.Enable(cctx); err != nil {
 		t.Fatal(err)
 	}
-	base := "compose --env-file " + envFile + " -f " + filepath.Join(repo, "deploy", "docker-compose.yml") + " -f " + filepath.Join(repo, "deploy", "docker-compose.npm.yml")
-	if last := runs[len(runs)-1]; last != base+" --profile mail up -d dovecot postfix rspamd" {
-		t.Fatalf("up: %s", last)
+	script := filepath.Join(repo, "deploy", "mail.sh")
+	if runs[0] != script+" enable" || !slices.Equal(envs[0], []string{"PANEL_ENV_FILE=" + envFile}) {
+		t.Fatalf("%v %v", runs, envs)
 	}
-	if !slices.Contains(envs[len(envs)-1], "PANEL_ENV_FILE="+envFile) {
-		t.Fatalf("env %v", envs[len(envs)-1])
+	if err := s.Disable(ctx); err != nil || runs[1] != script+" disable" {
+		t.Fatalf("%v %v", runs, err)
 	}
-	if err := s.Disable(ctx); err != nil {
-		t.Fatal(err)
+	code, stderr = 3, "mail.sh: mail_not_configured: MAIL_HOSTNAME and MAIL_DB_PASSWORD must be set\n"
+	if err := s.Enable(ctx); !errors.Is(err, ErrNotConfigured) || !strings.Contains(err.Error(), "MAIL_DB_PASSWORD") {
+		t.Fatalf("exit 3: %v", err)
 	}
-	if last := runs[len(runs)-1]; last != base+" --profile mail stop dovecot postfix rspamd" {
-		t.Fatalf("stop: %s", last)
+	code, stderr = 1, "docker compose failed\n"
+	if err := s.Disable(ctx); err == nil || errors.Is(err, ErrNotConfigured) || !strings.Contains(err.Error(), "docker compose failed") {
+		t.Fatalf("exit 1: %v", err)
 	}
-	// Zonder checkout: ErrNoCompose.
-	s2 := New(Config{Hostname: "mail.panel.test", EnvFile: envFile}, fd, nil)
-	if err := s2.Enable(ctx); !errors.Is(err, ErrNoCompose) {
+	// Zonder checkout of zonder mail.sh: ErrNoCompose.
+	if err := New(Config{Hostname: "mail.panel.test", EnvFile: envFile}, fd, nil).Enable(ctx); !errors.Is(err, ErrNoCompose) {
 		t.Fatalf("no repo: %v", err)
+	}
+	if err := New(Config{Hostname: "mail.panel.test", EnvFile: envFile, RepoDir: t.TempDir()}, fd, nil).Disable(ctx); !errors.Is(err, ErrNoCompose) {
+		t.Fatalf("no mail.sh: %v", err)
+	}
+}
+
+func TestExecScript(t *testing.T) {
+	// Een eigen nep-script in een tijdelijke map (nooit deploy/mail.sh): argv, env en exitcode komen goed door.
+	dir := t.TempDir()
+	out := filepath.Join(dir, "out")
+	script := filepath.Join(dir, "mail.sh")
+	os.WriteFile(script, []byte("#!/bin/sh\necho \"$1 $PANEL_ENV_FILE\" > \"$OUT\"\necho 'mail.sh: mail_not_configured' >&2\nexit 3\n"), 0o755)
+	_, stderr, code, err := ExecScript(context.Background(), []string{"PANEL_ENV_FILE=/x/panel.env", "OUT=" + out}, script, "enable")
+	b, _ := os.ReadFile(out)
+	if err != nil || code != 3 || !strings.Contains(stderr, "mail_not_configured") || strings.TrimSpace(string(b)) != "enable /x/panel.env" {
+		t.Fatalf("%q %d %v %q", stderr, code, err, b)
+	}
+	if _, _, code, err := ExecScript(context.Background(), nil, filepath.Join(dir, "missing")); err == nil || code != -1 {
+		t.Fatalf("missing: %d %v", code, err)
 	}
 }

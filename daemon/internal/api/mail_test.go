@@ -147,11 +147,11 @@ func TestMailEndpoints(t *testing.T) {
 	}
 	var reloads []string
 	for _, c := range fd.Calls() {
-		if strings.HasSuffix(strings.Join(c.Argv, " "), "reload") {
+		if c.Argv[0] == "mail-reload" {
 			reloads = append(reloads, c.Container+" "+strings.Join(c.Argv, " "))
 		}
 	}
-	if strings.Join(reloads, ",") != "panel-postfix postfix reload,panel-dovecot doveadm reload" {
+	if strings.Join(reloads, ",") != "panel-postfix mail-reload,panel-dovecot mail-reload" {
 		t.Fatalf("%v", reloads)
 	}
 

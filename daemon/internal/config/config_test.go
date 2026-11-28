@@ -104,7 +104,7 @@ func TestMailConfig(t *testing.T) {
 	}
 	m := c.Mail
 	if m.Hostname != "" || m.EnvFile != "/etc/panel/panel.env" || m.Postfix != "panel-postfix" || m.Rspamd != "panel-rspamd" ||
-		m.DKIMDir != "/var/lib/rspamd/dkim" || m.VmailDir != "/var/vmail" || m.Profile != "mail" || m.NTPServer != "pool.ntp.org" {
+		m.DKIMDir != "/var/lib/rspamd/dkim" || m.VmailDir != "/var/vmail" || m.NTPServer != "pool.ntp.org" {
 		t.Fatalf("%+v", m)
 	}
 	c, _ = Load(env(map[string]string{"NODE_TOKEN": "t", "NODE_DOMAIN": "node1.test", "PANEL_DOMAIN": "panel.test",
