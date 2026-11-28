@@ -14,5 +14,8 @@
 {$NODE_DOMAIN} {
 	reverse_proxy unix//run/panel/daemon.sock {
 		flush_interval -1
+		# Websockets (console, relay-tunnels van andere nodes) niet direct sluiten bij elke
+		# config-wijziging via de admin-API (nieuwe route), maar pas na een uur.
+		stream_close_delay 1h
 	}
 }

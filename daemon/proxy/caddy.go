@@ -184,6 +184,8 @@ func NewCaddyWithOptions(cfg Config, opt CaddyOptions) (*Caddy, error) {
 var (
 	hostRe  = regexp.MustCompile(`^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 	plainRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$`) // container- en netwerknamen
+	// Upstream.Dial: unix//absoluut/pad of host:poort.
+	dialRe = regexp.MustCompile(`^(unix//[A-Za-z0-9_./-]{1,200}|[A-Za-z0-9][A-Za-z0-9_.-]{0,252}:[0-9]{1,5})$`)
 )
 
 func normHost(h string) (string, error) {
@@ -236,6 +238,13 @@ func normRoute(r Route) (Route, error) {
 		}
 	}
 	u := r.Upstream
+	if u.Dial != "" {
+		if !dialRe.MatchString(u.Dial) {
+			return r, fmt.Errorf("proxy: %s: invalid upstream dial address %q", h, u.Dial)
+		}
+		r.Upstream = Upstream{Dial: u.Dial}
+		return r, nil
+	}
 	if !plainRe.MatchString(u.Container) {
 		return r, fmt.Errorf("proxy: %s: ongeldige upstream-container %q", h, u.Container)
 	}
@@ -323,6 +332,22 @@ func upstreamHandler(r Route) (map[string]any, error) {
 	page, err := placeholderHandler(PlaceholderUnavailable)
 	if err != nil {
 		return nil, err
+	}
+	if r.Upstream.Dial != "" {
+		return map[string]any{
+			"handler": "subroute",
+			"routes": []any{map[string]any{"handle": []any{map[string]any{
+				"handler":        "reverse_proxy",
+				"flush_interval": -1,
+				// Websockets door de relay overleven een config-wijziging (1 uur, in ns).
+				"stream_close_delay": int64(time.Hour),
+				"upstreams":          []map[string]string{{"dial": r.Upstream.Dial}},
+			}}}},
+			"errors": map[string]any{"routes": []any{map[string]any{
+				"match":  []map[string]any{{"expression": "{http.error.status_code} in [502, 503, 504]"}},
+				"handle": []any{page},
+			}}},
+		}, nil
 	}
 	return map[string]any{
 		"handler": "subroute",

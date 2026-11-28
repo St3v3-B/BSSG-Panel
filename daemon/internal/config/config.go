@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/netip"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +41,18 @@ type Config struct {
 	// NetworkPool (DOCKER_NETWORK_POOL): IPv4-blok waaruit elk netwerk van de daemon een eigen
 	// subnet krijgt (standaard 10.213.0.0/16; "docker" = Docker kiest zelf). Nul = Docker kiest.
 	NetworkPool netip.Prefix
+	// HTTP(S)-relay (zie internal/relay).
+	// RelaySocket (RELAY_SOCKET): unix-socket waarop deze node als edge het verkeer van andere nodes
+	// aanneemt (standaard relay.sock naast DAEMON_SOCKET; "off" = uit).
+	RelaySocket string
+	// RelayCaddyDial (RELAY_CADDY_DIAL): hoe Caddy die socket bereikt (standaard "unix/" + RelaySocket).
+	RelayCaddyDial string
+	// RelayWebUpstream (RELAY_WEB_UPSTREAM): de eigen Caddy zonder TLS voor sites als deze node via een
+	// andere node loopt (standaard unix://<map van DAEMON_SOCKET>/caddy-relay.sock).
+	RelayWebUpstream string
+	// HTTPMode (HTTP_MODE): "direct" (Caddy op 80/443, standaard) of "relay" (Caddy zonder publieke poorten,
+	// HTTP(S) via een andere node). Alleen gemeld aan het panel; of de tunnel draait bepaalt het panel.
+	HTTPMode string
 	// ImageCheckInterval: hoe vaak op nieuwe images gecontroleerd wordt (IMAGE_CHECK_INTERVAL, 0 = uit).
 	ImageCheckInterval time.Duration
 }
@@ -67,7 +80,24 @@ func Load(getenv func(string) string) (Config, error) {
 		MariaDBContainer:    get("MARIADB_CONTAINER", "panel-mariadb"),
 		MariaDBRootPassword: get("MARIADB_ROOT_PASSWORD", ""),
 	}
+	sockDir := "/run/panel"
+	if c.DaemonSocket != "" {
+		sockDir = filepath.Dir(c.DaemonSocket)
+	}
+	c.RelaySocket = get("RELAY_SOCKET", filepath.Join(sockDir, "relay.sock"))
+	if c.RelaySocket == "off" {
+		c.RelaySocket = ""
+	}
+	c.RelayCaddyDial = get("RELAY_CADDY_DIAL", "")
+	if c.RelayCaddyDial == "" && c.RelaySocket != "" {
+		c.RelayCaddyDial = "unix/" + c.RelaySocket
+	}
+	c.RelayWebUpstream = get("RELAY_WEB_UPSTREAM", "unix://"+filepath.Join(sockDir, "caddy-relay.sock"))
+	c.HTTPMode = strings.ToLower(get("HTTP_MODE", "direct"))
 	var errs []error
+	if c.HTTPMode != "direct" && c.HTTPMode != "relay" {
+		errs = append(errs, fmt.Errorf("HTTP_MODE: %q is not direct or relay", c.HTTPMode))
+	}
 	if c.NodeToken == "" {
 		errs = append(errs, errors.New("NODE_TOKEN is missing"))
 	}

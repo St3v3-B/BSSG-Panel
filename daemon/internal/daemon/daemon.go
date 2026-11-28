@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -68,6 +69,12 @@ type Deps struct {
 	HelloInterval, HelloRetry time.Duration
 	// DBWatchInterval: hoe vaak de MariaDB-beschikbaarheid gecontroleerd wordt (standaard 20 s).
 	DBWatchInterval time.Duration
+	// Relay (tests): CA's voor het certificaat van de edge, een eigen dial naar de edge, backoff,
+	// ping-interval en hoe vaak de relay-config opnieuw bij het panel gehaald wordt (standaard 1 min).
+	RelayRoots                       *x509.CertPool
+	RelayDial                        func(ctx context.Context, network, addr string) (net.Conn, error)
+	RelayMinBackoff, RelayMaxBackoff time.Duration
+	RelayPing, RelayInterval         time.Duration
 }
 
 // Daemon is een draaiende daemon.
@@ -82,6 +89,7 @@ type Daemon struct {
 	backup *backup.Service
 	dbadm  *dbadmin.Admin
 	sftp   *sftpd.Server
+	relay  *relaySvc
 
 	healthy   atomic.Int32 // 0 onbekend, 1 gezond, 2 ongezond
 	needSync  atomic.Bool
@@ -151,6 +159,9 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	}
 	d.api = api.New(api.Options{NodeToken: cfg.NodeToken, AllowedOrigins: cfg.AllowedOrigins(), AuthTimeout: deps.WSAuthTimeout, Update: upd.Run, Restart: restart}, d.mgr, routes, verifier, d.systemInfo, deps.Log)
 	d.api.SetBackups(d.backup)
+	d.relay = newRelaySvc(d)
+	d.api.SetRelay(d.relay)
+	d.routes.SetExtra(d.relay.edge.Routes)
 	if cfg.PanelRepoDir != "" {
 		d.api.SetUpgrade(&upgrade.Service{RepoDir: cfg.PanelRepoDir, UpgradeDir: filepath.Join(cfg.DataDir, "upgrade")})
 	}
@@ -200,12 +211,15 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 	d.mgr.ReconcileNetworks(ctx)
 	d.mgr.StartImageUpdates()
+	h := d.api.Handler()
+	d.relay.client.API = h
+	// Laatst bekende relay-config (edge-routes en tunnel), vóór de eerste Sync.
+	d.relay.load()
 	if err := d.routes.Sync(ctx); err != nil {
 		d.log.Warn("syncing routes failed", "err", err)
 		d.needSync.Store(true)
 	}
 
-	h := d.api.Handler()
 	if d.cfg.DaemonSocket != "" {
 		ln, err := listenUnix(d.cfg.DaemonSocket)
 		if err != nil {
@@ -219,6 +233,13 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 	d.tcpAddr = ln.Addr().String()
 	d.serve(ln, h)
+	if d.cfg.RelaySocket != "" {
+		rln, err := listenUnix(d.cfg.RelaySocket)
+		if err != nil {
+			return fmt.Errorf("relay-socket %s: %w", d.cfg.RelaySocket, err)
+		}
+		d.serve(rln, d.relay.edge)
+	}
 	if d.cfg.TLSPort > 0 {
 		m := &tlscert.Manager{
 			Domain: d.cfg.NodeDomain, Email: d.cfg.ACMEEmail, Directory: d.cfg.ACMEDirectory,
@@ -271,8 +292,13 @@ func (d *Daemon) Start(ctx context.Context) error {
 	}
 	d.wg.Add(1)
 	go d.routerLoop()
+	d.wg.Add(1)
+	go d.relay.loop()
 	return nil
 }
+
+// RelayRefresh haalt de relay-config nu op (tests).
+func (d *Daemon) RelayRefresh(ctx context.Context) error { return d.relay.Refresh(ctx) }
 
 func listenUnix(p string) (net.Listener, error) {
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -357,6 +383,7 @@ func (d *Daemon) routerLoop() {
 func (d *Daemon) Shutdown(ctx context.Context) {
 	d.closeOnce.Do(func() {
 		close(d.stop)
+		d.relay.close()
 		d.api.CloseAll()
 		if d.sftp != nil {
 			d.sftp.Close()
@@ -368,6 +395,9 @@ func (d *Daemon) Shutdown(ctx context.Context) {
 		d.wg.Wait()
 		if d.cfg.DaemonSocket != "" {
 			_ = os.Remove(d.cfg.DaemonSocket)
+		}
+		if d.cfg.RelaySocket != "" {
+			_ = os.Remove(d.cfg.RelaySocket)
 		}
 	})
 }

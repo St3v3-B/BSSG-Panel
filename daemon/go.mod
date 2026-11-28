@@ -7,7 +7,9 @@ require (
 	github.com/docker/go-connections v0.8.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.3
+	github.com/hashicorp/yamux v0.1.2
 	github.com/klauspost/compress v1.19.2
+	github.com/minio/minio-go/v7 v7.4.1
 	github.com/pkg/sftp v1.13.7
 	golang.org/x/crypto v0.57.0
 	golang.org/x/sys v0.48.0
@@ -32,7 +34,6 @@ require (
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
-	github.com/minio/minio-go/v7 v7.4.1 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect

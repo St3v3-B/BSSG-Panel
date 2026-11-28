@@ -37,6 +37,14 @@ type Panel struct {
 	// FailNext laat zoveel verzoeken (behalve jwt-key) met 500 falen.
 	FailNext int
 	sftp     map[string]SFTPUser
+	relay    any
+}
+
+// SetRelay zet het antwoord van GET /api/remote/relay (nil = 204, geen relay).
+func (p *Panel) SetRelay(cfg any) {
+	p.mu.Lock()
+	p.relay = cfg
+	p.mu.Unlock()
 }
 
 // SFTPUser is een login die /api/remote/sftp/auth accepteert.
@@ -85,6 +93,18 @@ func (p *Panel) serve(w http.ResponseWriter, r *http.Request) {
 		p.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{jwk}})
+		return
+	}
+	if r.URL.Path == "/api/remote/relay" && r.Method == http.MethodGet {
+		p.mu.Lock()
+		cfg := p.relay
+		p.mu.Unlock()
+		if cfg == nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(cfg)
 		return
 	}
 	var body map[string]any
