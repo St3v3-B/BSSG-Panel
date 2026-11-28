@@ -82,6 +82,8 @@ export const NODE_JOIN = ["admin.nodes.createJoin", "admin.nodes.joinCommand", "
 export const STATS = ["servers.statsHistory", "servers.statsSparklines"];
 export const QUOTA = ["account.quota", "servers.create", "servers.updateOwnLimits", "servers.deleteOwn", "admin.users.getQuota", "admin.users.setQuota", "admin.users.clearQuota", "admin.quotas.usage"];
 /** Server dupliceren en verbruiksalarmen. */
+/** Staging → productie (websites publiceren). */
+export const PUBLISH = ["publish.info", "publish.createStaging", "publish.start", "publish.job", "publish.history"];
 export const CLONE_ALARMS = ["servers.cloneOptions", "servers.clone", "servers.cloneJob", "servers.clones", "servers.cancelClone", "servers.alarms", "servers.updateAlarms", "admin.alarms.defaults", "admin.alarms.setDefaults", "admin.alarms.active"];
 /** Pakketten en facturatie. */
 export const BILLING = [
@@ -103,7 +105,7 @@ export const DEVACCESS = ["servers.terminalToken", "admin.servers.setTerminalAll
 describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES, ...STATS, ...NOTIFY2, ...BILLING, ...PLAYERS, ...CLONE_ALARMS, ...HOSTOPS, ...DEVACCESS, ...DEPLOY];
+    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES, ...STATS, ...NOTIFY2, ...BILLING, ...PLAYERS, ...CLONE_ALARMS, ...HOSTOPS, ...DEVACCESS, ...DEPLOY, ...PUBLISH];
     for (const p of all) expect(contract.has(p), p).toBe(true);
     expect(implementedPaths().sort()).toEqual(all.sort());
   });

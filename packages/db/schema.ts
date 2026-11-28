@@ -516,6 +516,38 @@ export const serverClones = pgTable("server_clones", {
   finishedAt: ts("finished_at"),
 }, (t) => [index("server_clones_source_idx").on(t.sourceServerId), index("server_clones_target_idx").on(t.targetServerId)]);
 
+// ---------- staging → productie (websites publiceren) ----------
+
+/**
+ * Eén publicatie van een staging-kopie naar de oorspronkelijke site. `temp_databases`: veiligheidskopieën van de
+ * productiedatabases op dezelfde MariaDB (voor het terugzetten bij een fout; daarna altijd weg).
+ */
+export const sitePublishes = pgTable("site_publishes", {
+  id: pk(),
+  stagingServerId: integer("staging_server_id").references(() => servers.id, { onDelete: "set null" }),
+  productionServerId: integer("production_server_id").references(() => servers.id, { onDelete: "set null" }),
+  stagingUuid: uuid("staging_uuid").notNull(),
+  productionUuid: uuid("production_uuid").notNull(),
+  stagingName: text("staging_name").notNull(),
+  productionName: text("production_name").notNull(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+  status: text("status", { enum: ["running", "succeeded", "failed"] }).notNull().default("running"),
+  steps: jsonb("steps").$type<Array<{ key: string; status: "pending" | "running" | "done" | "failed" | "skipped" }>>().notNull().default([]),
+  options: jsonb("options").$type<{ files: boolean; databases: boolean; exclude: string[]; rewriteUrls: boolean; backup: boolean; sameNode: boolean }>().notNull(),
+  backupId: integer("backup_id").references(() => backups.id, { onDelete: "set null" }),
+  databases: jsonb("databases").$type<Array<{ from: string; to: string }>>().notNull().default([]),
+  tempDatabases: jsonb("temp_databases").$type<Array<{ name: string; username: string; of: string; nodeId: number; imported: boolean }>>().notNull().default([]),
+  kept: jsonb("kept").$type<string[]>().notNull().default([]),
+  urlRewrite: jsonb("url_rewrite").$type<{ from: string; to: string; replaced: number; skipped: number } | null>(),
+  warnings: jsonb("warnings").$type<string[]>().notNull().default([]),
+  /** Na een fout: productie is teruggezet (true), of dat lukte niet (false); null = niet nodig. */
+  restored: boolean("restored"),
+  errorCode: text("error_code"),
+  error: text("error"),
+  createdAt: createdAt(),
+  finishedAt: ts("finished_at"),
+}, (t) => [index("site_publishes_staging_idx").on(t.stagingServerId), index("site_publishes_production_idx").on(t.productionServerId)]);
+
 // ---------- verbruiksalarmen ----------
 
 /**
