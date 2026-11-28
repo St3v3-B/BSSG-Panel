@@ -165,6 +165,9 @@ func (c *Client) ImageSettings(ctx context.Context) (ImageSettings, error) {
 
 // ReportImages meldt het resultaat van een image-controle (asynchroon met retry).
 func (c *Client) ReportImages(items []ImageStatus) {
+	if items == nil {
+		items = []ImageStatus{} // JSON [] i.p.v. null: het panel eist een lijst
+	}
 	c.async("images", func(ctx context.Context) error {
 		return c.do(ctx, http.MethodPost, "/api/remote/node/images", map[string]any{"servers": items}, nil)
 	})
