@@ -22,7 +22,7 @@ INSTANCE="mailstack-$$"
 WORK="$(mktemp -d -t panel-mailstack-XXXXXX)"
 LABELS=(--label panel.test=true --label "panel.instance=$INSTANCE")
 FILTER=(--filter label=panel.test=true --filter "label=panel.instance=$INSTANCE")
-MAIL_HOSTNAME=mail.panel.test
+export MAIL_HOSTNAME=mail.panel.test
 
 pass() { printf '  ok   %s\n' "$*"; }
 fail() {
@@ -54,8 +54,8 @@ trap cleanup EXIT
 port_of() { docker port "$1" "$2/tcp" | sed -n 's/^127\.0\.0\.1:\([0-9]*\)$/\1/p' | head -1; }
 
 wait_banner() { # name port prefix [tls]
-  local i out
-  for i in $(seq 1 60); do
+  local out
+  for _ in $(seq 1 60); do
     if [ "${4:-}" = tls ]; then
       out="$(timeout 5 openssl s_client -quiet -connect "127.0.0.1:$2" </dev/null 2>/dev/null | head -1 || true)"
     else
@@ -112,6 +112,7 @@ hash() { # password -> {ARGON2ID}$argon2id$...
 }
 ALICE_HASH="$(hash "$ALICE_PW")"
 BOB_HASH="$(hash "$BOB_PW")"
+# shellcheck disable=SC2016 # literal $ in the expected prefix
 case "$ALICE_HASH" in '{ARGON2ID}$argon2id$v=19$m=65536,t=3,p=1$'*) pass "doveadm pw -s ARGON2ID: ${ALICE_HASH:0:40}..." ;;
   *) fail "unexpected hash format: $ALICE_HASH" ;; esac
 
@@ -196,7 +197,7 @@ pass "DKIM key for panel.test (selector dkim) written via docker exec, rspamd re
 # ------------------------------------------------------------------ checks
 step "SMTP / IMAP"
 SMTP_PORT="$P25" SUBMISSION_PORT="$P587" SUBMISSIONS_PORT="$P465" IMAPS_PORT="$P993" \
-  CA_FILE="$CERTDIR/$MAIL_HOSTNAME.crt" MAIL_HOSTNAME="$MAIL_HOSTNAME" ALICE_PW="$ALICE_PW" BOB_PW="$BOB_PW" \
+  CA_FILE="$CERTDIR/$MAIL_HOSTNAME.crt" ALICE_PW="$ALICE_PW" BOB_PW="$BOB_PW" \
   python3 -I "$REPO/deploy/test/mail-client.py" || fail "mail checks"
 
 rlog="$(docker logs "$INSTANCE-rspamd" 2>&1)"

@@ -53,3 +53,7 @@
 		stream_close_delay 1h
 	}
 }
+
+# Mailmodule: alleen als MAIL_HOSTNAME gezet is (compose zet dan MAIL_CADDY=on) een site voor het certificaat
+# van Postfix/Dovecot. Zonder MAIL_HOSTNAME matcht "-site*.caddy" niets. Zie mail/on-site.caddy en docs/mail.md.
+import /etc/caddy/mail/{$MAIL_CADDY}-site*.caddy

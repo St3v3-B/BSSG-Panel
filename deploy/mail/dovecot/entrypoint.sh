@@ -2,6 +2,7 @@
 # Entrypoint of panel-dovecot: config from /etc/panel-mail (read-only mount of deploy/mail/dovecot/) to
 # /etc/dovecot, with the database password and the certificate filled in.
 set -eu
+# shellcheck source=/dev/null
 . /usr/local/lib/mail-tls.sh
 mail_env_check
 

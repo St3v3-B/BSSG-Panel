@@ -2,6 +2,7 @@
 # Entrypoint of panel-postfix: config from /etc/panel-mail (read-only mount of deploy/mail/postfix/) to
 # /etc/postfix, with MAIL_HOSTNAME, MAIL_DB_PASSWORD and the certificate filled in. No secrets in the repo.
 set -eu
+# shellcheck source=/dev/null
 . /usr/local/lib/mail-tls.sh
 mail_env_check
 
