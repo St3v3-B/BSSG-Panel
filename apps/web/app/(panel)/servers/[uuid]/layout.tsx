@@ -3,6 +3,7 @@ import { ArrowLeft, Gamepad2, Globe, Shield } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { trpc } from "@/lib/trpc";
+import { MaintenanceNotice } from "@/app/_components/maintenance-notice";
 import { CopyText } from "@/app/_components/copy-button";
 import { QueryError } from "@/app/_components/query-error";
 import { ServerTabs } from "@/app/_components/server/server-tabs";
@@ -83,6 +84,7 @@ export default function ServerLayout({ children }: { children: ReactNode }) {
         </div>
         <ServerTabs server={s} />
       </div>
+      <MaintenanceNotice maintenance={s.maintenance} />
       {children}
     </div>
   );

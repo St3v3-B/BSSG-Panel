@@ -20,6 +20,7 @@ import { errorInfo, errorText } from "@/app/_lib/errors";
 import { formatBytes, formatMb } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
 import { NodeHttpRelay } from "./node-relay";
+import { NodeMaintenance } from "./node-maintenance";
 
 /** Fouttekst; NOT_IMPLEMENTED (backend nog niet klaar) krijgt een eigen, rustige melding. */
 export function AdminError({ error }: { error: unknown }) {
@@ -345,6 +346,7 @@ function NodeCard({ node, relayName }: { node: Node; relayName?: string }) {
         </div>
         <div className="flex gap-1.5">
           {node.isLocal && <Badge variant="info">{n.local}</Badge>}
+          {node.maintenance && <Badge variant="warning">{t.hostops.maint.badge}</Badge>}
           {!node.supportsDomains && <Badge variant="secondary">{n.join.noDomains}</Badge>}
           {node.httpRelayNodeId !== null && <Badge variant="secondary" data-testid="node-relay-badge">{n.relay.badge(relayName ?? String(node.httpRelayNodeId))}</Badge>}
           {node.diskQuotaMode ? <Badge variant="secondary">{node.diskQuotaMode}</Badge> : <Badge variant="warning">{n.neverConnected}</Badge>}
@@ -383,6 +385,7 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
             {d.name}
             <Badge variant={h.online ? "success" : "destructive"}>{h.online ? n.online : n.offline}</Badge>
             {d.isLocal && <Badge variant="info">{n.local}</Badge>}
+            {d.maintenance && <Badge variant="warning">{t.hostops.maint.badge}</Badge>}
           </h1>
           <code className="font-mono text-sm text-muted-foreground">{d.fqdn}</code>
         </div>
@@ -425,6 +428,7 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
       )}
       {!d.isLocal && d.httpRelayNodeId === null && <NodeDomainSupport node={d} />}
       <NodeHttpRelay node={d} />
+      <NodeMaintenance node={d} />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">{n.health}</CardTitle>

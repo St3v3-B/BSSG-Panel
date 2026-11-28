@@ -1,6 +1,6 @@
 "use client";
 import type { CSSProperties } from "react";
-import { Gamepad2, Globe, Moon, Play } from "lucide-react";
+import { Gamepad2, Globe, Moon, Play, Wrench } from "lucide-react";
 import Link from "next/link";
 import type { ServerSummary, StatsSparkline } from "@panel/api";
 import { trpc } from "@/lib/trpc";
@@ -8,6 +8,7 @@ import { CopyButton } from "@/app/_components/copy-button";
 import { ImageUpdateBadge } from "@/app/_components/image-updates";
 import { powerAvailability } from "@/app/_components/power-buttons";
 import { StatusBadge } from "@/app/_components/status-badge";
+import { Badge } from "@/app/_components/ui/badge";
 import { Button } from "@/app/_components/ui/button";
 import { Card } from "@/app/_components/ui/card";
 import { Spinner } from "@/app/_components/ui/spinner";
@@ -73,6 +74,11 @@ export function ServerCard({ server, sparkline }: { server: ServerSummary; spark
         <div className="flex shrink-0 flex-wrap items-center gap-1.5 max-sm:w-full sm:flex-col sm:items-end sm:gap-1">
           <StatusBadge status={server.status} lastSeenAt={server.lastSeenAt} />
           <ImageUpdateBadge info={server.imageUpdate} />
+          {server.maintenance && (
+            <Badge variant="warning" data-testid="maintenance-badge">
+              <Wrench /> {t.hostops.maint.badge}
+            </Badge>
+          )}
         </div>
       </div>
 
