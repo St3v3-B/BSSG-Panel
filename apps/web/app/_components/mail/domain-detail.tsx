@@ -15,7 +15,7 @@ import { Input } from "@/app/_components/ui/input";
 import { Label } from "@/app/_components/ui/label";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
-import { errorInfo, errorText } from "@/app/_lib/errors";
+import { errorText } from "@/app/_lib/errors";
 import { formatDate, formatMb } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
 import { cn } from "@/lib/utils";
@@ -284,7 +284,7 @@ export function MailDomainDetailView({ id }: { id: number }) {
     return (
       <div className="space-y-4">
         {back}
-        <QueryError error={q.error} title={errorInfo(q.error).code === "NOT_FOUND" ? t.detail.notFound : undefined} />
+        <QueryError error={q.error} />
       </div>
     );
   if (!q.data)

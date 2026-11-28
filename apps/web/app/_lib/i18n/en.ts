@@ -3148,7 +3148,6 @@ export const en = {
       editLimits: "Change limits",
       limitsTitle: "Domain limits",
       saveLimits: "Save",
-      notFound: "This mail domain doesn't exist (anymore).",
     },
     mailboxes: {
       search: "Search mailboxes",

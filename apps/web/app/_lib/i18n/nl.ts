@@ -3147,7 +3147,6 @@ export const nl: Dict = {
       editLimits: "Limieten wijzigen",
       limitsTitle: "Limieten van het domein",
       saveLimits: "Opslaan",
-      notFound: "Dit maildomein bestaat niet (meer).",
     },
     mailboxes: {
       search: "Mailboxen zoeken",
