@@ -10,6 +10,7 @@ import { getDb, schema, type Db } from "../db";
 import { buildServerSpec, validateVariables } from "../spec";
 import { fetchServerByUuid, imagePolicyOf, requireServer, serverVariables, toDetail, userPublic } from "../servers-data";
 import { deleteServerFully } from "./admin";
+import { assertPlanDatabaseRoom, planForServer } from "../billing/plans";
 import type { Ctx } from "@panel/api";
 
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -29,6 +30,9 @@ export const quotaOf = (r: QuotaRow): QuotaInput => ({
   maxPortsPerServer: r.maxPortsPerServer,
 });
 
+/** Servers uit een pakket (abonnement) tellen niet mee voor het quotum: daar gelden de pakketlimieten. */
+const notPlanServer = sql`not exists (select 1 from ${schema.subscriptions} where ${schema.subscriptions.serverId} = ${schema.servers.id})`;
+
 /** Verbruik (som van limieten van alle eigen servers, aantal servers en databases) voor meerdere gebruikers. */
 export async function usageFor(db: Db | Tx, userIds: number[]): Promise<Map<number, QuotaUsage>> {
   const out = new Map<number, QuotaUsage>(userIds.map((i) => [i, { ramMb: 0, diskMb: 0, cpuPct: 0, servers: 0, databases: 0 }]));
@@ -42,14 +46,14 @@ export async function usageFor(db: Db | Tx, userIds: number[]): Promise<Map<numb
       n: count(),
     })
     .from(schema.servers)
-    .where(inArray(schema.servers.ownerId, userIds))
+    .where(and(inArray(schema.servers.ownerId, userIds), notPlanServer))
     .groupBy(schema.servers.ownerId);
   for (const r of srv) Object.assign(out.get(r.owner)!, { ramMb: r.ram, diskMb: r.disk, cpuPct: r.cpu, servers: r.n });
   const dbs = await db
     .select({ owner: schema.servers.ownerId, n: count() })
     .from(schema.databases)
     .innerJoin(schema.servers, eq(schema.servers.id, schema.databases.serverId))
-    .where(inArray(schema.servers.ownerId, userIds))
+    .where(and(inArray(schema.servers.ownerId, userIds), notPlanServer))
     .groupBy(schema.servers.ownerId);
   for (const r of dbs) out.get(r.owner)!.databases = r.n;
   return out;
@@ -71,8 +75,10 @@ function checkLimits(q: QuotaRow, used: QuotaUsage, next: { ramMb: number; diskM
 }
 
 /** Voor databases.create: telt de database mee en reserveert (binnen de quotumlock) de rij. */
-export async function reserveDatabase(ownerId: number, insert: (tx: Tx) => Promise<typeof schema.databases.$inferSelect>): Promise<typeof schema.databases.$inferSelect> {
+export async function reserveDatabase(ownerId: number, insert: (tx: Tx) => Promise<typeof schema.databases.$inferSelect>, serverId?: number): Promise<typeof schema.databases.$inferSelect> {
   return getDb().transaction(async (tx) => {
+    // Pakketserver: de databaselimiet van het pakket in plaats van het quotum.
+    if (serverId !== undefined && (await assertPlanDatabaseRoom(tx, serverId))) return insert(tx);
     const q = await lockQuota(tx, ownerId);
     if (q) {
       const used = (await usageFor(tx, [ownerId])).get(ownerId)!;
@@ -177,6 +183,7 @@ export const quotaServers: Pick<Implementation["servers"], "create" | "updateOwn
     const a = await requireServer(ctx, input.uuid, "owner", { mutates: true });
     const b = a.bundle;
     if (b.server.ownerId !== uid(ctx)) throw new TRPCError({ code: "FORBIDDEN", message: "OWNER_ONLY" });
+    if (await planForServer(getDb(), b.server.id)) throw new TRPCError({ code: "FORBIDDEN", message: "PLAN_SERVER" });
     const next = { ...input.limits, swapMb: b.server.swapMb };
     const vars = await serverVariables(b.server.id);
     await getDb().transaction(async (tx) => {

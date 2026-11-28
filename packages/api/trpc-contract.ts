@@ -412,6 +412,40 @@ export const contract = {
     remove: mutation("user", server.extend({ userId: s.Id }), s.Ok),
   },
 
+  /**
+   * Pakketten en (optionele) facturatie. Alles FORBIDDEN `PLANS_DISABLED` als pakketten uit staan
+   * (behalve status/subscriptions/invoices/invoice, die werken altijd voor eigen gegevens).
+   */
+  billing: {
+    status: query("user", none, s.BillingStatus),
+    /** Zichtbare pakketten (leeg als pakketten uit staan), op sortering. */
+    plans: query("user", none, z.array(s.Plan)),
+    subscriptions: query("user", none, z.array(s.Subscription)),
+    invoices: query("user", s.PageInput, s.page(s.Invoice)),
+    /** Eigen factuur (volledige admin: elke factuur), printbaar. */
+    invoice: query("user", byId, s.InvoiceDetail),
+    /**
+     * Pakket kiezen en de server aanmaken (node automatisch: voldoende RAM/disk en vrije poorten, binnen de
+     * nodes van het pakket). Fouten: FORBIDDEN `PLANS_DISABLED` / `SELF_SERVICE_DISABLED` / `TEMPLATE_NOT_ALLOWED`,
+     * NOT_FOUND `PLAN_NOT_FOUND`, PRECONDITION_FAILED `NO_CAPACITY` / `BILLING_PROVIDER_NOT_CONFIGURED`.
+     * Betaald pakket: de server staat opgeschort (`BILLING_UNPAID`) tot de eerste factuur betaald is.
+     */
+    subscribe: mutation(
+      "user",
+      z.object({ planId: s.Id, name: z.string().min(1).max(100), templateId: s.Id, variables: z.record(z.string(), z.string()).default({}) }),
+      s.SubscribeResult,
+    ),
+    /** Betaalpagina voor een eigen open/achterstallige factuur. CONFLICT `INVOICE_NOT_OPEN`, PRECONDITION_FAILED `BILLING_DISABLED`. */
+    pay: mutation("user", z.object({ invoiceId: s.Id }), z.object({ url: z.string() })),
+    /**
+     * Opzeggen. Betaald: aan het einde van de periode (server opgeschort met `SUBSCRIPTION_ENDED`);
+     * gratis: meteen. `deleteServer` (alleen gratis/meteen) verwijdert de server direct; `confirmName` moet dan de servernaam zijn.
+     */
+    cancel: mutation("user", byId.extend({ deleteServer: z.boolean().default(false), confirmName: z.string().optional() }), s.Subscription),
+    /** Opzegging intrekken (verlengen) zolang de periode nog loopt. */
+    resume: mutation("user", byId, s.Subscription),
+  },
+
   admin: {
     dashboard: query("admin", none, z.object({ nodes: z.array(s.NodeHealth), alerts: z.array(s.DashboardAlert), serverCount: z.number().int(), userCount: z.number().int() })),
 
@@ -592,6 +626,39 @@ export const contract = {
       set: mutation("admin", s.SmtpInput, s.SmtpSettings),
       /** Stuurt een testmail; fouten komen terug in `error` (bv. verbinding geweigerd, login mislukt). */
       test: mutation("admin", z.object({ to: s.EmailAddress }), z.object({ ok: z.boolean(), error: z.string().nullable() })),
+    },
+
+    /** Pakketten. Verwijderen met lopende abonnementen → CONFLICT `PLAN_IN_USE` (zet hem dan onzichtbaar). */
+    plans: {
+      list: query("admin", none, z.array(s.Plan)),
+      create: mutation("admin", s.PlanInput, s.Plan),
+      update: mutation("admin", byId.extend(s.PlanInput.shape), s.Plan),
+      delete: mutation("admin", byId, s.Ok),
+    },
+
+    subscriptions: {
+      list: query("admin", s.PageInput.extend({ userId: s.Id.optional(), status: s.SubscriptionStatus.optional() }), s.page(s.Subscription)),
+      /** Pakket gratis toekennen: maakt de server voor de gebruiker (zelfde node-keuze als subscribe). */
+      grant: mutation(
+        "admin",
+        z.object({ userId: s.Id, planId: s.Id, name: z.string().min(1).max(100), templateId: s.Id, variables: z.record(z.string(), z.string()).default({}) }),
+        s.SubscribeResult,
+      ),
+      /** Meteen beëindigen; `deleteServer` verwijdert ook de server, anders wordt hij opgeschort. */
+      cancel: mutation("admin", byId.extend({ deleteServer: z.boolean().default(false) }), s.Ok),
+    },
+
+    invoices: {
+      list: query("admin", s.PageInput.extend({ userId: s.Id.optional(), status: s.InvoiceStatus.optional() }), s.page(s.Invoice)),
+      /** Handmatig als betaald markeren (bv. bankoverschrijving); heft een opschorting door achterstand op. */
+      markPaid: mutation("admin", byId, s.Invoice),
+      void: mutation("admin", byId, s.Invoice),
+    },
+
+    /** Instellingen voor pakketten en facturatie (API-sleutels versleuteld; nooit terug, alleen een hint). */
+    billing: {
+      get: query("admin", none, s.BillingSettings),
+      update: mutation("admin", s.BillingSettingsInput, s.BillingSettings),
     },
 
     settings: {
