@@ -39,6 +39,8 @@ const config: NextConfig = {
   outputFileTracingRoot: join(here, "../.."),
   transpilePackages: ["@panel/api", "@panel/db"],
   poweredByHeader: false,
+  // Alleen `next dev`: ook via 127.0.0.1 openen (WSL, testomgevingen); anders blokkeert Next de dev-bronnen en hydrateert de pagina niet.
+  allowedDevOrigins: ["127.0.0.1"],
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
