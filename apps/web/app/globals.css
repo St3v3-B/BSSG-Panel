@@ -103,6 +103,9 @@
 @keyframes ping-soft { 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 @keyframes shimmer { to { background-position: -200% 0; } }
 @keyframes drift { to { transform: translate(6vmax, 4vmax) scale(1.12); } }
+/* Vinkje dat groen wordt (mail: DNS-record klopt, gekopieerd) */
+@keyframes pop { 0% { transform: scale(0.4); opacity: 0; } 60% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes ring-burst { 0% { transform: scale(0.6); opacity: 0.7; } 100% { transform: scale(2.6); opacity: 0; } }
 
 @layer base {
   * {
