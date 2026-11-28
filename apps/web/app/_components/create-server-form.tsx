@@ -98,6 +98,8 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
   const template = trpc.admin.templates.get.useQuery({ id: templateId ?? 0 }, { enabled: templateId != null });
   const templateType = template.data?.type ?? templates.data?.find((t) => t.id === templateId)?.type;
   const templateVars = useMemo(() => (template.data?.id === templateId ? template.data.variables : []), [template.data, templateId]);
+  const templatePorts = template.data?.id === templateId ? template.data.ports : [];
+  const recommended = template.data?.id === templateId ? template.data.recommended : null;
   useEffect(() => {
     setVariables(Object.fromEntries(templateVars.map((v) => [v.key, v.default])));
   }, [templateVars]);
@@ -401,6 +403,27 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
             </div>
           )}
           {show(errors.allocations) && <p className="text-xs text-destructive">{errors.allocations}</p>}
+          {templatePorts.length > 0 && (
+            <div className="space-y-1.5 rounded-lg border border-border p-3 text-sm" data-testid="template-ports">
+              <div className="font-medium">{i18n.ports.templatePorts}</div>
+              <ol className="space-y-1">
+                {templatePorts.map((p, i) => {
+                  const a = allocationIds[i] !== undefined ? freeAllocations.find((x) => x.id === allocationIds[i]) : undefined;
+                  return (
+                    <li key={p.env} className="flex flex-wrap items-center gap-2">
+                      <Badge variant={i === 0 ? "default" : "secondary"}>{i18n.ports[p.protocol]}</Badge>
+                      <span>{p.name ?? p.env}</span>
+                      <code className="font-mono text-xs text-muted-foreground">{p.env}</code>
+                      {p.offset !== null && <span className="text-xs text-muted-foreground">{p.exact ? i18n.ports.exact(p.offset) : i18n.ports.usual(p.offset)}</span>}
+                      {i > 0 && <span className="text-xs text-muted-foreground">{p.required ? i18n.ports.required : i18n.ports.optional}</span>}
+                      {a && <code className="font-mono text-xs">→ {a.ip}:{a.port}</code>}
+                    </li>
+                  );
+                })}
+              </ol>
+              <p className="text-xs text-muted-foreground">{i18n.ports.templatePortsHint}</p>
+            </div>
+          )}
         </Section>
       )}
 
@@ -426,6 +449,19 @@ export function CreateServerForm({ onCreated, initialKind = "game" }: { onCreate
                 />
               </Field>
             ))}
+          </div>
+        )}
+        {recommended && (recommended.ramMb || recommended.diskMb) && (
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground" data-testid="recommended-limits">
+            <span>{i18n.ports.recommended(recommended.ramMb ? `${recommended.ramMb} MB` : "-", recommended.diskMb ? `${recommended.diskMb} MB` : "-")}</span>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setLimits((cur) => (cur ? { ...cur, ...(recommended.ramMb ? { ramMb: String(recommended.ramMb) } : {}), ...(recommended.diskMb ? { diskMb: String(recommended.diskMb) } : {}) } : cur))}
+            >
+              {i18n.ports.useRecommended}
+            </Button>
           </div>
         )}
         <label className="flex items-center gap-2 text-sm">

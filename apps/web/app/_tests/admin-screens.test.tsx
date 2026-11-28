@@ -85,7 +85,7 @@ describe("allocations", () => {
     fireEvent.change(screen.getByLabelText("Ports"), { target: { value: "25570 - 25572" } });
     fireEvent.click(screen.getByRole("button", { name: /Add/ }));
     expect(await screen.findByText("3 allocations added.")).toBeTruthy();
-    expect(input(bodies, "admin.allocations.create")[0]).toEqual({ nodeId: 1, ip: "203.0.113.10", ports: "25570-25572" });
+    expect(input(bodies, "admin.allocations.create")[0]).toEqual({ nodeId: 1, ip: "203.0.113.10", ports: "25570-25572", protocol: "both" });
     await waitFor(() => expect(screen.getAllByTestId("allocation")).toHaveLength(7));
   });
 });

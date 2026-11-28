@@ -673,6 +673,7 @@ export function AllocationsAdmin({ nodeId }: { nodeId: number }) {
   const list = trpc.admin.allocations.list.useQuery({ nodeId });
   const [ip, setIp] = useState("");
   const [ports, setPorts] = useState("");
+  const [protocol, setProtocol] = useState<"both" | "tcp" | "udp">("both");
   const [touched, setTouched] = useState(false);
   const create = trpc.admin.allocations.create.useMutation({
     onSuccess: () => {
@@ -698,7 +699,7 @@ export function AllocationsAdmin({ nodeId }: { nodeId: number }) {
           onSubmit={(e) => {
             e.preventDefault();
             setTouched(true);
-            if (!ipErr && !portsErr) create.mutate({ nodeId, ip: ip.trim(), ports: ports.replace(/\s+/g, "") });
+            if (!ipErr && !portsErr) create.mutate({ nodeId, ip: ip.trim(), ports: ports.replace(/\s+/g, ""), protocol });
           }}
         >
           <div className="w-44 space-y-1">
@@ -714,6 +715,18 @@ export function AllocationsAdmin({ nodeId }: { nodeId: number }) {
             </Label>
             <Input id="alloc-ports" placeholder={a.portsHint} value={ports} onChange={(e) => setPorts(e.target.value)} />
             {touched && portsErr && <p className="text-xs text-destructive">{portsErr}</p>}
+          </div>
+          <div className="w-36 space-y-1">
+            <Label htmlFor="alloc-protocol" className="sr-only">
+              {t.ports.protocol}
+            </Label>
+            <Select id="alloc-protocol" value={protocol} title={t.ports.protocolHint} onChange={(e) => setProtocol(e.target.value as typeof protocol)}>
+              {(["both", "tcp", "udp"] as const).map((p) => (
+                <option key={p} value={p}>
+                  {t.ports[p]}
+                </option>
+              ))}
+            </Select>
           </div>
           <Button type="submit" disabled={create.isPending}>
             {create.isPending ? <Spinner /> : <Plus />} {a.add}
@@ -738,6 +751,7 @@ export function AllocationsAdmin({ nodeId }: { nodeId: number }) {
                 <code className="flex-1 font-mono">
                   {al.ip}:{al.port}
                 </code>
+                {al.protocol !== "both" && <Badge variant="secondary">{t.ports[al.protocol]}</Badge>}
                 {al.serverUuid ? (
                   <Link href={`/servers/${al.serverUuid}`} className="text-xs text-muted-foreground hover:underline">
                     {al.primary ? a.primary : a.inUse}
