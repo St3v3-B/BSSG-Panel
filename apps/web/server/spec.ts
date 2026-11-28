@@ -149,7 +149,7 @@ export function buildServerSpec(i: SpecInput): DaemonServerSpec {
   const t = i.template;
   const ports = mapServerPorts(t, i.allocations);
   // `both` laat het panel weg (= ontbrekend veld, zoals vóór de protocol-kolom): bestaande specs blijven gelijk.
-  const allocations = ports.allocations.map((a) => ({ ip: a.ip, port: a.port, primary: a.primary, ...(a.protocol !== "both" ? { protocol: a.protocol } : {}) }));
+  const allocations = ports.allocations.map((a) => ({ ip: a.ip, port: a.port, primary: a.primary, ...(a.protocol !== "both" ? { protocol: a.protocol } : {}) })) as DaemonServerSpec["allocations"];
   const extras = templateExtras(t);
   return {
     uuid: i.uuid,
