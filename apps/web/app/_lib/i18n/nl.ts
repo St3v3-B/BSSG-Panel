@@ -328,6 +328,8 @@ export const nl: Dict = {
     "database.manage": { label: "Databases", hint: "Databases aanmaken en wachtwoorden zien" },
     "domain.manage": { label: "Domeinen", hint: "Domeinen koppelen en DNS controleren" },
     "schedule.manage": { label: "Schema's", hint: "Geplande taken beheren" },
+    "players.read": { label: "Spelers bekijken", hint: "Online spelers, whitelist, operators en bans zien" },
+    "players.manage": { label: "Spelers beheren", hint: "Whitelist, op/deop, bannen en kicken" },
   },
   subusers: {
     ownerOnly: "Alleen de eigenaar van de server kan gebruikers toevoegen en rechten geven.",

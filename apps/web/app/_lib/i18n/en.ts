@@ -329,6 +329,8 @@ export const en = {
     "database.manage": { label: "Databases", hint: "Create databases and see passwords" },
     "domain.manage": { label: "Domains", hint: "Connect domains and check DNS" },
     "schedule.manage": { label: "Schedules", hint: "Manage scheduled tasks" },
+    "players.read": { label: "View players", hint: "See online players, whitelist, operators and bans" },
+    "players.manage": { label: "Manage players", hint: "Whitelist, op/deop, ban and kick" },
   },
   subusers: {
     ownerOnly: "Only the server owner can add users and grant permissions.",
