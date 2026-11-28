@@ -55,8 +55,8 @@ export async function checkCode(ctx: Ctx, userId: number, secretEnc: string | nu
   return true;
 }
 
-const failKeys = (ctx: Ctx, userId: number) => [`totp:fail:u:${userId}`, ...(ctx.ip ? [`totp:fail:ip:${ctx.ip}`] : [])];
-async function assertNotLocked(keys: string[]) {
+export const failKeys = (ctx: Ctx, userId: number) => [`totp:fail:u:${userId}`, ...(ctx.ip ? [`totp:fail:ip:${ctx.ip}`] : [])];
+export async function assertNotLocked(keys: string[]) {
   const l = getLimiter();
   for (const k of keys) if ((await l.get(k)) >= TOTP_MAX_FAILURES) throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "TOO_MANY_ATTEMPTS" });
 }

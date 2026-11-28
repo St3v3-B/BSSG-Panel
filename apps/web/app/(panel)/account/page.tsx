@@ -7,6 +7,7 @@ import { RecoveryCodesCard, RecoveryCodesList } from "@/app/_components/account/
 import { SessionsCard } from "@/app/_components/account/sessions-card";
 import { ApiKeysCard } from "@/app/_components/account/api-keys-card";
 import { PasswordLoginCard } from "@/app/_components/account/password-login-card";
+import { PasskeysCard } from "@/app/_components/account/passkeys-card";
 import { AccountWebhookCard } from "@/app/_components/notifications/webhook-card";
 import { NotificationSettingsCards } from "@/app/_components/notifications/notification-center";
 import { CopyButton } from "@/app/_components/copy-button";
@@ -54,6 +55,7 @@ export default function AccountPage() {
         </Card>
         <TotpCard enabled={me.totpEnabled} isAdmin={me.isAdmin} />
         {!me.isEmergency && <PasswordLoginCard totpEnabled={me.totpEnabled} />}
+        {!me.isEmergency && <PasskeysCard />}
         <SessionsCard />
         <ApiKeysCard />
         <NotificationSettingsCards isAdmin={me.isAdmin} />

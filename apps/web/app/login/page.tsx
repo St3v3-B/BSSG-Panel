@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { BrandMark } from "@/app/_components/branding";
 import { ThemeToggle } from "@/app/_components/theme";
 import { LocaleSwitcher } from "@/app/_components/locale-switcher";
+import { PasskeyLoginButton, PasskeyVerifyButton } from "@/app/_components/passkey-login";
 import { isTotpCode, TotpCodeInput } from "@/app/_components/totp-code-input";
 import { Alert, AlertDescription, AlertTitle } from "@/app/_components/ui/alert";
 import { Button } from "@/app/_components/ui/button";
@@ -140,6 +141,7 @@ function DiscordStep({ redirectTo }: { redirectTo: string }) {
             </a>
           </Button>
         )}
+        <PasskeyLoginButton redirectTo={redirectTo} />
         <p className="text-center text-xs text-muted-foreground">{t.login.noAccount}</p>
       </CardContent>
     </Card>
@@ -332,6 +334,12 @@ function TotpStep({ redirectTo, name }: { redirectTo: string; name: string | nul
           <Button type="submit" className="w-full" disabled={!valid || verify.isPending}>
             {verify.isPending && <Spinner />} {t.login.confirm}
           </Button>
+          <PasskeyVerifyButton
+            onVerified={async () => {
+              await utils.invalidate();
+              router.replace(redirectTo);
+            }}
+          />
           <Button
             type="button"
             variant="link"

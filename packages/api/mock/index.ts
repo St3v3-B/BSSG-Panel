@@ -93,6 +93,8 @@ export function createMock(): Implementation {
     totpEnabled: new Map<number, boolean>([[1, true]]),
     /** Backup-login per gebruiker (standaard uit). */
     passwordLogins: new Map<number, { username: string; updatedAt: Date; setByAdmin: boolean }>(),
+    /** Passkeys per gebruiker. */
+    passkeys: new Map<number, s.Passkey[]>([[1, [{ id: 1, name: "MacBook Touch ID", createdAt: new Date("2026-11-21T10:00:00Z"), lastUsedAt: new Date("2026-11-27T08:30:00Z"), transports: ["internal", "hybrid"], backedUp: true }]]]),
     quotas: new Map<number, s.QuotaInput>([[2, { maxRamMb: 4096, maxDiskMb: 50_000, maxCpuPct: 300, maxServers: 3, maxDatabases: 2, templateIds: null, nodeIds: null, maxPortsPerServer: 2 }]]),
     webhooks: new Map<string, s.WebhookStatus>(),
     notif: new Map<string, s.ServerNotifications>(),
@@ -179,6 +181,14 @@ export function createMock(): Implementation {
     if ([...db.passwordLogins].some(([k, v]) => k !== userId && v.username === username)) throw new TRPCError({ code: "CONFLICT", message: "USERNAME_TAKEN" });
     db.passwordLogins.set(userId, { username, updatedAt: new Date(), setByAdmin });
     return pwStatus(userId);
+  };
+  // ---- passkeys ----
+  const pkOptions = (): s.PasskeyOptions => ({ challenge: `mock-${id()}`, rpId: "panel.test", timeout: 300_000, userVerification: "required", allowCredentials: [] });
+  const pkList = (userId: number) => db.passkeys.get(userId) ?? [];
+  const pkFind = (userId: number, pid: number) => {
+    const p = pkList(userId).find((x) => x.id === pid);
+    if (!p) throw new TRPCError({ code: "NOT_FOUND", message: "PASSKEY_NOT_FOUND" });
+    return p;
   };
   const usageOf = (uid: number): s.QuotaUsage => {
     const own = db.servers.filter((x) => x.ownerId === uid);
@@ -293,6 +303,13 @@ export function createMock(): Implementation {
         if (![...db.passwordLogins.values()].some((p) => p.username === input.username)) throw new TRPCError({ code: "UNAUTHORIZED", message: "INVALID_CREDENTIALS" });
         return ok;
       },
+      passkeyLoginOptions: () => pkOptions(),
+      passkeyLogin: () => ok,
+      passkeyVerifyOptions: ({ ctx }) => {
+        if (pkList(uid(ctx)).length === 0) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NO_PASSKEYS" });
+        return pkOptions();
+      },
+      passkeyVerify: () => ok,
       logout: () => ok,
       verifyEmail: nm.verifyEmail,
     },
@@ -335,6 +352,17 @@ export function createMock(): Implementation {
         return setPw(uid(ctx), input.username, false);
       },
       disablePasswordLogin: ({ ctx }) => (db.passwordLogins.delete(uid(ctx)), pwStatus(uid(ctx))),
+      passkeys: {
+        list: ({ ctx }) => pkList(uid(ctx)),
+        registerOptions: () => pkOptions(),
+        register: ({ input, ctx }) => {
+          const p: s.Passkey = { id: id(), name: input.name, createdAt: new Date(), lastUsedAt: null, transports: ["internal"], backedUp: false };
+          db.passkeys.set(uid(ctx), [...pkList(uid(ctx)), p]);
+          return p;
+        },
+        rename: ({ input, ctx }) => Object.assign(pkFind(uid(ctx), input.id), { name: input.name }),
+        delete: ({ input, ctx }) => (pkFind(uid(ctx), input.id), db.passkeys.set(uid(ctx), pkList(uid(ctx)).filter((x) => x.id !== input.id)), ok),
+      },
       webhook: () => db.webhooks.get("user") ?? { set: false, hint: null },
       setWebhook: ({ input }) => {
         const w = hookStatus(input.url);
@@ -912,6 +940,13 @@ export function createMock(): Implementation {
         getPasswordLogin: ({ input }) => (user(input.id), pwStatus(input.id)),
         setPasswordLogin: ({ input }) => (user(input.id), { password: "mock-Wachtwoord-1234", status: setPw(input.id, input.username, true) }),
         disablePasswordLogin: ({ input }) => (user(input.id), db.passwordLogins.delete(input.id), pwStatus(input.id)),
+        passkeys: ({ input }) => (user(input.id), pkList(input.id)),
+        deletePasskeys: ({ input }) => {
+          user(input.id);
+          const deleted = pkList(input.id).length;
+          db.passkeys.delete(input.id);
+          return { deleted };
+        },
         getQuota: ({ input }) => db.quotas.get(input.id) ?? null,
         setQuota: ({ input }) => {
           const { id: uidIn, ...q } = input;

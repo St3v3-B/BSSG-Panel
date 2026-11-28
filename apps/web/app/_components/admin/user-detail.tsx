@@ -1,5 +1,5 @@
 "use client";
-import { ArrowLeft, Ban, CircleAlert, KeyRound, LogOut, ShieldCheck, ShieldPlus, ShieldMinus, UserRound } from "lucide-react";
+import { ArrowLeft, Ban, CircleAlert, Fingerprint, KeyRound, LogOut, ShieldCheck, ShieldPlus, ShieldMinus, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { LoginUsername } from "@panel/api/schemas";
@@ -145,6 +145,8 @@ export function UserDetail({ id }: { id: number }) {
           </Card>
 
           <PasswordLoginSection id={id} name={u.name} />
+
+          <PasskeysSection id={id} />
 
           <QuotaEditor userId={id} />
 
@@ -355,6 +357,80 @@ function PasswordLoginSection({ id, name }: { id: number; name: string | null })
                 <CircleAlert className="mt-px size-3.5 shrink-0" /> {p.self}
               </p>
             )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PasskeysSection({ id }: { id: number }) {
+  const t = useT();
+  const p = t.admin2.user.passkeys;
+  const utils = trpc.useUtils();
+  const list = trpc.admin.users.passkeys.useQuery({ id });
+  const [confirm, setConfirm] = useState(false);
+  const [deleted, setDeleted] = useState<number | null>(null);
+  const del = trpc.admin.users.deletePasskeys.useMutation({
+    onSuccess: async (r) => {
+      setConfirm(false);
+      setDeleted(r.deleted);
+      await utils.admin.users.passkeys.invalidate({ id });
+      void utils.admin.activity.search.invalidate();
+    },
+  });
+  const keys = list.data;
+  return (
+    <Card data-testid="user-passkeys">
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Fingerprint className={keys?.length ? "size-5 text-success" : "size-5 text-muted-foreground"} />
+            {p.title}
+          </CardTitle>
+          {keys && <Badge variant={keys.length ? "success" : "secondary"} data-testid="user-passkey-count">{p.count(keys.length)}</Badge>}
+        </div>
+        <CardDescription>{p.text}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {list.error ? (
+          <QueryError error={list.error} />
+        ) : !keys ? (
+          <Skeleton className="h-10 rounded-lg" />
+        ) : (
+          <>
+            {deleted !== null && <p className="text-sm text-success" data-testid="user-passkeys-deleted">{p.deleted(deleted)}</p>}
+            {keys.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{p.none}</p>
+            ) : (
+              <ul className="space-y-1 text-sm">
+                {keys.map((k) => (
+                  <li key={k.id} className="flex flex-wrap items-center gap-x-2">
+                    <span className="font-medium">{k.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {p.created(formatDate(k.createdAt))} · {k.lastUsedAt ? p.lastUsed(formatDate(k.lastUsedAt)) : p.neverUsed}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {del.error && <AdminError error={del.error} />}
+            {keys.length > 0 &&
+              (confirm ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-muted-foreground">{p.deleteSure(keys.length)}</span>
+                  <Button variant="destructive" disabled={del.isPending} onClick={() => del.mutate({ id })} data-testid="user-passkeys-delete-confirm">
+                    {del.isPending && <Spinner />} {p.deleteAll}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setConfirm(false)}>
+                    {t.common.cancel}
+                  </Button>
+                </div>
+              ) : (
+                <Button variant="outline" className="text-destructive" onClick={() => (del.reset(), setDeleted(null), setConfirm(true))} data-testid="user-passkeys-delete">
+                  {p.deleteAll}
+                </Button>
+              ))}
           </>
         )}
       </CardContent>
