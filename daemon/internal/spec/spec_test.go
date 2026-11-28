@@ -36,6 +36,14 @@ func TestValidate(t *testing.T) {
 		func(s *ServerSpec) { s.Allocations[0].Port = 0 },
 		func(s *ServerSpec) { s.Allocations[0].IP = "::1" },
 		func(s *ServerSpec) { s.Install.Script = "" },
+		func(s *ServerSpec) { s.PlayerEvents = &PlayerEvents{Join: `^(?<name>\w+) joined$`} },
+		func(s *ServerSpec) {
+			s.PlayerEvents = &PlayerEvents{Join: `^(\w+) joined$`, Leave: `^(?<name>\w+) left$`}
+		},
+		func(s *ServerSpec) { s.PlayerEvents = &PlayerEvents{Join: `^(?<name>\w+) joined$`, Leave: `(`} },
+		func(s *ServerSpec) {
+			s.PlayerEvents = &PlayerEvents{Join: `^(?<name>\w+) joined$`, Leave: `^(?<name>\w+) left$`, UUID: `^(?<name>\w+) is .*$`}
+		},
 		func(s *ServerSpec) { s.Environment["1BAD"] = "x" },
 		func(s *ServerSpec) { s.ConfigFiles = []ConfigFile{{Path: "/", Format: "yaml"}} },
 		func(s *ServerSpec) { s.ConfigFiles = []ConfigFile{{Path: "a.toml", Format: "ini"}} },

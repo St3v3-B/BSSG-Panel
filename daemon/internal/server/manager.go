@@ -207,7 +207,7 @@ func (m *Manager) newServer(sp spec.ServerSpec) *Server {
 	ctx, cancel := context.WithCancel(m.ctx)
 	return &Server{
 		m: m, uuid: sp.UUID, ctx: ctx, cancel: cancel,
-		spec: sp, ready: compileReady(sp.ReadyPattern),
+		spec: sp, ready: compileReady(sp.ReadyPattern), playerMatch: CompilePlayerEvents(sp.PlayerEvents),
 		state:      StateOffline,
 		console:    NewRing(m.cfg.BacklogLines),
 		installLog: NewRing(m.cfg.BacklogLines),

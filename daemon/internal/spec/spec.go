@@ -119,7 +119,21 @@ type ServerSpec struct {
 	Sleep       *Sleep       `json:"sleep,omitempty"`
 	ImageUpdate *ImageUpdate `json:"image_update,omitempty"`
 	AutoRestart *AutoRestart `json:"auto_restart,omitempty"`
+	// PlayerEvents: patronen op consoleregels voor join/leave van spelers (speleractiviteit).
+	PlayerEvents *PlayerEvents `json:"player_events,omitempty"`
 }
+
+// PlayerEvents zijn RE2-patronen op consoleregels (zonder ANSI-kleuren). Join en leave hebben een
+// groep `name`; uuid (optioneel) groepen `name` en `uuid`. Patronen horen de hele regel te dekken
+// (^…$), zodat chattekst die op een join lijkt niet matcht.
+type PlayerEvents struct {
+	Join  string `json:"join"`
+	Leave string `json:"leave"`
+	UUID  string `json:"uuid,omitempty"`
+}
+
+// maxPlayerPattern is de maximale lengte van één patroon.
+const maxPlayerPattern = 1000
 
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
@@ -220,6 +234,33 @@ func (s *ServerSpec) Validate() error {
 		if m := s.Sleep.FaviconMode; m != "" && m != "server_or_logo" && m != "server_only" {
 			add("sleep.favicon_mode invalid")
 		}
+	}
+	if pe := s.PlayerEvents; pe != nil {
+		check := func(field, p string, required bool, groups ...string) {
+			if p == "" {
+				if required {
+					add("player_events.%s missing", field)
+				}
+				return
+			}
+			if len(p) > maxPlayerPattern {
+				add("player_events.%s too long", field)
+				return
+			}
+			re, err := regexp.Compile(p)
+			if err != nil {
+				add("player_events.%s: %v", field, err)
+				return
+			}
+			for _, g := range groups {
+				if re.SubexpIndex(g) < 0 {
+					add("player_events.%s: group %q missing", field, g)
+				}
+			}
+		}
+		check("join", pe.Join, true, "name")
+		check("leave", pe.Leave, true, "name")
+		check("uuid", pe.UUID, false, "name", "uuid")
 	}
 	if s.AutoRestart != nil && (s.AutoRestart.MaxPer10Min < 1 || s.AutoRestart.MaxPer10Min > 20) {
 		add("auto_restart.max_per_10min must be between 1 and 20")

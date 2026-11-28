@@ -127,6 +127,8 @@ type Server struct {
 	wasSleeping   bool        // uit de opgeslagen staat (Recover)
 	restarts      []time.Time // automatische herstarts in het laatste venster
 	restartCancel context.CancelFunc
+	playerMatch   *PlayerMatcher    // speleractiviteit (spec.player_events), nil = uit
+	pendingUUIDs  map[string]string // naam (klein) → uuid uit de UUID-regel, tot de join
 }
 
 func (s *Server) UUID() string { return s.uuid }
@@ -331,6 +333,9 @@ func (s *Server) onLine(r *run, line string) {
 	}
 	s.console.Add(line)
 	s.publishLocked(Msg{"event": "console_output", "line": line})
+	if s.playerMatch != nil {
+		s.playerLineLocked(line)
+	}
 	if s.state == StateStarting && s.ready != nil && s.ready.MatchString(StripANSI(line)) {
 		s.setStateLocked(StateOnline)
 	}

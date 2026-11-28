@@ -301,6 +301,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/remote/servers/{uuid}/players": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Speleractiviteit (join/leave uit de console, server gestopt)
+         * @description Alleen voor servers met `player_events` in de spec. Per server in volgorde, hooguit één
+         *     verzoek tegelijk, met retry; het panel verwerkt dubbele events idempotent (join van een
+         *     speler met een open sessie of met dezelfde `at` wordt genegeerd, leave zonder open sessie ook).
+         *     `leave.reason`: `leave` (gewoon weg), `server_stop` (tijdens het stoppen), `sleep` (slaapstand).
+         *     `stopped`: de server draait niet meer; het panel sluit alle open sessies met `reason`
+         *     (`server_stop`, `sleep` of `crash`). `at` is de tijd van de daemon (RFC 3339).
+         */
+        post: operations["reportPlayers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/remote/deploys/{deploy_id}": {
         parameters: {
             query?: never;
@@ -953,6 +980,50 @@ export interface operations {
         responses: {
             /** @description OK */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reportPlayers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    events: {
+                        /** @enum {string} */
+                        type: "join" | "leave" | "stopped";
+                        /** Format: date-time */
+                        at: string;
+                        name?: string;
+                        player_uuid?: string;
+                        /** @enum {string} */
+                        reason?: "leave" | "server_stop" | "sleep" | "crash";
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ongeldig verzoek */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
