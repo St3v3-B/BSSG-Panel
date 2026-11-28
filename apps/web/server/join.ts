@@ -65,7 +65,7 @@ export interface JoinExchange {
   public_port: number;
   dns_mode: "cloudflare" | "manual";
   /** relay: HTTP(S) via een andere node; Caddy op deze node zonder publieke poorten. */
-  http_mode: "direct" | "relay";
+  http_mode: "direct" | "relay" | "npm";
   /** Waar node_domain naar moet wijzen: het eigen IP of dat van de relay-node. */
   dns_ip: string;
 }
@@ -117,7 +117,7 @@ export async function exchangeJoinCode(code: string, ip: string): Promise<JoinEx
     supports_domains: node.supportsDomains,
     public_port: node.publicPort,
     dns_mode: mode,
-    http_mode: node.httpRelayNodeId ? "relay" : "direct",
+    http_mode: node.httpRelayNodeId ? "relay" : node.npmSettings ? "npm" : "direct",
     dns_ip: dnsIp,
   };
 }

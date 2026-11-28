@@ -175,9 +175,10 @@ export function assertRelayCandidate(a: NodeRow | null, bId: number | null): ass
   if (a.id === bId) throw notAllowed("a node cannot relay through itself");
   if (!a.supportsDomains || a.publicPort !== 443) throw notAllowed("the relay node needs its own ports 80/443 (domain support)");
   if (a.httpRelayNodeId) throw notAllowed("the relay node itself relays through another node");
+  if (a.npmSettings) throw notAllowed("the relay node runs behind Nginx Proxy Manager");
 }
 
-const isCandidate = (a: NodeRow, bId: number) => a.id !== bId && a.supportsDomains && a.publicPort === 443 && !a.httpRelayNodeId;
+const isCandidate = (a: NodeRow, bId: number) => a.id !== bId && a.supportsDomains && a.publicPort === 443 && !a.httpRelayNodeId && !a.npmSettings;
 
 export const newRelaySecret = () => encrypt(randomToken(32));
 
@@ -249,6 +250,7 @@ export async function setHttpRelay(n: NodeRow, relayNodeId: number | null): Prom
   const previous = n.httpRelayNodeId;
   if (relayNodeId !== null) {
     if (n.isLocal) throw notAllowed("the local node runs the panel and needs its own ports 80/443");
+    if (n.npmSettings) throw notAllowed("this node runs behind Nginx Proxy Manager; switch that off first");
     const a = await rowOf(relayNodeId);
     assertRelayCandidate(a, n.id);
     const [client] = await db.select({ id: schema.nodes.id }).from(schema.nodes).where(eq(schema.nodes.httpRelayNodeId, n.id)).limit(1);

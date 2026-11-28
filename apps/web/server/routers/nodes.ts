@@ -11,6 +11,7 @@ import { removeARecord } from "../lib/cloudflare";
 import { cloudflareFor, issueJoinCode, joinCommand, joinStatus, suggestFqdn, uninstallCommand } from "../join";
 import { nodeById, nodeOut, parsePorts } from "./admin";
 import { assertRelayCandidate, newRelaySecret, pokeRelay, relayStatus, setHttpRelay } from "../relay";
+import { npmStatus, pokeNpm, setNpm, testNpm } from "../npm";
 
 type NodeRow = typeof schema.nodes.$inferSelect;
 const ok = { ok: true as const };
@@ -62,7 +63,21 @@ async function assertNoDomains(nodeId: number): Promise<void> {
 
 const RESERVED_PORTS = new Set([80, 22]);
 
-export const nodeMutations: Pick<Implementation["admin"]["nodes"], "create" | "update" | "delete" | "regenerateToken" | "createJoin" | "joinCommand" | "joinStatus" | "updateDaemon" | "uninstallCommand" | "setHttpRelay" | "relayStatus"> = {
+export const nodeMutations: Pick<Implementation["admin"]["nodes"], "create" | "update" | "delete" | "regenerateToken" | "createJoin" | "joinCommand" | "joinStatus" | "updateDaemon" | "uninstallCommand" | "setHttpRelay" | "relayStatus" | "npmStatus" | "setNpm" | "testNpm"> = {
+  npmStatus: async ({ input }) => npmStatus(await nodeById(input.id)),
+
+  setNpm: async ({ input, ctx }) => {
+    const n = await nodeById(input.id);
+    const row = await setNpm(n, input.settings);
+    // Nooit geheimen in het activiteitenlog.
+    const meta = input.settings ? { url: input.settings.url, email: input.settings.email, ssl: input.settings.ssl, forceSsl: input.settings.forceSsl, forwardHost: input.settings.forwardHost, forwardPort: input.settings.forwardPort, passwordChanged: !!input.settings.password } : null;
+    await logActivity({ action: "admin.node.npm", userId: ctx.session!.userId, metadata: { id: n.id, npm: meta }, ip: ctx.ip, ctx });
+    void pokeNpm(row);
+    return npmStatus(row);
+  },
+
+  testNpm: async ({ input }) => testNpm(await nodeById(input.id), input),
+
   setHttpRelay: async ({ input, ctx }) => {
     const n = await nodeById(input.id);
     const r = await setHttpRelay(n, input.relayNodeId);

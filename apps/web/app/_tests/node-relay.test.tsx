@@ -9,7 +9,7 @@ import { renderWithTrpc, sessionFor } from "./utils";
 afterEach(cleanup);
 const admin = { session: sessionFor("admin"), locale: "en" as const };
 const input = (bodies: Array<{ path: string; input: unknown }>, p: string) => bodies.filter((b) => b.path === p).map((b) => b.input);
-const node2: Node = { id: 2, name: "node2", fqdn: "node2.test", daemonPort: 8080, sftpPort: 2022, maxRamMb: 0, maxDiskMb: 0, s3TargetId: null, diskQuotaMode: "soft", isLocal: false, supportsDomains: true, publicPort: 443, publicIp: "203.0.113.20", joinState: "ready", httpRelayNodeId: null };
+const node2: Node = { id: 2, name: "node2", fqdn: "node2.test", daemonPort: 8080, sftpPort: 2022, maxRamMb: 0, maxDiskMb: 0, s3TargetId: null, diskQuotaMode: "soft", isLocal: false, supportsDomains: true, publicPort: 443, publicIp: "203.0.113.20", joinState: "ready", httpRelayNodeId: null, httpMode: "direct" };
 const withNode2 = (m: any) => {
   const list = m.admin.nodes.list;
   m.admin.nodes.list = async (o: never) => [...(await list(o)), node2];

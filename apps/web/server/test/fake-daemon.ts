@@ -231,6 +231,12 @@ export class FakeDaemon {
     if (r.method === "POST" && path === "/api/images/check") return send(202);
     if (r.method === "GET" && path === "/api/relay") return send(200, query.get("ssl") === "1" ? this.relayState : { ...this.relayState, clients: this.relayState.clients.map(({ ssl: _ssl, ...c }) => c) });
     if (r.method === "POST" && path === "/api/relay/refresh") return send(204);
+    if (r.method === "POST" && path === "/api/npm/refresh") return send(204);
+    if (r.method === "POST" && path === "/api/npm/test") {
+      // Nep-NPM: wachtwoord "npm-good" logt in.
+      const b = (r.body ?? {}) as { password?: string };
+      return send(200, b.password === "npm-good" ? { state: "ok", version: "2.17.1", proxy_hosts: 3, managed_hosts: 1 } : { state: "login_failed", error: "NPM answered 401: Invalid email or password", proxy_hosts: 0, managed_hosts: 0 });
+    }
     const pm = /^\/api\/db\/pma-users\/([^/]+)$/.exec(path);
     if (pm && r.method === "PUT") {
       const b = (body ?? {}) as { password?: string; databases?: string[] };
