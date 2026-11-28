@@ -44,6 +44,25 @@ describe("meldingsinstellingen op het account", () => {
     await waitFor(() => expect((screen.getByLabelText("Server crashed: E-mail") as HTMLInputElement).checked).toBe(false));
   });
 
+  it("voorkeur aanvinken verandert meteen (optimistisch), ook als de server traag is", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    renderWithTrpc(<NotificationSettingsCards isAdmin={false} />, {
+      ...en("user"),
+      patch: (m) => {
+        const orig = m.account.setNotificationPrefs;
+        m.account.setNotificationPrefs = async (a) => (await gate, orig(a));
+      },
+    });
+    const box = (await screen.findByLabelText("Backup completed: Panel")) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+    fireEvent.click(box);
+    await waitFor(() => expect((screen.getByLabelText("Backup completed: Panel") as HTMLInputElement).checked).toBe(true));
+    release();
+    await waitFor(() => expect((screen.getByLabelText("Backup completed: Panel") as HTMLInputElement).disabled).toBe(false));
+    expect((screen.getByLabelText("Backup completed: Panel") as HTMLInputElement).checked).toBe(true);
+  });
+
   it("admin ziet admin-gebeurtenissen; e-mailadres zetten stuurt een link", async () => {
     const { bodies } = renderWithTrpc(
       <>

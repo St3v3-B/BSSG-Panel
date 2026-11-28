@@ -207,7 +207,12 @@ function EmailCard({ settings }: { settings: NotificationSettings }) {
 function PrefsCard({ settings, isAdmin }: { settings: NotificationSettings; isAdmin: boolean }) {
   const t = useT().notif2;
   const utils = trpc.useUtils();
-  const save = trpc.account.setNotificationPrefs.useMutation({ onSuccess: (d) => utils.account.notificationSettings.setData(undefined, d) });
+  // Optimistisch: het vinkje verandert meteen (anders lijkt een klik niets te doen tot de server antwoordt).
+  const save = trpc.account.setNotificationPrefs.useMutation({
+    onMutate: ({ prefs }) => utils.account.notificationSettings.setData(undefined, (old) => (old ? { ...old, prefs: { ...old.prefs, ...prefs } as NotificationSettings["prefs"] } : old)),
+    onSuccess: (d) => utils.account.notificationSettings.setData(undefined, d),
+    onError: () => void utils.account.notificationSettings.invalidate(),
+  });
   const events = NotificationEvent.options.filter((e) => isAdmin || !ADMIN_NOTIFICATION_EVENTS.includes(e));
   const unavailable: Record<NotificationChannel, string | null> = {
     panel: null,
