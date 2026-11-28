@@ -172,7 +172,7 @@ describe("evacueren", () => {
   it("wachtrij: N tegelijk, mislukte blijven op de oude node en worden gemeld, handmatig doel", async () => {
     await getDb().delete(schema.notifications);
     const uuids = [await gameServer(), await gameServer(), await gameServer(), await gameServer()];
-    const ft = fakeTransfer({ fail: new Set([uuids[1]!]) });
+    const ft = fakeTransfer({ fail: new Set([uuids[1]!]), delayMs: 400 });
     await setMaint(h.localNodeId);
     const ev = await admin.api.admin.maintenance.evacuate({ id: h.localNodeId, concurrency: 2, items: [{ uuid: uuids[0]!, nodeId: node3 }, ...uuids.slice(1).map((uuid) => ({ uuid, nodeId: null }))] });
     expect(ev.items.map((i) => i.status)).toEqual(["queued", "queued", "queued", "queued"]);
