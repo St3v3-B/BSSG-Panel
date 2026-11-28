@@ -48,7 +48,7 @@ describe("BackupManager", () => {
     await screen.findByTestId("backup-row");
     fireEvent.change(screen.getByLabelText("Naam"), { target: { value: "voor update" } });
     fireEvent.click(screen.getByRole("button", { name: "Backup maken" }));
-    await waitFor(() => expect(bodies.find((b) => b.path === "backups.create")?.input).toEqual({ uuid: SMP, name: "voor update", includeDatabases: true }));
+    await waitFor(() => expect(bodies.find((b) => b.path === "backups.create")?.input).toEqual({ uuid: SMP, name: "voor update", includeDatabases: true, kind: "full" }));
     await waitFor(() => expect(screen.getAllByTestId("backup-row")).toHaveLength(2));
     const rows = screen.getAllByTestId("backup-row");
     const running = rows.find((r) => r.textContent?.includes("voor update"))!;

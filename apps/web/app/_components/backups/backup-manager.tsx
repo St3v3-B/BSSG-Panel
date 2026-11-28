@@ -1,7 +1,7 @@
 "use client";
-import { Archive, Database as DbIcon, Download, Plus, RotateCcw, Trash2, X } from "lucide-react";
+import { Archive, Database as DbIcon, Download, FolderOpen, Layers, Plus, RotateCcw, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Backup, BackupProgress, Permission } from "@panel/api";
+import type { Backup, BackupKind, BackupProgress, Permission } from "@panel/api";
 import { trpc } from "@/lib/trpc";
 import { QueryError } from "@/app/_components/query-error";
 import { Alert } from "@/app/_components/ui/alert";
@@ -11,6 +11,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app
 import { Checkbox } from "@/app/_components/ui/checkbox";
 import { Input } from "@/app/_components/ui/input";
 import { Label } from "@/app/_components/ui/label";
+import { Select } from "@/app/_components/ui/select";
+import { BackupSettingsCard, SnapshotBrowser } from "@/app/_components/backups/incremental";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { errorText } from "@/app/_lib/errors";
@@ -33,6 +35,7 @@ export function BackupManager({ uuid, permissions }: { uuid: string; permissions
   return (
     <div className="max-w-4xl space-y-6" data-testid="backup-manager">
       {canCreate && <CreateBackup uuid={uuid} />}
+      <BackupSettingsCard uuid={uuid} canEdit={canCreate} />
       {list.error ? (
         <QueryError error={list.error} />
       ) : !list.data ? (
@@ -55,6 +58,9 @@ function CreateBackup({ uuid }: { uuid: string }) {
   const utils = trpc.useUtils();
   const [name, setName] = useState("");
   const [withDb, setWithDb] = useState(true);
+  const settings = trpc.backups.settings.useQuery({ uuid });
+  const [kind, setKind] = useState<BackupKind | null>(null);
+  const effective = kind ?? settings.data?.defaultKind ?? "full";
   const create = trpc.backups.create.useMutation({
     onSuccess: () => {
       setName("");
@@ -72,12 +78,19 @@ function CreateBackup({ uuid }: { uuid: string }) {
           className="flex flex-wrap items-end gap-3"
           onSubmit={(e) => {
             e.preventDefault();
-            create.mutate({ uuid, name: name.trim() || null, includeDatabases: withDb });
+            create.mutate({ uuid, name: name.trim() || null, includeDatabases: withDb, kind: effective });
           }}
         >
           <div className="min-w-56 flex-1 space-y-1">
             <Label htmlFor="backup-name">{t.backups.name}</Label>
             <Input id="backup-name" value={name} maxLength={100} placeholder={t.backups.namePlaceholder} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="w-44 space-y-1">
+            <Label htmlFor="backup-kind">{t.backupsInc.kindLabel}</Label>
+            <Select id="backup-kind" value={effective} onChange={(e) => setKind(e.target.value as BackupKind)}>
+              <option value="full">{t.backupsInc.kind.full}</option>
+              <option value="incremental">{t.backupsInc.kind.incremental}</option>
+            </Select>
           </div>
           <Label className="flex h-9 items-center gap-2 font-normal">
             <Checkbox checked={withDb} onChange={(e) => setWithDb(e.target.checked)} /> {t.backups.includeDatabases}
@@ -86,6 +99,7 @@ function CreateBackup({ uuid }: { uuid: string }) {
             {create.isPending ? <Spinner /> : <Plus />} {t.backups.create}
           </Button>
         </form>
+        <p className="mt-2 text-xs text-muted-foreground">{t.backupsInc.kindHelp[effective]}</p>
         {create.error && <p className="mt-3 text-sm text-destructive">{errorText(create.error)}</p>}
         {create.isSuccess && <p className="mt-3 text-sm text-success">{t.backups.created}</p>}
       </CardContent>
@@ -107,6 +121,8 @@ function BackupRow({ uuid, backup: b, progress: p, canCreate, canRestore }: { uu
   const t = useT();
   const utils = trpc.useUtils();
   const [confirm, setConfirm] = useState<null | "restore" | "delete">(null);
+  const [browsing, setBrowsing] = useState(false);
+  const incremental = b.kind === "incremental";
   const active = ACTIVE.has(b.status);
   const now = useNow(active);
   const refresh = () => void utils.backups.list.invalidate({ uuid });
@@ -128,12 +144,14 @@ function BackupRow({ uuid, backup: b, progress: p, canCreate, canRestore }: { uu
   return (
     <Card data-testid="backup-row" className="p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Archive className="size-4 text-muted-foreground" />
+        {incremental ? <Layers className="size-4 text-muted-foreground" /> : <Archive className="size-4 text-muted-foreground" />}
         <div className="min-w-0 flex-1 basis-[10rem]">
           <div className="truncate font-medium">{b.name}</div>
           <div className="text-xs text-muted-foreground">
             {formatDate(b.createdAt)}
+            {` · ${t.backupsInc.kind[b.kind]}`}
             {b.sizeBytes != null && ` · ${formatBytes(b.sizeBytes)}`}
+            {b.addedBytes != null && ` (${t.backupsInc.added(formatBytes(b.addedBytes))})`}
             {b.includesDatabases && (
               <>
                 {" · "}
@@ -141,6 +159,11 @@ function BackupRow({ uuid, backup: b, progress: p, canCreate, canRestore }: { uu
               </>
             )}
           </div>
+          {b.snapshotId && (
+            <div className="truncate font-mono text-[11px] text-muted-foreground" title={b.snapshotId}>
+              {t.backupsInc.snapshot}: {b.snapshotId.slice(0, 12)}
+            </div>
+          )}
           {b.sha256 && (
             <div className="truncate font-mono text-[11px] text-muted-foreground" title={b.sha256}>
               {t.backups.checksum}: {b.sha256}
@@ -160,7 +183,12 @@ function BackupRow({ uuid, backup: b, progress: p, canCreate, canRestore }: { uu
           )}
         </div>
         <Badge variant={VARIANT[b.status]}>{t.backups.status[b.status]}</Badge>
-        {done && canRestore && (
+        {done && canRestore && incremental && (
+          <Button size="sm" variant="outline" aria-expanded={browsing} onClick={() => setBrowsing(!browsing)}>
+            <FolderOpen /> {t.backupsInc.browse}
+          </Button>
+        )}
+        {done && canRestore && !incremental && (
           <Button size="sm" variant="outline" disabled={download.isPending} onClick={() => download.mutate({ id: b.id })}>
             {download.isPending ? <Spinner /> : <Download />} {t.backups.download}
           </Button>
@@ -177,6 +205,7 @@ function BackupRow({ uuid, backup: b, progress: p, canCreate, canRestore }: { uu
         )}
       </div>
       {active && <ProgressBar backup={b} progress={p} now={now} canCancel={canCancel} cancelling={cancel.isPending || (cancel.isSuccess && active)} onCancel={() => cancel.mutate({ id: b.id })} />}
+      {browsing && done && <SnapshotBrowser uuid={uuid} backup={b} onClose={() => setBrowsing(false)} />}
       {confirm === "restore" && (
         <Alert variant="warning" className="mt-3" role="alertdialog" aria-label={t.backups.restoreTitle(b.name)}>
           <div className="space-y-3">
