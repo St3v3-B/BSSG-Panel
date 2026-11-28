@@ -1,5 +1,5 @@
 "use client";
-import { Activity, BookOpen, Database, FileCode2, Globe, Import, LayoutDashboard, Package, Receipt, Server, Settings, Users, type LucideIcon } from "lucide-react";
+import { Activity, BookOpen, Database, FileCode2, Globe, Import, Inbox, LayoutDashboard, Mail, Package, Receipt, Server, Settings, Users, type LucideIcon } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { usePathname } from "next/navigation";
 import { usePhpMyAdmin } from "@/app/_hooks/use-phpmyadmin";
@@ -44,6 +44,12 @@ export function useNav(isAdmin: boolean) {
     mk("/admin/settings/updates", sub.updates, Settings, under("/admin/settings/updates")),
     mk("/admin/settings/billing", t.billing.nav.settings, Settings, under("/admin/settings/billing")),
   ];
+  const mn = t.mail.nav;
+  const mailChildren = [
+    mk("/admin/mail", mn.overview, Mail, is("/admin/mail")),
+    mk("/admin/mail/domains", mn.domains, Globe, under("/admin/mail/domains")),
+    mk("/admin/mail/queue", mn.queue, Inbox, under("/admin/mail/queue")),
+  ];
   const n = t.admin2.nav;
   const upd = useUpdatesSummary(isAdmin).data;
   const dot = (on: boolean | undefined) => (isAdmin && on ? t.nodeUpdates.navDot : undefined);
@@ -75,6 +81,7 @@ export function useNav(isAdmin: boolean) {
         mk("/admin/import", t.hostops.imp.nav, Import, under("/admin/import")),
         ...(b?.plansEnabled ? [mk("/admin/plans", t.billing.nav.adminPlans, Package, under("/admin/plans"))] : []),
         ...(b?.plansEnabled || b?.billingEnabled ? [mk("/admin/billing", t.billing.nav.adminBilling, Receipt, under("/admin/billing"))] : []),
+        mk("/admin/mail", mn.mail, Mail, under("/admin/mail"), mailChildren),
         mk("/admin/activity", n.activity, Activity, under("/admin/activity")),
         { ...mk("/admin/settings", n.settings, Settings, under("/admin/settings"), settingsChildren), dot: dot(!!upd?.panelUpdates) },
       ],
@@ -88,7 +95,7 @@ export function useNav(isAdmin: boolean) {
       if (!it.active) continue;
       if (s.id === "admin") crumbs.push(t.nav.admin);
       crumbs.push(it.label);
-      const c = it.children?.find((x) => x.current || (x.href !== "/admin/settings" && x.active));
+      const c = it.children?.find((x) => x.current || (x.href !== "/admin/settings" && x.href !== "/admin/mail" && x.active));
       if (c) crumbs.push(c.label);
     }
   }
