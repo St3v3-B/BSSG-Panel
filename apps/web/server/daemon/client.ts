@@ -400,6 +400,14 @@ export class DaemonClient {
   }
 
   // ---------- routes (web) ----------
+  /** HTTP(S)-relay: toestand als client en als edge; `ssl` = SSL-status per hostnaam van de clients (traag). */
+  relayState(ssl = false, timeoutMs?: number) {
+    return this.request<DaemonSchemas["RelayState"]>("GET", `/api/relay${ssl ? "?ssl=1" : ""}`, undefined, timeoutMs);
+  }
+  /** Relay-config nu bij het panel ophalen. */
+  relayRefresh(timeoutMs?: number) {
+    return this.request<void>("POST", "/api/relay/refresh", undefined, timeoutMs);
+  }
   routes(timeoutMs?: number) {
     return this.request<DaemonRouteWithStatus[]>("GET", "/api/routes", undefined, timeoutMs);
   }

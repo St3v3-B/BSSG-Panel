@@ -9,6 +9,7 @@ import { addTxtRecord, CloudflareError, removeTxtRecord, setARecord, zoneFor } f
 import { decrypt, randomToken, sha256 } from "./lib/crypto";
 import { dns } from "./lib/dns";
 import { daemonFor } from "./daemon";
+import { httpEntry, nodeIp } from "./relay";
 import { parsePorts } from "./routers/admin";
 import { publicPanelUrl } from "./routers/nodes";
 
@@ -63,6 +64,20 @@ export interface JoinExchange {
   supports_domains: boolean;
   public_port: number;
   dns_mode: "cloudflare" | "manual";
+  /** relay: HTTP(S) via een andere node; Caddy op deze node zonder publieke poorten. */
+  http_mode: "direct" | "relay";
+  /** Waar node_domain naar moet wijzen: het eigen IP of dat van de relay-node. */
+  dns_ip: string;
+}
+
+/** IP waar het node-domein naar moet wijzen: bij een relay het IP van de relay-node, anders het gemelde IP. */
+async function joinDnsIp(node: NodeRow, ip: string | null): Promise<string | null> {
+  if (!node.httpRelayNodeId) return ip;
+  try {
+    return await nodeIp(await httpEntry(node));
+  } catch {
+    return null;
+  }
 }
 
 /** Eenmalig inwisselen. null = ongeldig, verlopen of al gebruikt. */
@@ -78,12 +93,13 @@ export async function exchangeJoinCode(code: string, ip: string): Promise<JoinEx
   if (!node?.tokenEnc) return null;
   let mode: "cloudflare" | "manual" = "manual";
   let message = "join code accepted";
+  const dnsIp = (await joinDnsIp(node, ip)) ?? ip;
   const cf = await cloudflareFor(node.fqdn);
   if (cf) {
     try {
-      await setARecord(cf.token, cf.zoneId, node.fqdn, ip);
+      await setARecord(cf.token, cf.zoneId, node.fqdn, dnsIp);
       mode = "cloudflare";
-      message = `DNS record ${node.fqdn} -> ${ip} created`;
+      message = `DNS record ${node.fqdn} -> ${dnsIp} created${node.httpRelayNodeId ? " (HTTP(S) via the relay node)" : ""}`;
     } catch (e) {
       message = `Cloudflare failed (${e instanceof CloudflareError ? e.message : "error"}); create the DNS record by hand`;
     }
@@ -101,6 +117,8 @@ export async function exchangeJoinCode(code: string, ip: string): Promise<JoinEx
     supports_domains: node.supportsDomains,
     public_port: node.publicPort,
     dns_mode: mode,
+    http_mode: node.httpRelayNodeId ? "relay" : "direct",
+    dns_ip: dnsIp,
   };
 }
 
@@ -130,7 +148,8 @@ export async function joinStatus(node: NodeRow): Promise<JoinStatusOut> {
   const db = getDb();
   const [code] = await db.select().from(schema.nodeJoinCodes).where(eq(schema.nodeJoinCodes.nodeId, node.id)).orderBy(sql`${schema.nodeJoinCodes.id} desc`).limit(1);
   const resolved = await dns().a(node.fqdn);
-  const dnsOk = node.publicIp ? resolved.includes(node.publicIp) : false;
+  const expected = await joinDnsIp(node, node.publicIp);
+  const dnsOk = expected ? resolved.includes(expected) : false;
   let certificateOk = node.joinState === "ready";
   const daemonConnected = node.lastSeenAt !== null;
   if (!certificateOk && daemonConnected && node.joinState !== null && node.joinState !== "failed") {
@@ -149,7 +168,7 @@ export async function joinStatus(node: NodeRow): Promise<JoinStatusOut> {
     ip: cur.publicIp,
     dns: {
       mode: cur.joinOptions?.dnsMode ?? "manual",
-      record: { type: "A", name: cur.fqdn, value: cur.publicIp },
+      record: { type: "A", name: cur.fqdn, value: expected },
       resolvedIp: resolved[0] ?? null,
       ok: dnsOk,
     },

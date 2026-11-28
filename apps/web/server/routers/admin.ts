@@ -48,6 +48,7 @@ export function nodeOut(n: NodeRow): NodeOut {
     publicPort: n.publicPort,
     publicIp: n.publicIp,
     joinState: (n.joinState as NodeOut["joinState"]) ?? null,
+    httpRelayNodeId: n.httpRelayNodeId,
   };
 }
 

@@ -30,6 +30,7 @@ import { imagePolicyOf, fetchServerByUuid, limitsOf, serverVariables, sleepOf, a
 import { isBackend, isProxy, rewriteProxyToml, syncProxyAddresses } from "../network";
 import { assignAllocations, checkAllocations, nodeById } from "./admin";
 import { isMc, routeFor } from "./domains";
+import { pokeRelay } from "../relay";
 
 const ok = { ok: true as const };
 const inProgress = new Set<string>();
@@ -188,6 +189,9 @@ export const transfer: Implementation["admin"]["servers"]["transfer"] = async ({
     inProgress.delete(uuid);
     throw e;
   }
+
+  // HTTP(S)-relays van bron en doel: de hostnamen zijn verhuisd (best effort; anders binnen een minuut).
+  if (b.node.httpRelayNodeId || target.httpRelayNodeId) void pokeRelay([b.node.httpRelayNodeId, target.httpRelayNodeId]);
 
   const warnings: string[] = [];
   try {

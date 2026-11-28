@@ -71,6 +71,13 @@ tags:
     description: Klantdatabases op de MariaDB van deze node (panel-mariadb); het panel beheert ze via de daemon
   - name: routes
     description: Caddy-routes; de daemon is de bron van waarheid en synchroniseert Caddy
+  - name: relay
+    description: |
+      HTTP(S)-relay: een node zonder eigen 80/443 (client, "B") laat al zijn HTTP(S) lopen via een andere node
+      (edge, "A"). B opent een uitgaande websocket naar `https://<A>/api/relay/tunnel` met daarover yamux; A's Caddy
+      termineert TLS voor de hostnamen die het panel aan B heeft toegewezen (plus B's node-domein) en stuurt ze
+      door de tunnel. De configuratie komt van het panel (`GET /api/remote/relay`, panel-remote.yaml).
+      Gamepoorten en SFTP gaan nooit via de relay.
 
 paths:
   /api/system:
@@ -1097,6 +1104,70 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "503": { $ref: "#/components/responses/DbUnavailable" }
 
+  /api/relay:
+    get:
+      tags: [relay]
+      operationId: getRelay
+      summary: Toestand van de relay (als client en als edge)
+      parameters:
+        - name: ssl
+          in: query
+          description: "`1` = per hostnaam van de clients ook de SSL-status uit Caddy (traag: TLS-controle per host)"
+          schema: { type: string, enum: ["0", "1"] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RelayState" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/relay/refresh:
+    post:
+      tags: [relay]
+      operationId: refreshRelay
+      summary: Relay-config nu opnieuw bij het panel ophalen
+      description: Het panel roept dit aan na een wijziging (relay-keuze, domeinen van een client). Zonder aanroep haalt de daemon de config elke minuut op.
+      responses:
+        "204": { description: Opgehaald en toegepast }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "502":
+          description: Panel niet bereikbaar
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/relay/tunnel:
+    get:
+      tags: [relay]
+      operationId: relayTunnel
+      summary: Websocket-tunnel van een client-node (geen node-token)
+      security: []
+      description: |
+        Alleen voor daemons. Websocket-upgrade met binaire berichten, daarover yamux (A opent de streams, B serveert HTTP).
+        Authenticatie met headers: `X-Relay-Node` (node-id van B), `X-Relay-Time` (unix-seconden, max 2 min afwijking),
+        `X-Relay-Nonce` (32 hex, eenmalig) en `X-Relay-Signature` =
+        `hex(HMAC-SHA256(secret, "panel-relay-v1|client|<A fqdn>|<B id>|<time>|<nonce>"))`.
+        A antwoordt in de 101 met `X-Relay-Proof` = `hex(HMAC-SHA256(secret, "panel-relay-v1|edge|<A fqdn>|<B id>|<nonce>"))`;
+        B gebruikt de verbinding alleen als dat klopt. Het geheim geeft het panel per paar uit.
+      parameters:
+        - { name: X-Relay-Node, in: header, required: true, schema: { type: string } }
+        - { name: X-Relay-Time, in: header, required: true, schema: { type: string } }
+        - { name: X-Relay-Nonce, in: header, required: true, schema: { type: string, pattern: "^[0-9a-f]{32}$" } }
+        - { name: X-Relay-Signature, in: header, required: true, schema: { type: string } }
+      responses:
+        "101": { description: Tunnel open (header X-Relay-Proof) }
+        "401":
+          description: Handtekening, tijd of nonce ongeldig
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Deze node is niet aan deze edge toegewezen
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/routes:
     get:
       tags: [routes]
@@ -1645,6 +1716,59 @@ components:
             ssl_status: { type: string, enum: [pending, dns_wrong, issuing, active, failed] }
             ssl_error: { type: [string, "null"] }
             checked_at: { type: [string, "null"], format: date-time }
+
+    RelayTunnelStatus:
+      type: object
+      description: De tunnel vanaf de client (B) gezien
+      required: [edge_node_id, edge_url, connected, reconnects]
+      properties:
+        edge_node_id: { type: integer }
+        edge_url: { type: string }
+        connected: { type: boolean }
+        connected_at: { type: [string, "null"], format: date-time }
+        latency_ms: { type: [number, "null"] }
+        last_error: { type: [string, "null"] }
+        last_error_at: { type: [string, "null"], format: date-time }
+        reconnects: { type: integer }
+
+    RelayClientState:
+      type: object
+      description: Eén client vanaf de edge (A) gezien
+      required: [node_id, fqdn, connected, hosts]
+      properties:
+        node_id: { type: integer }
+        fqdn: { type: string }
+        connected: { type: boolean }
+        connected_at: { type: [string, "null"], format: date-time }
+        latency_ms: { type: [number, "null"] }
+        remote: { type: string }
+        last_error: { type: [string, "null"] }
+        last_error_at: { type: [string, "null"], format: date-time }
+        hosts: { type: array, items: { type: string }, description: "fqdn van B plus de toegewezen hostnamen" }
+        ssl:
+          type: array
+          description: Alleen met `?ssl=1`
+          items:
+            type: object
+            required: [host, ssl_status]
+            properties:
+              host: { type: string }
+              ssl_status: { type: string, enum: [pending, dns_wrong, issuing, active, failed] }
+              ssl_error: { type: [string, "null"] }
+
+    RelayState:
+      type: object
+      required: [http_mode, edge, clients]
+      properties:
+        http_mode: { type: string, enum: [direct, relay], description: "HTTP_MODE van de node (relay = Caddy zonder publieke poorten)" }
+        edge:
+          description: Gezet als deze node via een andere node loopt
+          oneOf:
+            - $ref: "#/components/schemas/RelayTunnelStatus"
+            - type: "null"
+        clients:
+          type: array
+          items: { $ref: "#/components/schemas/RelayClientState" }
 
     # ---------- websocket-berichten ----------
     WsAuth:

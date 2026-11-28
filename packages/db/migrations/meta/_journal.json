@@ -155,6 +155,13 @@
       "when": 1795824198508,
       "tag": "0021_lyrical_eternals",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795826864838,
+      "tag": "0022_productive_nico_minoru",
+      "breakpoints": true
     }
   ]
 }

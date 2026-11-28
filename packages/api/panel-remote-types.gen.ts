@@ -60,6 +60,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/remote/relay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * HTTP(S)-relay-configuratie van deze node
+         * @description De daemon haalt dit bij de start, elke minuut en na `POST /api/relay/refresh` op (en bewaart het in
+         *     `state/relay.json`). `edge`: deze node (B) laat zijn HTTP(S) via een andere node (A) lopen; `clients`: de nodes
+         *     die via deze node lopen, met **alleen** de hostnamen die het panel aan die node heeft toegewezen (plus
+         *     hun node-domein). Het geheim is per paar A↔B en staat versleuteld in `nodes.relay_secret_enc` van B.
+         */
+        get: operations["getRelayConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/remote/relay/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Toestand van de tunnel van deze node (als client)
+         * @description Bij verbinden, verbreken en elke minuut. Het panel toont het in Admin → Nodes.
+         */
+        post: operations["reportRelayStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/join/exchange": {
         parameters: {
             query?: never;
@@ -272,6 +315,32 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        RelayConfig: {
+            edge: null | {
+                /** @description node-id van de edge (A) */
+                node_id: number;
+                /** @description https://<fqdn van A> */
+                url: string;
+                fqdn: string;
+                /** @description het eigen node-id */
+                client_id: number;
+                secret: string;
+            };
+            clients: {
+                node_id: number;
+                fqdn: string;
+                secret: string;
+                hosts: {
+                    host: string;
+                    wildcard: boolean;
+                    dns_challenge: {
+                        /** @enum {string} */
+                        provider: "cloudflare";
+                        api_token: string;
+                    } | null;
+                }[];
+            }[];
+        };
         Error: {
             error: string;
             message?: string;
@@ -405,6 +474,62 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    getRelayConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayConfig"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    reportRelayStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    edge_node_id: number;
+                    connected: boolean;
+                    /** Format: date-time */
+                    connected_at?: string | null;
+                    latency_ms?: number | null;
+                    last_error?: string | null;
+                    /** Format: date-time */
+                    last_error_at?: string | null;
+                    reconnects?: number;
+                    /** @enum {string} */
+                    http_mode?: "direct" | "relay";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     joinExchange: {
         parameters: {
             query?: never;
@@ -439,6 +564,13 @@ export interface operations {
                         public_port: number;
                         /** @enum {string} */
                         dns_mode: "cloudflare" | "manual";
+                        /**
+                         * @description relay: HTTP(S) via een andere node; Caddy zonder publieke poorten (compose-profiel caddy-relay)
+                         * @enum {string}
+                         */
+                        http_mode: "direct" | "relay";
+                        /** @description IPv4 waar node_domain naar moet wijzen: het eigen IP, of dat van de relay-node bij http_mode relay */
+                        dns_ip: string;
                     };
                 };
             };

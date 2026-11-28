@@ -661,7 +661,7 @@ export function createMock(): Implementation {
           return { ...n, health: nodeHealth(n) };
         },
         create: ({ input }) => {
-          const n: s.Node = { id: id(), ...input, diskQuotaMode: null, isLocal: false, publicIp: null, joinState: null };
+          const n: s.Node = { id: id(), ...input, diskQuotaMode: null, isLocal: false, publicIp: null, joinState: null, httpRelayNodeId: null };
           db.nodes.push(n);
           return { node: n, token: "mock-node-token", installCommand: `curl -fsSL https://panel.test/install-node.sh | bash -s -- --panel https://panel.test --token mock-node-token` };
         },
@@ -676,6 +676,7 @@ export function createMock(): Implementation {
           const n: s.Node = {
             id: id(), name: input.name, fqdn: input.fqdn ?? `${input.name}.panel.test`, daemonPort: input.daemonPort, sftpPort: input.sftpPort, maxRamMb: input.maxRamMb, maxDiskMb: input.maxDiskMb,
             s3TargetId: input.s3TargetId, diskQuotaMode: null, isLocal: false, supportsDomains: input.supportsDomains, publicPort: input.publicPort ?? (input.supportsDomains ? 443 : 8443), publicIp: null, joinState: "waiting",
+            httpRelayNodeId: input.httpRelayNodeId,
           };
           db.nodes.push(n);
           return { node: n, joinCommand: "curl -fsSL https://panel.test/join | sudo bash -s -- mock-join-code", expiresAt: new Date(Date.now() + 3_600_000) };
@@ -691,6 +692,26 @@ export function createMock(): Implementation {
         },
         updateDaemon: () => ok,
         uninstallCommand: () => ({ command: "curl -fsSL https://panel.test/join | sudo bash -s -- --uninstall" }),
+        setHttpRelay: ({ input }) => {
+          const n = db.nodes.find((x) => x.id === input.id) ?? notFound("node");
+          n.httpRelayNodeId = input.relayNodeId;
+          const relay = db.nodes.find((x) => x.id === input.relayNodeId);
+          return { node: n, dns: [{ name: n.fqdn, type: "A" as const, value: relay ? "203.0.113.10" : n.publicIp, managed: false, applied: null, error: null, ok: null }] };
+        },
+        relayStatus: ({ input }) => {
+          const n = db.nodes.find((x) => x.id === input.id) ?? notFound("node");
+          const relayed = n.httpRelayNodeId !== null;
+          return {
+            relayNodeId: n.httpRelayNodeId,
+            httpIp: relayed ? "203.0.113.10" : n.publicIp,
+            tunnel: relayed ? { connected: true, latencyMs: 12.5, lastError: null, lastErrorAt: null, connectedAt: new Date(Date.now() - 3_600_000), reconnects: 0, httpMode: "relay" as const, reportedAt: new Date() } : null,
+            edge: relayed ? { connected: true, latencyMs: 12.1, lastError: null, hosts: [n.fqdn] } : null,
+            dns: [{ name: n.fqdn, type: "A" as const, value: relayed ? "203.0.113.10" : n.publicIp, managed: false, applied: null, error: null, ok: null }],
+            candidates: db.nodes.filter((x) => x.id !== n.id && x.supportsDomains && x.publicPort === 443 && x.httpRelayNodeId === null).map((x) => ({ id: x.id, name: x.name, fqdn: x.fqdn })),
+            clients: db.nodes.filter((x) => x.httpRelayNodeId === n.id).map((x) => ({ id: x.id, name: x.name, fqdn: x.fqdn })),
+            modeCommand: n.isLocal ? null : `curl -fsSL https://panel.test/join | sudo bash -s -- --http-mode ${relayed ? "relay" : "direct"}`,
+          };
+        },
       },
       allocations: {
         list: ({ input }) => db.allocations.filter((a) => a.nodeId === input.nodeId),

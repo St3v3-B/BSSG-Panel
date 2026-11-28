@@ -90,6 +90,48 @@ paths:
         "400": { description: Geen Cloudflare-koppeling voor deze zone }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /api/remote/relay:
+    get:
+      operationId: getRelayConfig
+      summary: HTTP(S)-relay-configuratie van deze node
+      description: |
+        De daemon haalt dit bij de start, elke minuut en na `POST /api/relay/refresh` op (en bewaart het in
+        `state/relay.json`). `edge`: deze node (B) laat zijn HTTP(S) via een andere node (A) lopen; `clients`: de nodes
+        die via deze node lopen, met **alleen** de hostnamen die het panel aan die node heeft toegewezen (plus
+        hun node-domein). Het geheim is per paar A↔B en staat versleuteld in `nodes.relay_secret_enc` van B.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RelayConfig" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/remote/relay/status:
+    post:
+      operationId: reportRelayStatus
+      summary: Toestand van de tunnel van deze node (als client)
+      description: Bij verbinden, verbreken en elke minuut. Het panel toont het in Admin → Nodes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [edge_node_id, connected]
+              properties:
+                edge_node_id: { type: integer }
+                connected: { type: boolean }
+                connected_at: { type: [string, "null"], format: date-time }
+                latency_ms: { type: [number, "null"] }
+                last_error: { type: [string, "null"], maxLength: 500 }
+                last_error_at: { type: [string, "null"], format: date-time }
+                reconnects: { type: integer }
+                http_mode: { type: string, enum: [direct, relay] }
+      responses:
+        "204": { description: OK }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /api/join/exchange:
     post:
       operationId: joinExchange
@@ -114,7 +156,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [node_token, panel_url, node_domain, acme_email, daemon_port, sftp_port, supports_domains, public_port, dns_mode]
+                required: [node_token, panel_url, node_domain, acme_email, daemon_port, sftp_port, supports_domains, public_port, dns_mode, http_mode, dns_ip]
                 properties:
                   node_token: { type: string }
                   panel_url: { type: string }
@@ -125,6 +167,8 @@ paths:
                   supports_domains: { type: boolean }
                   public_port: { type: integer }
                   dns_mode: { type: string, enum: [cloudflare, manual] }
+                  http_mode: { type: string, enum: [direct, relay], description: "relay: HTTP(S) via een andere node; Caddy zonder publieke poorten (compose-profiel caddy-relay)" }
+                  dns_ip: { type: string, description: "IPv4 waar node_domain naar moet wijzen: het eigen IP, of dat van de relay-node bij http_mode relay" }
         "404": { description: invalid_code }
         "429": { description: Te veel pogingen }
 
@@ -407,6 +451,44 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
   schemas:
+    RelayConfig:
+      type: object
+      required: [edge, clients]
+      properties:
+        edge:
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [node_id, url, fqdn, client_id, secret]
+              properties:
+                node_id: { type: integer, description: node-id van de edge (A) }
+                url: { type: string, description: "https://<fqdn van A>" }
+                fqdn: { type: string }
+                client_id: { type: integer, description: het eigen node-id }
+                secret: { type: string }
+        clients:
+          type: array
+          items:
+            type: object
+            required: [node_id, fqdn, secret, hosts]
+            properties:
+              node_id: { type: integer }
+              fqdn: { type: string }
+              secret: { type: string }
+              hosts:
+                type: array
+                items:
+                  type: object
+                  required: [host, wildcard, dns_challenge]
+                  properties:
+                    host: { type: string }
+                    wildcard: { type: boolean }
+                    dns_challenge:
+                      type: [object, "null"]
+                      required: [provider, api_token]
+                      properties:
+                        provider: { type: string, enum: [cloudflare] }
+                        api_token: { type: string }
     Error:
       type: object
       required: [error]

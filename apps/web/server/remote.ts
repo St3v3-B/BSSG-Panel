@@ -18,6 +18,7 @@ import { getLimiter } from "./lib/ratelimit";
 import { logImageUpdate, remoteImageSettings, storeImageReport } from "./image-updates";
 import { fetchServerByUuid, sftpUsername } from "./servers-data";
 import { applyServerState } from "./node-cache";
+import { relayConfigFor, storeRelayReport } from "./relay";
 
 type NodeRow = typeof schema.nodes.$inferSelect;
 
@@ -316,4 +317,29 @@ export const sftpAuth = remoteHandler(async (req, node) => {
     }
   }
   return fail("invalid", srvs[0]?.id);
+});
+
+// ---------- HTTP(S)-relay ----------
+
+export const getRelayConfig = remoteHandler(async (_req, node) => json(200, await relayConfigFor(node)));
+
+export const reportRelayStatus = remoteHandler(async (req, node) => {
+  const b = await body(
+    req,
+    z.object({
+      edge_node_id: z.number().int(),
+      connected: z.boolean(),
+      connected_at: z.string().max(40).nullable().optional(),
+      latency_ms: z.number().nullable().optional(),
+      last_error: z.string().max(2000).nullable().optional(),
+      last_error_at: z.string().max(40).nullable().optional(),
+      reconnects: z.number().int().min(0).optional(),
+      http_mode: z.enum(["direct", "relay"]).optional(),
+    }),
+  );
+  if (!b) return error(400, "bad_request");
+  // Alleen meldingen over de relay die het panel heeft toegewezen.
+  if (b.edge_node_id !== node.httpRelayNodeId) return noContent();
+  await storeRelayReport(node, b);
+  return noContent();
 });

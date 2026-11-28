@@ -930,6 +930,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/relay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Toestand van de relay (als client en als edge) */
+        get: operations["getRelay"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relay/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Relay-config nu opnieuw bij het panel ophalen
+         * @description Het panel roept dit aan na een wijziging (relay-keuze, domeinen van een client). Zonder aanroep haalt de daemon de config elke minuut op.
+         */
+        post: operations["refreshRelay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relay/tunnel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Websocket-tunnel van een client-node (geen node-token)
+         * @description Alleen voor daemons. Websocket-upgrade met binaire berichten, daarover yamux (A opent de streams, B serveert HTTP).
+         *     Authenticatie met headers: `X-Relay-Node` (node-id van B), `X-Relay-Time` (unix-seconden, max 2 min afwijking),
+         *     `X-Relay-Nonce` (32 hex, eenmalig) en `X-Relay-Signature` =
+         *     `hex(HMAC-SHA256(secret, "panel-relay-v1|client|<A fqdn>|<B id>|<time>|<nonce>"))`.
+         *     A antwoordt in de 101 met `X-Relay-Proof` = `hex(HMAC-SHA256(secret, "panel-relay-v1|edge|<A fqdn>|<B id>|<nonce>"))`;
+         *     B gebruikt de verbinding alleen als dat klopt. Het geheim geeft het panel per paar uit.
+         */
+        get: operations["relayTunnel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/routes": {
         parameters: {
             query?: never;
@@ -1360,6 +1422,51 @@ export interface components {
             ssl_error?: string | null;
             /** Format: date-time */
             checked_at?: string | null;
+        };
+        /** @description De tunnel vanaf de client (B) gezien */
+        RelayTunnelStatus: {
+            edge_node_id: number;
+            edge_url: string;
+            connected: boolean;
+            /** Format: date-time */
+            connected_at?: string | null;
+            latency_ms?: number | null;
+            last_error?: string | null;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            reconnects: number;
+        };
+        /** @description Eén client vanaf de edge (A) gezien */
+        RelayClientState: {
+            node_id: number;
+            fqdn: string;
+            connected: boolean;
+            /** Format: date-time */
+            connected_at?: string | null;
+            latency_ms?: number | null;
+            remote?: string;
+            last_error?: string | null;
+            /** Format: date-time */
+            last_error_at?: string | null;
+            /** @description fqdn van B plus de toegewezen hostnamen */
+            hosts: string[];
+            /** @description Alleen met `?ssl=1` */
+            ssl?: {
+                host: string;
+                /** @enum {string} */
+                ssl_status: "pending" | "dns_wrong" | "issuing" | "active" | "failed";
+                ssl_error?: string | null;
+            }[];
+        };
+        RelayState: {
+            /**
+             * @description HTTP_MODE van de node (relay = Caddy zonder publieke poorten)
+             * @enum {string}
+             */
+            http_mode: "direct" | "relay";
+            /** @description Gezet als deze node via een andere node loopt */
+            edge: components["schemas"]["RelayTunnelStatus"] | null;
+            clients: components["schemas"]["RelayClientState"][];
         };
         WsAuth: {
             /** @constant */
@@ -2924,6 +3031,99 @@ export interface operations {
                 };
             };
             503: components["responses"]["DbUnavailable"];
+        };
+    };
+    getRelay: {
+        parameters: {
+            query?: {
+                /** @description `1` = per hostnaam van de clients ook de SSL-status uit Caddy (traag: TLS-controle per host) */
+                ssl?: "0" | "1";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelayState"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    refreshRelay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Opgehaald en toegepast */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Panel niet bereikbaar */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    relayTunnel: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Relay-Node": string;
+                "X-Relay-Time": string;
+                "X-Relay-Nonce": string;
+                "X-Relay-Signature": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tunnel open (header X-Relay-Proof) */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Handtekening, tijd of nonce ongeldig */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Deze node is niet aan deze edge toegewezen */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listRoutes: {
