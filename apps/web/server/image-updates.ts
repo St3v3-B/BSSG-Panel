@@ -4,6 +4,7 @@ import { asc, eq } from "drizzle-orm";
 import { logActivity } from "./activity";
 import { call, daemonFor } from "./daemon";
 import { getDb, schema } from "./db";
+import { notify } from "./notify";
 import { fetchServers, imageInfo } from "./servers-data";
 import { getImageUpdateSettings } from "./settings";
 
@@ -25,10 +26,15 @@ export interface ReportedImage {
 export async function storeImageReport(items: ReportedImage[]): Promise<void> {
   const db = getDb();
   for (const it of items) {
+    const [before] = await db.select({ id: schema.servers.id, name: schema.servers.name, available: schema.servers.imageUpdateAvailable }).from(schema.servers).where(eq(schema.servers.uuid, it.uuid));
     await db
       .update(schema.servers)
       .set({ imageUpdateAvailable: it.update_available, imageReinstallRequired: it.update_available && it.reinstall_required, imageCheckedAt: new Date(it.checked_at) })
       .where(eq(schema.servers.uuid, it.uuid));
+    // Alleen de overgang naar "beschikbaar" melden (admins, volgens hun voorkeuren en de admin-webhook).
+    if (before && !before.available && it.update_available) {
+      await notify({ kind: "image_update", reinstallRequired: it.reinstall_required }, { server: { uuid: it.uuid, name: before.name }, hooks: [], admin: true, users: [] });
+    }
   }
 }
 

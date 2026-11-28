@@ -1,5 +1,6 @@
 "use client";
-import { Activity, Database, FileCode2, LayoutDashboard, Server, Settings, Users, type LucideIcon } from "lucide-react";
+import { Activity, Database, FileCode2, Globe, LayoutDashboard, Package, Receipt, Server, Settings, Users, type LucideIcon } from "lucide-react";
+import { trpc } from "@/lib/trpc";
 import { usePathname } from "next/navigation";
 import { usePhpMyAdmin } from "@/app/_hooks/use-phpmyadmin";
 import { useT } from "@/app/_lib/i18n";
@@ -36,14 +37,22 @@ export function useNav(isAdmin: boolean) {
     mk("/admin/settings/dns-providers", sub.dnsProviders, Settings, under("/admin/settings/dns-providers")),
     mk("/admin/settings/backup-storage", sub.s3Targets, Settings, under("/admin/settings/backup-storage")),
     mk("/admin/settings/image-updates", sub.imageUpdates, Settings, under("/admin/settings/image-updates")),
+    mk("/admin/settings/email", t.notif2.smtpNav, Settings, under("/admin/settings/email")),
     mk("/admin/settings/updates", sub.updates, Settings, under("/admin/settings/updates")),
+    mk("/admin/settings/billing", t.billing.nav.settings, Settings, under("/admin/settings/billing")),
   ];
   const n = t.admin2.nav;
   const pma = usePhpMyAdmin();
   const panelItems: NavItem[] = [{ ...mk("/", t.nav.myServers, Server, pathname === "/" || under("/servers")), current: pathname === "/" }];
+  panelItems.push(mk("/status-pages", t.statusPage.navTitle, Globe, under("/status-pages")));
   if (pma.info?.visible) {
     panelItems.push(mk("/databases", t.phpmyadmin.nav, Database, under("/databases")));
   }
+  // Pakketten/facturatie: alleen tonen als ze aanstaan (of de gebruiker al abonnementen/facturen heeft).
+  const billing = trpc.billing.status.useQuery(undefined, { staleTime: 60_000, retry: false });
+  const b = billing.data;
+  if (b?.plansEnabled) panelItems.push(mk("/plans", t.billing.nav.plans, Package, under("/plans")));
+  if (b && (b.billingEnabled || b.hasSubscriptions)) panelItems.push(mk("/billing", t.billing.nav.billing, Receipt, under("/billing")));
   const sections: NavSection[] = [{ id: "panel", title: t.nav.panelSection, items: panelItems }];
   if (isAdmin) {
     sections.push({
@@ -55,6 +64,8 @@ export function useNav(isAdmin: boolean) {
         mk("/admin/nodes", n.nodes, Server, under("/admin/nodes")),
         mk("/admin/users", n.users, Users, under("/admin/users")),
         mk("/admin/templates", n.templates, FileCode2, under("/admin/templates")),
+        ...(b?.plansEnabled ? [mk("/admin/plans", t.billing.nav.adminPlans, Package, under("/admin/plans"))] : []),
+        ...(b?.plansEnabled || b?.billingEnabled ? [mk("/admin/billing", t.billing.nav.adminBilling, Receipt, under("/admin/billing"))] : []),
         mk("/admin/activity", n.activity, Activity, under("/admin/activity")),
         mk("/admin/settings", n.settings, Settings, under("/admin/settings"), settingsChildren),
       ],

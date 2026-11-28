@@ -350,6 +350,24 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/servers/{uuid}/players:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    get:
+      tags: [servers]
+      operationId: getPlayers
+      description: |
+        Server-list-ping (Minecraft Java-protocol) naar de primaire allocation van een draaiende
+        server, met een timeout van 2 s. Voor de openbare statuspagina; het panel cachet de uitkomst.
+        Niet online, geen allocation of geen (geldig) antwoord → 200 met `online: null`.
+      responses:
+        "200":
+          description: Aantal spelers
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Players" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/servers/{uuid}/network:
     parameters: [{ $ref: "#/components/parameters/Uuid" }]
     description: |
@@ -1296,6 +1314,14 @@ components:
         log_tail: { type: string, description: "Laatste ~40 regels van het laatste log" }
         daemon_version: { type: string }
         daemon_commit: { type: string }
+
+    Players:
+      type: object
+      required: [online, max]
+      properties:
+        online: { type: [integer, "null"], description: "null = geen antwoord op de ping" }
+        max: { type: [integer, "null"] }
+        version: { type: [string, "null"], description: "versienaam uit het antwoord" }
 
     ProxyNetwork:
       type: object

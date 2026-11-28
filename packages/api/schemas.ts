@@ -1077,3 +1077,173 @@ export const OwnLimits = z.object({
   diskMb: z.number().int().min(64),
 });
 export type OwnLimits = z.infer<typeof OwnLimits>;
+
+// ---------- meldingen (in het panel, Discord, e-mail) ----------
+
+/**
+ * Soorten gebeurtenissen waarvoor een gebruiker per kanaal kiest. `node_offline` en `image_update`
+ * zijn alleen voor admins (zie ADMIN_NOTIFICATION_EVENTS).
+ */
+export const NotificationEvent = z.enum([
+  "server_crashed",
+  "server_unreachable",
+  "disk",
+  "backup_failed",
+  "backup_completed",
+  "install_failed",
+  "ssl_failed",
+  "login_new_ip",
+  "node_offline",
+  "image_update",
+]);
+export type NotificationEvent = z.infer<typeof NotificationEvent>;
+export const ADMIN_NOTIFICATION_EVENTS: readonly NotificationEvent[] = ["node_offline", "image_update"];
+export const NotificationChannel = z.enum(["panel", "discord", "email"]);
+export type NotificationChannel = z.infer<typeof NotificationChannel>;
+export const ChannelPrefs = z.object({ panel: z.boolean(), discord: z.boolean(), email: z.boolean() });
+export type ChannelPrefs = z.infer<typeof ChannelPrefs>;
+/** Volledige tabel: elke gebeurtenis heeft een rij. */
+export const NotificationPrefs = z.record(NotificationEvent, ChannelPrefs);
+export type NotificationPrefs = z.infer<typeof NotificationPrefs>;
+
+/** Standaard: overal het panel en Discord; e-mail voor wat echt aandacht vraagt. */
+export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+  server_crashed: { panel: true, discord: true, email: true },
+  server_unreachable: { panel: true, discord: true, email: true },
+  disk: { panel: true, discord: true, email: true },
+  backup_failed: { panel: true, discord: true, email: true },
+  backup_completed: { panel: false, discord: false, email: false },
+  install_failed: { panel: true, discord: true, email: false },
+  ssl_failed: { panel: true, discord: true, email: true },
+  login_new_ip: { panel: true, discord: false, email: true },
+  node_offline: { panel: true, discord: true, email: true },
+  image_update: { panel: true, discord: false, email: false },
+};
+
+export const EmailAddress = z.string().trim().toLowerCase().max(254).pipe(z.email());
+export const EmailStatus = z.object({
+  /** Geverifieerd adres waar meldingen heen gaan (null = geen). */
+  address: z.string().nullable(),
+  /** Adres dat op verificatie wacht (link verstuurd). */
+  pending: z.string().nullable(),
+});
+export type EmailStatus = z.infer<typeof EmailStatus>;
+
+export const NotificationSettings = z.object({
+  prefs: NotificationPrefs,
+  email: EmailStatus,
+  /** Eigen Discord-webhook ingesteld. */
+  discordSet: z.boolean(),
+  /** De admin heeft SMTP ingesteld (anders kan e-mail niet). */
+  emailAvailable: z.boolean(),
+});
+export type NotificationSettings = z.infer<typeof NotificationSettings>;
+
+export const InboxLevel = z.enum(["info", "success", "warning", "error"]);
+export const InboxItem = z.object({
+  id: Id,
+  event: NotificationEvent,
+  level: InboxLevel,
+  title: z.string(),
+  body: z.string(),
+  server: z.object({ uuid: Uuid, name: z.string() }).nullable(),
+  /** Pad binnen het panel, bv. /servers/<uuid>. */
+  link: z.string().nullable(),
+  createdAt: z.date(),
+  readAt: z.date().nullable(),
+});
+export type InboxItem = z.infer<typeof InboxItem>;
+
+export const SmtpSecurity = z.enum(["tls", "starttls", "none"]);
+export type SmtpSecurity = z.infer<typeof SmtpSecurity>;
+/** SMTP zoals de admin hem ziet (nooit het wachtwoord). `host: null` = niet ingesteld. */
+export const SmtpSettings = z.object({
+  host: z.string().nullable(),
+  port: z.number().int().min(1).max(65535),
+  security: SmtpSecurity,
+  username: z.string().nullable(),
+  passwordSet: z.boolean(),
+  from: z.string().nullable(),
+  fromName: z.string().nullable(),
+});
+export type SmtpSettings = z.infer<typeof SmtpSettings>;
+export const SmtpInput = z.object({
+  /** null = SMTP uitzetten (alles wissen). */
+  host: z.string().trim().min(1).max(253).regex(/^[A-Za-z0-9.-]+$|^\[[0-9a-fA-F:.]+\]$/, "invalid host").nullable(),
+  port: z.number().int().min(1).max(65535),
+  security: SmtpSecurity,
+  username: z.string().max(254).nullable(),
+  /** Weggelaten = ongewijzigd, null = wissen. */
+  password: z.string().max(500).nullable().optional(),
+  from: EmailAddress.nullable(),
+  fromName: z.string().trim().max(100).nullable(),
+});
+export type SmtpInput = z.infer<typeof SmtpInput>;
+
+// ---------- openbare statuspagina's ----------
+
+/** 3-48 tekens, kleine letters, cijfers en streepjes (niet aan begin of eind). */
+export const StatusSlug = z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$/, "INVALID_SLUG");
+export const StatusPageKind = z.enum(["server", "network"]);
+export const StatusPage = z.object({
+  id: Id,
+  slug: z.string(),
+  kind: StatusPageKind,
+  title: z.string(),
+  description: z.string().nullable(),
+  enabled: z.boolean(),
+  showAddress: z.boolean(),
+  showPlayers: z.boolean(),
+  servers: z.array(z.object({ uuid: Uuid, name: z.string() })),
+  createdAt: z.date(),
+});
+export type StatusPage = z.infer<typeof StatusPage>;
+export const StatusPageInput = z.object({
+  slug: StatusSlug,
+  title: z.string().trim().min(1).max(100),
+  description: z.string().trim().max(500).nullable().default(null),
+  enabled: z.boolean().default(true),
+  showAddress: z.boolean().default(false),
+  showPlayers: z.boolean().default(true),
+  /** Op volgorde; alleen eigen servers. */
+  serverUuids: z.array(Uuid).min(1).max(50),
+});
+export const StatusCandidate = z.object({
+  uuid: Uuid,
+  name: z.string(),
+  type: ServerType,
+  templateName: z.string(),
+  /** Proxy (Velocity): de backends van zijn netwerk, om in één keer toe te voegen. */
+  networkMembers: z.array(Uuid),
+});
+export type StatusCandidate = z.infer<typeof StatusCandidate>;
+
+/** Wat een bezoeker ziet. Bewust zonder uuid's, IP's (tenzij showAddress), node of eigenaar. */
+export const PublicServerState = z.enum(["online", "starting", "sleeping", "offline", "maintenance", "unknown"]);
+export type PublicServerState = z.infer<typeof PublicServerState>;
+export const PublicStatusServer = z.object({
+  name: z.string(),
+  type: ServerType,
+  state: PublicServerState,
+  players: z.object({ online: z.number().int(), max: z.number().int() }).nullable(),
+  /** Percentages 0-100; null = nog geen metingen. */
+  uptime24h: z.number().nullable(),
+  uptime7d: z.number().nullable(),
+  /** Per uur (oudste eerst, 24 stuks) en per dag (7 stuks). */
+  hours: z.array(z.number().nullable()),
+  days: z.array(z.number().nullable()),
+  address: z.string().nullable(),
+});
+export type PublicStatusServer = z.infer<typeof PublicStatusServer>;
+export const PublicStatus = z.object({
+  title: z.string(),
+  description: z.string().nullable(),
+  kind: StatusPageKind,
+  branding: Branding,
+  overall: z.enum(["operational", "degraded", "down", "unknown"]),
+  servers: z.array(PublicStatusServer),
+  updatedAt: z.date(),
+});
+export type PublicStatus = z.infer<typeof PublicStatus>;
+// ---------- pakketten en facturatie ----------
+export * from "./billing-schemas";
