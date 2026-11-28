@@ -97,10 +97,15 @@ export async function relayHosts(nodeId: number): Promise<RelayHost[]> {
     .where(and(eq(schema.servers.nodeId, nodeId), ne(schema.domains.protocol, "minecraft")))
     .orderBy(asc(schema.domains.id));
   const providers = new Map((await db.select().from(schema.dnsProviders)).map((p) => [p.id, p]));
-  return rows.map(({ d }) => {
-    const p = d.wildcard && d.dnsProviderId ? providers.get(d.dnsProviderId) : undefined;
-    return { host: routeHostOf(d), wildcard: d.wildcard, dns_challenge: p ? { provider: "cloudflare" as const, api_token: decrypt(p.apiTokenEnc) } : null };
-  });
+  // Nooit doorsturen: het panel-domein en de domeinen van nodes (die horen bij hun eigen node of route).
+  const reserved = new Set([getEnv().PANEL_DOMAIN, ...(await db.select({ fqdn: schema.nodes.fqdn }).from(schema.nodes)).map((n) => n.fqdn)].map((x) => x.toLowerCase()));
+  const covers = (d: DomainRow) => reserved.has(d.hostname) || (d.wildcard && [...reserved].some((r) => r.endsWith(`.${d.hostname}`) && !r.slice(0, -d.hostname.length - 1).includes(".")));
+  return rows
+    .filter(({ d }) => !covers(d))
+    .map(({ d }) => {
+      const p = d.wildcard && d.dnsProviderId ? providers.get(d.dnsProviderId) : undefined;
+      return { host: routeHostOf(d), wildcard: d.wildcard, dns_challenge: p ? { provider: "cloudflare" as const, api_token: decrypt(p.apiTokenEnc) } : null };
+    });
 }
 
 export interface RelayConfig {

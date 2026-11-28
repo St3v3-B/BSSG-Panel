@@ -331,6 +331,32 @@ func TestRelayReplayAndSkew(t *testing.T) {
 	}
 }
 
+func TestRelayNodeDomainsCannotBeHijacked(t *testing.T) {
+	e := &Edge{Self: "node1.test", Dial: "unix//x"}
+	e.SetClients([]ClientConfig{
+		{NodeID: 2, Fqdn: "node2.test", Secret: "a", Hosts: []Host{{Host: "node3.test"}, {Host: "node1.test"}}},
+		{NodeID: 3, Fqdn: "node3.test", Secret: "b"},
+	})
+	if c := e.lookup("node3.test"); c == nil || c.cfg.NodeID != 3 {
+		t.Fatal("node3.test hoort bij node 3")
+	}
+	if e.lookup("node1.test") != nil {
+		t.Fatal("het eigen domein van de edge wordt nooit doorgestuurd")
+	}
+	n := 0
+	for _, r := range e.Routes() {
+		if r.Host == "node3.test" {
+			n++
+		}
+		if r.Host == "node1.test" {
+			t.Fatal("geen route voor het eigen domein")
+		}
+	}
+	if n != 1 {
+		t.Fatal(n)
+	}
+}
+
 func TestRelayRoutes(t *testing.T) {
 	e := &Edge{Dial: "unix//run/panel/relay.sock"}
 	e.SetClients([]ClientConfig{

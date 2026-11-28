@@ -2,7 +2,7 @@
  * HTTP(S)-relay (panelkant): keuze per node, config voor beide daemons, DNS naar de relay-node, SSL-status van de
  * relay-node, statusmeldingen, rechten en de join van een node zonder 80/443.
  */
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -171,6 +171,13 @@ describe("HTTP(S)-relay", () => {
     expect(d2.routes.has("site.node2.test")).toBe(true);
     const ca = (await (await relayConfig(req("/api/remote/relay", h.env.NODE_TOKEN!), params)).json()) as any;
     expect(ca.clients[0].hosts).toEqual([{ host: "site.node2.test", wildcard: false, dns_challenge: null }]);
+    // Een domein dat gelijk is aan een node- of panel-domein stuurt de relay nooit door.
+    for (const hostname of ["node1.test", "node3.test", "panel.test"]) {
+      await getDb().insert(schema.domains).values({ serverId: (await getDb().select().from(schema.servers).where(eq(schema.servers.uuid, siteUuid)))[0]!.id, hostname, protocol: "http" });
+    }
+    const ca2 = (await (await relayConfig(req("/api/remote/relay", h.env.NODE_TOKEN!), params)).json()) as any;
+    expect(ca2.clients[0].hosts.map((x: { host: string }) => x.host)).toEqual(["site.node2.test"]);
+    await getDb().delete(schema.domains).where(inArray(schema.domains.hostname, ["node1.test", "node3.test", "panel.test"]));
     const t = await player.api.domains.target({ uuid: siteUuid });
     expect(t).toEqual({ ip: A_IP, nodeFqdn: "node2.test", gameIp: B_IP, relayFqdn: "node1.test" });
     // De DNS-controle verwacht het IP van A.

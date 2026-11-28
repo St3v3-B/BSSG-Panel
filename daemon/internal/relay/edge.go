@@ -149,6 +149,10 @@ func (e *Edge) Routes() []proxy.Route {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	var out []proxy.Route
+	fqdns := map[string]bool{}
+	for _, c := range e.clients {
+		fqdns[c.cfg.Fqdn] = true
+	}
 	for _, c := range e.clients {
 		dns := map[string]*proxy.DNSChallenge{}
 		for _, h := range c.cfg.Hosts {
@@ -160,6 +164,9 @@ func (e *Edge) Routes() []proxy.Route {
 			out = append(out, proxy.Route{Host: h, Wildcard: strings.HasPrefix(h, "*."), DNSChallenge: dns[h], Upstream: proxy.Upstream{Dial: e.Dial}})
 		}
 		for h := range c.hosts {
+			if h == normHost(e.Self) || (h != c.cfg.Fqdn && fqdns[h]) {
+				continue
+			}
 			add(h)
 		}
 		for w := range c.wild {
@@ -172,6 +179,15 @@ func (e *Edge) Routes() []proxy.Route {
 
 // lookup: de client van een hostnaam (exact, anders wildcard op één label).
 func (e *Edge) lookup(host string) *edgeClient {
+	// Het node-domein van een client gaat altijd voor (een domein mag nooit dat van een andere node kapen).
+	for _, c := range e.clients {
+		if c.cfg.Fqdn == host {
+			return c
+		}
+	}
+	if e.isFqdnLocked(host) {
+		return nil
+	}
 	for _, c := range e.clients {
 		if c.hosts[host] {
 			return c
@@ -235,6 +251,9 @@ func (e *Edge) maybeRefresh() {
 	e.mu.Unlock()
 	e.Refresh()
 }
+
+// isFqdnLocked: de hostnaam is het eigen node-domein van deze edge (nooit doorsturen).
+func (e *Edge) isFqdnLocked(host string) bool { return host == normHost(e.Self) }
 
 var nonceRe = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
