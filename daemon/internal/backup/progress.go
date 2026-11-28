@@ -172,7 +172,7 @@ func (s *Service) Progress(uuid string) (Progress, bool) {
 	s.mu.Lock()
 	j := s.jobs[uuid]
 	s.mu.Unlock()
-	if j == nil {
+	if j == nil || j.op == opForget {
 		return Progress{}, false
 	}
 	return j.snapshot(time.Now()), true

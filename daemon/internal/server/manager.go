@@ -383,7 +383,9 @@ func (m *Manager) Recover(ctx context.Context) error {
 			continue
 		}
 		if role == RoleInstall {
-			if c.Name != installName(uuid) {
+			// De install-container en kortlevende restic-containers (backup.runRestic) overleven een
+			// herstart niet: hun opdracht is weg.
+			if c.Name != installName(uuid) && !strings.HasPrefix(c.Name, ContainerName(uuid)+"-restic-") {
 				continue
 			}
 			if err := m.eng.Remove(ctx, c.ID); err != nil && !errors.Is(err, engine.ErrNotFound) {

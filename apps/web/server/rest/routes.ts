@@ -107,7 +107,7 @@ export const REST_ROUTES: RestRoute[] = [
     method: "POST", path: "/servers/{uuid}/backups", operationId: "createBackup", tag: "backups", proc: "backups.create",
     summary: "Start a backup (runs in the background; poll the list for its status)", permission: "backup.create", status: 202,
     body: z.object({ name: z.string().max(100).nullable().optional(), includeDatabases: z.boolean().optional() }), bodyKind: "json",
-    input: ({ params, body }) => ({ uuid: params.uuid, ...pick(obj(body), ["name", "includeDatabases"]) }), output: contract.backups.create.output,
+    input: ({ params, body }) => ({ uuid: params.uuid, ...pick(obj(body), ["name", "includeDatabases", "kind"]) }), output: contract.backups.create.output,
   },
   {
     method: "POST", path: "/servers/{uuid}/backups/{id}/restore", operationId: "restoreBackup", tag: "backups", proc: "backups.restore",

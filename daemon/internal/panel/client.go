@@ -296,6 +296,19 @@ func (c *Client) ReportBackup(id int, ok bool, sha256 string, size int64, errMsg
 	})
 }
 
+// ReportSnapshot meldt een geslaagde incrementele backup (asynchroon met retry). r is een
+// backup.SnapshotResult (snapshot_id, size_bytes, added_bytes, forgotten_snapshots, pruned).
+func (c *Client) ReportSnapshot(id int, r any) {
+	body := map[string]any{}
+	if b, err := json.Marshal(r); err == nil {
+		_ = json.Unmarshal(b, &body)
+	}
+	body["successful"], body["sha256"], body["error"] = true, nil, nil
+	c.async(fmt.Sprintf("backup %d", id), func(ctx context.Context) error {
+		return c.do(ctx, http.MethodPost, fmt.Sprintf("/api/remote/backups/%d", id), body, nil)
+	})
+}
+
 // ReportDeploy meldt het resultaat van een git-deploy (asynchroon met retry). r wordt als JSON
 // verstuurd (deploy.Result); geen import van het deploy-pakket om cycli te vermijden.
 func (c *Client) ReportDeploy(id int, r any) {

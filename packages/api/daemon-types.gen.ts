@@ -826,6 +826,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/servers/{uuid}/restic/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Incrementele backup (restic-snapshot) naar de repository van de server
+         * @description restic draait in een kortlevende container (`panel.role=install`, naam `panel-<uuid>-restic-<hex>`, uid 1000,
+         *     geen capabilities, read-only rootfs, serverdata read-only op `/home/container`, netwerk `panel-site-<uuid>`).
+         *     Repository `s3:<endpoint>/<bucket>/restic/<uuid>` (bij de eerste backup aangemaakt). Dumps komen in de snapshot onder
+         *     `/_databases/{name}.sql`. Na de backup `restic forget` volgens `retention` (met `--prune` als `prune`).
+         *     Voortgang via `backup_progress` (preparing → dumping → archiving → finishing); resultaat via
+         *     `POST /api/remote/backups/{backup_id}` met `snapshot_id`. Eén backup/herstel tegelijk per server (ook met tar.zst);
+         *     een verweesde lock (afgebroken container) ruimt de daemon zelf op.
+         */
+        post: operations["createResticBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/restic/backups/{backup_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                backup_id: number;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Snapshot terugzetten (heel, of losse paden naar hun plek of een submap)
+         * @description Zonder `paths`: zoals het tar-herstel (server stoppen → `restic restore` naar een tijdelijke map → omwisselen →
+         *     databases); vóór het omwisselen afbreekbaar en de oude data blijft heel. Met `paths`: de server blijft draaien; de
+         *     paden (relatief aan /home/container, nooit erbuiten, ook niet via symlinks) worden overschreven op hun plek of in
+         *     `destination`. 507 `disk_exceeded` als de server al vol zit. Resultaat via `POST /api/remote/backups/{backup_id}/restore`.
+         */
+        post: operations["restoreResticBackup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/restic/ls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Eén map van een snapshot (niet recursief, zonder lock, hoogstens 5000 items) */
+        post: operations["resticLs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/servers/{uuid}/restic/forget": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Snapshots verwijderen (zonder prune; snapshots die al weg zijn tellen als verwijderd) */
+        post: operations["resticForget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/panel-upgrade/status": {
         parameters: {
             query?: never;
@@ -1544,6 +1636,54 @@ export interface components {
             access_key: string;
             secret_key: string;
             path_style: boolean;
+        };
+        ResticRepo: {
+            s3: components["schemas"]["S3Credentials"];
+            /** @description Repository-wachtwoord van de server (het panel bewaart het versleuteld); nooit in logs */
+            password: string;
+        };
+        /** @description `restic forget --group-by ''` (alle snapshots van de server in één groep); 0 = regel niet gebruiken */
+        ResticRetention: {
+            keep_last: number;
+            keep_daily: number;
+            keep_weekly: number;
+        };
+        ResticBackupRequest: components["schemas"]["ResticRepo"] & {
+            backup_id: number;
+            /** @description zoals BackupRequest.ignore (omgezet naar restic --exclude) */
+            ignore?: string[];
+            databases: components["schemas"]["DatabaseCredentials"][];
+            retention?: components["schemas"]["ResticRetention"] | null;
+            /** @description forget met --prune (het panel doet dat hooguit eens per dag) */
+            prune?: boolean;
+        };
+        ResticRestoreRequest: components["schemas"]["ResticRepo"] & {
+            snapshot_id: string;
+            /** @description alleen bij een volledig herstel */
+            databases: components["schemas"]["DatabaseCredentials"][];
+            /** @description leeg = de hele snapshot; anders paden relatief aan /home/container */
+            paths?: string[];
+            /** @description alleen met paths: submap (relatief) waarin de paden komen, bv. `restore-2026-11-28-1530`; leeg = oorspronkelijke plek */
+            destination?: string;
+        };
+        ResticLsRequest: components["schemas"]["ResticRepo"] & {
+            snapshot_id: string;
+            /** @description map relatief aan /home/container (`/` = de root) */
+            path: string;
+        };
+        ResticForgetRequest: components["schemas"]["ResticRepo"] & {
+            snapshot_ids: string[];
+        };
+        ResticEntry: {
+            name: string;
+            /** @description relatief aan /home/container */
+            path: string;
+            /** @enum {string} */
+            type: "file" | "dir" | "symlink" | "other";
+            /** Format: int64 */
+            size: number;
+            /** Format: date-time */
+            mtime: string;
         };
         DatabaseCredentials: {
             name: string;
@@ -3243,6 +3383,124 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    createResticBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResticBackupRequest"];
+            };
+        };
+        responses: {
+            /** @description Gestart */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    restoreResticBackup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+                backup_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResticRestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Gestart */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            507: components["responses"]["DiskFull"];
+        };
+    };
+    resticLs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResticLsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK (mappen eerst, dan op naam) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        entries: components["schemas"]["ResticEntry"][];
+                        truncated: boolean;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    resticForget: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                uuid: components["parameters"]["Uuid"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResticForgetRequest"];
+            };
+        };
+        responses: {
+            /** @description Verwijderd */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];

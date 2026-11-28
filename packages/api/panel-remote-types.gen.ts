@@ -1093,6 +1093,17 @@ export interface operations {
                     size_bytes?: number | null;
                     /** @description `cancelled` als het panel de backup afbrak (POST .../cancel) */
                     error?: string | null;
+                    /** @description restic-snapshot (64 hex) */
+                    snapshot_id?: string | null;
+                    /**
+                     * Format: int64
+                     * @description nieuw in de repository (gecomprimeerd); size_bytes = grootte van de snapshot
+                     */
+                    added_bytes?: number | null;
+                    /** @description door het retentiebeleid verwijderde snapshots */
+                    forgotten_snapshots?: string[];
+                    /** @description restic prune is gedraaid */
+                    pruned?: boolean;
                 };
             };
         };

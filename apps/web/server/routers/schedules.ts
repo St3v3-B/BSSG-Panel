@@ -32,9 +32,12 @@ function validate(i: { cron: string; action: string; payload: string | null }, s
   if (err) throw new TRPCError({ code: "BAD_REQUEST", message: `INVALID_CRON: ${err}` });
   if ((i.action === "command" || i.action === "exec") && !i.payload?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "COMMAND_REQUIRED" });
   if (i.payload && /[\r\n]/.test(i.payload)) throw new TRPCError({ code: "BAD_REQUEST", message: "COMMAND_MULTILINE" });
+  // backup: payload = soort (full | incremental) of leeg (standaard van de server).
+  if (i.action === "backup" && i.payload && !["full", "incremental"].includes(i.payload.trim())) throw new TRPCError({ code: "BAD_REQUEST", message: "INVALID_BACKUP_KIND" });
 }
 
-const payloadOf = (i: { action: string; payload: string | null }) => (i.action === "command" || i.action === "exec" ? i.payload!.trim() : null);
+const payloadOf = (i: { action: string; payload: string | null }) =>
+  i.action === "command" || i.action === "exec" ? i.payload!.trim() : i.action === "backup" && i.payload?.trim() ? i.payload.trim() : null;
 
 async function scheduleFor(ctx: Parameters<typeof requireServer>[0], id: number, mutates = true) {
   const [r] = await getDb()

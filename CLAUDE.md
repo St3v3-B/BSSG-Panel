@@ -100,7 +100,8 @@ Toolchain: Go 1.27 (module vereist 1.26+), Node 22, pnpm 12, TypeScript 5.9
   backends; subnets uit `DOCKER_NETWORK_POOL`), `shell` (kortlevende tools-container van de webterminal/SSH-shell,
   `panel-<uuid>-shell-<hex>`, met `panel.server_uuid`, alleen `/home/container` gemount, netwerk `panel-site-<uuid>`;
   de daemon verwijdert hem bij sluiten en verweesde shells bij zijn start). Git-deploy gebruikt `install`
-  (`panel-<uuid>-deploy-{git,build}`, label `panel.deploy_id`). Servers herkent de daemon
+  (`panel-<uuid>-deploy-{git,build}`, label `panel.deploy_id`); incrementele backups (restic) ook
+  (`panel-<uuid>-restic-<hex>`, data read-only, netwerk `panel-site-<uuid>`; verweesde ruimt de daemon bij zijn start op). Servers herkent de daemon
   uitsluitend aan `panel.role=server` + `panel.server_uuid`.
 - **Caddy-admin** luistert op de unix-socket `/run/panel/caddy-admin.sock` (gedeelde map met de
   daemon), niet op TCP. `CADDY_ADMIN_URL` mag `unix://…` of (tests) `http://127.0.0.1:<poort>` zijn;

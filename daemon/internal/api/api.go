@@ -160,6 +160,10 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /api/servers/{uuid}/backups/{backup_id}/restore", p(a.withServer(a.restoreBackup)))
 	mux.Handle("GET /api/servers/{uuid}/backups/progress", p(a.withServer(a.backupProgress)))
 	mux.Handle("POST /api/servers/{uuid}/backups/{backup_id}/cancel", p(a.withServer(a.cancelBackup)))
+	mux.Handle("POST /api/servers/{uuid}/restic/backups", p(a.withServer(a.createResticBackup)))
+	mux.Handle("POST /api/servers/{uuid}/restic/backups/{backup_id}/restore", p(a.withServer(a.restoreResticBackup)))
+	mux.Handle("POST /api/servers/{uuid}/restic/ls", p(a.withServer(a.resticLs)))
+	mux.Handle("POST /api/servers/{uuid}/restic/forget", p(a.withServer(a.resticForget)))
 
 	mux.Handle("POST /api/servers/{uuid}/deploy", p(a.withServer(a.startDeploy)))
 	mux.Handle("GET /api/servers/{uuid}/deploy", p(a.withServer(a.deployProgress)))

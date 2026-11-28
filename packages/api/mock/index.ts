@@ -68,6 +68,12 @@ const notFound = (what: string): never => {
 
 /** Maakt een verse mock met eigen state (handig in tests). */
 export function createMock(): Implementation {
+  const mockBackupSettings = new Map<string, s.BackupSettings>();
+  const backupSettings = (uuid: string): s.BackupSettings => {
+    let v = mockBackupSettings.get(uuid);
+    if (!v) mockBackupSettings.set(uuid, (v = { defaultKind: "full", retention: { keepLast: 10, keepDaily: 7, keepWeekly: 4 }, lastPruneAt: null, repositoryCreated: false }));
+    return v;
+  };
   const db = {
     users: clone(data.users),
     servers: clone(data.servers),
@@ -648,7 +654,7 @@ export function createMock(): Implementation {
     backups: {
       list: ({ input }) => db.backups.filter((b) => b.serverUuid === input.uuid),
       create: ({ input }) => {
-        const b: s.Backup = { id: id(), serverUuid: input.uuid, name: input.name ?? `backup ${new Date().toISOString().slice(0, 10)}`, sizeBytes: null, sha256: null, status: "running", includesDatabases: input.includeDatabases, error: null, createdAt: new Date(), completedAt: null };
+        const b: s.Backup = { id: id(), serverUuid: input.uuid, name: input.name ?? `backup ${new Date().toISOString().slice(0, 10)}`, sizeBytes: null, sha256: null, status: "running", includesDatabases: input.includeDatabases, error: null, createdAt: new Date(), completedAt: null, kind: input.kind ?? backupSettings(input.uuid).defaultKind, snapshotId: null, addedBytes: null };
         db.backups.push(b);
         return b;
       },
@@ -662,7 +668,7 @@ export function createMock(): Implementation {
         const total = 512 * 1024 * 1024;
         const elapsed = Date.now() - b.createdAt.getTime();
         if (elapsed >= 60_000) {
-          Object.assign(b, { status: "completed", sizeBytes: total / 2, sha256: "f".repeat(64), completedAt: new Date() });
+          Object.assign(b, b.kind === "incremental" ? { status: "completed", sizeBytes: total, addedBytes: 12 * 1024 * 1024, snapshotId: "c".repeat(64), completedAt: new Date() } : { status: "completed", sizeBytes: total / 2, sha256: "f".repeat(64), completedAt: new Date() });
           return null;
         }
         const frac = elapsed / 60_000;
@@ -675,6 +681,18 @@ export function createMock(): Implementation {
         else Object.assign(b, { status: "failed", error: "cancelled", completedAt: new Date() });
         return ok;
       },
+      // ---------- incrementeel (restic) ----------
+      settings: ({ input }) => backupSettings(input.uuid),
+      updateSettings: ({ input }) => {
+        const cur = backupSettings(input.uuid);
+        Object.assign(cur, { defaultKind: input.defaultKind, retention: input.retention });
+        return cur;
+      },
+      browse: ({ input }) => {
+        const dir = input.path.replace(/^\/+|\/+$/g, "");
+        return { path: dir, entries: (SNAPSHOT_TREE[dir] ?? []).map((e) => ({ ...e, path: dir ? `${dir}/${e.name}` : e.name, modifiedAt: new Date("2026-11-27T03:00:00Z") })), truncated: false };
+      },
+      restoreFiles: ({ input }) => ({ ok: true as const, directory: input.destination === "subdir" ? `/restore-${new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-")}` : null }),
     },
     schedules: {
       list: ({ input }) => db.schedules.filter((x) => x.serverUuid === input.uuid),
@@ -1013,3 +1031,22 @@ export function createMock(): Implementation {
 }
 
 export const mockImplementation = createMock();
+
+// ---------- incrementele backups (mock) ----------
+type MockEntry = Omit<s.SnapshotEntry, "path" | "modifiedAt">;
+const SNAPSHOT_TREE: Record<string, MockEntry[]> = {
+  "": [
+    { name: "plugins", type: "dir", sizeBytes: 0 },
+    { name: "world", type: "dir", sizeBytes: 0 },
+    { name: "server.properties", type: "file", sizeBytes: 1200 },
+  ],
+  world: [
+    { name: "region", type: "dir", sizeBytes: 0 },
+    { name: "level.dat", type: "file", sizeBytes: 4096 },
+  ],
+  "world/region": [
+    { name: "r.0.0.mca", type: "file", sizeBytes: 8_388_608 },
+    { name: "r.0.1.mca", type: "file", sizeBytes: 6_291_456 },
+  ],
+  plugins: [{ name: "EssentialsX.jar", type: "file", sizeBytes: 3_145_728 }],
+};

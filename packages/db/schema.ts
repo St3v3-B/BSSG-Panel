@@ -510,7 +510,31 @@ export const backups = pgTable("backups", {
   error: text("error"),
   createdAt: createdAt(),
   completedAt: ts("completed_at"),
+  /** full = tar.zst-object (s3_key), incremental = restic-snapshot in de repository van de server. */
+  kind: text("kind").notNull().default("full"),
+  /** incremental: restic-snapshot-id (64 hex). */
+  snapshotId: text("snapshot_id"),
+  /** incremental: nieuw toegevoegd aan de repository (size_bytes = grootte van de snapshot). */
+  addedBytes: bigint("added_bytes", { mode: "number" }),
 }, (t) => [index("backups_server_idx").on(t.serverId)]);
+
+/**
+ * Backup-instellingen per server (rij ontbreekt = standaardwaarden) en de restic-repository
+ * (s3:<endpoint>/<bucket>/restic/<uuid>) met een eigen willekeurig wachtwoord. Het doel ligt vast
+ * bij de eerste incrementele backup, ook als de node later een ander standaarddoel krijgt.
+ */
+export const serverBackupSettings = pgTable("server_backup_settings", {
+  serverId: integer("server_id").primaryKey().references(() => servers.id, { onDelete: "cascade" }),
+  /** full | incremental: soort van handmatige backups en schema's zonder eigen keuze. */
+  defaultKind: text("default_kind").notNull().default("full"),
+  keepLast: integer("keep_last").notNull().default(10),
+  keepDaily: integer("keep_daily").notNull().default(7),
+  keepWeekly: integer("keep_weekly").notNull().default(4),
+  resticPasswordEnc: text("restic_password_enc"),
+  resticS3TargetId: integer("restic_s3_target_id").references(() => s3Targets.id, { onDelete: "set null" }),
+  lastPruneAt: ts("last_prune_at"),
+  createdAt: createdAt(),
+});
 
 export const schedules = pgTable("schedules", {
   id: pk(),

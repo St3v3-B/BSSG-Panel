@@ -76,7 +76,7 @@ function ScheduleForm({ uuid, web, existing, onDone, onCancel }: { uuid: string;
   const submit = () => {
     setTouched(true);
     if (invalid) return;
-    const input = { name: form.name.trim(), cron: form.cron.trim(), action: form.action, payload: form.action === "command" || form.action === "exec" ? form.payload.trim() : null, active: form.active };
+    const input = { name: form.name.trim(), cron: form.cron.trim(), action: form.action, payload: form.action === "command" || form.action === "exec" ? form.payload.trim() : form.action === "backup" && form.payload ? form.payload : null, active: form.active };
     if (existing) update.mutate({ id: existing.id, ...input });
     else create.mutate({ uuid, ...input });
   };
@@ -108,6 +108,16 @@ function ScheduleForm({ uuid, web, existing, onDone, onCancel }: { uuid: string;
               ))}
             </Select>
           </div>
+          {form.action === "backup" && (
+            <div className="space-y-1">
+              <Label htmlFor="sch-kind">{t.backupsInc.scheduleKind}</Label>
+              <Select id="sch-kind" value={form.payload === "full" || form.payload === "incremental" ? form.payload : ""} onChange={(e) => setForm({ ...form, payload: e.target.value })}>
+                <option value="">{t.backupsInc.scheduleKindDefault}</option>
+                <option value="full">{t.backupsInc.kind.full}</option>
+                <option value="incremental">{t.backupsInc.kind.incremental}</option>
+              </Select>
+            </div>
+          )}
           {(form.action === "command" || form.action === "exec") && (
             <div className="space-y-1 sm:col-span-2">
               <Label htmlFor="sch-payload">{form.action === "exec" ? s.execPayload : s.payload}</Label>
@@ -194,6 +204,7 @@ function ScheduleRow({ uuid, schedule: x, onEdit }: { uuid: string; schedule: Sc
           <div className="font-mono text-xs text-muted-foreground">
             {x.cron}
             {(x.action === "command" || x.action === "exec") && x.payload && ` · ${x.payload}`}
+            {x.action === "backup" && (x.payload === "full" || x.payload === "incremental") && ` · ${t.backupsInc.kind[x.payload]}`}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             {s.lastRun}: {x.lastRunAt ? formatDate(x.lastRunAt) : s.never}

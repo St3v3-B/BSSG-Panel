@@ -48,7 +48,8 @@ export async function runAction(s: ScheduleRow, bundle: ServerBundle): Promise<s
       await call(() => node.sendCommands(bundle.server.uuid, [s.payload!]));
       break;
     case "backup":
-      await startBackup(bundle, { name: `${s.name} ${new Date().toISOString().slice(0, 16).replace("T", " ")}`, includeDatabases: true, userId: null, scheduleId: s.id });
+      // payload: soort (full | incremental); leeg = de standaard van de server.
+      await startBackup(bundle, { name: `${s.name} ${new Date().toISOString().slice(0, 16).replace("T", " ")}`, includeDatabases: true, userId: null, scheduleId: s.id, kind: s.payload === "full" || s.payload === "incremental" ? s.payload : null });
       break;
     case "exec": {
       if (!s.payload) throw new Error("no command set");

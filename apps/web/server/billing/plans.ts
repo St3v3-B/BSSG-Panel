@@ -83,11 +83,11 @@ export async function assertPlanDatabaseRoom(tx: Tx, serverId: number): Promise<
   return true;
 }
 
-/** Pakketserver: maximaal `maxBackups` bewaarde backups (mislukte tellen niet). */
+/** Pakketserver: maximaal `maxBackups` bewaarde volledige backups (mislukte tellen niet; incrementele houdt het retentiebeleid in toom). */
 export async function assertPlanBackupRoom(serverId: number): Promise<void> {
   const db = getDb();
   const plan = await planForServer(db, serverId);
   if (!plan) return;
-  const [c] = await db.select({ n: count() }).from(schema.backups).where(and(eq(schema.backups.serverId, serverId), ne(schema.backups.status, "failed")));
+  const [c] = await db.select({ n: count() }).from(schema.backups).where(and(eq(schema.backups.serverId, serverId), ne(schema.backups.status, "failed"), eq(schema.backups.kind, "full")));
   if ((c?.n ?? 0) + 1 > plan.maxBackups) throw planLimit("backups");
 }
