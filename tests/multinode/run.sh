@@ -101,7 +101,7 @@ echo "$MN_NODE_HOST $MN_NODE_DOMAIN $MN_SITE_DOMAIN $hosts_tag" >> /etc/hosts
 echo "== migraties + daemon bouwen + panel starten op :$PANEL_PORT"
 pnpm --filter @panel/db exec tsx migrate.ts >/dev/null
 (cd daemon && go build -o "$work/panel-daemon" ./cmd/panel-daemon)
-(cd apps/web && exec pnpm exec next dev -p "$PANEL_PORT" > "$work/panel.log" 2>&1) &
+(cd apps/web && node copy-monaco.mjs >/dev/null && exec pnpm exec next dev -p "$PANEL_PORT" > "$work/panel.log" 2>&1) &
 panel_pid=$!
 for _ in $(seq 1 120); do curl -sf "$PANEL_URL/api/trpc/auth.branding" >/dev/null 2>&1 && break; sleep 1; done
 curl -sf "$PANEL_URL/api/trpc/auth.branding" >/dev/null || { tail -50 "$work/panel.log"; exit 1; }

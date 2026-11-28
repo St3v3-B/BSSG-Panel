@@ -3,6 +3,7 @@ import { trpc } from "@/lib/trpc";
 import { DeleteOwnCard, OwnLimitsCard } from "@/app/_components/quota/own-server-cards";
 import { PhpSettingsCard } from "@/app/_components/server/php-settings-card";
 import { ServerNotificationsCard } from "@/app/_components/notifications/webhook-card";
+import { ServerStatusPageCard } from "@/app/_components/status/status-page-settings";
 import { NoPermission } from "@/app/_components/server/no-permission";
 import { ImageUpdateCard } from "@/app/_components/image-updates";
 import { RenameCard, ReinstallCard, SleepCard, VariablesCard } from "@/app/_components/server/server-settings";
@@ -27,6 +28,7 @@ export default function ServerSettingsPage() {
       {manage && s.type === "web" && <PhpSettingsCard uuid={s.uuid} />}
       {manage && <SleepCard key={`s-${s.uuid}`} server={s} />}
       {manage && <ServerNotificationsCard uuid={s.uuid} />}
+      {manage && <ServerStatusPageCard uuid={s.uuid} name={s.name} />}
       {perms.includes("files.read") || perms.includes("files.write") ? (
         <SftpCard uuid={s.uuid} />
       ) : (

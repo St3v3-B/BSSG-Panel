@@ -8,7 +8,8 @@ import { and, eq, ne } from "drizzle-orm";
 import { call, daemonFor } from "./daemon";
 import { getDb, schema } from "./db";
 import { cfg, getNodeLive, isStale } from "./node-cache";
-import { notify, targetForServer } from "./notify";
+import { notify, serverHookOf, targetForServer, type Target } from "./notify";
+import { sampleUptime } from "./status-pages";
 
 type NodeRow = typeof schema.nodes.$inferSelect;
 
@@ -35,6 +36,17 @@ const defaultProbe: NodeProbe = async (n) => {
   await daemonFor(n).system(3000);
 };
 
+/** Admins plus de eigenaren (en serverwebhooks) van de servers op de node. */
+async function nodeTarget(nodeId: number): Promise<Target> {
+  const rows = await getDb().select({ ownerId: schema.servers.ownerId, hook: schema.servers.discordWebhookEnc }).from(schema.servers).where(eq(schema.servers.nodeId, nodeId));
+  return {
+    server: null,
+    hooks: [...new Set(rows.map((r) => serverHookOf({ discordWebhookEnc: r.hook })).filter((h): h is string => !!h))],
+    admin: true,
+    users: [...new Set(rows.map((r) => r.ownerId))],
+  };
+}
+
 export async function checkNodes(probe: NodeProbe = defaultProbe): Promise<void> {
   const nodes = await getDb().select().from(schema.nodes);
   await Promise.all(
@@ -42,13 +54,13 @@ export async function checkNodes(probe: NodeProbe = defaultProbe): Promise<void>
       try {
         await probe(n);
         failures.delete(n.id);
-        if (reported.delete(n.id)) await notify({ kind: "node_online", nodeName: n.name }, { server: null, hooks: [], admin: true });
+        if (reported.delete(n.id)) await notify({ kind: "node_online", nodeName: n.name }, await nodeTarget(n.id));
       } catch (e) {
         const c = (failures.get(n.id) ?? 0) + 1;
         failures.set(n.id, c);
         if (c >= OFFLINE_AFTER && !reported.has(n.id)) {
           reported.add(n.id);
-          await notify({ kind: "node_offline", nodeName: n.name, error: ((e as Error).message ?? String(e)).slice(0, 300) }, { server: null, hooks: [], admin: true });
+          await notify({ kind: "node_offline", nodeName: n.name, error: ((e as Error).message ?? String(e)).slice(0, 300) }, await nodeTarget(n.id));
         }
       }
     }),
@@ -103,6 +115,7 @@ export async function monitorTick(now = Date.now()): Promise<void> {
   try {
     await checkNodes();
     await checkSsl();
+    await sampleUptime();
   } catch (e) {
     console.error("[monitor]", e);
   } finally {

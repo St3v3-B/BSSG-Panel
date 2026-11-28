@@ -56,6 +56,8 @@ export class FakeDaemon {
   /** Aantal geopende databasetunnels. */
   tunnelsOpened = 0;
   private readonly tunnelSockets = new Set<Socket>();
+  /** Antwoord van GET /players voor een server die online is. */
+  players: { online: number | null; max: number | null; version: string | null } = { online: 2, max: 20, version: "Paper 1.21.4" };
   private server: Server | null = null;
   url = "";
 
@@ -355,6 +357,8 @@ export class FakeDaemon {
       case "POST /exec":
         if (s.state !== "online" && s.state !== "starting") return send(409, { error: "not_running" });
         return send(200, this.execResult);
+      case "GET /players":
+        return send(200, s.state === "online" ? this.players : { online: null, max: null, version: null });
       case "GET /stats":
         return send(200, this.statsOf(uuid, s.spec, s.state));
       default:

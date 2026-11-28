@@ -65,6 +65,9 @@ type Config struct {
 	// Pinger telt spelers (standaard mcproto.Ping).
 	SleepMinute time.Duration
 	Pinger      func(ctx context.Context, addr string) (int, error)
+	// StatusPinger vraagt het volledige statusantwoord (spelers/max/versie) voor
+	// GET /players (standaard mcproto.PingStatus).
+	StatusPinger func(ctx context.Context, addr string) (mcproto.Status, error)
 }
 
 func (c *Config) defaults() {
@@ -94,6 +97,9 @@ func (c *Config) defaults() {
 	}
 	if c.Pinger == nil {
 		c.Pinger = mcproto.Ping
+	}
+	if c.StatusPinger == nil {
+		c.StatusPinger = mcproto.PingStatus
 	}
 	if c.MariaDB == "" {
 		c.MariaDB = MariaDBContainer

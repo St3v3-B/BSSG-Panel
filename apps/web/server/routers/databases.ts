@@ -86,7 +86,7 @@ export async function createServerDatabase(ctx: Ctx, a: ServerAccess, uuid: stri
       .returning()
       .then((r) => r[0]!);
   // Admins omzeilen het quotum.
-  const row = await (isFullAdmin(ctx) ? getDb().transaction(insert) : reserveDatabase(bundle.server.ownerId, insert));
+  const row = await (isFullAdmin(ctx) ? getDb().transaction(insert) : reserveDatabase(bundle.server.ownerId, insert, bundle.server.id));
   try {
     await createDatabase(host, name, username, password);
   } catch (e) {

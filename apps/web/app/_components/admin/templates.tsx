@@ -1,11 +1,11 @@
 "use client";
-import Editor from "@monaco-editor/react";
 import { CheckCircle2, Plus, Save, ShieldCheck, Trash2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { TemplateDetail } from "@panel/api";
 import { trpc } from "@/lib/trpc";
 import { AdminError } from "@/app/_components/admin/nodes";
+import { CodeEditor } from "@/app/_components/code-editor";
 import { QueryError } from "@/app/_components/query-error";
 import { Alert, AlertDescription, AlertTitle } from "@/app/_components/ui/alert";
 import { Badge } from "@/app/_components/ui/badge";
@@ -169,7 +169,7 @@ export function TemplateEditor({ id, onCreated, onDeleted }: { id: number | null
       )}
       {error && <AdminError error={error} />}
       <Card className="overflow-hidden p-0">
-        <Editor
+        <CodeEditor
           height="65vh"
           theme="vs-dark"
           language="yaml"

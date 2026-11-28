@@ -6,7 +6,7 @@ import { POST as backupReport } from "@/app/api/remote/backups/[backup_id]/route
 import { POST as installReport } from "@/app/api/remote/servers/[uuid]/install/route";
 import { getDb, schema } from "./db";
 import { checkNodes, checkSsl, resetMonitor } from "./monitor";
-import { buildEmbed, clock, notify, resetNotify, sendWebhook, transport, type NotifyEvent } from "./notify";
+import { buildEmbed, clock, delivery, flushNotify, notify, resetNotify, sendWebhook, transport, type NotifyEvent } from "./notify";
 import { OWNER, useHarness, type TestUser } from "./test/harness";
 
 const GOOD = "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz0123456789";
@@ -37,6 +37,7 @@ beforeEach(() => {
     return new Response(r.json ? JSON.stringify(r.json) : null, { status: r.status });
   }) as unknown as typeof fetch;
   transport.sleep = async (ms) => void sleeps.push(ms);
+  delivery.inline = true;
   resetNotify();
   resetMonitor();
 });
@@ -154,6 +155,11 @@ beforeAll(async () => {
   serverId = (await getDb().select().from(schema.servers).where(eq(schema.servers.uuid, uuid)))[0]!.id;
 });
 
+beforeEach(async () => {
+  // Elke test begint zonder wachtrij (de limiet per ontvanger telt anders over tests heen).
+  await getDb().delete(schema.notificationOutbox);
+});
+
 const post = (path: string, body: unknown) => new Request(`http://panel.test${path}`, { method: "POST", headers: { authorization: `Bearer ${h.env.NODE_TOKEN}`, "content-type": "application/json" }, body: JSON.stringify(body) });
 const params = <T>(p: T) => ({ params: Promise.resolve(p) });
 const crashBody = { type: "crashed", exit_code: 1, oom: false, log_tail: ["boom"], restart: "restarted", restart_attempt: 1 };
@@ -237,6 +243,7 @@ describe("meldingen vanuit de remote-API", () => {
     expect(sent).toHaveLength(3); // niets extra's binnen het venster
     t += 5 * 60_000 + 1;
     timers[0]!();
+    await flushNotify();
     await vi.waitFor(() => expect(sent).toHaveLength(6));
     expect(sent).toHaveLength(6);
     const rep = sent.at(-1)!.body.embeds[0]!.fields!.find((f) => f.name === "Repeats");
@@ -280,10 +287,12 @@ describe("meldingen vanuit de remote-API", () => {
 
 describe("monitor", () => {
   beforeEach(async () => {
+    await player.api.account.setWebhook({ url: GOOD });
+    await player.api.servers.updateNotifications({ uuid, webhookUrl: GOOD2, autoRestart: false, autoRestartMax: 3 });
     await admin.api.admin.notifications.set({ url: GOOD3 });
     sent = [];
   });
-  it("node offline pas na twee mislukte controles, één keer, en daarna 'terug'", async () => {
+  it("node offline pas na twee mislukte controles, één keer, en daarna 'terug'; ook naar eigenaren en serverwebhooks", async () => {
     let down = true;
     const probe = async () => {
       if (down) throw new Error("timeout");
@@ -291,15 +300,20 @@ describe("monitor", () => {
     await checkNodes(probe);
     expect(sent).toHaveLength(0);
     await checkNodes(probe);
-    expect(sent).toHaveLength(1);
-    expect(sent[0]!.url).toBe(GOOD3);
+    // admin-webhook + webhook van de server op de node + eigen webhook van de eigenaar
+    expect(sent.map((s) => s.url).sort()).toEqual([GOOD, GOOD2, GOOD3].sort());
     expect(sent[0]!.body.embeds[0]!.title).toBe("Node offline");
     await checkNodes(probe);
-    expect(sent).toHaveLength(1);
+    expect(sent).toHaveLength(3);
     down = false;
     await checkNodes(probe);
-    expect(sent).toHaveLength(2);
-    expect(sent[1]!.body.embeds[0]!.title).toBe("Node back online");
+    expect(sent).toHaveLength(6);
+    expect(sent[5]!.body.embeds[0]!.title).toBe("Node back online");
+    // in de inbox van de eigenaar (server_unreachable) en van de admin (node_offline)
+    const inbox = await getDb().select().from(schema.notifications).where(eq(schema.notifications.userId, player.id));
+    expect(inbox.some((n) => n.event === "server_unreachable" && n.title === "Node offline")).toBe(true);
+    const adminInbox = await getDb().select().from(schema.notifications).where(eq(schema.notifications.userId, admin.id));
+    expect(adminInbox.some((n) => n.event === "node_offline")).toBe(true);
   });
   it("SSL: alleen de overgang naar failed meldt, en de status wordt bijgewerkt", async () => {
     await getDb().update(schema.servers).set({ domainsAllowed: true }).where(eq(schema.servers.id, serverId));

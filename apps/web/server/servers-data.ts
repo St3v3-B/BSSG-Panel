@@ -150,7 +150,11 @@ export function isSuspendedFor(ctx: Ctx, bundle: ServerBundle): boolean {
   return !!bundle.server.suspendedAt && !isFullAdmin(ctx);
 }
 export function assertNotSuspended(ctx: Ctx, bundle: ServerBundle): void {
-  if (isSuspendedFor(ctx, bundle)) throw new TRPCError({ code: "FORBIDDEN", message: "SUSPENDED" });
+  if (isSuspendedFor(ctx, bundle)) {
+    // Opgeschort door de facturatie: een eigen melding (betalen of opnieuw afsluiten helpt).
+    const r = bundle.server.suspendedReason;
+    throw new TRPCError({ code: "FORBIDDEN", message: r === "BILLING_UNPAID" || r === "BILLING_OVERDUE" || r === "SUBSCRIPTION_ENDED" ? `SUSPENDED_${r}` : "SUSPENDED" });
+  }
 }
 
 export interface ServerAccess {

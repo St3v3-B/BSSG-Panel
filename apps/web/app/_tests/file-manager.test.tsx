@@ -10,6 +10,7 @@ import { renderWithTrpc, sessionFor } from "./utils";
 
 // Monaco laadt niet in jsdom: vervang de editor door een textarea.
 vi.mock("@monaco-editor/react", () => ({
+  loader: { config: () => {} },
   default: ({ value, onChange, options }: { value: string; onChange: (v: string) => void; options?: { readOnly?: boolean } }) => (
     <textarea aria-label="editor" value={value} readOnly={options?.readOnly} onChange={(e) => onChange(e.target.value)} />
   ),

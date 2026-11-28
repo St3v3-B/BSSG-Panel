@@ -154,6 +154,10 @@ export class DaemonClient {
   allStats(timeoutMs?: number) {
     return this.request<{ servers: DaemonServerStats[] }>("GET", "/api/stats", undefined, timeoutMs);
   }
+  /** Server-list-ping via de daemon (statuspagina); lege velden = geen antwoord. */
+  players(uuid: string, timeoutMs = 3000) {
+    return this.request<{ online: number | null; max: number | null; version?: string | null }>("GET", `/api/servers/${uuid}/players`, undefined, timeoutMs);
+  }
   logs(uuid: string, lines = 100) {
     return this.request<{ lines: string[] }>("GET", `/api/servers/${uuid}/logs?lines=${lines}`);
   }

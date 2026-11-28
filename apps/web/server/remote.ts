@@ -209,8 +209,10 @@ export const reportBackup = remoteHandler<{ backup_id: string }>(async (req, nod
   });
   const bundle = await fetchServerByUuid(r.s.uuid);
   if (bundle) await thawWorld(bundle);
-  if (b.successful) await pruneBackups(r.s.id);
-  else if (b.error !== "cancelled") await notifyServer(r.s.id, { kind: "backup_failed", name: r.b.name, error: b.error ?? "unknown error" }); // afgebroken door de gebruiker: geen melding
+  if (b.successful) {
+    await pruneBackups(r.s.id);
+    await notifyServer(r.s.id, { kind: "backup_completed", name: r.b.name, sizeBytes: b.size_bytes ?? null });
+  } else if (b.error !== "cancelled") await notifyServer(r.s.id, { kind: "backup_failed", name: r.b.name, error: b.error ?? "unknown error" }); // afgebroken door de gebruiker: geen melding
   return noContent();
 });
 

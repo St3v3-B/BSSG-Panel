@@ -65,16 +65,30 @@ export const ADMIN2 = ["admin.servers.setSuspended", "admin.servers.changeTempla
 export const CONTENT = ["content.info", "content.search", "content.resolve", "content.install", "content.list", "content.checkUpdates", "content.update", "content.uninstall", "content.importModpack", "content.versionOptions"];
 /** Quota's per gebruiker. */
 export const NOTIFY = ["account.webhook", "account.setWebhook", "account.testWebhook", "servers.notifications", "servers.updateNotifications", "servers.testWebhook", "admin.notifications.get", "admin.notifications.set", "admin.notifications.test"];
+/** Meldingssysteem (inbox, e-mail, voorkeuren, SMTP) en openbare statuspagina's. */
+export const NOTIFY2 = [
+  "auth.verifyEmail", "account.notificationSettings", "account.setNotificationPrefs", "account.setEmail", "account.resendEmailVerification", "account.testEmail",
+  "inbox.list", "inbox.unreadCount", "inbox.markRead", "admin.smtp.get", "admin.smtp.set", "admin.smtp.test",
+  "statusPages.list", "statusPages.create", "statusPages.update", "statusPages.delete", "statusPages.candidates", "statusPages.serverPage", "statusPages.setServerPage", "statusPages.public",
+];
 /** Node-join: join-codes, voortgang, daemon bijwerken. */
 export const NODE_JOIN = ["admin.nodes.createJoin", "admin.nodes.joinCommand", "admin.nodes.joinStatus", "admin.nodes.updateDaemon", "admin.nodes.uninstallCommand"];
 /** Verbruiksgrafieken. */
 export const STATS = ["servers.statsHistory", "servers.statsSparklines"];
 export const QUOTA = ["account.quota", "servers.create", "servers.updateOwnLimits", "servers.deleteOwn", "admin.users.getQuota", "admin.users.setQuota", "admin.users.clearQuota", "admin.quotas.usage"];
+/** Pakketten en facturatie. */
+export const BILLING = [
+  "billing.status", "billing.plans", "billing.subscriptions", "billing.invoices", "billing.invoice", "billing.subscribe", "billing.pay", "billing.cancel", "billing.resume",
+  "admin.plans.list", "admin.plans.create", "admin.plans.update", "admin.plans.delete",
+  "admin.subscriptions.list", "admin.subscriptions.grant", "admin.subscriptions.cancel",
+  "admin.invoices.list", "admin.invoices.markPaid", "admin.invoices.void",
+  "admin.billing.get", "admin.billing.update",
+];
 
 describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES, ...STATS];
+    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES, ...STATS, ...NOTIFY2, ...BILLING];
     for (const p of all) expect(contract.has(p), p).toBe(true);
     expect(implementedPaths().sort()).toEqual(all.sort());
   });

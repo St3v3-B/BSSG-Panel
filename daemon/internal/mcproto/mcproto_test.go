@@ -168,3 +168,18 @@ func TestPerIPLimit(t *testing.T) {
 		c.Close()
 	}
 }
+
+func TestPingStatus(t *testing.T) {
+	l, err := Listen("127.0.0.1:0", &Responder{MOTD: "slaapt", Timeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	st, err := PingStatus(context.Background(), l.Addr())
+	if err != nil || st.Players.Online != 0 || st.Players.Max < 0 {
+		t.Fatal(st, err)
+	}
+	if _, err := PingStatus(context.Background(), "127.0.0.1:1"); err == nil {
+		t.Fatal("verwachtte een fout bij een gesloten poort")
+	}
+}
