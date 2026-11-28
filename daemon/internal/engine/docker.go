@@ -176,6 +176,16 @@ func (d *Docker) Inspect(ctx context.Context, id string) (Container, error) {
 		c.OOMKilled = r.State.OOMKilled
 		c.StartedAt, _ = time.Parse(time.RFC3339Nano, r.State.StartedAt)
 	}
+	if r.NetworkSettings != nil {
+		for name, ep := range r.NetworkSettings.Networks {
+			if ep != nil && ep.IPAddress != "" {
+				if c.Networks == nil {
+					c.Networks = map[string]string{}
+				}
+				c.Networks[name] = ep.IPAddress
+			}
+		}
+	}
 	return c, nil
 }
 

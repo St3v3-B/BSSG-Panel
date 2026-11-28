@@ -532,7 +532,7 @@ export function createMock(): Implementation {
         return x;
       },
       delete: () => ok,
-      phpMyAdminInfo: () => ({ visible: databases.length > 0, hasRemoteDatabases: false }),
+      phpMyAdminInfo: () => ({ visible: databases.length > 0, hasRemoteDatabases: false, hostIds: [...new Set(databases.map((d) => d.hostId))] }),
       phpMyAdminUrl: () => ({ url: "https://panel.test/phpmyadmin/signon.php?token=mock" }),
     },
     apps: {

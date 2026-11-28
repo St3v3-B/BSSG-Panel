@@ -904,6 +904,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/db/tunnel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * TCP-tunnel naar de MariaDB van deze node (phpMyAdmin voor databases op remote nodes)
+         * @description HTTP/1.1-upgrade (`Connection: Upgrade`, `Upgrade: panel-mariadb`) met het node-token. Na
+         *     `101 Switching Protocols` is de verbinding een ruwe, tweerichtings TCP-stroom naar de MariaDB van deze node
+         *     (de container `MARIADB_CONTAINER`, poort 3306, via zijn bridge-adres). Het doel ligt vast: het verzoek kan
+         *     geen host of poort kiezen, en MariaDB hoeft geen poort naar buiten te openen. De aanroeper (het panel) moet
+         *     zich daarna gewoon bij MariaDB aanmelden; de tunnel geeft zelf geen databaserechten.
+         *     Er zijn hoogstens 64 tunnels tegelijk (daarna 503 `too_many_tunnels`); zonder verkeer in beide richtingen
+         *     sluit een tunnel na 15 minuten. Werkt via Caddy (reverse_proxy geeft upgrades door) en via de eigen TLS-poort.
+         */
+        get: operations["dbTunnel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/routes": {
         parameters: {
             query?: never;
@@ -2865,6 +2891,38 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
+            503: components["responses"]["DbUnavailable"];
+        };
+    };
+    dbTunnel: {
+        parameters: {
+            query?: never;
+            header: {
+                Connection: string;
+                Upgrade: "panel-mariadb";
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tunnel open; verder ruwe MariaDB-protocolbytes */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            /** @description Upgrade-header ontbreekt of is niet `panel-mariadb` */
+            426: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             503: components["responses"]["DbUnavailable"];
         };
     };

@@ -1,6 +1,8 @@
 /**
  * De echte phpMyAdmin-image (deploy/phpmyadmin) met onze config en signon.php, op HTTP-niveau:
  * zonder token geen toegang, met een (eenmalig) token wel. Het "panel" is een nep-endpoint in een eigen container.
+ * Twee MariaDB-containers bootsen twee nodes na: de tweede staat als PMA_TUNNEL_HOST ingesteld (in productie is dat
+ * de tunnel van het panel; voor phpMyAdmin is dat precies hetzelfde: host + poort + wachtwoord uit de signon-sessie).
  * Alles draait op een eigen netwerk met labels panel.test=true + een eigen panel.instance; opruimen op beide labels.
  */
 import { execFile } from "node:child_process";
@@ -18,10 +20,12 @@ const labels = ["--label", "panel.test=true", "--label", `panel.instance=${insta
 const filter = ["--filter", "label=panel.test=true", "--filter", `label=panel.instance=${instance}`];
 const net = `pma-test-${instance}`;
 const dbName = `pma-mdb-${instance}`;
+const db2Name = `pma-mdb2-${instance}`;
 const ROOT_PW = "rootpw-" + randomBytes(6).toString("hex");
 const SHARED = randomBytes(24).toString("hex");
 const TOKEN = "good" + randomBytes(24).toString("hex");
 const PMA_PW = "Pw-" + randomBytes(10).toString("hex");
+const PMA_PW2 = "Pw2-" + randomBytes(10).toString("hex");
 
 /** Nep-panel: alleen /api/pma/exchange, eenmalig token, verplicht Bearer. */
 const FAKE_PANEL = `
@@ -39,6 +43,16 @@ http.createServer((req, res) => {
     if (t === process.env.TOKEN && !used) { used = true; return send(200, { user: "pma_u1", password: process.env.PMA_PW }); }
     if (t === "dbtk" + process.env.TOKEN.slice(4) && !usedDb) { usedDb = true; return send(200, { user: "pma_u1", password: process.env.PMA_PW }); }
     if (t === "nodb" + process.env.TOKEN.slice(4)) return send(403, { error: "no_databases" });
+    // Meerdere nodes: lokaal (1), node2 (3, bereikbaar) en node3 (5, offline: niets luistert op die poort).
+    const local = { id: 1, name: "hoofdnode", local: true, port: 3306, password: process.env.PMA_PW };
+    const node2 = { id: 3, name: "node2", local: false, port: 3306, password: process.env.PMA_PW2 };
+    const node3 = { id: 5, name: "node3", local: false, port: 3399, password: "Pw3-" + process.env.PMA_PW2 };
+    let body2 = null;
+    try { body2 = JSON.parse(b); } catch {}
+    const multi = (servers) => send(200, { user: "pma_u1", password: servers[0].password, servers, select: body2 && body2.db === "r1_remote" ? 3 : servers[0].id, unavailable: [] });
+    if (typeof t === "string" && t.startsWith("multi")) return multi([local, node2, node3]);
+    if (typeof t === "string" && t.startsWith("remote")) return multi([node2]);
+    if (typeof t === "string" && t.startsWith("evil")) return multi([{ ...node2, id: 1 }]);
     send(401, { error: "invalid_token" });
   });
 }).listen(3000);
@@ -56,7 +70,20 @@ const freePort = () =>
     s.on("error", rej);
   });
 const sql = (q: string, user = "root", pw = ROOT_PW, db = "") => docker("exec", "-e", `MYSQL_PWD=${pw}`, dbName, "mariadb", "-h127.0.0.1", `-u${user}`, "-N", "-B", ...(db ? [db] : []), "-e", q);
+const sql2 = (q: string) => docker("exec", "-e", `MYSQL_PWD=${ROOT_PW}`, db2Name, "mariadb", "-h127.0.0.1", "-uroot", "-N", "-B", "-e", q);
 const get = (path: string, cookie?: string) => fetch(base + path, { redirect: "manual", headers: cookie ? { cookie } : {} });
+/** Cookies uit Set-Cookie (laatste per naam; verlopen = weg) samenvoegen met een bestaande cookie-string. */
+function jar(prev: string, res: Response): string {
+  const m = new Map(prev.split("; ").filter(Boolean).map((c) => [c.slice(0, c.indexOf("=")), c.slice(c.indexOf("=") + 1)] as const));
+  for (const sc of res.headers.getSetCookie()) {
+    const [kv] = sc.split(";");
+    const name = kv!.slice(0, kv!.indexOf("="));
+    const val = kv!.slice(kv!.indexOf("=") + 1);
+    if (/expires=Thu, 01[ -]Jan[ -]1970|max-age=0/i.test(sc) || val === "" || val === "deleted") m.delete(name);
+    else m.set(name, val);
+  }
+  return [...m].map(([k, v]) => `${k}=${v}`).join("; ");
+}
 
 beforeAll(async () => {
   await reapStale().catch(() => {});
@@ -64,12 +91,14 @@ beforeAll(async () => {
   await docker("build", "-t", image, ...labels, resolve(__dirname, "../../../deploy/phpmyadmin"));
   await docker("network", "create", ...labels, net);
   await docker("run", "-d", "--rm", ...labels, "--network", net, "--name", dbName, "-e", `MARIADB_ROOT_PASSWORD=${ROOT_PW}`, "mariadb:11", "--innodb-buffer-pool-size=32M", "--performance-schema=OFF");
-  await docker("run", "-d", "--rm", ...labels, "--network", net, "--network-alias", "panel", "--name", `pma-panel-${instance}`, "-e", `SHARED=${SHARED}`, "-e", `TOKEN=${TOKEN}`, "-e", `PMA_PW=${PMA_PW}`, "node:24-alpine", "node", "-e", FAKE_PANEL);
+  // Tweede "node": eigen MariaDB, alleen te bereiken als PMA_TUNNEL_HOST.
+  await docker("run", "-d", "--rm", ...labels, "--network", net, "--name", db2Name, "-e", `MARIADB_ROOT_PASSWORD=${ROOT_PW}`, "mariadb:11", "--innodb-buffer-pool-size=32M", "--performance-schema=OFF");
+  await docker("run", "-d", "--rm", ...labels, "--network", net, "--network-alias", "panel", "--name", `pma-panel-${instance}`, "-e", `SHARED=${SHARED}`, "-e", `TOKEN=${TOKEN}`, "-e", `PMA_PW=${PMA_PW}`, "-e", `PMA_PW2=${PMA_PW2}`, "node:24-alpine", "node", "-e", FAKE_PANEL);
   port = await freePort();
   base = `http://127.0.0.1:${port}`;
   await docker(
     "run", "-d", "--rm", ...labels, "--network", net, "--name", `pma-${instance}`, "-p", `127.0.0.1:${port}:80`,
-    "-e", `PMA_ABSOLUTE_URI=${base}/phpmyadmin/`, "-e", `PMA_DB_HOST=${dbName}`, "-e", "PMA_PANEL_URL=http://panel:3000",
+    "-e", `PMA_ABSOLUTE_URI=${base}/phpmyadmin/`, "-e", `PMA_DB_HOST=${dbName}`, "-e", "PMA_PANEL_URL=http://panel:3000", "-e", `PMA_TUNNEL_HOST=${db2Name}`,
     "-e", `PMA_SHARED_SECRET=${SHARED}`, "-e", `PMA_BLOWFISH_SECRET=${randomBytes(24).toString("hex")}`, "-e", "HIDE_PHP_VERSION=1",
     "--security-opt", "no-new-privileges:true", "--cap-drop", "ALL", "--cap-add", "CHOWN", "--cap-add", "SETUID", "--cap-add", "SETGID", "--cap-add", "NET_BIND_SERVICE",
     image,
@@ -77,6 +106,7 @@ beforeAll(async () => {
   for (let i = 0; ; i++) {
     try {
       await sql("select 1");
+      await sql2("select 1");
       break;
     } catch (e) {
       if (i > 120) throw e;
@@ -85,6 +115,9 @@ beforeAll(async () => {
   }
   await sql("CREATE DATABASE s1_site; CREATE DATABASE s2_other; CREATE TABLE s1_site.klanten (id INT PRIMARY KEY, naam VARCHAR(20)); INSERT INTO s1_site.klanten VALUES (1,'Alice');");
   await sql(`CREATE USER 'pma_u1'@'%' IDENTIFIED BY '${PMA_PW}'; GRANT ALL PRIVILEGES ON \`s1\\_site\`.* TO 'pma_u1'@'%';`);
+  // Node 2: zelfde accountnaam, eigen wachtwoord, alleen r1_remote.
+  await sql2("CREATE DATABASE r1_remote; CREATE DATABASE r2_other; CREATE TABLE r1_remote.orders (id INT PRIMARY KEY, item VARCHAR(20)); INSERT INTO r1_remote.orders VALUES (1,'Gitaar');");
+  await sql2(`CREATE USER 'pma_u1'@'%' IDENTIFIED BY '${PMA_PW2}'; GRANT ALL PRIVILEGES ON \`r1\\_remote\`.* TO 'pma_u1'@'%';`);
   for (let i = 0; ; i++) {
     try {
       if ((await get("/signon.php")).status === 400) break;
@@ -214,5 +247,104 @@ describe("phpMyAdmin-image met single sign-on", () => {
     const r = await get("/signon.php");
     expect(r.headers.get("x-powered-by")).toBeNull();
     expect(r.headers.get("cache-control")).toContain("no-store");
+  });
+
+  describe("meerdere nodes", () => {
+    const multi = (prefix: string) => prefix + randomBytes(20).toString("hex");
+    const pmaToken = (html: string) => /name="token" value="([a-f0-9]+)"/.exec(html)?.[1] ?? /token=([a-f0-9]{32})/.exec(html)?.[1];
+
+    it("één sessie per node; serverkeuze met de nodenamen; elke server ziet alleen zijn eigen databases", async () => {
+      const r = await get("/signon.php?token=" + multi("multi"));
+      expect(r.status).toBe(303);
+      expect(r.headers.get("location")).toBe("index.php");
+      const names = r.headers.getSetCookie().map((c) => c.slice(0, c.indexOf("=")));
+      expect(new Set(names)).toEqual(new Set(["PanelPmaSignon", "PanelPmaSignon_3", "PanelPmaSignon_5"]));
+      for (const c of r.headers.getSetCookie()) {
+        expect(c).toMatch(/HttpOnly/i);
+        expect(c).toMatch(/path=\/phpmyadmin\//i);
+      }
+      const cookie = jar("", r);
+      // Server 1 (lokaal), met een serverkeuze waarin de nodenamen staan.
+      const home = await get("/index.php", cookie);
+      expect(home.status).toBe(200);
+      const html = await home.text();
+      expect(html).toContain("s1_site");
+      expect(html).not.toContain("r1_remote");
+      expect(html).toContain("hoofdnode");
+      expect(html).toContain("node2");
+      expect(html).toContain("node3");
+      // Server 3 (node2): andere MariaDB, ander wachtwoord, alleen r1_remote.
+      const n2 = await get("/index.php?server=3", cookie);
+      expect(n2.status).toBe(200);
+      const h2 = await n2.text();
+      expect(h2).toContain("r1_remote");
+      expect(h2).not.toContain("r2_other");
+      expect(h2).not.toContain("s1_site");
+      const tok = pmaToken(h2);
+      expect(tok).toBeTruthy();
+      const rows = await (await get(`/index.php?route=/sql&server=3&db=r1_remote&table=orders&token=${tok}&ajax_request=true&_nocache=1`, cookie)).text();
+      expect(rows).toContain("Gitaar");
+    });
+
+    it("een offline node faalt netjes: eigen melding met weg terug, de andere servers blijven werken", async () => {
+      const cookie = jar("", await get("/signon.php?token=" + multi("multi")));
+      const r = await get("/index.php?server=5", cookie);
+      expect(r.status).toBeGreaterThanOrEqual(300);
+      expect(r.status).toBeLessThan(400);
+      expect(r.headers.get("location") ?? "").toContain("panel-unreachable.php?server=5");
+      const page = await get("/panel-unreachable.php?server=5", cookie);
+      expect(page.status).toBe(503);
+      const body = await page.text();
+      expect(body).toContain("node3 is not reachable");
+      expect(body).toContain('href="index.php?server=1"');
+      expect(body).toContain("panel-return.html");
+      expect(body).not.toContain("Pw3-");
+      // Server 1 werkt nog gewoon.
+      const home = await (await get("/index.php?server=1", cookie)).text();
+      expect(home).toContain("s1_site");
+    });
+
+    it("deep-link naar een database op een andere node kiest die server", async () => {
+      const r = await get("/signon.php?db=r1_remote&token=" + multi("multi"));
+      expect(r.headers.get("location")).toBe("index.php?route=/database/structure&db=r1_remote&server=3");
+      const page = await (await get("/index.php?route=/database/structure&db=r1_remote&server=3", jar("", r))).text();
+      expect(page).toContain("orders");
+    });
+
+    it("alleen een remote node: geen lokale server meer, oude lokale sessie wordt opgeruimd", async () => {
+      const first = jar("", await get("/signon.php?token=" + multi("multi")));
+      expect(first).toContain("PanelPmaSignon=");
+      const r = await get("/signon.php?token=" + multi("remote"), first);
+      expect(r.headers.get("location")).toBe("index.php?server=3");
+      const cookie = jar(first, r);
+      expect(cookie).not.toMatch(/(^|; )PanelPmaSignon=/);
+      expect(cookie).not.toContain("PanelPmaSignon_5=");
+      expect(cookie).toContain("PanelPmaSignon_3=");
+      // De oude lokale sessie werkt ook met het oude cookie niet meer.
+      const oldLocal = first.split("; ").find((c) => c.startsWith("PanelPmaSignon="))!;
+      const stale = await get("/index.php?server=1", oldLocal);
+      expect(await stale.text()).not.toContain("s1_site");
+      const home = await get("/index.php", cookie);
+      expect(home.status).toBe(200);
+      const html = await home.text();
+      expect(html).toContain("r1_remote");
+      expect(html).not.toContain("s1_site");
+    });
+
+    it("vervalste remote-cookie: geen toegang, terug naar het panel", async () => {
+      const r = await get("/index.php?server=7", "PanelPmaSignon_7=" + "a".repeat(26));
+      expect(r.status).toBeGreaterThanOrEqual(300);
+      const body = await r.text();
+      expect(body).not.toMatch(/r1_remote|s1_site/);
+      const page = await get("/panel-unreachable.php?server=7", "PanelPmaSignon_7=" + "a".repeat(26));
+      expect(page.status).toBe(303);
+      expect(page.headers.get("location")).toBe("panel-return.html");
+    });
+
+    it("een antwoord dat een remote server als server 1 opgeeft wordt geweigerd", async () => {
+      const r = await get("/signon.php?token=" + multi("evil"));
+      expect(r.status).toBe(502);
+      expect(r.headers.getSetCookie().join()).not.toContain("PanelPmaSignon");
+    });
   });
 });

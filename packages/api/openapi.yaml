@@ -1071,6 +1071,32 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "503": { $ref: "#/components/responses/DbUnavailable" }
 
+  /api/db/tunnel:
+    get:
+      tags: [databases]
+      operationId: dbTunnel
+      summary: TCP-tunnel naar de MariaDB van deze node (phpMyAdmin voor databases op remote nodes)
+      description: |
+        HTTP/1.1-upgrade (`Connection: Upgrade`, `Upgrade: panel-mariadb`) met het node-token. Na
+        `101 Switching Protocols` is de verbinding een ruwe, tweerichtings TCP-stroom naar de MariaDB van deze node
+        (de container `MARIADB_CONTAINER`, poort 3306, via zijn bridge-adres). Het doel ligt vast: het verzoek kan
+        geen host of poort kiezen, en MariaDB hoeft geen poort naar buiten te openen. De aanroeper (het panel) moet
+        zich daarna gewoon bij MariaDB aanmelden; de tunnel geeft zelf geen databaserechten.
+        Er zijn hoogstens 64 tunnels tegelijk (daarna 503 `too_many_tunnels`); zonder verkeer in beide richtingen
+        sluit een tunnel na 15 minuten. Werkt via Caddy (reverse_proxy geeft upgrades door) en via de eigen TLS-poort.
+      parameters:
+        - { name: Connection, in: header, required: true, schema: { type: string, example: Upgrade } }
+        - { name: Upgrade, in: header, required: true, schema: { type: string, enum: [panel-mariadb] } }
+      responses:
+        "101": { description: Tunnel open; verder ruwe MariaDB-protocolbytes }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "426":
+          description: Upgrade-header ontbreekt of is niet `panel-mariadb`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503": { $ref: "#/components/responses/DbUnavailable" }
+
   /api/routes:
     get:
       tags: [routes]

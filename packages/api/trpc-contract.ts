@@ -345,12 +345,12 @@ export const contract = {
     create: mutation("user", server.extend({ name: z.string().regex(/^[a-zA-Z0-9_]{1,48}$/), hostId: s.Id.nullable().default(null) }), s.Database),
     resetPassword: mutation("user", byId, s.Database),
     delete: mutation("user", byId, s.Ok),
-    /** Zijbalk: tonen we phpMyAdmin, en staan er databases op andere nodes die er niet in komen? */
+    /** Zijbalk: tonen we phpMyAdmin, welke database-hosts staan erin, en zijn er databases (externe hosts) die er niet in komen? */
     phpMyAdminInfo: query("user", none, s.PhpMyAdminInfo),
     /**
      * Eenmalige single-sign-on-URL naar phpMyAdmin (60 s geldig, eenmalig). Geeft FORBIDDEN `NO_DATABASES`
-     * zonder databases (volledige admins mogen altijd). De gebruiker ziet in phpMyAdmin alle databases op de
-     * lokale node waar hij toegang toe heeft.
+     * zonder databases (volledige admins mogen altijd). De gebruiker ziet in phpMyAdmin per node (serverkeuze met de
+     * nodenamen) alle databases waar hij toegang toe heeft; een offline node ontbreekt dan in die sessie.
      */
     phpMyAdminUrl: mutation("user", none, z.object({ url: z.string() })),
   },

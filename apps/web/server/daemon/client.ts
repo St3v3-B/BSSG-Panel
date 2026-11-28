@@ -3,6 +3,9 @@
  * Netwerkfout of timeout → DaemonUnreachableError; HTTP-fout → DaemonHttpError.
  */
 import { openAsBlob } from "node:fs";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import type { Socket } from "node:net";
 import type { DaemonChmodRequest, DaemonFileEntry, DaemonSchemas, DaemonSearchResult, DaemonRoute, DaemonRouteWithStatus, DaemonServerSpec, DaemonServerStats, DaemonServerState, DaemonStats, DaemonSystemInfo } from "@panel/api";
 
 type DaemonBackupRequest = DaemonSchemas["BackupRequest"];
@@ -301,8 +304,65 @@ export class DaemonClient {
     return this.request<void>("DELETE", `/api/db/databases/${encodeURIComponent(name)}?username=${encodeURIComponent(username)}`, undefined, 60_000);
   }
   /** phpMyAdmin-account van een panelgebruiker: wachtwoord + exact deze databases. */
-  dbSyncPmaUser(username: string, password: string, databases: string[]) {
-    return this.request<void>("PUT", `/api/db/pma-users/${encodeURIComponent(username)}`, { password, databases }, 60_000);
+  dbSyncPmaUser(username: string, password: string, databases: string[], timeoutMs = 60_000) {
+    return this.request<void>("PUT", `/api/db/pma-users/${encodeURIComponent(username)}`, { password, databases }, timeoutMs);
+  }
+  /**
+   * Databasetunnel (GET /api/db/tunnel, upgrade `panel-mariadb`): een ruwe TCP-stroom naar de MariaDB van deze
+   * node. Faalt met DaemonUnreachableError (netwerk/timeout/gateway) of DaemonHttpError (bv. 503 db_unavailable).
+   */
+  dbTunnel(timeoutMs = 10_000): Promise<Socket> {
+    const url = new URL(`${this.baseUrl}/api/db/tunnel`);
+    const req = (url.protocol === "https:" ? httpsRequest : httpRequest)(url, {
+      method: "GET",
+      headers: { authorization: `Bearer ${this.token}`, connection: "Upgrade", upgrade: "panel-mariadb" },
+      timeout: timeoutMs,
+    });
+    return new Promise<Socket>((resolve, reject) => {
+      let settled = false;
+      const fail = (e: Error) => {
+        if (settled) return;
+        settled = true;
+        req.destroy();
+        reject(e);
+      };
+      const timer = setTimeout(() => fail(new DaemonUnreachableError(this.nodeId, new Error("tunnel timeout"))), timeoutMs);
+      req.on("timeout", () => fail(new DaemonUnreachableError(this.nodeId, new Error("tunnel timeout"))));
+      req.on("error", (e) => fail(new DaemonUnreachableError(this.nodeId, e)));
+      req.on("upgrade", (res, socket, head) => {
+        clearTimeout(timer);
+        if (settled || res.statusCode !== 101 || String(res.headers.upgrade ?? "").toLowerCase() !== "panel-mariadb") {
+          socket.destroy();
+          fail(new DaemonUnreachableError(this.nodeId, new Error(`unexpected upgrade ${res.statusCode}`)));
+          return;
+        }
+        settled = true;
+        socket.setTimeout(0);
+        if (head.length) socket.unshift(head);
+        resolve(socket);
+      });
+      req.on("response", (res) => {
+        clearTimeout(timer);
+        let text = "";
+        res.setEncoding("utf8");
+        res.on("data", (c: string) => (text = (text + c).slice(0, 2000)));
+        res.on("error", (e) => fail(new DaemonUnreachableError(this.nodeId, e)));
+        res.on("end", () => {
+          let code = `http_${res.statusCode}`;
+          let message = text.slice(0, 500);
+          try {
+            const j = JSON.parse(text) as { error?: string; message?: string };
+            if (j.error) code = j.error;
+            if (j.message) message = j.message;
+          } catch {
+            /* geen JSON */
+          }
+          const st = res.statusCode ?? 0;
+          fail((st === 502 || st === 503 || st === 504) && code !== "db_unavailable" ? new DaemonUnreachableError(this.nodeId, new Error(`${st} ${message}`)) : new DaemonHttpError(st, code, message || code));
+        });
+      });
+      req.end();
+    });
   }
   /** SQL-dump als stroom. */
   async dbDump(name: string): Promise<ReadableStream<Uint8Array>> {

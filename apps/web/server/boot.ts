@@ -19,6 +19,7 @@ import { encrypt, sha256 } from "./lib/crypto";
 import { ensureSigningKey } from "./lib/jwt";
 import { startBot } from "./bot/gateway";
 import { startNodeMonitor } from "./node-cache";
+import { startTunnels } from "./pma-tunnel";
 import { startScheduler } from "./scheduler";
 import { ensureSettingDefaults } from "./settings";
 import { loadTemplatesFromDir } from "./templates";
@@ -80,6 +81,8 @@ async function runBoot(): Promise<void> {
     startScheduler();
     startNodeMonitor();
     startBot(env.DISCORD_BOT_TOKEN); // optioneel; zonder token of bij een fout blijft het panel gewoon draaien
+    // phpMyAdmin: tunnels naar de MariaDB van remote nodes, zodat bestaande sessies na een herstart blijven werken.
+    if (env.PMA_SHARED_SECRET) void startTunnels().catch((e) => console.error("[boot] pma tunnels:", e));
   }
   if (env.PANEL_INSECURE_TEST_LOGIN) console.warn("[boot] PANEL_INSECURE_TEST_LOGIN is enabled (tests only)");
 }

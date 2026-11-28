@@ -8,7 +8,7 @@ import { decrypt, encrypt, randomToken } from "../lib/crypto";
 import { createDatabase, dropDatabase, setPassword, testHost } from "../lib/mariadb";
 import { apiKeyOf } from "../apikey";
 import { isFullAdmin, requireServer, type ServerAccess } from "../servers-data";
-import { issueToken, pmaAccess, pmaEnabled } from "../pma";
+import { issueToken, pmaAccess, pmaEnabled, pmaHasAccess } from "../pma";
 import { getEnv } from "../env";
 import { reserveDatabase } from "./quotas";
 import type { Ctx } from "@panel/api";
@@ -148,10 +148,10 @@ export const databases: Implementation["databases"] = {
   },
 
   phpMyAdminInfo: async ({ ctx }) => {
-    if (!pmaEnabled()) return { visible: false, hasRemoteDatabases: false };
+    if (!pmaEnabled()) return { visible: false, hasRemoteDatabases: false, hostIds: [] };
     const admin = isFullAdmin(ctx);
     const a = await pmaAccess(ctx.session!.userId, admin);
-    return { visible: admin || a.local.length > 0, hasRemoteDatabases: a.remote > 0 };
+    return { visible: pmaHasAccess(a, admin), hasRemoteDatabases: a.external > 0, hostIds: a.nodes.flatMap((n) => n.hostIds).sort((x, y) => x - y) };
   },
 
   phpMyAdminUrl: async ({ ctx }) => {
@@ -160,7 +160,7 @@ export const databases: Implementation["databases"] = {
     if (apiKeyOf(ctx)) throw new TRPCError({ code: "FORBIDDEN", message: "NO_ACCESS" });
     const admin = isFullAdmin(ctx);
     const userId = ctx.session!.userId;
-    if (!admin && (await pmaAccess(userId, false)).local.length === 0) throw new TRPCError({ code: "FORBIDDEN", message: "NO_DATABASES" });
+    if (!admin && !pmaHasAccess(await pmaAccess(userId, false), false)) throw new TRPCError({ code: "FORBIDDEN", message: "NO_DATABASES" });
     const token = await issueToken({ userId, admin });
     await logActivity({ action: "account.phpmyadmin.open", userId, metadata: {}, ip: ctx.ip, ctx });
     return { url: `/phpmyadmin/signon.php?token=${encodeURIComponent(token)}` };

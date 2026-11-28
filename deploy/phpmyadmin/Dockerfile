@@ -25,12 +25,13 @@ RUN printf '<?php\n// blowfish_secret: zie config.user.inc.php\n' > /etc/phpmyad
 # Gelijk aan LoginCookieValidity (3600), anders waarschuwt phpMyAdmin op de startpagina.
 RUN printf 'session.gc_maxlifetime=3600\n' > /usr/local/etc/php/conf.d/panel-session.ini
 
-COPY config.user.inc.php /etc/phpmyadmin/config.user.inc.php
-COPY signon.php panel-theme.js panel-return.js panel-return.html /var/www/html/
+COPY config.user.inc.php panel-servers.inc.php /etc/phpmyadmin/
+COPY signon.php panel-unreachable.php panel-theme.js panel-return.js panel-return.html /var/www/html/
 # Thema van het panel volgen vóór de eerste paint: panel-theme.js bovenaan elke <head> (versie is gepind; de
 # grep faalt de build als de template ooit verandert).
 RUN set -eu; t=/var/www/html/templates/header.twig; \
     sed -i 's|^<head>$|<head>\n  <script src="{{ base_dir }}panel-theme.js?{{ version }}"></script>|' "$t"; \
     grep -q 'panel-theme.js' "$t"
-RUN chmod 0644 /etc/phpmyadmin/config.user.inc.php /var/www/html/signon.php /var/www/html/panel-theme.js /var/www/html/panel-return.js /var/www/html/panel-return.html \
+RUN set -e; for f in /etc/phpmyadmin/config.user.inc.php /etc/phpmyadmin/panel-servers.inc.php /var/www/html/signon.php /var/www/html/panel-unreachable.php; do php -l "$f" >/dev/null; done
+RUN chmod 0644 /etc/phpmyadmin/config.user.inc.php /etc/phpmyadmin/panel-servers.inc.php /var/www/html/signon.php /var/www/html/panel-unreachable.php /var/www/html/panel-theme.js /var/www/html/panel-return.js /var/www/html/panel-return.html \
  && rm -rf /var/www/html/doc /var/www/html/ChangeLog /var/www/html/README /var/www/html/LICENSE
