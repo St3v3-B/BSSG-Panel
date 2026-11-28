@@ -1,0 +1,13 @@
+# Override voor de panel-machine achter Nginx Proxy Manager (HTTP_MODE=npm in panel.env; install.sh voegt dit bestand
+# dan zelf toe):
+#   docker compose --env-file /etc/panel/panel.env -f deploy/docker-compose.yml -f deploy/docker-compose.npm.yml up -d
+# NPM bezit 80/443 en de certificaten. Caddy draait HTTP-only (caddy/Caddyfile.npm-panel) en publiceert :80 alleen op
+# NPM_CADDY_ADDR (standaard 172.17.0.1:8081, het docker0-adres). De daemon zet de proxy hosts in NPM voor het
+# panel-domein, het node-domein en alle sites/domeinen van deze node (Admin > Nodes > Nginx Proxy Manager).
+# Het panel bereikt de lokale daemon nog steeds via https://$NODE_DOMAIN (extra_hosts → host-gateway → NPM op :443).
+services:
+  caddy:
+    ports: !override
+      - "${NPM_CADDY_ADDR:-172.17.0.1:8081}:80"
+    volumes:
+      - ./caddy/Caddyfile.npm-panel:/etc/caddy/Caddyfile:ro

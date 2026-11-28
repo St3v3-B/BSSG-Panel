@@ -10,16 +10,21 @@
 #
 # Options: --yes (no questions), --no-ufw, --dry-run (writes only under --root, prints system commands),
 #   --root DIR, --ip IPV4 (skip detection), --panel-url URL, --no-public-http, --uninstall [--purge]
-#   --http-mode relay|direct (no join code: switch an installed node between Caddy on its own 80/443 and HTTP(S) via a relay node)
+#   --http-mode relay|direct|npm (no join code: switch an installed node between Caddy on its own 80/443, HTTP(S) via a relay
+#   node, and behind Nginx Proxy Manager; with a join code: direct or npm overrides what the panel says)
 #
 # HTTP(S) via a relay node (Admin > Nodes > HTTP(S) entry): the panel answers http_mode=relay. Caddy on this node then
 # publishes no ports at all (80/443 may be taken by other software); the daemon keeps an outgoing tunnel to the relay node,
 # which serves the node domain and the websites of this node and gets their certificates. The node domain must point to
 # the relay node (dns_ip). Game ports and SFTP stay on this machine.
+#
+# Behind Nginx Proxy Manager (Admin > Nodes > this node > Nginx Proxy Manager, or --http-mode npm): NPM keeps ports 80/443
+# and the certificates. Caddy runs without TLS and publishes port 80 only on NPM_CADDY_ADDR (default <docker0 IP>:8081);
+# the daemon creates the proxy hosts in NPM with the login set in the panel. The NPM password never goes into panel.env.
 set -euo pipefail
 
 PANEL_URL="${PANEL_URL:-__PANEL_URL__}"
-YES=0; DRY_RUN=0; ROOT=""; UFW="ask"; FORCE_IP=""; UNINSTALL=0; PURGE=0; CODE=""; NO_PUBLIC_HTTP=0; SET_MODE=""
+YES=0; DRY_RUN=0; ROOT=""; UFW="ask"; FORCE_IP=""; UNINSTALL=0; PURGE=0; CODE=""; NO_PUBLIC_HTTP=0; SET_MODE=""; NPM_ADDR=""
 SKIP_WAIT="${JOIN_SKIP_WAIT:-0}"   # tests: no DNS/certificate waiting
 
 usage() {
@@ -33,7 +38,10 @@ Usage: join.sh [options] <join-code>
   --ip IPV4        public IPv4 address (default: detected)
   --panel-url URL  panel URL (default: where this script came from)
   --no-public-http this machine cannot use ports 80/443: require HTTP(S) via a relay node (set in the panel first)
-  --http-mode M    without a join code: switch this installed node to M (relay: Caddy without public ports; direct: Caddy on 80/443)
+  --http-mode M    without a join code: switch this installed node to M (relay: Caddy without public ports; direct: Caddy on
+                   80/443; npm: behind Nginx Proxy Manager, Caddy HTTP-only on NPM_CADDY_ADDR). With a join code: direct or npm
+                   instead of the mode set in the panel
+  --npm-caddy-addr HOST:PORT  (npm) where Caddy listens and NPM reaches it (default: the docker0 address, port 8081)
   --uninstall      remove the daemon, the node containers and the unit (keeps /etc/panel and the data volumes unless --purge)
 USAGE
 }
@@ -47,7 +55,8 @@ while [ $# -gt 0 ]; do
     --ip) FORCE_IP="${2:?--ip needs an address}"; shift ;;
     --panel-url) PANEL_URL="${2:?--panel-url needs a URL}"; shift ;;
     --no-public-http) NO_PUBLIC_HTTP=1 ;;
-    --http-mode) SET_MODE="${2:?--http-mode needs relay or direct}"; shift ;;
+    --http-mode) SET_MODE="${2:?--http-mode needs relay, direct or npm}"; shift ;;
+    --npm-caddy-addr) NPM_ADDR="${2:?--npm-caddy-addr needs host:port}"; shift ;;
     --uninstall) UNINSTALL=1 ;;
     --purge) PURGE=1 ;;
     -h|--help) usage; exit 0 ;;
@@ -67,6 +76,12 @@ progress() { # progress <state> [message]; never fatal
 }
 die() { printf 'error: %s\n' "$*" >&2; progress failed "$*"; exit 1; }
 
+# Met een join-code is --http-mode een keuze voor de join (direct of npm), geen omzetting van een geïnstalleerde node.
+JOIN_MODE=""
+if [ -n "$CODE" ] && [ -n "$SET_MODE" ]; then
+  case "$SET_MODE" in direct|npm) JOIN_MODE="$SET_MODE"; SET_MODE="" ;; *) die "with a join code, --http-mode must be direct or npm (relay is chosen in the panel)" ;; esac
+fi
+[ -z "$NPM_ADDR" ] || [[ "$NPM_ADDR" =~ ^[A-Za-z0-9.-]+:[0-9]{1,5}$ ]] || die "--npm-caddy-addr must be host:port"
 [ -n "${SET_MODE:-}" ] || case "$PANEL_URL" in __PANEL_""URL__*) die "unknown panel URL: pass --panel-url" ;; esac
 [ -n "$SET_MODE" ] || [[ "$PANEL_URL" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || die "invalid panel URL: $PANEL_URL"
 
@@ -105,7 +120,7 @@ if [ "$UNINSTALL" = 1 ]; then
   { [ -f "$ENV_FILE" ] && grep -q "^$MARKER" "$ENV_FILE"; } || die "$ENV_FILE is missing or was not written by the join script: refusing to uninstall"
   log "removing the node (daemon, Caddy, MariaDB containers)"
   down_args=(down); [ "$PURGE" = 1 ] && down_args+=(-v)
-  if [ -f "$INSTALL_DIR/docker-compose.node.yml" ]; then run env PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES=caddy,caddy-relay docker compose --env-file "$ENV_FILE" -f "$INSTALL_DIR/docker-compose.node.yml" "${down_args[@]}"; fi
+  if [ -f "$INSTALL_DIR/docker-compose.node.yml" ]; then run env PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES=caddy,caddy-relay,caddy-npm docker compose --env-file "$ENV_FILE" -f "$INSTALL_DIR/docker-compose.node.yml" "${down_args[@]}"; fi
   run systemctl disable --now panel-daemon.service || true
   run rm -f "$UNIT_DST" "$BIN_DST"
   run systemctl daemon-reload
@@ -114,26 +129,41 @@ if [ "$UNINSTALL" = 1 ]; then
   exit 0
 fi
 
-# Compose-profiel bij een HTTP-modus: direct = Caddy op 80/443, relay = Caddy zonder publieke poorten.
-profile_for() { case "$1" in relay) echo caddy-relay ;; *) echo caddy ;; esac; }
+# Compose-profiel bij een HTTP-modus: direct = Caddy op 80/443, relay = Caddy zonder publieke poorten, npm = Caddy
+# HTTP-only op NPM_CADDY_ADDR achter Nginx Proxy Manager.
+profile_for() { case "$1" in relay) echo caddy-relay ;; npm) echo caddy-npm ;; *) echo caddy ;; esac; }
+ALL_PROFILES=(caddy caddy-relay caddy-npm)
+# Standaardadres voor Caddy achter NPM: het docker0-adres (bereikbaar voor NPM als container en op de host), poort 8081.
+default_npm_addr() {
+  local ip=""
+  command -v ip >/dev/null && ip="$(ip -4 -o addr show docker0 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
+  echo "${ip:-172.17.0.1}:8081"
+}
 
 # ------------------------------------------------------------------ switch the HTTP mode of an installed node
 if [ -n "$SET_MODE" ]; then
-  case "$SET_MODE" in relay|direct) ;; *) die "--http-mode must be relay or direct" ;; esac
+  case "$SET_MODE" in relay|direct|npm) ;; *) die "--http-mode must be relay, direct or npm" ;; esac
   [ "$DRY_RUN" = 1 ] || [ "$(id -u)" = 0 ] || die "run as root (sudo)"
   { [ -f "$ENV_FILE" ] && grep -q "^$MARKER" "$ENV_FILE"; } || die "$ENV_FILE is missing or was not written by the join script"
   grep -q '^CADDY_ADMIN_URL=' "$ENV_FILE" || die "this node has no domain support (no Caddy); enable domains in the panel and join again"
   log "switching this node to HTTP mode: $SET_MODE"
   ENV_TMP="$(mktemp "$(dirname "$ENV_FILE")/.panel.env.XXXXXX")"; chmod 600 "$ENV_TMP"
-  { grep -v '^HTTP_MODE=' "$ENV_FILE"; echo "HTTP_MODE=$SET_MODE"; } > "$ENV_TMP"
+  OLD_NPM_ADDR="$(sed -n 's/^NPM_CADDY_ADDR=//p' "$ENV_FILE" | head -1)"
+  NPM_ADDR="${NPM_ADDR:-${OLD_NPM_ADDR:-$(default_npm_addr)}}"
+  { grep -v '^HTTP_MODE=\|^NPM_CADDY_ADDR=' "$ENV_FILE"; echo "HTTP_MODE=$SET_MODE"; if [ "$SET_MODE" = npm ] || [ -n "$OLD_NPM_ADDR" ]; then echo "NPM_CADDY_ADDR=$NPM_ADDR"; fi; } > "$ENV_TMP"
   mv -f "$ENV_TMP" "$ENV_FILE"
-  old="$(profile_for "$([ "$SET_MODE" = relay ] && echo direct || echo relay)")"; new="$(profile_for "$SET_MODE")"
-  # De andere Caddy-service (zelfde containernaam) eerst weg, dan de juiste starten.
-  run env PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES="$old" docker compose --env-file "$ENV_FILE" -f "$INSTALL_DIR/docker-compose.node.yml" rm -sf "$old"
+  new="$(profile_for "$SET_MODE")"
+  # De andere Caddy-services (zelfde containernaam) eerst weg, dan de juiste starten.
+  for old in "${ALL_PROFILES[@]}"; do
+    [ "$old" = "$new" ] && continue
+    run env PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES="$old" docker compose --env-file "$ENV_FILE" -f "$INSTALL_DIR/docker-compose.node.yml" rm -sf "$old"
+  done
   run env PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES="$new" docker compose --env-file "$ENV_FILE" -f "$INSTALL_DIR/docker-compose.node.yml" up -d --build
   run systemctl restart panel-daemon.service
   if [ "$SET_MODE" = relay ]; then
     log "done: ports 80/443 of this machine are free again; HTTP(S) runs through the relay node chosen in the panel"
+  elif [ "$SET_MODE" = npm ]; then
+    log "done: Caddy listens without TLS on $NPM_ADDR; Nginx Proxy Manager keeps ports 80/443. Set the NPM login in the panel (Admin > Nodes > this node > Nginx Proxy Manager); the daemon then creates the proxy hosts"
   else
     log "done: Caddy listens on 80/443 again; point the DNS records of this node back to this machine (the panel shows them)"
   fi
@@ -191,13 +221,20 @@ DNS_IP="$(jget dns_ip "$RESP")"; [ -n "$DNS_IP" ] || DNS_IP="$IP"
 [[ "$ACME_EMAIL" =~ ^[^@[:space:]\"\'\\\$\`]+@[^@[:space:]\"\'\\\$\`]+$ ]] || die "unexpected answer from the panel (email)"
 [[ "$DAEMON_PORT" =~ ^[0-9]{1,5}$ && "$SFTP_PORT" =~ ^[0-9]{1,5}$ && "$PUBLIC_PORT" =~ ^[0-9]{1,5}$ ]] || die "unexpected answer from the panel (ports)"
 [ "$SUPPORTS" = true ] || [ "$SUPPORTS" = false ] || die "unexpected answer from the panel (supports_domains)"
-[ "$HTTP_MODE" = direct ] || [ "$HTTP_MODE" = relay ] || die "unexpected answer from the panel (http_mode)"
+[ "$HTTP_MODE" = direct ] || [ "$HTTP_MODE" = relay ] || [ "$HTTP_MODE" = npm ] || die "unexpected answer from the panel (http_mode)"
+if [ -n "$JOIN_MODE" ] && [ "$JOIN_MODE" != "$HTTP_MODE" ]; then
+  [ "$HTTP_MODE" = relay ] && die "the panel set this node to run its HTTP(S) through a relay node; --http-mode $JOIN_MODE is not possible (change it in the panel first)"
+  log "--http-mode $JOIN_MODE: using $JOIN_MODE instead of $HTTP_MODE (set in the panel)"
+  HTTP_MODE="$JOIN_MODE"
+fi
+[ "$HTTP_MODE" != npm ] || [ "$SUPPORTS" = true ] || die "behind Nginx Proxy Manager the node needs domain support (enable it in the panel)"
 [[ "$DNS_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || die "unexpected answer from the panel (dns_ip)"
 if [ "$NO_PUBLIC_HTTP" = 1 ] && [ "$HTTP_MODE" != relay ]; then
   die "--no-public-http: this node is not set to run its HTTP(S) through a relay node. Choose one in the panel (Admin > Nodes > this node > HTTP(S) entry) and run the join command again"
 fi
 log "node domain: $NODE_DOMAIN (domains: $SUPPORTS, public port $PUBLIC_PORT, DNS: $DNS_MODE, HTTP: $HTTP_MODE)"
 [ "$HTTP_MODE" = relay ] && log "HTTP(S) via a relay node: no ports 80/443 needed here; $NODE_DOMAIN must point to $DNS_IP (the relay node)"
+[ "$HTTP_MODE" = npm ] && log "behind Nginx Proxy Manager: NPM keeps ports 80/443; the panel creates the proxy hosts once the NPM login is set in Admin > Nodes"
 
 # ------------------------------------------------------------------ Docker
 progress docker "checking Docker"
@@ -272,7 +309,9 @@ ENV_TMP="$(mktemp "$(dirname "$ENV_FILE")/.panel.env.XXXXXX")"; chmod 600 "$ENV_
     echo "CADDY_TLS_ADDR=127.0.0.1:443"
     echo "CADDY_CONTAINER=panel-caddy"
     # relay: Caddy zonder publieke poorten (compose-profiel caddy-relay); HTTP(S) via de tunnel naar de relay-node.
+    # npm: Caddy HTTP-only op NPM_CADDY_ADDR achter Nginx Proxy Manager (compose-profiel caddy-npm).
     echo "HTTP_MODE=$HTTP_MODE"
+    [ "$HTTP_MODE" = npm ] && echo "NPM_CADDY_ADDR=${NPM_ADDR:-$(default_npm_addr)}"
   else
     # No Caddy on 80/443: the daemon itself serves https for the node domain on this port (DNS-01 certificate via the panel).
     echo "DAEMON_TLS_PORT=$PUBLIC_PORT"
@@ -290,8 +329,8 @@ compose() { PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES="$1" docker compose --en
 if [ "$DRY_RUN" = 1 ]; then
   printf '[dry-run] COMPOSE_PROFILES=%s docker compose --env-file %q -f %q up -d --build\n' "$PROFILE" "$ENV_FILE" "$INSTALL_DIR/docker-compose.node.yml"
 else
-  # Opnieuw joinen in een andere modus: de andere Caddy-service (zelfde containernaam) eerst weg.
-  if [ "$SUPPORTS" = true ]; then compose "$([ "$PROFILE" = caddy ] && echo caddy-relay || echo caddy)" rm -sf "$([ "$PROFILE" = caddy ] && echo caddy-relay || echo caddy)" >/dev/null 2>&1 || true; fi
+  # Opnieuw joinen in een andere modus: de andere Caddy-services (zelfde containernaam) eerst weg.
+  if [ "$SUPPORTS" = true ]; then for p in "${ALL_PROFILES[@]}"; do [ "$p" = "$PROFILE" ] || compose "$p" rm -sf "$p" >/dev/null 2>&1 || true; done; fi
   compose "$PROFILE" up -d --build
 fi
 run systemctl daemon-reload
@@ -300,7 +339,7 @@ run systemctl restart panel-daemon.service
 
 # Firewall: only when ufw is active, and only after asking (or with --yes).
 if [ "$UFW" != no ] && [ "$DRY_RUN" = 0 ] && command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q '^Status: active'; then
-  if [ "$HTTP_MODE" = relay ]; then PORTS=("$SFTP_PORT/tcp")   # HTTP(S) gaat uitgaand naar de relay-node
+  if [ "$HTTP_MODE" = relay ] || [ "$HTTP_MODE" = npm ]; then PORTS=("$SFTP_PORT/tcp")   # relay: uitgaand; npm: 80/443 zijn van NPM
   elif [ "$SUPPORTS" = true ]; then PORTS=(80/tcp 443/tcp 443/udp "$SFTP_PORT/tcp"); else PORTS=("$PUBLIC_PORT/tcp" "$SFTP_PORT/tcp"); fi
   if confirm "ufw is active. Open ${PORTS[*]}?"; then for p in "${PORTS[@]}"; do ufw allow "$p" >/dev/null; done; else warn "ports not opened: ${PORTS[*]}"; fi
 fi
@@ -328,7 +367,7 @@ Node installed.
   unit:     $UNIT_DST
   daemon:   $BIN_DST
   compose:  $INSTALL_DIR/docker-compose.node.yml
-Open the game ports of this node (the allocation range from the panel) in your firewall.$([ "$HTTP_MODE" = relay ] && printf '\nHTTP(S) runs through the relay node: ports 80/443 of this machine are not used. Game ports and SFTP (%s) stay here.' "$SFTP_PORT")
+Open the game ports of this node (the allocation range from the panel) in your firewall.$([ "$HTTP_MODE" = relay ] && printf '\nHTTP(S) runs through the relay node: ports 80/443 of this machine are not used. Game ports and SFTP (%s) stay here.' "$SFTP_PORT")$([ "$HTTP_MODE" = npm ] && printf '\nBehind Nginx Proxy Manager: Caddy listens on %s without TLS. Set the NPM login in the panel (Admin > Nodes > this node > Nginx Proxy Manager).' "$(sed -n 's/^NPM_CADDY_ADDR=//p' "$ENV_FILE")")
 Follow the progress in the panel: Admin > Nodes.
 EOT
 [ "$DRY_RUN" = 1 ] && echo "(dry-run: everything is under $ROOT)"

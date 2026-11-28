@@ -83,4 +83,36 @@ describe.skipIf(!hasDocker)("join.sh met HTTP(S)-relay (dry-run)", () => {
     expect(readFileSync(join(root, "etc/panel/panel.env"), "utf8")).toMatch(/^HTTP_MODE=direct$/m);
     await expect(join_(mkdtempSync(join(tmpdir(), "join-root-")), "--no-public-http", "code-3")).rejects.toMatchObject({ stderr: expect.stringMatching(/not set to run its HTTP\(S\) through a relay node/) });
   });
+
+  it("npm (van het panel): Caddy HTTP-only op NPM_CADDY_ADDR, alleen SFTP in de firewall, omzetten terug naar direct", async () => {
+    answer = base({ http_mode: "npm", dns_ip: "192.0.2.50" });
+    const root = mkdtempSync(join(tmpdir(), "join-root-"));
+    const { stdout } = await join_(root, "code-4", "--npm-caddy-addr", "10.9.0.1:8081");
+    expect(stdout).toMatch(/HTTP: npm/);
+    expect(stdout).toMatch(/behind Nginx Proxy Manager: NPM keeps ports 80\/443/);
+    expect(stdout).toMatch(/COMPOSE_PROFILES=caddy-npm docker compose/);
+    const env = readFileSync(join(root, "etc/panel/panel.env"), "utf8");
+    expect(env).toMatch(/^HTTP_MODE=npm$/m);
+    expect(env).toMatch(/^NPM_CADDY_ADDR=10\.9\.0\.1:8081$/m);
+    expect(env).not.toMatch(/NPM_PASSWORD|npm_password/i);
+    const sw = await run("bash", [SRC, "--dry-run", "--root", root, "--http-mode", "direct"]);
+    expect(sw.stdout).toMatch(/COMPOSE_PROFILES=caddy-npm docker compose .* rm -sf caddy-npm/);
+    expect(sw.stdout).toMatch(/COMPOSE_PROFILES=caddy docker compose .* up -d --build/);
+    expect(readFileSync(join(root, "etc/panel/panel.env"), "utf8")).toMatch(/^HTTP_MODE=direct$/m);
+    const back = await run("bash", [SRC, "--dry-run", "--root", root, "--http-mode", "npm"]);
+    expect(back.stdout).toMatch(/COMPOSE_PROFILES=caddy-npm docker compose .* up -d --build/);
+    expect(back.stdout).toMatch(/Caddy listens without TLS on 10\.9\.0\.1:8081/);
+  });
+
+  it("--http-mode npm bij de join wint van direct; relay van het panel kan niet worden overschreven", async () => {
+    answer = base({ http_mode: "direct", dns_ip: "192.0.2.50" });
+    const root = mkdtempSync(join(tmpdir(), "join-root-"));
+    const { stdout } = await join_(root, "code-5", "--http-mode", "npm");
+    expect(stdout).toMatch(/using npm instead of direct/);
+    expect(stdout).toMatch(/COMPOSE_PROFILES=caddy-npm docker compose/);
+    expect(readFileSync(join(root, "etc/panel/panel.env"), "utf8")).toMatch(/^NPM_CADDY_ADDR=.+:8081$/m);
+    answer = base({ http_mode: "relay", dns_ip: "198.51.100.1" });
+    await expect(join_(mkdtempSync(join(tmpdir(), "join-root-")), "code-6", "--http-mode", "npm")).rejects.toMatchObject({ stderr: expect.stringMatching(/relay node/) });
+    await expect(join_(mkdtempSync(join(tmpdir(), "join-root-")), "code-7", "--http-mode", "relay")).rejects.toMatchObject({ stderr: expect.stringMatching(/direct or npm/) });
+  });
 });

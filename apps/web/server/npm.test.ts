@@ -8,8 +8,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { GET as npmConfig } from "@/app/api/remote/npm/route";
 import { POST as npmReport } from "@/app/api/remote/npm/status/route";
 import { getDb, schema } from "./db";
+import { decrypt } from "./lib/crypto";
+import { resetEnv } from "./env";
 import { daemonUrlOverrides } from "./daemon";
 import { exchangeJoinCode } from "./join";
+import { seedLocalNpm } from "./npm";
 import { FakeDaemon } from "./test/fake-daemon";
 import { OWNER, useHarness, type TestUser } from "./test/harness";
 
@@ -25,6 +28,7 @@ const req = (path: string, token: string, body?: unknown) =>
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 const params = { params: Promise.resolve({}) } as never;
+const decryptPw = (n: { npmPasswordEnc: string | null }) => (n.npmPasswordEnc ? decrypt(n.npmPasswordEnc) : null);
 const nodeRow = async (id: number) => (await getDb().select().from(schema.nodes).where(eq(schema.nodes.id, id)))[0]!;
 const npmRefreshes = (d: FakeDaemon) => d.requests.filter((r) => r.method === "POST" && r.path === "/api/npm/refresh").length;
 
@@ -159,6 +163,24 @@ describe("Nginx Proxy Manager", () => {
     const code = j.joinCommand.split(" ").at(-1)!;
     const r = await exchangeJoinCode(code, "203.0.113.44");
     expect(r).toMatchObject({ http_mode: "npm", supports_domains: true, public_port: 443 });
+  });
+
+  it("panel-machine: NPM_* uit panel.env één keer overnemen op de lokale node; uitzetten in het panel blijft gelden", async () => {
+    Object.assign(process.env, { NPM_URL: "http://127.0.0.1:81", NPM_EMAIL: "seed@panel.test", NPM_PASSWORD: "seed-password" });
+    resetEnv();
+    try {
+      expect(await seedLocalNpm(h.localNodeId)).toBe(true);
+      const st = await admin.api.admin.nodes.npmStatus({ id: h.localNodeId });
+      expect(st.settings).toMatchObject({ url: "http://127.0.0.1:81", email: "seed@panel.test", hasPassword: true, ssl: "http" });
+      expect(decryptPw(await nodeRow(h.localNodeId))).toBe("seed-password");
+      expect(await seedLocalNpm(h.localNodeId)).toBe(false);
+      await admin.api.admin.nodes.setNpm({ id: h.localNodeId, settings: null });
+      expect(await seedLocalNpm(h.localNodeId)).toBe(false);
+      expect((await admin.api.admin.nodes.npmStatus({ id: h.localNodeId })).settings).toBeNull();
+    } finally {
+      for (const k of ["NPM_URL", "NPM_EMAIL", "NPM_PASSWORD"]) delete process.env[k];
+      resetEnv();
+    }
   });
 
   it("uitzetten: terug naar direct, geheimen weg", async () => {

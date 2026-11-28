@@ -15,7 +15,7 @@ import { eq } from "drizzle-orm";
 import { call, daemonFor } from "./daemon";
 import { getDb, schema } from "./db";
 import { getEnv } from "./env";
-import { decrypt, encrypt } from "./lib/crypto";
+import { decrypt, encrypt, sha256 } from "./lib/crypto";
 import { publicPanelUrl } from "./routers/nodes";
 
 type NodeRow = typeof schema.nodes.$inferSelect;
@@ -201,4 +201,27 @@ export function npmAlerts(nodes: NodeRow[], now: Date): DashboardAlert[] {
     if (msg) out.push({ kind: "npm_error", message: msg, at: r ? new Date(r.reportedAt) : now, serverUuid: null, nodeId: n.id });
   }
   return out;
+}
+
+/**
+ * Panel-machine achter NPM (install.sh --http-mode npm --npm-url …): NPM_URL/NPM_EMAIL/NPM_PASSWORD uit panel.env één
+ * keer overnemen op de lokale node, zodat de daemon de proxy hosts voor het panel-domein maakt voordat iemand kan inloggen.
+ * Per combinatie URL+e-mail+wachtwoord maar één keer (settings-sleutel npm_seed), zodat wat de admin daarna in het panel
+ * kiest (ook uitzetten) blijft gelden. Nooit als de lokale node al NPM-instellingen of een relay heeft.
+ */
+export async function seedLocalNpm(localNodeId: number): Promise<boolean> {
+  const env = getEnv();
+  if (!env.NPM_URL || !env.NPM_EMAIL || !env.NPM_PASSWORD) return false;
+  const db = getDb();
+  const seed = sha256(`${env.NPM_URL}|${env.NPM_EMAIL}|${env.NPM_PASSWORD}`);
+  const [done] = await db.select().from(schema.settings).where(eq(schema.settings.key, "npm_seed"));
+  if (done && (done.value as { hash?: string }).hash === seed) return false;
+  const [n] = await db.select().from(schema.nodes).where(eq(schema.nodes.id, localNodeId));
+  if (!n || n.npmSettings || n.httpRelayNodeId) return false;
+  await setNpm(n, { url: env.NPM_URL, email: env.NPM_EMAIL, password: env.NPM_PASSWORD, forwardHost: null, forwardPort: null, ssl: "http", forceSsl: true });
+  await db
+    .insert(schema.settings)
+    .values({ key: "npm_seed", value: { hash: seed } })
+    .onConflictDoUpdate({ target: schema.settings.key, set: { value: { hash: seed }, updatedAt: new Date() } });
+  return true;
 }
