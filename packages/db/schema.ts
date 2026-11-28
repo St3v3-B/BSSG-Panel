@@ -174,6 +174,15 @@ export const nodes = pgTable("nodes", {
   relayStatus: jsonb("relay_status").$type<{ edgeNodeId: number; connected: boolean; latencyMs: number | null; lastError: string | null; lastErrorAt: string | null; connectedAt: string | null; reconnects: number; httpMode: "direct" | "relay" | null; reportedAt: string }>(),
   /** Onderhoudsmodus (null = normaal): geen nieuwe servers op deze node; tijden als ISO-tekst. */
   maintenance: jsonb("maintenance").$type<{ since: string; message: string | null; plannedStart: string | null; plannedEnd: string | null; by: number | null }>(),
+  /**
+   * Achter Nginx Proxy Manager (HTTP_MODE=npm): null = niet. De daemon beheert met deze instellingen de proxy hosts in NPM
+   * (GET /api/remote/npm). Geheimen staan apart en versleuteld (npm_password_enc, npm_cloudflare_token_enc).
+   */
+  npmSettings: jsonb("npm_settings").$type<{ url: string; email: string; forwardHost: string | null; forwardPort: number | null; ssl: "http" | "cloudflare"; forceSsl: boolean }>(),
+  npmPasswordEnc: text("npm_password_enc"),
+  npmCloudflareTokenEnc: text("npm_cloudflare_token_enc"),
+  /** Laatste melding van de daemon over NPM (POST /api/remote/npm/status). */
+  npmStatus: jsonb("npm_status").$type<{ state: string; error: string | null; version: string | null; proxyHosts: number; managedHosts: number; conflicts: string[]; hosts: { host: string; ssl: string; error: string | null }[]; httpMode: string | null; reportedAt: string }>(),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("nodes_one_local").on(t.isLocal).where(sql`${t.isLocal}`)]);
 

@@ -101,6 +101,15 @@ in `Error`). If still inconclusive it compares the A/AAAA records of the host wi
 of this node (`NODE_DOMAIN` + own interfaces): no record or no overlap → `dns_wrong`.
 Note: a host behind the Cloudflare proxy gives `dns_wrong` until a certificate exists.
 
+## Behind Nginx Proxy Manager (`HTTP_MODE=npm`)
+
+`Caddyfile.npm` (remote node, compose profile `caddy-npm`) and `Caddyfile.npm-panel` (panel machine, via
+`docker-compose.npm.yml`) run Caddy without TLS: `auto_https off`, the server `panel` on `:80` (the daemon puts the dynamic
+routes there as usual) and `trusted_proxies static private_ranges` so the `X-Forwarded-*` headers of NPM reach the sites.
+Compose publishes `:80` only on `NPM_CADDY_ADDR` (default `172.17.0.1:8081`). Nginx Proxy Manager terminates TLS; the daemon
+(`daemon/proxy/npm.go`) creates a proxy host per domain there that forwards to that address, and the SSL status comes from NPM.
+Test: `go test ./proxy -run TestRealNPM` (real `jc21/nginx-proxy-manager` + Caddy with `Caddyfile.npm`).
+
 ## Local testing with `tls internal`
 
 On your own free ports, not 80/443/2019 (other things may run on this machine); the admin API

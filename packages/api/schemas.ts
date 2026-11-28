@@ -685,8 +685,88 @@ export const Node = z.object({
   httpRelayNodeId: Id.nullable(),
   /** Onderhoudsmodus: geen nieuwe servers op deze node; null = normaal. */
   maintenance: NodeMaintenance.nullable().optional(),
+  /** HTTP(S)-ingang: direct (Caddy op 80/443), relay (via httpRelayNodeId) of npm (achter Nginx Proxy Manager). */
+  httpMode: z.lazy(() => HttpMode),
 });
 export type Node = z.infer<typeof Node>;
+
+export const HttpMode = z.enum(["direct", "relay", "npm"]);
+export type HttpMode = z.infer<typeof HttpMode>;
+
+// ---------- Nginx Proxy Manager (HTTP_MODE=npm) ----------
+
+/** SSL via NPM: Let's Encrypt HTTP-01 (standaard) of DNS-01 via Cloudflare (ook nodig voor wildcards). */
+export const NpmSslMode = z.enum(["http", "cloudflare"]);
+export type NpmSslMode = z.infer<typeof NpmSslMode>;
+
+/** Toestand van de koppeling zoals de daemon hem meldt. */
+export const NpmState = z.enum(["unconfigured", "ok", "login_failed", "unreachable", "error"]);
+export type NpmState = z.infer<typeof NpmState>;
+
+/** NPM-instellingen van een node. Wachtwoord en Cloudflare-token: weglaten = bewaarde waarde houden. */
+export const NodeNpmInput = z.object({
+  /** Adminpoort van NPM zoals de node hem bereikt, bv. http://127.0.0.1:81 (zonder pad). */
+  url: z.string().max(200).regex(/^https?:\/\/[A-Za-z0-9.-]+(:[0-9]{1,5})?\/?$/, "http(s)://host:port"),
+  /** E-mailadres van een NPM-account met de rol admin (zonder 2FA). */
+  email: z.string().email().max(200),
+  password: z.string().min(1).max(200).optional(),
+  /** Waar NPM onze Caddy bereikt; null = NPM_CADDY_ADDR van de node (standaard 172.17.0.1:8081). */
+  forwardHost: z.string().max(253).regex(/^[A-Za-z0-9.-]+$/).nullable().default(null),
+  forwardPort: z.number().int().min(1).max(65535).nullable().default(null),
+  ssl: NpmSslMode.default("http"),
+  /** Cloudflare-API-token (Zone:DNS:Edit) voor DNS-01; "" = wissen. */
+  cloudflareToken: z.string().max(200).optional(),
+  /** HTTP → HTTPS afdwingen zodra er een certificaat is. */
+  forceSsl: z.boolean().default(true),
+});
+export type NodeNpmInput = z.infer<typeof NodeNpmInput>;
+
+export const NpmHostStatus = z.object({ host: z.string(), ssl: SslStatus, error: z.string().nullable() });
+
+export const NodeNpmStatus = z.object({
+  /** Instellingen zonder geheimen; null = node niet achter NPM. */
+  settings: z
+    .object({
+      url: z.string(),
+      email: z.string(),
+      forwardHost: z.string().nullable(),
+      forwardPort: z.number().int().nullable(),
+      ssl: NpmSslMode,
+      forceSsl: z.boolean(),
+      hasPassword: z.boolean(),
+      hasCloudflareToken: z.boolean(),
+    })
+    .nullable(),
+  /** Laatste melding van de daemon; null = nog niets gemeld. */
+  report: z
+    .object({
+      state: NpmState,
+      error: z.string().nullable(),
+      version: z.string().nullable(),
+      proxyHosts: z.number().int(),
+      managedHosts: z.number().int(),
+      /** Domeinen die in NPM al bij een host van de gebruiker horen (niet overschreven). */
+      conflicts: z.array(z.string()),
+      hosts: z.array(NpmHostStatus),
+      /** HTTP_MODE van de node: alles behalve "npm" = omzetten op de node nodig (modeCommand). */
+      httpMode: z.string().nullable(),
+      reportedAt: z.date(),
+    })
+    .nullable(),
+  /** Op de node (als root) uitvoeren om Caddy achter NPM te zetten (of terug naar direct). */
+  modeCommand: z.string().nullable(),
+});
+export type NodeNpmStatus = z.infer<typeof NodeNpmStatus>;
+
+/** "Test verbinding": login bij NPM vanaf de node. */
+export const NpmTestResult = z.object({
+  state: NpmState,
+  error: z.string().nullable(),
+  version: z.string().nullable(),
+  proxyHosts: z.number().int(),
+  managedHosts: z.number().int(),
+});
+export type NpmTestResult = z.infer<typeof NpmTestResult>;
 
 /** Tunnel van een node via zijn relay-node, zoals de node hem zelf meldt. */
 export const NodeRelayTunnel = z.object({
@@ -979,7 +1059,7 @@ export const UpdatesStatus = z.object({
 export type UpdatesStatus = z.infer<typeof UpdatesStatus>;
 
 export const DashboardAlert = z.object({
-  kind: z.enum(["emergency_login", "node_offline", "install_failed", "backup_failed", "disk_low"]),
+  kind: z.enum(["emergency_login", "node_offline", "install_failed", "backup_failed", "disk_low", "npm_error"]),
   message: z.string(),
   at: z.date(),
   serverUuid: Uuid.nullable(),

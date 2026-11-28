@@ -76,3 +76,23 @@ func TestNetworkPool(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadHTTPModeNPM(t *testing.T) {
+	base := map[string]string{"NODE_TOKEN": "t", "NODE_DOMAIN": "node1.test", "PANEL_DOMAIN": "panel.test"}
+	c, err := Load(env(base))
+	if err != nil || c.HTTPMode != "direct" || c.NPMCaddyAddr != "172.17.0.1:8081" {
+		t.Fatalf("%+v %v", c, err)
+	}
+	base["HTTP_MODE"], base["NPM_CADDY_ADDR"] = "NPM", "10.9.0.1:9000"
+	if c, err = Load(env(base)); err != nil || c.HTTPMode != "npm" || c.NPMCaddyAddr != "10.9.0.1:9000" {
+		t.Fatalf("%+v %v", c, err)
+	}
+	base["NPM_CADDY_ADDR"] = "nope"
+	if _, err = Load(env(base)); err == nil || !strings.Contains(err.Error(), "NPM_CADDY_ADDR") {
+		t.Fatal(err)
+	}
+	base["HTTP_MODE"], base["NPM_CADDY_ADDR"] = "nginx", ""
+	if _, err = Load(env(base)); err == nil || !strings.Contains(err.Error(), "HTTP_MODE") {
+		t.Fatal(err)
+	}
+}

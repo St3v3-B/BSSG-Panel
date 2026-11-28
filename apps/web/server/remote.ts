@@ -20,6 +20,7 @@ import { logImageUpdate, remoteImageSettings, storeImageReport } from "./image-u
 import { fetchServerByUuid, sftpUsername } from "./servers-data";
 import { applyServerState } from "./node-cache";
 import { relayConfigFor, storeRelayReport } from "./relay";
+import { npmConfigFor, storeNpmReport } from "./npm";
 
 type NodeRow = typeof schema.nodes.$inferSelect;
 
@@ -337,12 +338,37 @@ export const reportRelayStatus = remoteHandler(async (req, node) => {
       last_error: z.string().max(2000).nullable().optional(),
       last_error_at: z.string().max(40).nullable().optional(),
       reconnects: z.number().int().min(0).optional(),
-      http_mode: z.enum(["direct", "relay"]).optional(),
+      http_mode: z.enum(["direct", "relay", "npm"]).optional(),
     }),
   );
   if (!b) return error(400, "bad_request");
   // Alleen meldingen over de relay die het panel heeft toegewezen.
   if (b.edge_node_id !== node.httpRelayNodeId) return noContent();
-  await storeRelayReport(node, b);
+  await storeRelayReport(node, { ...b, http_mode: b.http_mode === "npm" ? undefined : b.http_mode });
+  return noContent();
+});
+
+// ---------- Nginx Proxy Manager ----------
+
+export const getNpmConfig = remoteHandler(async (_req, node) => json(200, npmConfigFor(node)));
+
+export const reportNpmStatus = remoteHandler(async (req, node) => {
+  const b = await body(
+    req,
+    z.object({
+      http_mode: z.string().max(20).optional(),
+      configured: z.boolean().optional(),
+      state: z.string().max(40),
+      error: z.string().max(4000).nullable().optional(),
+      version: z.string().max(100).nullable().optional(),
+      proxy_hosts: z.number().int().min(0).optional(),
+      managed_hosts: z.number().int().min(0).optional(),
+      conflicts: z.array(z.string().max(300)).max(1000).nullable().optional(),
+      hosts: z.array(z.object({ host: z.string().max(300), ssl: z.string().max(20), error: z.string().max(4000).nullable().optional() }).passthrough()).max(2000).nullable().optional(),
+      checked_at: z.string().max(40).nullable().optional(),
+    }),
+  );
+  if (!b) return error(400, "bad_request");
+  await storeNpmReport(node, b);
   return noContent();
 });

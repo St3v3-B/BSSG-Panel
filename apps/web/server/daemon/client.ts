@@ -430,6 +430,18 @@ export class DaemonClient {
   relayRefresh(timeoutMs?: number) {
     return this.request<void>("POST", "/api/relay/refresh", undefined, timeoutMs);
   }
+  /** Nginx Proxy Manager (HTTP_MODE=npm): toestand van de koppeling. */
+  npmState(timeoutMs?: number) {
+    return this.request<DaemonSchemas["NpmState"]>("GET", "/api/npm", undefined, timeoutMs);
+  }
+  /** NPM-instellingen nu bij het panel ophalen (501 buiten HTTP_MODE=npm). */
+  npmRefresh(timeoutMs?: number) {
+    return this.request<void>("POST", "/api/npm/refresh", undefined, timeoutMs);
+  }
+  /** Inloggen bij NPM vanaf de node; wijzigt niets. */
+  npmTest(body: { url: string; email: string; password: string }, timeoutMs = 25_000) {
+    return this.request<DaemonSchemas["NpmTestResult"]>("POST", "/api/npm/test", body, timeoutMs);
+  }
   routes(timeoutMs?: number) {
     return this.request<DaemonRouteWithStatus[]>("GET", "/api/routes", undefined, timeoutMs);
   }

@@ -133,6 +133,77 @@ Changing the setting:
 
 A relay node cannot be deleted while other nodes relay through it, and a node that relays for others cannot use a relay itself.
 
+### Behind Nginx Proxy Manager
+
+If a machine already runs [Nginx Proxy Manager](https://nginxproxymanager.com/) (NPM) on ports 80 and 443, the node can run behind
+it instead of next to it. NPM keeps the ports and the certificates; the panel manages the proxy hosts in NPM itself through NPM's
+(unofficial) REST API, for every domain it manages on that node: the node domain, websites, HTTP domains of game servers and, on
+the panel machine, the panel domain. Switch it on per node in **Admin, Nodes, <node>, Nginx Proxy Manager**. It cannot be combined
+with an HTTP(S) relay (in either direction).
+
+How it works:
+
+- Caddy on the node runs **without TLS and without ACME**, and publishes its port 80 only on `NPM_CADDY_ADDR` (default
+  `<docker0 IP>:8081`, normally `172.17.0.1:8081`: reachable from NPM in a container and on the host, not from the internet). It routes
+  by host name to the containers exactly as in direct mode and passes NPM's `X-Forwarded-For`/`-Proto` on to the sites.
+- The daemon logs in to NPM (`POST /api/tokens`, the token is renewed before it expires and after a 401) and makes the proxy hosts in
+  NPM match the domains of the node: one proxy host per domain, forward `http://<NPM_CADDY_ADDR>` (or the forward host/port set on the
+  card), websockets and HTTP/2 always on, "force SSL" as set, and nginx options for long-running streams (timeouts of one hour, no
+  buffering, no upload size limit). Every proxy host the panel creates has the marker `# managed-by-panel <instance>` on the first
+  line of its *Advanced* config. **Proxy hosts without that marker are never changed or deleted.** If a domain already exists in NPM
+  (as a proxy host, redirection host or 404 host of your own) the panel reports a conflict on the card, in the domain's SSL status and
+  on the dashboard, and leaves it alone: remove it in NPM yourself if the panel should take over.
+- Certificates: Let's Encrypt via NPM, with the HTTP challenge (default) or the DNS challenge through Cloudflare (API token with
+  Zone:DNS:Edit, stored encrypted). Wildcard domains always need the DNS challenge: the token of a Cloudflare DNS provider linked to
+  the domain is used, otherwise the token on the card. An existing valid certificate in NPM that covers the domain (also one of yours,
+  for example a wildcard) is reused and never deleted; certificates the panel requested itself are deleted with their proxy host.
+  After a failed request the panel waits an hour before trying again (Let's Encrypt limits), unless you change the settings. NPM
+  renews its certificates itself.
+- The SSL status of the domains comes from NPM (certificate present and valid, the last error of the request, or a conflict) instead
+  of a TLS check against Caddy.
+- Game ports, Minecraft domains and SFTP do not go through NPM.
+
+Where the credentials live: only in the panel. The NPM password and the Cloudflare token are stored encrypted
+(`nodes.npm_password_enc`, `nodes.npm_cloudflare_token_enc`) and are never sent back to the browser; the card only shows that one is
+saved. The daemon of that node fetches them with its node token (`GET /api/remote/npm`, at start, every minute and right after a
+change) and keeps them in memory only. Use a separate NPM account **with the admin role and without two-factor authentication**
+(NPM only lets admins set the advanced config the panel uses).
+
+Setting it up on a remote node:
+
+1. In **Admin, Nodes, <node>, Nginx Proxy Manager** press **Run behind Nginx Proxy Manager**, fill in the NPM URL as the node reaches
+   it (for example `http://127.0.0.1:81`), the NPM user and password, and the SSL choice. **Test connection** logs in from the node and
+   shows the NPM version and the number of proxy hosts; it changes nothing. Then **Save**.
+2. Put Caddy on the node behind NPM. The card shows the command; run it as root on the node:
+
+   ```bash
+   curl -fsSL https://panel.example.com/join | sudo bash -s -- --http-mode npm    # back: --http-mode direct
+   ```
+
+   A new node can be joined straight into this mode: set NPM on the node card before running the join command (the panel then
+   answers `http_mode=npm`), or append `--http-mode npm` to the join command. `--npm-caddy-addr HOST:PORT` picks another address for
+   Caddy; for `deploy/install.sh --node-only` set `HTTP_MODE=npm` (and optionally `NPM_CADDY_ADDR`). Only the SFTP port is opened in
+   ufw; 80/443 belong to NPM.
+3. The card and the dashboard show the state the node reports: connected (with the NPM version and the number of proxy hosts),
+   login failed, unreachable, conflicts, or that the node still runs Caddy in another mode. DNS of the domains points to the
+   machine itself, as in direct mode.
+
+On the panel machine itself the panel domain is only reachable through NPM, so the panel needs NPM before anyone can log in. Run
+the installer with the NPM login once; it is imported into the database at the next start (and not again, so what you choose later
+on the card stays):
+
+```bash
+sudo deploy/install.sh --http-mode npm --npm-url http://127.0.0.1:81 --npm-email panel@example.com --npm-password '...'
+```
+
+This adds `deploy/docker-compose.npm.yml` (Caddy HTTP-only on `NPM_CADDY_ADDR`, with `caddy/Caddyfile.npm-panel`) to the compose
+stack; upgrades keep the mode. The daemon then creates the proxy hosts for the panel domain and the node domain and requests their
+certificates. Afterwards `NPM_PASSWORD` may be emptied in `panel.env`. `--http-mode direct` puts Caddy back on 80/443 (stop NPM
+first). Switching a node back to direct does not delete the proxy hosts in NPM; delete the ones with the marker yourself if NPM stays.
+
+Testing against a real NPM: `go test ./proxy -run TestRealNPM` (in `daemon/`) starts `jc21/nginx-proxy-manager` and Caddy with
+`Caddyfile.npm` in Docker (test labels, random ports, no certificates) and checks the whole chain NPM, Caddy, container.
+
 **Allocations** are IP and port ranges per node: `25565`, `25565-25600` or `25565,25570-25575`. Game servers take one or more
 allocations; websites need none. **Update daemon** on a node makes it download the daemon of the current panel version and restart.
 A node with servers cannot be removed: move or delete the servers first.

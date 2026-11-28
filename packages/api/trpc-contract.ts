@@ -522,6 +522,21 @@ export const contract = {
       setHttpRelay: mutation("admin", byId.extend({ relayNodeId: s.Id.nullable() }), z.object({ node: s.Node, dns: z.array(s.RelayDnsRecord) })),
       /** Relay-keuze, tunnelstatus (van beide kanten) en de DNS-records die naar de HTTP(S)-ingang moeten wijzen. */
       relayStatus: query("admin", byId, s.NodeRelayStatus),
+      /**
+       * Nginx Proxy Manager: instellingen (zonder geheimen), laatste melding van de daemon en het omzetcommando.
+       */
+      npmStatus: query("admin", byId, s.NodeNpmStatus),
+      /**
+       * Node achter NPM zetten (settings) of terug naar direct (null). Wachtwoord en Cloudflare-token worden versleuteld
+       * bewaard en nooit teruggegeven. Fouten: NPM_NOT_ALLOWED (HTTP(S)-relay actief of de node is relay voor anderen),
+       * NPM_PASSWORD_REQUIRED (eerste keer zonder wachtwoord), CLOUDFLARE_TOKEN_REQUIRED (ssl cloudflare zonder token).
+       */
+      setNpm: mutation("admin", byId.extend({ settings: s.NodeNpmInput.nullable() }), s.NodeNpmStatus),
+      /**
+       * "Test verbinding": de daemon logt in bij NPM (velden die ontbreken komen uit de bewaarde instellingen) en telt
+       * de proxy hosts. Wijzigt niets. PRECONDITION_FAILED NPM_PASSWORD_REQUIRED, daemon onbereikbaar: DAEMON_UNREACHABLE.
+       */
+      testNpm: mutation("admin", byId.extend({ url: z.string().max(200).optional(), email: z.string().max(200).optional(), password: z.string().max(200).optional() }), s.NpmTestResult),
     },
 
     /**

@@ -50,6 +50,11 @@ Usage: install.sh [options]
                       Needs PANEL_URL, NODE_DOMAIN, NODE_TOKEN, ACME_EMAIL (environment or the flags below)
   --panel-url URL, --node-domain HOST, --node-token TOKEN, --acme-email MAIL, --daemon-port N,
   --sftp-port N       same as the environment variables of the same name
+  --http-mode M       HTTP_MODE: direct (Caddy on ports 80/443) or npm (behind Nginx Proxy Manager: Caddy HTTP-only on
+                      NPM_CADDY_ADDR; set NPM itself in the panel, Admin > Nodes); with --node-only also relay
+  --npm-url URL, --npm-email MAIL, --npm-password PW
+                      (panel machine, --http-mode npm) first NPM login for the panel, so it can create its own proxy
+                      hosts before anyone can log in; imported once into Admin > Nodes (NPM_URL/NPM_EMAIL/NPM_PASSWORD)
   -h, --help          this help
 EOF
 }
@@ -71,6 +76,10 @@ while [ $# -gt 0 ]; do
     --acme-email) export ACME_EMAIL="${2:?--acme-email needs a value}"; shift ;;
     --daemon-port) export DAEMON_PORT="${2:?--daemon-port needs a value}"; shift ;;
     --sftp-port) export SFTP_PORT="${2:?--sftp-port needs a value}"; shift ;;
+    --http-mode) export HTTP_MODE="${2:?--http-mode needs direct, relay or npm}"; shift ;;
+    --npm-url) export NPM_URL="${2:?--npm-url needs a URL}"; shift ;;
+    --npm-email) export NPM_EMAIL="${2:?--npm-email needs a value}"; shift ;;
+    --npm-password) export NPM_PASSWORD="${2:?--npm-password needs a value}"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -114,10 +123,14 @@ export_version() {
 export_version
 
 compose() {
-  # De node-compose heeft Caddy achter het profiel "caddy" (eigen 80/443) of "caddy-relay" (HTTP_MODE=relay: geen
-  # publieke poorten, HTTP(S) via een andere node); install.sh --node-only wil altijd een van de twee.
-  local prof=caddy; [ "${VAL[HTTP_MODE]:-${HTTP_MODE:-direct}}" = relay ] && prof=caddy-relay
-  PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES="${COMPOSE_PROFILES:-$([ "$NODE_ONLY" = 1 ] && echo "$prof")}" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+  # De node-compose heeft Caddy achter het profiel "caddy" (eigen 80/443), "caddy-relay" (HTTP_MODE=relay: geen
+  # publieke poorten, HTTP(S) via een andere node) of "caddy-npm" (HTTP_MODE=npm: achter Nginx Proxy Manager);
+  # install.sh --node-only wil altijd een van de drie. Op de panel-machine voegt HTTP_MODE=npm docker-compose.npm.yml toe.
+  local mode="${VAL[HTTP_MODE]:-${HTTP_MODE:-direct}}" prof=caddy files=(-f "$COMPOSE_FILE")
+  [ "$mode" = relay ] && prof=caddy-relay
+  [ "$mode" = npm ] && prof=caddy-npm
+  [ "$NODE_ONLY" = 0 ] && [ "$mode" = npm ] && files+=(-f "$DEPLOY/docker-compose.npm.yml")
+  PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES="${COMPOSE_PROFILES:-$([ "$NODE_ONLY" = 1 ] && echo "$prof")}" docker compose --env-file "$ENV_FILE" "${files[@]}" "$@"
 }
 
 # ---------------------------------------------------------------- vereisten
@@ -206,8 +219,12 @@ validate() {
     PANEL_URL)
       [[ "$v" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || { echo "not a URL like https://panel.example.com (no path)"; return 1; } ;;
     HTTP_MODE)
-      [ "$v" = direct ] || [ "$v" = relay ] || { echo "direct or relay"; return 1; }
-      [ "$v" = direct ] || [ "$NODE_ONLY" = 1 ] || { echo "relay is only for remote nodes (--node-only); the panel machine needs its own 80/443"; return 1; } ;;
+      [ "$v" = direct ] || [ "$v" = relay ] || [ "$v" = npm ] || { echo "direct, relay or npm"; return 1; }
+      [ "$v" != relay ] || [ "$NODE_ONLY" = 1 ] || { echo "relay is only for remote nodes (--node-only); the panel machine needs its own 80/443 or Nginx Proxy Manager (npm)"; return 1; } ;;
+    NPM_CADDY_ADDR)
+      [[ "$v" =~ ^[A-Za-z0-9.-]+:[0-9]{1,5}$ ]] || { echo "host:port, e.g. 172.17.0.1:8081"; return 1; } ;;
+    NPM_URL)
+      [ -z "$v" ] || [[ "$v" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || { echo "a URL like http://127.0.0.1:81 (no path)"; return 1; } ;;
     SFTP_PORT|DAEMON_PORT)
       [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -ge 1 ] && [ "$v" -le 65535 ] || { echo "not a port number"; return 1; } ;;
   esac
@@ -443,7 +460,8 @@ check_ports() {
   docker ps -q --filter name=^panel-caddy$ | grep -q . && return 0
   local p
   [ "$NODE_ONLY" = 1 ] && [ "${VAL[HTTP_MODE]:-direct}" = relay ] && return 0   # relay: 80/443 mogen bezet zijn
-  for p in 80 443 $([ "$NODE_ONLY" = 1 ] || echo 3000); do
+  local web="80 443"; [ "${VAL[HTTP_MODE]:-direct}" = npm ] && web=""   # npm: 80/443 zijn van Nginx Proxy Manager
+  for p in $web $([ "$NODE_ONLY" = 1 ] || echo 3000); do
     if ss -Hltn "sport = :$p" | grep -q .; then warn "port $p is already in use; Caddy/panel may fail to start"; fi
   done
 }
@@ -461,6 +479,11 @@ Done.
 DNS: A records for ${VAL[PANEL_DOMAIN]} and ${VAL[NODE_DOMAIN]} pointing to ${VAL[NODE_PUBLIC_IP]:-the public IP of this machine}.
 Discord redirect URI: https://${VAL[PANEL_DOMAIN]}/api/auth/discord/callback
 EOF
+  if [ "${VAL[HTTP_MODE]:-direct}" = npm ]; then
+    printf '%s\n' "Behind Nginx Proxy Manager: Caddy listens without TLS on ${VAL[NPM_CADDY_ADDR]} (docker-compose.npm.yml)." \
+      "$(if [ -n "${VAL[NPM_URL]:-}" ]; then echo "The daemon creates the proxy hosts for ${VAL[PANEL_DOMAIN]} and ${VAL[NODE_DOMAIN]} in NPM (${VAL[NPM_URL]}) and requests their certificates."; else echo "Set NPM_URL, NPM_EMAIL and NPM_PASSWORD (or run again with --npm-url/--npm-email/--npm-password) so the panel can create its proxy hosts in NPM."; fi)" \
+      "Afterwards the settings are in Admin > Nodes > ${VAL[NODE_DOMAIN]} > Nginx Proxy Manager."
+  fi
   [ "$DRY_RUN" = 1 ] && echo "(dry-run: everything is under $ROOT)"
   return 0
 }
@@ -480,7 +503,7 @@ main() {
 
 # ---------------------------------------------------------------- node-only
 NODE_KEYS=(PANEL_URL NODE_DOMAIN NODE_TOKEN ACME_EMAIL DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR
-  CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER HTTP_MODE PANEL_INSTANCE DOCKER_EXTRA_LABELS MARIADB_CONTAINER MARIADB_ROOT_PASSWORD)
+  CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER HTTP_MODE NPM_CADDY_ADDR PANEL_INSTANCE DOCKER_EXTRA_LABELS MARIADB_CONTAINER MARIADB_ROOT_PASSWORD)
 
 collect_node_values() {
   log "values for the node (panel.env without panel secrets)"
@@ -489,7 +512,7 @@ collect_node_values() {
   ask NODE_TOKEN "Node token (from the panel: Admin > Nodes)" secret
   ask ACME_EMAIL "Email address for Let's Encrypt"
   local key
-  for key in DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER HTTP_MODE PANEL_INSTANCE DOCKER_EXTRA_LABELS MARIADB_CONTAINER; do
+  for key in DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER HTTP_MODE NPM_CADDY_ADDR PANEL_INSTANCE DOCKER_EXTRA_LABELS MARIADB_CONTAINER; do
     keep_or_default "$key"
   done
   # Eigen MariaDB van de node: het rootwachtwoord wordt hier gegenereerd en blijft in dit bestand
@@ -542,6 +565,7 @@ start_node() {
   if [ "$DRY_RUN" = 0 ] && command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q '^Status: active'; then
     local p ports=(80/tcp 443/tcp 443/udp "${VAL[SFTP_PORT]}/tcp")
     [ "${VAL[HTTP_MODE]}" = relay ] && ports=("${VAL[SFTP_PORT]}/tcp")   # HTTP(S) gaat uitgaand naar de relay-node
+    [ "${VAL[HTTP_MODE]}" = npm ] && ports=("${VAL[SFTP_PORT]}/tcp")     # 80/443 zijn van Nginx Proxy Manager
     for p in "${ports[@]}"; do run ufw allow "$p" >/dev/null; done
   fi
 }
@@ -555,7 +579,9 @@ Node installed.
   daemon:  $BIN_DST
   compose: PANEL_ENV_FILE=$ENV_FILE docker compose --env-file $ENV_FILE -f $COMPOSE_FILE ps
 
-$(if [ "${VAL[HTTP_MODE]}" = relay ]; then
+$(if [ "${VAL[HTTP_MODE]}" = npm ]; then
+  printf 'Behind Nginx Proxy Manager: Caddy listens without TLS on %s. Set NPM (URL, user, password) in the panel: Admin > Nodes > this node.\nDNS: an A record for %s pointing to this machine (NPM). Open %s (SFTP) and the game ports.' "${VAL[NPM_CADDY_ADDR]}" "${VAL[NODE_DOMAIN]}" "${VAL[SFTP_PORT]}"
+elif [ "${VAL[HTTP_MODE]}" = relay ]; then
   printf 'HTTP(S) via a relay node (set in the panel: Admin > Nodes > HTTP(S) entry): %s must point to the relay node.\nPorts 80/443 are not used here; open %s (SFTP) and the game ports.' "${VAL[NODE_DOMAIN]}" "${VAL[SFTP_PORT]}"
 else
   printf 'DNS: an A record for %s pointing to this machine. Open ports 80, 443 and %s (SFTP).' "${VAL[NODE_DOMAIN]}" "${VAL[SFTP_PORT]}"

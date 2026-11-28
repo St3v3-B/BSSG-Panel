@@ -1,0 +1,28 @@
+# Caddy-basisconfig van de panel-machine achter Nginx Proxy Manager (HTTP_MODE=npm, deploy/docker-compose.npm.yml).
+# Zelfde als Caddyfile, maar HTTP-only op :80 (NPM doet TLS; zie Caddyfile.npm voor de uitleg).
+{
+	auto_https off
+	admin unix//run/panel/caddy-admin.sock
+	servers :80 {
+		name panel
+		trusted_proxies static private_ranges
+	}
+	import /etc/caddy/global.d/*.caddy
+}
+
+http://{$PANEL_DOMAIN} {
+	redir /phpmyadmin /phpmyadmin/ 308
+	handle_path /phpmyadmin/* {
+		reverse_proxy phpmyadmin:80
+	}
+	handle {
+		reverse_proxy panel:3000
+	}
+}
+
+http://{$NODE_DOMAIN} {
+	reverse_proxy unix//run/panel/daemon.sock {
+		flush_interval -1
+		stream_close_delay 1h
+	}
+}

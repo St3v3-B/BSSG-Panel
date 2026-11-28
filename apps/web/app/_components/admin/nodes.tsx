@@ -21,6 +21,7 @@ import { formatBytes, formatMb } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
 import { NodeHttpRelay } from "./node-relay";
 import { NodeMaintenance } from "./node-maintenance";
+import { NodeNpm } from "./node-npm";
 
 /** Fouttekst; NOT_IMPLEMENTED (backend nog niet klaar) krijgt een eigen, rustige melding. */
 export function AdminError({ error }: { error: unknown }) {
@@ -94,7 +95,7 @@ export function NodesAdmin() {
   });
   const invalid = !form.name.trim() || (!!form.allocationPorts.trim() && !portsValid(form.allocationPorts));
   const num = (v: string) => Math.max(0, Math.trunc(Number(v) || 0));
-  const relayCandidates = (nodes.data ?? []).filter((x) => x.supportsDomains && x.publicPort === 443 && x.httpRelayNodeId === null);
+  const relayCandidates = (nodes.data ?? []).filter((x) => x.supportsDomains && x.publicPort === 443 && x.httpRelayNodeId === null && x.httpMode !== "npm");
   const suggestion = `${form.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "node"}.<panel domain>`;
 
   return (
@@ -348,6 +349,7 @@ function NodeCard({ node, relayName }: { node: Node; relayName?: string }) {
           {node.isLocal && <Badge variant="info">{n.local}</Badge>}
           {node.maintenance && <Badge variant="warning">{t.hostops.maint.badge}</Badge>}
           {!node.supportsDomains && <Badge variant="secondary">{n.join.noDomains}</Badge>}
+          {node.httpMode === "npm" && <Badge variant="secondary" data-testid="node-npm-badge">{n.npm.badge}</Badge>}
           {node.httpRelayNodeId !== null && <Badge variant="secondary" data-testid="node-relay-badge">{n.relay.badge(relayName ?? String(node.httpRelayNodeId))}</Badge>}
           {node.diskQuotaMode ? <Badge variant="secondary">{node.diskQuotaMode}</Badge> : <Badge variant="warning">{n.neverConnected}</Badge>}
         </div>
@@ -427,7 +429,8 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
         </Card>
       )}
       {!d.isLocal && d.httpRelayNodeId === null && <NodeDomainSupport node={d} />}
-      <NodeHttpRelay node={d} />
+      {d.httpMode !== "npm" && <NodeHttpRelay node={d} />}
+      <NodeNpm node={d} />
       <NodeMaintenance node={d} />
       <Card>
         <CardHeader>

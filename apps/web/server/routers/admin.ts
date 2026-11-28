@@ -1,3 +1,4 @@
+import { npmAlerts } from "../npm";
 import { deleteUserSessions } from "../session";
 import { emergencyAlerts } from "../emergency";
 import { randomUUID } from "node:crypto";
@@ -51,6 +52,7 @@ export function nodeOut(n: NodeRow): NodeOut {
     joinState: (n.joinState as NodeOut["joinState"]) ?? null,
     httpRelayNodeId: n.httpRelayNodeId,
     maintenance: maintenanceOut(n.maintenance),
+    httpMode: n.npmSettings ? "npm" : n.httpRelayNodeId ? "relay" : "direct",
   };
 }
 
@@ -292,6 +294,7 @@ export const admin = {
       ...health
         .filter((h) => h.online && h.diskTotalBytes && h.diskFreeBytes !== null && h.diskFreeBytes / h.diskTotalBytes < 0.1)
         .map((h) => ({ kind: "disk_low" as const, message: `Less than 10% disk space free on node ${nodes.find((n) => n.id === h.nodeId)?.name}`, at: now, serverUuid: null, nodeId: h.nodeId })),
+      ...npmAlerts(nodes, now),
     ];
     return { nodes: health, alerts, serverCount: srv?.n ?? 0, userCount: usr?.n ?? 0 };
   }) satisfies A["dashboard"],

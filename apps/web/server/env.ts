@@ -42,6 +42,10 @@ const EnvSchema = z
     NODE_TOKEN: required.min(32, "te kort (minimaal 32 tekens)"),
     NODE_PUBLIC_IP: optional,
     ACME_EMAIL: optional,
+    /** Panel-machine achter Nginx Proxy Manager: eerste login, bij de start één keer naar de lokale node (server/npm.ts). */
+    NPM_URL: optional,
+    NPM_EMAIL: optional,
+    NPM_PASSWORD: optional,
     MARIADB_ROOT_PASSWORD: optional,
     MARIADB_CONTAINER: optional.transform((v) => v ?? "panel-mariadb"),
     MARIADB_ADMIN_ADDR: optional,

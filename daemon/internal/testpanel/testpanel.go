@@ -38,6 +38,14 @@ type Panel struct {
 	FailNext int
 	sftp     map[string]SFTPUser
 	relay    any
+	npm      any
+}
+
+// SetNPM zet het antwoord van GET /api/remote/npm (nil = 204, geen NPM).
+func (p *Panel) SetNPM(cfg any) {
+	p.mu.Lock()
+	p.npm = cfg
+	p.mu.Unlock()
 }
 
 // SetRelay zet het antwoord van GET /api/remote/relay (nil = 204, geen relay).
@@ -95,9 +103,12 @@ func (p *Panel) serve(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"keys": []any{jwk}})
 		return
 	}
-	if r.URL.Path == "/api/remote/relay" && r.Method == http.MethodGet {
+	if (r.URL.Path == "/api/remote/relay" || r.URL.Path == "/api/remote/npm") && r.Method == http.MethodGet {
 		p.mu.Lock()
 		cfg := p.relay
+		if r.URL.Path == "/api/remote/npm" {
+			cfg = p.npm
+		}
 		p.mu.Unlock()
 		if cfg == nil {
 			w.WriteHeader(http.StatusNoContent)

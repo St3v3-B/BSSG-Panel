@@ -1,0 +1,26 @@
+# Caddy-basisconfig van een node achter Nginx Proxy Manager (HTTP_MODE=npm, compose-profiel caddy-npm).
+#
+# NPM bezit 80/443 en de certificaten; deze Caddy draait daarachter zonder TLS en zonder ACME. Hij luistert in
+# de container op :80, dat compose alleen op NPM_CADDY_ADDR publiceert (standaard 172.17.0.1:8081, het docker0-adres:
+# bereikbaar voor NPM in een container en op de host, niet vanaf internet). De daemon zet voor elk domein van
+# deze node een proxy host in NPM met forward http://NPM_CADDY_ADDR (zie daemon/proxy/npm.go).
+#
+# Vaste route: $NODE_DOMAIN -> daemon-socket. Dynamische routes (sites, game-domeinen) zet de daemon zoals altijd
+# via de admin-socket in de server "panel" (hier de HTTP-server op :80).
+{
+	auto_https off
+	admin unix//run/panel/caddy-admin.sock
+	servers :80 {
+		name panel
+		# NPM (privé-adres) zet X-Forwarded-For/-Proto: doorgeven aan de sites (https, echte client-IP).
+		trusted_proxies static private_ranges
+	}
+	import /etc/caddy/global.d/*.caddy
+}
+
+http://{$NODE_DOMAIN} {
+	reverse_proxy unix//run/panel/daemon.sock {
+		flush_interval -1
+		stream_close_delay 1h
+	}
+}

@@ -74,7 +74,7 @@ export const NOTIFY2 = [
   "statusPages.list", "statusPages.create", "statusPages.update", "statusPages.delete", "statusPages.candidates", "statusPages.serverPage", "statusPages.setServerPage", "statusPages.public",
 ];
 /** Node-join: join-codes, voortgang, daemon bijwerken. */
-export const NODE_JOIN = ["admin.nodes.createJoin", "admin.nodes.joinCommand", "admin.nodes.joinStatus", "admin.nodes.updateDaemon", "admin.nodes.uninstallCommand", "admin.nodes.setHttpRelay", "admin.nodes.relayStatus"];
+export const NODE_JOIN = ["admin.nodes.createJoin", "admin.nodes.joinCommand", "admin.nodes.joinStatus", "admin.nodes.updateDaemon", "admin.nodes.uninstallCommand", "admin.nodes.setHttpRelay", "admin.nodes.relayStatus", "admin.nodes.npmStatus", "admin.nodes.setNpm", "admin.nodes.testNpm"];
 /** Verbruiksgrafieken. */
 export const STATS = ["servers.statsHistory", "servers.statsSparklines"];
 export const QUOTA = ["account.quota", "servers.create", "servers.updateOwnLimits", "servers.deleteOwn", "admin.users.getQuota", "admin.users.setQuota", "admin.users.clearQuota", "admin.quotas.usage"];

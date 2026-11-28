@@ -75,6 +75,11 @@ type Deps struct {
 	RelayDial                        func(ctx context.Context, network, addr string) (net.Conn, error)
 	RelayMinBackoff, RelayMaxBackoff time.Duration
 	RelayPing, RelayInterval         time.Duration
+	// NPM (HTTP_MODE=npm, tests): HTTP-client naar NPM, hoe vaak de instellingen bij het panel gehaald worden
+	// (standaard 1 min), en opties van proxy.NPM (Interval, CertRetry).
+	NPMHTTPClient *http.Client
+	NPMInterval   time.Duration
+	NPMOptions    proxy.NPMOptions
 }
 
 // Daemon is een draaiende daemon.
@@ -90,6 +95,7 @@ type Daemon struct {
 	dbadm  *dbadmin.Admin
 	sftp   *sftpd.Server
 	relay  *relaySvc
+	npm    *npmSvc
 
 	healthy   atomic.Int32 // 0 onbekend, 1 gezond, 2 ongezond
 	needSync  atomic.Bool
@@ -115,6 +121,27 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 		deps.HealthInterval = 15 * time.Second
 	}
 	d := &Daemon{cfg: cfg, deps: deps, log: deps.Log, stop: make(chan struct{})}
+	// Achter Nginx Proxy Manager: de Caddy-Router inwikkelen (proxy hosts in NPM, SSL-status uit NPM).
+	var npmRouter *proxy.NPM
+	if cfg.HTTPMode == "npm" {
+		if r, ok := deps.Router.(*proxy.NPM); ok {
+			npmRouter = r
+		} else {
+			o := deps.NPMOptions
+			o.Instance, o.DefaultForward = cfg.Instance, cfg.NPMCaddyAddr
+			if o.HTTPClient == nil {
+				o.HTTPClient = deps.NPMHTTPClient
+			}
+			o.OnStatus = func(proxy.NPMStatus) {
+				if d.npm != nil {
+					d.npm.report(true)
+				}
+			}
+			npmRouter = proxy.NewNPM(deps.Router, o)
+			deps.Router = npmRouter
+		}
+		d.deps = deps
+	}
 	d.panel = deps.Panel
 	if d.panel == nil {
 		d.panel = panel.New(cfg.PanelURL, cfg.NodeToken, deps.Log)
@@ -163,6 +190,8 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	d.api.SetRelay(d.relay)
 	d.routes.SetExtra(d.relay.edge.Routes)
 	d.routes.SetRelayed(d.relay.client.Active)
+	d.npm = newNPMSvc(d, npmRouter)
+	d.api.SetNPM(d.npm)
 	if cfg.PanelRepoDir != "" {
 		d.api.SetUpgrade(&upgrade.Service{RepoDir: cfg.PanelRepoDir, UpgradeDir: filepath.Join(cfg.DataDir, "upgrade")})
 	}
@@ -295,8 +324,15 @@ func (d *Daemon) Start(ctx context.Context) error {
 	go d.routerLoop()
 	d.wg.Add(1)
 	go d.relay.loop()
+	if d.npm.router != nil {
+		d.wg.Add(1)
+		go d.npm.loop()
+	}
 	return nil
 }
+
+// NPMRouter is de NPM-koppeling (nil buiten HTTP_MODE=npm; tests).
+func (d *Daemon) NPMRouter() *proxy.NPM { return d.npm.router }
 
 // RelayRefresh haalt de relay-config nu op (tests).
 func (d *Daemon) RelayRefresh(ctx context.Context) error { return d.relay.Refresh(ctx) }

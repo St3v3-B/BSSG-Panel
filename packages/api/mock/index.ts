@@ -27,6 +27,22 @@ const MOCK_HITS: s.ContentHit[] = [
 
 export type MockRole = "admin" | "user" | "pending" | "anonymous";
 
+/** NPM-instellingen per node in de mock (zonder geheimen). */
+const npmMock = new Map<number, NonNullable<s.NodeNpmStatus["settings"]>>();
+function npmStatusOf(n: s.Node): s.NodeNpmStatus {
+  const settings = npmMock.get(n.id) ?? null;
+  return {
+    settings,
+    report: settings
+      ? {
+          state: "ok", error: null, version: "2.17.1", proxyHosts: 4, managedHosts: 2, conflicts: [],
+          hosts: [{ host: n.fqdn, ssl: "active", error: null }], httpMode: "npm", reportedAt: new Date(),
+        }
+      : null,
+    modeCommand: n.isLocal ? "sudo bash deploy/install.sh --http-mode npm" : `curl -fsSL https://panel.test/join | sudo bash -s -- --http-mode ${settings ? "npm" : "direct"}`,
+  };
+}
+
 export function mockSession(role: MockRole = (process.env.MOCK_ROLE as MockRole) || "admin"): SessionCtx | null {
   if (role === "anonymous") return null;
   return {
@@ -682,7 +698,7 @@ export function createMock(): Implementation {
           return { ...n, health: nodeHealth(n) };
         },
         create: ({ input }) => {
-          const n: s.Node = { id: id(), ...input, diskQuotaMode: null, isLocal: false, publicIp: null, joinState: null, httpRelayNodeId: null };
+          const n: s.Node = { id: id(), ...input, diskQuotaMode: null, isLocal: false, publicIp: null, joinState: null, httpRelayNodeId: null, httpMode: "direct" };
           db.nodes.push(n);
           return { node: n, token: "mock-node-token", installCommand: `curl -fsSL https://panel.test/install-node.sh | bash -s -- --panel https://panel.test --token mock-node-token` };
         },
@@ -697,7 +713,7 @@ export function createMock(): Implementation {
           const n: s.Node = {
             id: id(), name: input.name, fqdn: input.fqdn ?? `${input.name}.panel.test`, daemonPort: input.daemonPort, sftpPort: input.sftpPort, maxRamMb: input.maxRamMb, maxDiskMb: input.maxDiskMb,
             s3TargetId: input.s3TargetId, diskQuotaMode: null, isLocal: false, supportsDomains: input.supportsDomains, publicPort: input.publicPort ?? (input.supportsDomains ? 443 : 8443), publicIp: null, joinState: "waiting",
-            httpRelayNodeId: input.httpRelayNodeId,
+            httpRelayNodeId: input.httpRelayNodeId, httpMode: input.httpRelayNodeId ? "relay" : "direct",
           };
           db.nodes.push(n);
           return { node: n, joinCommand: "curl -fsSL https://panel.test/join | sudo bash -s -- mock-join-code", expiresAt: new Date(Date.now() + 3_600_000) };
@@ -716,6 +732,7 @@ export function createMock(): Implementation {
         setHttpRelay: ({ input }) => {
           const n = db.nodes.find((x) => x.id === input.id) ?? notFound("node");
           n.httpRelayNodeId = input.relayNodeId;
+          n.httpMode = input.relayNodeId ? "relay" : "direct";
           const relay = db.nodes.find((x) => x.id === input.relayNodeId);
           return { node: n, dns: [{ name: n.fqdn, type: "A" as const, value: relay ? "203.0.113.10" : n.publicIp, managed: false, applied: null, error: null, ok: null }] };
         },
@@ -733,6 +750,24 @@ export function createMock(): Implementation {
             modeCommand: n.isLocal ? null : `curl -fsSL https://panel.test/join | sudo bash -s -- --http-mode ${relayed ? "relay" : "direct"}`,
           };
         },
+        npmStatus: ({ input }) => npmStatusOf(db.nodes.find((x) => x.id === input.id) ?? notFound("node")),
+        setNpm: ({ input }) => {
+          const n = db.nodes.find((x) => x.id === input.id) ?? notFound("node");
+          if (input.settings) {
+            const prev = npmMock.get(n.id);
+            const { password, cloudflareToken, ...rest } = input.settings;
+            npmMock.set(n.id, { ...rest, hasPassword: !!password || !!prev?.hasPassword, hasCloudflareToken: cloudflareToken === undefined ? !!prev?.hasCloudflareToken : cloudflareToken !== "" });
+            n.httpMode = "npm";
+          } else {
+            npmMock.delete(n.id);
+            n.httpMode = "direct";
+          }
+          return npmStatusOf(n);
+        },
+        testNpm: ({ input }) =>
+          input.password === "wrong"
+            ? { state: "login_failed" as const, error: "NPM answered 401: Invalid email or password", version: "2.17.1", proxyHosts: 0, managedHosts: 0 }
+            : { state: "ok" as const, error: null, version: "2.17.1", proxyHosts: 4, managedHosts: npmMock.has(input.id) ? 2 : 0 },
       },
       allocations: {
         list: ({ input }) => db.allocations.filter((a) => a.nodeId === input.nodeId),

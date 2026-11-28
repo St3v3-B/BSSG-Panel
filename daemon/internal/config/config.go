@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"net/url"
 	"path/filepath"
@@ -50,9 +51,14 @@ type Config struct {
 	// RelayWebUpstream (RELAY_WEB_UPSTREAM): de eigen Caddy zonder TLS voor sites als deze node via een
 	// andere node loopt (standaard unix://<map van DAEMON_SOCKET>/caddy-relay.sock).
 	RelayWebUpstream string
-	// HTTPMode (HTTP_MODE): "direct" (Caddy op 80/443, standaard) of "relay" (Caddy zonder publieke poorten,
-	// HTTP(S) via een andere node). Alleen gemeld aan het panel; of de tunnel draait bepaalt het panel.
+	// HTTPMode (HTTP_MODE): "direct" (Caddy op 80/443, standaard), "relay" (Caddy zonder publieke poorten,
+	// HTTP(S) via een andere node; alleen gemeld aan het panel, of de tunnel draait bepaalt het panel) of "npm"
+	// (Nginx Proxy Manager bezit 80/443; Caddy draait HTTP-only op NPMCaddyAddr en de daemon beheert de proxy
+	// hosts in NPM met de instellingen van het panel, zie proxy.NPM).
 	HTTPMode string
+	// NPMCaddyAddr (NPM_CADDY_ADDR, host:poort): waar Caddy op een npm-node HTTP-only luistert en waar NPM hem
+	// bereikt, tenzij het panel een eigen forward host/poort zet. Standaard 172.17.0.1:8081 (docker0).
+	NPMCaddyAddr string
 	// ImageCheckInterval: hoe vaak op nieuwe images gecontroleerd wordt (IMAGE_CHECK_INTERVAL, 0 = uit).
 	ImageCheckInterval time.Duration
 }
@@ -95,8 +101,12 @@ func Load(getenv func(string) string) (Config, error) {
 	c.RelayWebUpstream = get("RELAY_WEB_UPSTREAM", "unix://"+filepath.Join(sockDir, "caddy-relay.sock"))
 	c.HTTPMode = strings.ToLower(get("HTTP_MODE", "direct"))
 	var errs []error
-	if c.HTTPMode != "direct" && c.HTTPMode != "relay" {
-		errs = append(errs, fmt.Errorf("HTTP_MODE: %q is not direct or relay", c.HTTPMode))
+	if c.HTTPMode != "direct" && c.HTTPMode != "relay" && c.HTTPMode != "npm" {
+		errs = append(errs, fmt.Errorf("HTTP_MODE: %q is not direct, relay or npm", c.HTTPMode))
+	}
+	c.NPMCaddyAddr = get("NPM_CADDY_ADDR", "172.17.0.1:8081")
+	if _, p, err := net.SplitHostPort(c.NPMCaddyAddr); err != nil || p == "" {
+		errs = append(errs, fmt.Errorf("NPM_CADDY_ADDR: %q is not host:port", c.NPMCaddyAddr))
 	}
 	if c.NodeToken == "" {
 		errs = append(errs, errors.New("NODE_TOKEN is missing"))

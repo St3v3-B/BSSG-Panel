@@ -7,6 +7,7 @@
  * 3. OWNER_DISCORD_ID in admin_discord_ids
  * 4. lokale node upserten (is_local, fqdn = NODE_DOMAIN, token_hash = sha256(NODE_TOKEN), poorten)
  * 4b. lokale MariaDB als database-host `local` (als MARIADB_ROOT_PASSWORD gezet is)
+ * 4c. NPM_URL/NPM_EMAIL/NPM_PASSWORD (panel-machine achter Nginx Proxy Manager) één keer naar de lokale node
  * 5. standaardinstellingen
  * 6. Ed25519-sleutelpaar voor browser-JWT's
  * 7. templates uit TEMPLATES_DIR
@@ -23,6 +24,7 @@ import { startTunnels } from "./pma-tunnel";
 import { startScheduler } from "./scheduler";
 import { ensureSettingDefaults } from "./settings";
 import { loadTemplatesFromDir } from "./templates";
+import { seedLocalNpm } from "./npm";
 
 const g = globalThis as unknown as { __panelBoot?: Promise<void> };
 
@@ -71,6 +73,9 @@ async function runBoot(): Promise<void> {
   await db.insert(schema.adminDiscordIds).values({ discordId: env.OWNER_DISCORD_ID }).onConflictDoNothing();
   const localNodeId = await upsertLocalNode();
   await ensureLocalDatabaseHost(localNodeId);
+  if (await seedLocalNpm(localNodeId).catch((e) => (console.warn(`[boot] NPM settings from panel.env not applied: ${e instanceof Error ? e.message : e}`), false))) {
+    console.info("[boot] Nginx Proxy Manager settings from panel.env applied to the local node");
+  }
   await ensureSettingDefaults();
   await ensureSigningKey();
   const t = await loadTemplatesFromDir(env.TEMPLATES_DIR);

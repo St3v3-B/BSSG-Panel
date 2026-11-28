@@ -62,6 +62,7 @@ type API struct {
 	dbHost   string
 	upgrader Upgrader
 	relay    Relay
+	npm      NPM
 	system   func(ctx context.Context) SystemInfo
 	log      *slog.Logger
 
@@ -167,6 +168,9 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("GET /api/relay", p(a.relayState))
 	mux.Handle("POST /api/relay/refresh", p(a.relayRefresh))
 	mux.HandleFunc("GET /api/relay/tunnel", a.relayTunnel)
+	mux.Handle("GET /api/npm", p(a.npmState))
+	mux.Handle("POST /api/npm/refresh", p(a.npmRefresh))
+	mux.Handle("POST /api/npm/test", p(a.npmTest))
 	mux.Handle("GET /api/routes", p(a.listRoutes))
 	mux.Handle("GET /api/routes/{host}", p(a.getRoute))
 	mux.Handle("PUT /api/routes/{host}", p(a.setRoute))

@@ -176,6 +176,13 @@
       "when": 1795864993916,
       "tag": "0024_serious_electro",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795866086176,
+      "tag": "0025_amused_shockwave",
+      "breakpoints": true
     }
   ]
 }
