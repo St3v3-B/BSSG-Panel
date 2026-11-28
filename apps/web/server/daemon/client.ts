@@ -239,6 +239,19 @@ export class DaemonClient {
   cancelBackup(uuid: string, backupId: number) {
     return this.request<void>("POST", `/api/servers/${uuid}/backups/${backupId}/cancel`, undefined, 10_000);
   }
+  // ---------- incrementeel (restic) ----------
+  createResticBackup(uuid: string, body: DaemonSchemas["ResticBackupRequest"]) {
+    return this.request<void>("POST", `/api/servers/${uuid}/restic/backups`, body, 30_000);
+  }
+  restoreResticBackup(uuid: string, backupId: number, body: DaemonSchemas["ResticRestoreRequest"]) {
+    return this.request<void>("POST", `/api/servers/${uuid}/restic/backups/${backupId}/restore`, body, 30_000);
+  }
+  resticLs(uuid: string, body: DaemonSchemas["ResticLsRequest"]) {
+    return this.request<{ entries: DaemonSchemas["ResticEntry"][]; truncated: boolean }>("POST", `/api/servers/${uuid}/restic/ls`, body, 120_000);
+  }
+  resticForget(uuid: string, body: DaemonSchemas["ResticForgetRequest"]) {
+    return this.request<void>("POST", `/api/servers/${uuid}/restic/forget`, body, 600_000);
+  }
 
   // ---------- git-deploy ----------
   startDeploy(uuid: string, body: DaemonSchemas["DeployRequest"]) {

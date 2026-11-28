@@ -37,7 +37,7 @@ describe("BackupManager", () => {
     renderWithTrpc(<BackupManager uuid={SMP} permissions={[...ALL]} />, {
       session: sessionFor("admin"),
       patch: (m) => {
-        (m.backups as Mutable<typeof m.backups>).list = async () => [{ id: 9, serverUuid: SMP, name: "kapot", sizeBytes: null, sha256: null, status: "failed", includesDatabases: false, error: "S3 upload failed: access denied", createdAt: new Date(), completedAt: new Date() }];
+        (m.backups as Mutable<typeof m.backups>).list = async () => [{ id: 9, serverUuid: SMP, name: "kapot", sizeBytes: null, sha256: null, status: "failed", includesDatabases: false, error: "S3 upload failed: access denied", createdAt: new Date(), completedAt: new Date(), kind: "full" as const, snapshotId: null, addedBytes: null }];
       },
     });
     expect((await screen.findByTestId("backup-error")).textContent).toContain("S3 upload failed: access denied");
@@ -61,7 +61,7 @@ describe("BackupManager", () => {
     const { bodies } = renderWithTrpc(<BackupManager uuid={SMP} permissions={[...ALL]} />, {
       session: sessionFor("admin"),
       patch: (m) => {
-        (m.backups as Mutable<typeof m.backups>).list = async () => [{ id: 5, serverUuid: SMP, name: "nachtelijk", sizeBytes: null, sha256: null, status: "running", includesDatabases: false, error: null, createdAt: started, completedAt: null }];
+        (m.backups as Mutable<typeof m.backups>).list = async () => [{ id: 5, serverUuid: SMP, name: "nachtelijk", sizeBytes: null, sha256: null, status: "running", includesDatabases: false, error: null, createdAt: started, completedAt: null, kind: "full" as const, snapshotId: null, addedBytes: null }];
         (m.backups as Mutable<typeof m.backups>).progress = async () => ({ backupId: 5, operation: "backup", phase: "archiving", bytes: 420 * 1024 * 1024, totalBytes: 800 * 1024 * 1024, percent: 42, etaSeconds: 125, startedAt: started, cancellable: true });
       },
     });
@@ -77,7 +77,7 @@ describe("BackupManager", () => {
 
   it("geen annuleerknop als het niet meer kan of zonder recht; zonder live gegevens een bezig-balk", async () => {
     const started = new Date();
-    const row = { id: 6, serverUuid: SMP, name: "herstel", sizeBytes: 10, sha256: "b".repeat(64), status: "restoring" as const, includesDatabases: false, error: null, createdAt: started, completedAt: null };
+    const row = { id: 6, serverUuid: SMP, name: "herstel", sizeBytes: 10, sha256: "b".repeat(64), status: "restoring" as const, includesDatabases: false, error: null, createdAt: started, completedAt: null, kind: "full" as const, snapshotId: null, addedBytes: null };
     renderWithTrpc(<BackupManager uuid={SMP} permissions={["backup.restore"]} />, {
       session: sessionFor("admin"),
       patch: (m) => {
@@ -103,7 +103,7 @@ describe("BackupManager", () => {
     renderWithTrpc(<BackupManager uuid={SMP} permissions={[...ALL]} />, {
       session: sessionFor("admin"),
       patch: (m) => {
-        (m.backups as Mutable<typeof m.backups>).list = async () => [{ id: 7, serverUuid: SMP, name: "weg", sizeBytes: null, sha256: null, status: "failed", includesDatabases: false, error: "cancelled", createdAt: new Date(), completedAt: new Date() }];
+        (m.backups as Mutable<typeof m.backups>).list = async () => [{ id: 7, serverUuid: SMP, name: "weg", sizeBytes: null, sha256: null, status: "failed", includesDatabases: false, error: "cancelled", createdAt: new Date(), completedAt: new Date(), kind: "full" as const, snapshotId: null, addedBytes: null }];
       },
     });
     expect((await screen.findByTestId("backup-error")).textContent).toBe("Geannuleerd");

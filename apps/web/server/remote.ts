@@ -5,7 +5,7 @@
 import { crashTarget } from "./alarms";
 import { verify as argonVerify } from "@node-rs/argon2";
 import { ALL_PERMISSIONS, type ServerStatus } from "@panel/api";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { logActivity } from "./activity";
 import { pruneBackups, thawWorld } from "./backups";
@@ -200,15 +200,44 @@ async function backupOnNode(id: string, node: NodeRow) {
 export const reportBackup = remoteHandler<{ backup_id: string }>(async (req, node, { backup_id }) => {
   const b = await body(
     req,
-    z.object({ successful: z.boolean(), sha256: z.string().regex(/^[a-f0-9]{64}$/).nullish(), size_bytes: z.number().int().min(0).nullish(), error: z.string().nullish() }),
+    z.object({
+      successful: z.boolean(),
+      sha256: z.string().regex(/^[a-f0-9]{64}$/).nullish(),
+      size_bytes: z.number().int().min(0).nullish(),
+      error: z.string().nullish(),
+      // incrementeel (restic)
+      snapshot_id: z.string().regex(/^[a-f0-9]{64}$/).nullish(),
+      added_bytes: z.number().int().min(0).nullish(),
+      forgotten_snapshots: z.array(z.string().regex(/^[a-f0-9]{8,64}$/)).max(10_000).nullish(),
+      pruned: z.boolean().nullish(),
+    }),
   );
-  if (!b || (b.successful && !b.sha256)) return error(400, "bad_request");
+  if (!b) return error(400, "bad_request");
   const r = await backupOnNode(backup_id, node);
   if (!r) return error(404, "not_found");
+  const incremental = r.b.kind === "incremental";
+  if (b.successful && (incremental ? !b.snapshot_id : !b.sha256)) return error(400, "bad_request");
   await getDb()
     .update(schema.backups)
-    .set(b.successful ? { status: "completed", sha256: b.sha256, sizeBytes: b.size_bytes ?? null, error: null, completedAt: new Date() } : { status: "failed", error: b.error?.slice(0, 2000) ?? "unknown error", completedAt: new Date() })
+    .set(
+      !b.successful
+        ? { status: "failed", error: b.error?.slice(0, 2000) ?? "unknown error", completedAt: new Date() }
+        : incremental
+          ? { status: "completed", snapshotId: b.snapshot_id, sizeBytes: b.size_bytes ?? null, addedBytes: b.added_bytes ?? null, error: null, completedAt: new Date() }
+          : { status: "completed", sha256: b.sha256, sizeBytes: b.size_bytes ?? null, error: null, completedAt: new Date() },
+    )
     .where(eq(schema.backups.id, r.b.id));
+  if (b.successful && incremental) {
+    // Door het retentiebeleid vergeten snapshots: hun rijen weg (nooit de nieuwe).
+    const gone = (b.forgotten_snapshots ?? []).filter((id) => id !== b.snapshot_id);
+    if (gone.length) {
+      await getDb()
+        .delete(schema.backups)
+        .where(and(eq(schema.backups.serverId, r.s.id), eq(schema.backups.kind, "incremental"), inArray(schema.backups.snapshotId, gone), ne(schema.backups.id, r.b.id)));
+      await logActivity({ action: "server.backup.prune", serverId: r.s.id, metadata: { kind: "incremental", snapshots: gone.length } });
+    }
+    if (b.pruned) await getDb().update(schema.serverBackupSettings).set({ lastPruneAt: new Date() }).where(eq(schema.serverBackupSettings.serverId, r.s.id));
+  }
   await logActivity({
     action: b.successful ? "server.backup.completed" : b.error === "cancelled" ? "server.backup.cancelled" : "server.backup.failed",
     serverId: r.s.id,

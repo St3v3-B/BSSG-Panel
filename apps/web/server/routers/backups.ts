@@ -10,6 +10,7 @@ import { decrypt, encrypt } from "../lib/crypto";
 import { presignGet, s3Credentials, testTarget } from "../lib/s3";
 import { isFullAdmin, requireServer, type ServerAccess } from "../servers-data";
 import { assertPlanBackupRoom } from "../billing/plans";
+import { cleanPath, existingRepo, repoCredentials, restoreDirName, settingsRow, toSettings, updateSettings } from "../backups-restic";
 
 const ok = { ok: true as const };
 const uid = (ctx: Ctx) => ctx.session!.userId;
@@ -48,18 +49,21 @@ export const backups: Implementation["backups"] = {
   create: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "backup.create");
     if (!isFullAdmin(ctx)) await assertPlanBackupRoom(a.bundle.server.id);
-    const row = await startBackup(a.bundle, { name: input.name, includeDatabases: input.includeDatabases, userId: uid(ctx) });
+    const row = await startBackup(a.bundle, { name: input.name, includeDatabases: input.includeDatabases, userId: uid(ctx), kind: input.kind });
     return toBackup(row, input.uuid);
   },
 
   restore: async ({ input, ctx }) => {
     const { b, a, uuid } = await backupFor(ctx, input.id, "backup.restore");
-    if (b.status !== "completed" || !b.sha256) throw new TRPCError({ code: "CONFLICT", message: "BACKUP_NOT_COMPLETED" });
+    const incremental = b.kind === "incremental";
+    if (b.status !== "completed" || !(incremental ? b.snapshotId : b.sha256)) throw new TRPCError({ code: "CONFLICT", message: "BACKUP_NOT_COMPLETED" });
     const target = await targetOf(b);
+    const repo = incremental ? await existingRepo(b.serverId, b.s3TargetId) : null;
     const databases = b.includesDatabases ? await databaseCredentials(b.serverId) : [];
     await getDb().update(schema.backups).set({ status: "restoring", error: null }).where(eq(schema.backups.id, b.id));
     try {
-      await call(() => daemonFor(a.bundle.node).restoreBackup(uuid, b.id, { s3: s3Credentials(target), key: b.s3Key, sha256: b.sha256!, databases }));
+      if (repo) await call(() => daemonFor(a.bundle.node).restoreResticBackup(uuid, b.id, { ...repoCredentials(repo), snapshot_id: b.snapshotId!, databases }));
+      else await call(() => daemonFor(a.bundle.node).restoreBackup(uuid, b.id, { s3: s3Credentials(target), key: b.s3Key, sha256: b.sha256!, databases }));
     } catch (e) {
       await getDb().update(schema.backups).set({ status: "completed" }).where(eq(schema.backups.id, b.id));
       throw e;
@@ -79,6 +83,7 @@ export const backups: Implementation["backups"] = {
   downloadUrl: async ({ input, ctx }) => {
     const { b, uuid } = await backupFor(ctx, input.id, "backup.restore");
     if (b.status !== "completed" && b.status !== "restoring") throw new TRPCError({ code: "CONFLICT", message: "BACKUP_NOT_COMPLETED" });
+    if (b.kind === "incremental") throw new TRPCError({ code: "CONFLICT", message: "NOT_DOWNLOADABLE" });
     const target = await targetOf(b);
     const seconds = 600;
     const filename = `${uuid.slice(0, 8)}-backup-${b.id}.tar.zst`;
@@ -131,6 +136,54 @@ export const backups: Implementation["backups"] = {
     }
     await logActivity({ action: restoring ? "server.backup.restore.cancel" : "server.backup.cancel", userId: uid(ctx), serverId: b.serverId, metadata: { id: b.id, name: b.name }, ip: ctx.ip, ctx });
     return ok;
+  },
+
+  // ---------- incrementeel (restic) ----------
+
+  settings: async ({ input, ctx }) => {
+    const a = await requireServer(ctx, input.uuid, "any");
+    if (!hasAny(a)) throw new TRPCError({ code: "FORBIDDEN", message: "MISSING_PERMISSION: backup.create" });
+    return toSettings(await settingsRow(a.bundle.server.id));
+  },
+
+  updateSettings: async ({ input, ctx }) => {
+    const a = await requireServer(ctx, input.uuid, "backup.create");
+    const out = await updateSettings(a.bundle.server.id, input.defaultKind, input.retention);
+    await logActivity({ action: "server.backup.settings", userId: uid(ctx), serverId: a.bundle.server.id, metadata: { defaultKind: input.defaultKind, ...input.retention }, ip: ctx.ip, ctx });
+    return out;
+  },
+
+  browse: async ({ input, ctx }) => {
+    const { b, a, uuid } = await backupFor(ctx, input.id, "backup.restore");
+    if (b.kind !== "incremental") throw new TRPCError({ code: "CONFLICT", message: "NOT_INCREMENTAL" });
+    if ((b.status !== "completed" && b.status !== "restoring") || !b.snapshotId) throw new TRPCError({ code: "CONFLICT", message: "BACKUP_NOT_COMPLETED" });
+    const path = cleanPath(input.path);
+    const repo = await existingRepo(b.serverId, b.s3TargetId);
+    const r = await call(() => daemonFor(a.bundle.node).resticLs(uuid, { ...repoCredentials(repo), snapshot_id: b.snapshotId!, path: `/${path}` }));
+    return {
+      path,
+      entries: r.entries.map((e) => ({ name: e.name, path: e.path, type: e.type, sizeBytes: e.size, modifiedAt: e.mtime && !e.mtime.startsWith("0001-") ? new Date(e.mtime) : null })),
+      truncated: r.truncated,
+    };
+  },
+
+  restoreFiles: async ({ input, ctx }) => {
+    const { b, a, uuid } = await backupFor(ctx, input.id, "backup.restore");
+    if (b.kind !== "incremental") throw new TRPCError({ code: "CONFLICT", message: "NOT_INCREMENTAL" });
+    if (b.status !== "completed" || !b.snapshotId) throw new TRPCError({ code: "CONFLICT", message: "BACKUP_NOT_COMPLETED" });
+    const paths = [...new Set(input.paths.map(cleanPath))];
+    if (paths.some((p) => p === "")) throw new TRPCError({ code: "BAD_REQUEST", message: "INVALID_PATH" });
+    const dir = input.destination === "subdir" ? restoreDirName() : null;
+    const repo = await existingRepo(b.serverId, b.s3TargetId);
+    await getDb().update(schema.backups).set({ status: "restoring", error: null }).where(eq(schema.backups.id, b.id));
+    try {
+      await call(() => daemonFor(a.bundle.node).restoreResticBackup(uuid, b.id, { ...repoCredentials(repo), snapshot_id: b.snapshotId!, databases: [], paths, ...(dir ? { destination: dir } : {}) }));
+    } catch (e) {
+      await getDb().update(schema.backups).set({ status: "completed" }).where(eq(schema.backups.id, b.id));
+      throw e;
+    }
+    await logActivity({ action: "server.backup.restore_files", userId: uid(ctx), serverId: b.serverId, metadata: { id: b.id, name: b.name, paths: paths.slice(0, 20), count: paths.length, directory: dir }, ip: ctx.ip, ctx });
+    return { ok: true as const, directory: dir ? `/${dir}` : null };
   },
 };
 

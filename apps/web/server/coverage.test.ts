@@ -48,6 +48,9 @@ export const APPS = ["apps.catalog", "apps.check", "apps.install", "apps.job", "
 /** Website-instellingen (PHP). */
 export const SITE_SETTINGS = ["siteSettings.php", "siteSettings.updatePhp"];
 
+/** Incrementele backups (restic). */
+export const INCREMENTAL_BACKUPS = ["backups.settings", "backups.updateSettings", "backups.browse", "backups.restoreFiles"];
+
 /** Fase 4: backups, schema's en S3-doelen. */
 export const PHASE4 = [
   "backups.list", "backups.create", "backups.restore", "backups.delete", "backups.downloadUrl", "backups.progress", "backups.cancel",
@@ -103,7 +106,7 @@ export const DEVACCESS = ["servers.terminalToken", "admin.servers.setTerminalAll
 describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES, ...STATS, ...NOTIFY2, ...BILLING, ...PLAYERS, ...CLONE_ALARMS, ...HOSTOPS, ...DEVACCESS, ...DEPLOY];
+    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES, ...STATS, ...NOTIFY2, ...BILLING, ...PLAYERS, ...CLONE_ALARMS, ...HOSTOPS, ...DEVACCESS, ...DEPLOY, ...INCREMENTAL_BACKUPS];
     for (const p of all) expect(contract.has(p), p).toBe(true);
     expect(implementedPaths().sort()).toEqual(all.sort());
   });

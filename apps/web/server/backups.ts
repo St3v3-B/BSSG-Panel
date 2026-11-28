@@ -1,5 +1,5 @@
 /** Gedeelde backuplogica: backups starten (handmatig en via schema), opruimen, S3-doel kiezen. */
-import type { Backup } from "@panel/api";
+import type { Backup, BackupKind } from "@panel/api";
 import { TRPCError } from "@trpc/server";
 import { and, asc, count, desc, eq, inArray, lt, or } from "drizzle-orm";
 import { logActivity } from "./activity";
@@ -9,6 +9,7 @@ import { call, daemonFor } from "./daemon";
 import { decrypt } from "./lib/crypto";
 import { removeObject, s3Credentials } from "./lib/s3";
 import type { ServerBundle } from "./servers-data";
+import { defaultKind, ensureRepo, existingRepo, pruneDue, repoCredentials, retentionOf } from "./backups-restic";
 
 type BackupRow = typeof schema.backups.$inferSelect;
 export type S3Row = typeof schema.s3Targets.$inferSelect;
@@ -28,6 +29,9 @@ export const toBackup = (b: BackupRow, serverUuid: string): Backup => ({
   error: b.error,
   createdAt: b.createdAt,
   completedAt: b.completedAt,
+  kind: b.kind === "incremental" ? "incremental" : "full",
+  snapshotId: b.snapshotId,
+  addedBytes: b.addedBytes,
 });
 
 /** Maximum aantal backups per server (setting `max_backups_per_server`, standaard 7). */
@@ -103,22 +107,32 @@ export interface StartBackupOptions {
   includeDatabases: boolean;
   userId: number | null;
   scheduleId?: number;
+  /** null/undefined = de standaard van de server. */
+  kind?: BackupKind | null;
 }
 
 /** Maakt de rij aan en laat de daemon beginnen. Bij een fout wordt de rij `failed` en gooit hij. */
 export async function startBackup(b: ServerBundle, o: StartBackupOptions): Promise<BackupRow> {
   const db = getDb();
-  const target = await targetForNode(b.node.id);
+  const kind = o.kind ?? (await defaultKind(b.server.id));
+  const repo = kind === "incremental" ? await ensureRepo(b.server.id, b.node.id) : null;
+  const target = repo ? repo.target : await targetForNode(b.node.id);
   const databases = o.includeDatabases ? await databaseCredentials(b.server.id) : [];
   const [row] = await db
     .insert(schema.backups)
-    .values({ serverId: b.server.id, s3TargetId: target.id, name: o.name?.trim() || `Backup ${stamp()}`, s3Key: "pending", status: "pending", includesDatabases: databases.length > 0 })
+    .values({ serverId: b.server.id, s3TargetId: target.id, name: o.name?.trim() || `Backup ${stamp()}`, s3Key: repo ? `restic/${b.server.uuid}` : "pending", status: "pending", includesDatabases: databases.length > 0, kind })
     .returning();
-  const key = backupKey(b.server.uuid, row!.id);
-  await db.update(schema.backups).set({ s3Key: key }).where(eq(schema.backups.id, row!.id));
+  const key = repo ? row!.s3Key : backupKey(b.server.uuid, row!.id);
+  if (!repo) await db.update(schema.backups).set({ s3Key: key }).where(eq(schema.backups.id, row!.id));
   const frozen = await freezeWorld(b);
   try {
-    await call(() => daemonFor(b.node).createBackup(b.server.uuid, { backup_id: row!.id, s3: s3Credentials(target), key, ignore: ["/.panel-deploy"], databases }));
+    if (repo) {
+      await call(() =>
+        daemonFor(b.node).createResticBackup(b.server.uuid, { backup_id: row!.id, ...repoCredentials(repo), ignore: ["/.panel-deploy"], databases, retention: retentionOf(repo.row), prune: pruneDue(repo.row) }),
+      );
+    } else {
+      await call(() => daemonFor(b.node).createBackup(b.server.uuid, { backup_id: row!.id, s3: s3Credentials(target), key, ignore: ["/.panel-deploy"], databases }));
+    }
   } catch (e) {
     await db.update(schema.backups).set({ status: "failed", error: errText(e), completedAt: new Date() }).where(eq(schema.backups.id, row!.id));
     if (frozen) await thawWorld(b);
@@ -130,15 +144,29 @@ export async function startBackup(b: ServerBundle, o: StartBackupOptions): Promi
     throw e;
   }
   const [running] = await db.update(schema.backups).set({ status: "running" }).where(and(eq(schema.backups.id, row!.id), eq(schema.backups.status, "pending"))).returning();
-  await logActivity({ action: "server.backup.create", userId: o.userId, serverId: b.server.id, metadata: { id: row!.id, name: row!.name, ...(o.scheduleId ? { scheduleId: o.scheduleId } : {}) } });
+  await logActivity({ action: "server.backup.create", userId: o.userId, serverId: b.server.id, metadata: { id: row!.id, name: row!.name, kind, ...(o.scheduleId ? { scheduleId: o.scheduleId } : {}) } });
   return running ?? { ...row!, s3Key: key };
 }
 
 const errText = (e: unknown) => ((e as Error).message ?? String(e)).slice(0, 1000);
 
-/** Verwijdert een backup uit S3 en de database. Een S3-fout gooit (rij blijft), tenzij `force`. */
+/** Verwijdert een backup uit S3 (incrementeel: restic forget via de daemon) en de database. Een fout gooit (rij blijft), tenzij `force`. */
 export async function deleteBackup(row: BackupRow, force = false): Promise<void> {
   const db = getDb();
+  if (row.kind === "incremental") {
+    if (row.snapshotId) {
+      try {
+        const [srv] = await db.select({ s: schema.servers, n: schema.nodes }).from(schema.servers).innerJoin(schema.nodes, eq(schema.nodes.id, schema.servers.nodeId)).where(eq(schema.servers.id, row.serverId));
+        const repo = await existingRepo(row.serverId, row.s3TargetId);
+        await call(() => daemonFor(srv!.n).resticForget(srv!.s.uuid, { ...repoCredentials(repo), snapshot_ids: [row.snapshotId!] }));
+      } catch (e) {
+        if (!force) throw e;
+        console.error(`[backups] snapshot ${row.snapshotId} not forgotten:`, e);
+      }
+    }
+    await db.delete(schema.backups).where(eq(schema.backups.id, row.id));
+    return;
+  }
   if (row.s3TargetId && row.status !== "pending" && row.status !== "failed") {
     const [t] = await db.select().from(schema.s3Targets).where(eq(schema.s3Targets.id, row.s3TargetId));
     if (t) {
@@ -153,13 +181,13 @@ export async function deleteBackup(row: BackupRow, force = false): Promise<void>
   await db.delete(schema.backups).where(eq(schema.backups.id, row.id));
 }
 
-/** Houdt maximaal `maxBackups()` voltooide backups per server: de oudste gaan uit S3 en de database. */
+/** Houdt maximaal `maxBackups()` voltooide volledige backups per server: de oudste gaan uit S3 en de database. Incrementele: retentiebeleid (restic forget). */
 export async function pruneBackups(serverId: number): Promise<number> {
   const max = await maxBackups();
   const done = await getDb()
     .select()
     .from(schema.backups)
-    .where(and(eq(schema.backups.serverId, serverId), eq(schema.backups.status, "completed")))
+    .where(and(eq(schema.backups.serverId, serverId), eq(schema.backups.status, "completed"), eq(schema.backups.kind, "full")))
     .orderBy(desc(schema.backups.id));
   let removed = 0;
   for (const old of done.slice(max)) {

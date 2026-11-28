@@ -435,7 +435,8 @@ export const contract = {
 
   backups: {
     list: query("user", server, z.array(s.Backup)),
-    create: mutation("user", server.extend({ name: z.string().max(100).nullable().default(null), includeDatabases: z.boolean().default(true) }), s.Backup),
+    /** kind null = de standaard van de server (backups.settings). */
+    create: mutation("user", server.extend({ name: z.string().max(100).nullable().default(null), includeDatabases: z.boolean().default(true), kind: s.BackupKind.nullable().default(null) }), s.Backup),
     restore: mutation("user", byId, s.Ok), // backup.restore
     delete: mutation("user", byId, s.Ok), // backup.create
     downloadUrl: mutation("user", byId, s.SignedUrl),
@@ -443,6 +444,18 @@ export const contract = {
     progress: query("user", server, s.BackupProgress.nullable()),
     /** Lopende backup (backup.create) of herstel (backup.restore) afbreken. CONFLICT BACKUP_NOT_RUNNING / BACKUP_NOT_CANCELLABLE. */
     cancel: mutation("user", byId, s.Ok),
+    // ---------- incrementeel (restic) ----------
+    /** Backup-instellingen van de server: standaardsoort en retentie. Recht: backup.create of backup.restore. */
+    settings: query("user", server, s.BackupSettings),
+    /** Recht: backup.create. BAD_REQUEST RETENTION_EMPTY als alle keep-waarden 0 zijn. */
+    updateSettings: mutation("user", server.extend({ defaultKind: s.BackupKind, retention: s.BackupRetention }), s.BackupSettings),
+    /** Eén map van een incrementele backup (niet recursief). Recht: backup.restore. CONFLICT NOT_INCREMENTAL / BACKUP_NOT_COMPLETED. */
+    browse: query("user", byId.extend({ path: s.SnapshotPath.default("") }), s.SnapshotListing),
+    /**
+     * Losse paden uit een incrementele backup terugzetten (de server blijft draaien). `destination`:
+     * `original` overschrijft op de oorspronkelijke plek, `subdir` zet ze in /restore-<datum>/. Recht: backup.restore.
+     */
+    restoreFiles: mutation("user", byId.extend({ paths: z.array(s.SnapshotPath).min(1).max(100), destination: z.enum(["original", "subdir"]) }), z.object({ ok: z.literal(true), directory: z.string().nullable() })),
   },
 
   schedules: {

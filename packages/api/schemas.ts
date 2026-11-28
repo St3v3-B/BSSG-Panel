@@ -579,8 +579,49 @@ export const Backup = z.object({
   error: z.string().nullable(), // reden bij status failed
   createdAt: z.date(),
   completedAt: z.date().nullable(),
+  /** full = tar.zst (downloadbaar), incremental = restic-snapshot (bladeren en losse bestanden terugzetten). */
+  kind: z.enum(["full", "incremental"]),
+  /** incremental: restic-snapshot-id. */
+  snapshotId: z.string().nullable(),
+  /** incremental: nieuw in de repository (sizeBytes = grootte van de snapshot). */
+  addedBytes: z.number().nullable(),
 });
 export type Backup = z.infer<typeof Backup>;
+
+// ---------- incrementele backups (restic) ----------
+
+export const BackupKind = z.enum(["full", "incremental"]);
+export type BackupKind = z.infer<typeof BackupKind>;
+/** Retentie van incrementele backups (restic forget); 0 = regel niet gebruiken, samen minstens 1. */
+export const BackupRetention = z.object({
+  keepLast: z.number().int().min(0).max(1000),
+  keepDaily: z.number().int().min(0).max(1000),
+  keepWeekly: z.number().int().min(0).max(1000),
+});
+export type BackupRetention = z.infer<typeof BackupRetention>;
+export const BackupSettings = z.object({
+  /** Soort van backups (handmatig en schema's) als er niets gekozen is. */
+  defaultKind: BackupKind,
+  retention: BackupRetention,
+  /** Laatste restic prune (hooguit eens per dag, na een backup). */
+  lastPruneAt: z.date().nullable(),
+  /** De restic-repository bestaat (er is een incrementele backup gemaakt). */
+  repositoryCreated: z.boolean(),
+});
+export type BackupSettings = z.infer<typeof BackupSettings>;
+export const SnapshotEntry = z.object({
+  name: z.string(),
+  /** Relatief aan de serverroot, zonder / vooraan. */
+  path: z.string(),
+  type: z.enum(["file", "dir", "symlink", "other"]),
+  sizeBytes: z.number(),
+  modifiedAt: z.date().nullable(),
+});
+export type SnapshotEntry = z.infer<typeof SnapshotEntry>;
+export const SnapshotListing = z.object({ path: z.string(), entries: z.array(SnapshotEntry), truncated: z.boolean() });
+export type SnapshotListing = z.infer<typeof SnapshotListing>;
+/** Pad binnen een snapshot (relatief aan de serverroot); `..` en stuurtekens kunnen niet. */
+export const SnapshotPath = z.string().max(4096).refine((p) => !/[\u0000-\u001f\\]/.test(p) && !p.split("/").includes(".."), "INVALID_PATH");
 
 // ---------- git-deploy (websites) ----------
 
