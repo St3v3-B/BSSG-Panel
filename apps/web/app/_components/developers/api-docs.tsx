@@ -60,7 +60,8 @@ export function groupEndpoints(doc: OpenApiDoc): Array<{ tag: string; endpoints:
 export function schemaSketch(s: Json | undefined, depth = 0): unknown {
   if (!s || depth > 4) return "…";
   if (Array.isArray(s.anyOf)) return (s.anyOf as Json[]).map((x) => schemaSketch(x, depth)).filter((x) => x !== "null").join(" | ") + ((s.anyOf as Json[]).some((x) => x.type === "null") ? " | null" : "");
-  if (s.enum) return (s.enum as unknown[]).map((x) => JSON.stringify(x)).join(" | ");
+  if (s.enum) return (s.enum as unknown[]).map((x) => String(x)).join(" | ");
+  if (Array.isArray(s.type)) return (s.type as string[]).join(" | ");
   if (s.type === "object" || s.properties) {
     const props = (s.properties ?? {}) as Record<string, Json>;
     const req = new Set((s.required as string[]) ?? []);
