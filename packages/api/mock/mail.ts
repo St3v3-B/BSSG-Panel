@@ -47,8 +47,8 @@ function sampleReport(fixed: boolean): s.MailCheckReport {
     c("outbound_25", true, true, "Connected to gmail-smtp-in.l.google.com:25 and outlook MX; banner received.", { hosts: ["gmail-smtp-in.l.google.com", "mx1.hotmail.com"] }),
     c("inbound_ports", true, true, "25, 465, 587 and 993 reachable on " + IPV4 + ".", { open: [25, 465, 587, 993], closed: [] }),
     fixed
-      ? c("ptr", true, true, `${IPV4} → ${MAIL_HOSTNAME}`, { ipv4: IPV4, ptr: MAIL_HOSTNAME })
-      : c("ptr", false, true, `${IPV4} → static.10.113.0.203.example.net (expected ${MAIL_HOSTNAME})`, { ipv4: IPV4, ptr: "static.10.113.0.203.example.net" }),
+      ? c("ptr", true, true, `${IPV4} → ${MAIL_HOSTNAME}`, { ipv4: { ip: IPV4, names: [MAIL_HOSTNAME] } })
+      : c("ptr", false, true, `${IPV4} → static.10.113.0.203.example.net (expected ${MAIL_HOSTNAME})`, { ipv4: { ip: IPV4, names: ["static.10.113.0.203.example.net"] } }),
     fixed ? c("fcrdns", true, true, `${MAIL_HOSTNAME} → ${IPV4}`) : c("fcrdns", false, true, `PTR name static.10.113.0.203.example.net does not resolve to ${IPV4}.`),
     fixed ? c("helo", true, true, `myhostname = ${MAIL_HOSTNAME}`) : c("helo", false, true, `myhostname ${MAIL_HOSTNAME} differs from the PTR name.`),
     c("blacklists", true, true, "Not listed on Spamhaus ZEN, Barracuda, SpamCop or UCEPROTECT L1.", { listed: [] }),

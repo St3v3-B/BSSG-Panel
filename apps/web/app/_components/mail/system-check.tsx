@@ -53,12 +53,14 @@ export const checkTone = (c: Pick<MailCheck, "ok" | "required">): Tone => (c.ok 
 const RANK: Record<Tone, number> = { fail: 0, warn: 1, ok: 2 };
 
 const str = (v: unknown) => (typeof v === "string" && v ? v : null);
+/** IP uit check-data: de daemon geeft `{ ip, names }` per adresfamilie (ptr/fcrdns), oudere vormen een kale string. */
+const ipOf = (v: unknown) => str(v) ?? (v && typeof v === "object" ? str((v as { ip?: unknown }).ip) : null);
 
 /** Waarden die de beheerder letterlijk moet invullen, afgeleid van het rapport en de mail-hostnaam. */
 function copyValues(c: MailCheck, report: MailCheckReport, host: string | null, t: ReturnType<typeof useT>["mail"]["checks"]["valueLabels"]): Array<{ label: string; value: string }> {
   const ptrData = report.checks.find((x) => x.id === "ptr")?.data ?? null;
-  const ip = str(c.data?.ipv4) ?? str(ptrData?.ipv4);
-  const ip6 = str(c.data?.ipv6) ?? str(ptrData?.ipv6);
+  const ip = ipOf(c.data?.ipv4) ?? ipOf(ptrData?.ipv4);
+  const ip6 = ipOf(c.data?.ipv6) ?? ipOf(ptrData?.ipv6);
   const out: Array<{ label: string; value: string }> = [];
   const add = (label: string, value: string | null) => value && out.push({ label, value });
   switch (c.id) {
