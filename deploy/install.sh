@@ -114,8 +114,10 @@ export_version() {
 export_version
 
 compose() {
-  # De node-compose heeft Caddy achter het profiel "caddy"; install.sh --node-only wil Caddy altijd.
-  PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES="${COMPOSE_PROFILES:-$([ "$NODE_ONLY" = 1 ] && echo caddy)}" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+  # De node-compose heeft Caddy achter het profiel "caddy" (eigen 80/443) of "caddy-relay" (HTTP_MODE=relay: geen
+  # publieke poorten, HTTP(S) via een andere node); install.sh --node-only wil altijd een van de twee.
+  local prof=caddy; [ "${VAL[HTTP_MODE]:-${HTTP_MODE:-direct}}" = relay ] && prof=caddy-relay
+  PANEL_ENV_FILE="$ENV_FILE" COMPOSE_PROFILES="${COMPOSE_PROFILES:-$([ "$NODE_ONLY" = 1 ] && echo "$prof")}" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
 # ---------------------------------------------------------------- vereisten
@@ -203,6 +205,9 @@ validate() {
       [[ "$v" =~ ^[A-Za-z0-9]{32,}$ ]] || { echo "at least 32 characters [A-Za-z0-9]"; return 1; } ;;
     PANEL_URL)
       [[ "$v" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || { echo "not a URL like https://panel.example.com (no path)"; return 1; } ;;
+    HTTP_MODE)
+      [ "$v" = direct ] || [ "$v" = relay ] || { echo "direct or relay"; return 1; }
+      [ "$v" = direct ] || [ "$NODE_ONLY" = 1 ] || { echo "relay is only for remote nodes (--node-only); the panel machine needs its own 80/443"; return 1; } ;;
     SFTP_PORT|DAEMON_PORT)
       [[ "$v" =~ ^[0-9]+$ ]] && [ "$v" -ge 1 ] && [ "$v" -le 65535 ] || { echo "not a port number"; return 1; } ;;
   esac
@@ -437,6 +442,7 @@ check_ports() {
   command -v ss >/dev/null || return 0
   docker ps -q --filter name=^panel-caddy$ | grep -q . && return 0
   local p
+  [ "$NODE_ONLY" = 1 ] && [ "${VAL[HTTP_MODE]:-direct}" = relay ] && return 0   # relay: 80/443 mogen bezet zijn
   for p in 80 443 $([ "$NODE_ONLY" = 1 ] || echo 3000); do
     if ss -Hltn "sport = :$p" | grep -q .; then warn "port $p is already in use; Caddy/panel may fail to start"; fi
   done
@@ -474,7 +480,7 @@ main() {
 
 # ---------------------------------------------------------------- node-only
 NODE_KEYS=(PANEL_URL NODE_DOMAIN NODE_TOKEN ACME_EMAIL DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR
-  CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER PANEL_INSTANCE DOCKER_EXTRA_LABELS MARIADB_CONTAINER MARIADB_ROOT_PASSWORD)
+  CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER HTTP_MODE PANEL_INSTANCE DOCKER_EXTRA_LABELS MARIADB_CONTAINER MARIADB_ROOT_PASSWORD)
 
 collect_node_values() {
   log "values for the node (panel.env without panel secrets)"
@@ -483,7 +489,7 @@ collect_node_values() {
   ask NODE_TOKEN "Node token (from the panel: Admin > Nodes)" secret
   ask ACME_EMAIL "Email address for Let's Encrypt"
   local key
-  for key in DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER PANEL_INSTANCE DOCKER_EXTRA_LABELS MARIADB_CONTAINER; do
+  for key in DAEMON_PORT SFTP_PORT DAEMON_SOCKET DATA_DIR CADDY_ADMIN_URL CADDY_TLS_ADDR CADDY_CONTAINER HTTP_MODE PANEL_INSTANCE DOCKER_EXTRA_LABELS MARIADB_CONTAINER; do
     keep_or_default "$key"
   done
   # Eigen MariaDB van de node: het rootwachtwoord wordt hier gegenereerd en blijft in dit bestand
@@ -534,7 +540,9 @@ start_node() {
   fi
   # Firewall: alleen als ufw actief is.
   if [ "$DRY_RUN" = 0 ] && command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q '^Status: active'; then
-    local p; for p in 80/tcp 443/tcp 443/udp "${VAL[SFTP_PORT]}/tcp"; do run ufw allow "$p" >/dev/null; done
+    local p ports=(80/tcp 443/tcp 443/udp "${VAL[SFTP_PORT]}/tcp")
+    [ "${VAL[HTTP_MODE]}" = relay ] && ports=("${VAL[SFTP_PORT]}/tcp")   # HTTP(S) gaat uitgaand naar de relay-node
+    for p in "${ports[@]}"; do run ufw allow "$p" >/dev/null; done
   fi
 }
 
@@ -547,7 +555,11 @@ Node installed.
   daemon:  $BIN_DST
   compose: PANEL_ENV_FILE=$ENV_FILE docker compose --env-file $ENV_FILE -f $COMPOSE_FILE ps
 
-DNS: an A record for ${VAL[NODE_DOMAIN]} pointing to this machine. Open ports 80, 443 and ${VAL[SFTP_PORT]} (SFTP).
+$(if [ "${VAL[HTTP_MODE]}" = relay ]; then
+  printf 'HTTP(S) via a relay node (set in the panel: Admin > Nodes > HTTP(S) entry): %s must point to the relay node.\nPorts 80/443 are not used here; open %s (SFTP) and the game ports.' "${VAL[NODE_DOMAIN]}" "${VAL[SFTP_PORT]}"
+else
+  printf 'DNS: an A record for %s pointing to this machine. Open ports 80, 443 and %s (SFTP).' "${VAL[NODE_DOMAIN]}" "${VAL[SFTP_PORT]}"
+fi)
 Then check Admin > Nodes in the panel: the node should be online.
 EOT
   [ "$DRY_RUN" = 1 ] && echo "(dry-run: everything is under $ROOT)"
