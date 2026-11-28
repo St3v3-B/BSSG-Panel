@@ -14,8 +14,9 @@ var ErrNotFound = errors.New("engine: container not found")
 
 // Mount is een bind mount.
 type Mount struct {
-	Source string
-	Target string
+	Source   string
+	Target   string
+	ReadOnly bool
 }
 
 // PortBinding koppelt hostIP:hostPort aan containerPort/proto.

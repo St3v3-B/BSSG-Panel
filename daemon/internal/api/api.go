@@ -58,6 +58,7 @@ type API struct {
 	routes   *Routes
 	jwt      JWTVerifier
 	backups  Backups
+	deploys  Deploys
 	dbadmin  DBAdmin
 	dbHost   string
 	upgrader Upgrader
@@ -153,6 +154,11 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /api/servers/{uuid}/backups/{backup_id}/restore", p(a.withServer(a.restoreBackup)))
 	mux.Handle("GET /api/servers/{uuid}/backups/progress", p(a.withServer(a.backupProgress)))
 	mux.Handle("POST /api/servers/{uuid}/backups/{backup_id}/cancel", p(a.withServer(a.cancelBackup)))
+
+	mux.Handle("POST /api/servers/{uuid}/deploy", p(a.withServer(a.startDeploy)))
+	mux.Handle("GET /api/servers/{uuid}/deploy", p(a.withServer(a.deployProgress)))
+	mux.Handle("POST /api/servers/{uuid}/deploy/{deploy_id}/cancel", p(a.withServer(a.cancelDeploy)))
+	mux.Handle("POST /api/git/host-key", p(a.scanHostKey))
 
 	mux.Handle("GET /api/db/status", p(a.dbStatus))
 	mux.Handle("POST /api/db/databases", p(a.dbCreate))
@@ -310,9 +316,17 @@ func (a *API) deleteServer(w http.ResponseWriter, r *http.Request, s *server.Ser
 	if err := a.routes.RemoveServer(r.Context(), s.UUID()); err != nil {
 		a.log.Warn("routes van verwijderde server", "uuid", s.UUID(), "err", err)
 	}
+	if a.deploys != nil {
+		if p, ok := a.deploys.Progress(s.UUID()); ok {
+			_ = a.deploys.Cancel(s.UUID(), p.DeployID)
+		}
+	}
 	if err := a.mgr.Delete(s.UUID()); err != nil {
 		stateErr(w, err)
 		return
+	}
+	if a.deploys != nil {
+		a.deploys.ForgetServer(s.UUID())
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

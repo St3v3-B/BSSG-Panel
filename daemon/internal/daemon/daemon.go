@@ -24,6 +24,7 @@ import (
 	"panel/daemon/internal/api"
 	"panel/daemon/internal/auth"
 	"panel/daemon/internal/backup"
+	"panel/daemon/internal/deploy"
 	"panel/daemon/internal/config"
 	"panel/daemon/internal/dbadmin"
 	"panel/daemon/internal/engine"
@@ -75,6 +76,9 @@ type Deps struct {
 	RelayDial                        func(ctx context.Context, network, addr string) (net.Conn, error)
 	RelayMinBackoff, RelayMaxBackoff time.Duration
 	RelayPing, RelayInterval         time.Duration
+	// DeployGitImage vervangt deploy.DefaultGitImage; DeployAllowHTTP staat http://-repo's toe (alleen tests).
+	DeployGitImage  string
+	DeployAllowHTTP bool
 }
 
 // Daemon is een draaiende daemon.
@@ -87,6 +91,7 @@ type Daemon struct {
 	routes *api.Routes
 	api    *api.API
 	backup *backup.Service
+	deploy *deploy.Service
 	dbadm  *dbadmin.Admin
 	sftp   *sftpd.Server
 	relay  *relaySvc
@@ -159,6 +164,12 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	}
 	d.api = api.New(api.Options{NodeToken: cfg.NodeToken, AllowedOrigins: cfg.AllowedOrigins(), AuthTimeout: deps.WSAuthTimeout, Update: upd.Run, Restart: restart}, d.mgr, routes, verifier, d.systemInfo, deps.Log)
 	d.api.SetBackups(d.backup)
+	gitImage := deps.DeployGitImage
+	if gitImage == "" {
+		gitImage = os.Getenv("DEPLOY_GIT_IMAGE")
+	}
+	d.deploy = &deploy.Service{Mgr: d.mgr, Rep: deployReporter{d.panel}, Log: deps.Log, GitImage: gitImage, AllowHTTP: deps.DeployAllowHTTP}
+	d.api.SetDeploys(d.deploy)
 	d.relay = newRelaySvc(d)
 	d.api.SetRelay(d.relay)
 	d.routes.SetExtra(d.relay.edge.Routes)
@@ -211,6 +222,7 @@ func (d *Daemon) Start(ctx context.Context) error {
 		return fmt.Errorf("staat herstellen: %w", err)
 	}
 	d.mgr.ReconcileNetworks(ctx)
+	d.deploy.Cleanup(ctx)
 	d.mgr.StartImageUpdates()
 	h := d.api.Handler()
 	d.relay.client.API = h
@@ -517,3 +529,8 @@ func (d *Daemon) helloLoop() {
 		}
 	}
 }
+
+// deployReporter koppelt deploy.Reporter aan de panel-client.
+type deployReporter struct{ c *panel.Client }
+
+func (r deployReporter) ReportDeploy(id int, res deploy.Result) { r.c.ReportDeploy(id, res) }
