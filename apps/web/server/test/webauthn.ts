@@ -77,7 +77,7 @@ export class SoftPasskey {
     const flags = 0x01 | (o.userVerified ? 0x04 : 0) | (this.backedUp ? 0x18 : 0) | (o.attested ? 0x40 : 0);
     const cnt = Buffer.alloc(4);
     cnt.writeUInt32BE(this.counter);
-    const parts = [sha(o.rpId), Buffer.from([flags]), cnt];
+    const parts: Buffer[] = [sha(o.rpId), Buffer.from([flags]), cnt];
     if (o.attested) {
       const len = Buffer.alloc(2);
       len.writeUInt16BE(this.credentialId.length);
