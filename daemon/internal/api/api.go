@@ -67,6 +67,7 @@ type API struct {
 	upgrader Upgrader
 	relay    Relay
 	npm      NPM
+	mail     Mail
 	system   func(ctx context.Context) SystemInfo
 	log      *slog.Logger
 
@@ -183,6 +184,8 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("GET /api/db/tunnel", p(a.dbTunnel))
 	mux.Handle("GET /api/db/databases/{name}/dump", p(a.dbDump))
 	mux.Handle("PUT /api/db/databases/{name}/import", p(a.dbImport))
+
+	a.mailRoutes(mux)
 
 	mux.Handle("GET /api/relay", p(a.relayState))
 	mux.Handle("POST /api/relay/refresh", p(a.relayRefresh))

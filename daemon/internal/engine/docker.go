@@ -375,7 +375,7 @@ func (d *Docker) Exec(ctx context.Context, id string, o ExecOptions) (ExecResult
 
 // ExecStream: zie Engine. Stdin wordt gekopieerd en daarna gesloten (EOF); stdout gaat naar o.Stdout.
 func (d *Docker) ExecStream(ctx context.Context, id string, o ExecIO) (ExecIOResult, error) {
-	ex, err := d.cli.ContainerExecCreate(ctx, id, container.ExecOptions{Cmd: o.Cmd, Env: o.Env, AttachStdin: true, AttachStdout: true, AttachStderr: true})
+	ex, err := d.cli.ContainerExecCreate(ctx, id, container.ExecOptions{Cmd: o.Cmd, Env: o.Env, User: o.User, AttachStdin: true, AttachStdout: true, AttachStderr: true})
 	if err != nil {
 		return ExecIOResult{}, wrap(err)
 	}

@@ -96,3 +96,20 @@ func TestLoadHTTPModeNPM(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMailConfig(t *testing.T) {
+	c, err := Load(env(map[string]string{"NODE_TOKEN": "t", "NODE_DOMAIN": "node1.test", "PANEL_DOMAIN": "panel.test"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := c.Mail
+	if m.Hostname != "" || m.EnvFile != "/etc/panel/panel.env" || m.Postfix != "panel-postfix" || m.Rspamd != "panel-rspamd" ||
+		m.DKIMDir != "/var/lib/rspamd/dkim" || m.VmailDir != "/var/vmail" || m.Profile != "mail" || m.NTPServer != "pool.ntp.org" {
+		t.Fatalf("%+v", m)
+	}
+	c, _ = Load(env(map[string]string{"NODE_TOKEN": "t", "NODE_DOMAIN": "node1.test", "PANEL_DOMAIN": "panel.test",
+		"MAIL_HOSTNAME": "Mail.Panel.Test", "MAIL_DOVECOT_CONTAINER": "x-dovecot", "MAIL_DNSBL_RESOLVER": "system"}))
+	if c.Mail.Hostname != "mail.panel.test" || c.Mail.Dovecot != "x-dovecot" || c.Mail.DNSBLResolver != "system" {
+		t.Fatalf("%+v", c.Mail)
+	}
+}

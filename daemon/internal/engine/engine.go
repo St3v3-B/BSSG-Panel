@@ -102,6 +102,8 @@ type ExecResult struct {
 type ExecIO struct {
 	Cmd []string
 	Env []string // "K=V"
+	// User: "uid[:gid]" of gebruikersnaam; leeg = de standaardgebruiker van de container.
+	User string
 	// Stdin wordt naar het commando gestuurd (nil: leeg); Stdout krijgt de uitvoer (nil: weggegooid).
 	Stdin  io.Reader
 	Stdout io.Writer

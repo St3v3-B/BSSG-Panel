@@ -28,6 +28,7 @@ import (
 	"panel/daemon/internal/dbadmin"
 	"panel/daemon/internal/deploy"
 	"panel/daemon/internal/engine"
+	"panel/daemon/internal/mail"
 	"panel/daemon/internal/panel"
 	"panel/daemon/internal/selfupdate"
 	"panel/daemon/internal/server"
@@ -210,6 +211,10 @@ func New(cfg config.Config, deps Deps) (*Daemon, error) {
 	d.api.SetNPM(d.npm)
 	if cfg.PanelRepoDir != "" {
 		d.api.SetUpgrade(&upgrade.Service{RepoDir: cfg.PanelRepoDir, UpgradeDir: filepath.Join(cfg.DataDir, "upgrade")})
+	}
+	if dk, ok := deps.Engine.(*engine.Docker); ok && cfg.PanelRepoDir != "" {
+		// Mail alleen op de lokale node (die heeft de panel-checkout en de compose-stack).
+		d.api.SetMail(mail.New(mailConfig(cfg), mail.NewDockerAdapter(dk), deps.Log))
 	}
 	if cfg.MariaDBRootPassword != "" {
 		d.dbadm = &dbadmin.Admin{Eng: deps.Engine, Container: cfg.MariaDBContainer, RootPassword: cfg.MariaDBRootPassword}
@@ -575,3 +580,14 @@ func (d *Daemon) helloLoop() {
 type deployReporter struct{ c *panel.Client }
 
 func (r deployReporter) ReportDeploy(id int, res deploy.Result) { r.c.ReportDeploy(id, res) }
+
+func mailConfig(cfg config.Config) mail.Config {
+	m := cfg.Mail
+	return mail.Config{
+		Hostname: m.Hostname, PublicIPv4: m.PublicIPv4, PublicIPv6: m.PublicIPv6, Instance: cfg.Instance,
+		RepoDir: cfg.PanelRepoDir, EnvFile: m.EnvFile, HTTPMode: cfg.HTTPMode, ComposeProfile: m.Profile,
+		Postfix: m.Postfix, Dovecot: m.Dovecot, Rspamd: m.Rspamd, Unbound: m.Unbound,
+		DKIMDir: m.DKIMDir, DKIMOwner: m.DKIMOwner, VmailDir: m.VmailDir,
+		CaddyTLSAddr: cfg.CaddyTLSAddr, DNSBLResolver: m.DNSBLResolver, NTPServer: m.NTPServer, DiskPath: m.DiskPath,
+	}
+}
