@@ -1,5 +1,5 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cloneTiming } from "./clone";
 import { daemonUrlOverrides } from "./daemon";
 import { getDb, schema } from "./db";
@@ -178,7 +178,8 @@ describe("servers.clone: quotum en rechten", () => {
     const [alloc] = await getDb().select().from(schema.allocations).where(eq(schema.allocations.id, a2!.id));
     expect(alloc!.serverId).toBe(row.id);
     // Melding naar de admin (gestart) én de nieuwe eigenaar.
-    expect((await inbox(stranger)).some((m) => m.event === "server_cloned")).toBe(true);
+    // De melding wordt asynchroon geschreven: onder load even wachten.
+    await vi.waitFor(async () => expect((await inbox(stranger)).some((m) => m.event === "server_cloned")).toBe(true), { timeout: 10_000, interval: 100 });
     expect((await stranger.api.servers.get({ uuid: j.target.uuid })).isOwner).toBe(true);
   });
 });
@@ -197,7 +198,7 @@ describe("servers.clone: fouten en annuleren", () => {
     const [a] = await getDb().select().from(schema.allocations).where(eq(schema.allocations.id, free));
     expect(a!.serverId).toBeNull();
     expect(h.daemon.fs(src).files.get("/world/level.dat")).toBe("wereld");
-    expect((await inbox(friend)).some((m) => m.event === "server_cloned" && m.title === "Server copy failed")).toBe(true);
+    await vi.waitFor(async () => expect((await inbox(friend)).some((m) => m.event === "server_cloned" && m.title === "Server copy failed")).toBe(true), { timeout: 10_000, interval: 100 });
   });
 
   it("annuleren tijdens het kopiëren: doel weg; power op het doel geblokkeerd zolang het loopt", async () => {
