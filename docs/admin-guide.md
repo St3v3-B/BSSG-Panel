@@ -91,6 +91,48 @@ To add a machine:
 Options of the join script: `--yes` (no questions), `--no-ufw`, `--ip IPV4`, `--dry-run`. The older way, a git checkout plus
 `deploy/install.sh --node-only`, still works and is described in [multi-node.md](multi-node.md).
 
+### HTTP(S) via another node (relay)
+
+A node that cannot use ports 80 and 443 (another web server already runs there, the machine is behind NAT, or it gets no inbound
+traffic at all) can send **all its HTTP(S)** through another node, the *relay node*. Choose it per node in **Admin, Nodes, <node>,
+HTTP(S) entry, HTTP(S) via**, or already in the **Add node** form. Only nodes with their own ports 80/443 that do not relay
+themselves can be a relay node; the local node (the panel machine) always uses its own ports.
+
+How it works:
+
+- The daemon of the node keeps an outgoing, encrypted tunnel (websocket over HTTPS with multiplexed streams) open to
+  `https://<relay node>/api/relay/tunnel`. Both sides prove a per-pair secret that the panel hands out; the node also checks the TLS
+  certificate of the relay node. It reconnects by itself with backoff.
+- Caddy on the relay node serves the node domain and every web domain of the node, gets their certificates (HTTP-01 on the relay
+  node because DNS points there, or a DNS challenge for wildcard domains with a connected Cloudflare provider) and sends the
+  requests through the tunnel. The relay node only forwards host names the panel assigned to that node; everything else is refused.
+- Everything that used Caddy on the node keeps working through the relay: websites, HTTP domains of game servers, the console
+  websocket, uploads and downloads, and the panel's own calls to the daemon (the panel reaches `https://<node domain>`, which now
+  resolves to the relay node).
+- **Not via the relay:** game ports, Minecraft domains (A + SRV records point to the node's own IP) and SFTP. Those stay direct, so
+  open them in the node's firewall. The SFTP port does not have to be 22 or 2022.
+- SSL status in the panel comes from the relay node, which holds the certificates.
+
+Changing the setting:
+
+1. Pick the relay node and press **Apply**. The panel warns that DNS has to change: the node domain and all web domains of the node
+   must point to the relay node (back to the node itself when you switch to own ports). Records in a connected Cloudflare zone or with a
+   linked DNS provider are changed by the panel; the list on the card shows which ones you must change by hand and whether they
+   already point to the right IP.
+2. Put Caddy on the node into the matching mode. The card shows the command; run it as root on the node:
+
+   ```bash
+   curl -fsSL https://panel.example.com/join | sudo bash -s -- --http-mode relay    # or: --http-mode direct
+   ```
+
+   In relay mode Caddy publishes no ports (the `caddy-relay` compose profile); the daemon delivers the sites to it over a local socket.
+   A node joined with **HTTP(S) via** set gets this mode automatically; `--no-public-http` makes the join script refuse to continue
+   if the panel has no relay set for the node. For `deploy/install.sh --node-only` set `HTTP_MODE=relay`.
+3. The card shows the tunnel as seen from the node (connected, latency, reconnects, last error) and from the relay node. A warning
+   appears while the node still runs Caddy on its own ports.
+
+A relay node cannot be deleted while other nodes relay through it, and a node that relays for others cannot use a relay itself.
+
 **Allocations** are IP and port ranges per node: `25565`, `25565-25600` or `25565,25570-25575`. Game servers take one or more
 allocations; websites need none. **Update daemon** on a node makes it download the daemon of the current panel version and restart.
 A node with servers cannot be removed: move or delete the servers first.
@@ -234,6 +276,8 @@ docker compose --env-file /etc/panel/panel.env -f deploy/docker-compose.yml ps
 | Join script waits for DNS | Create the A record shown in the panel, or connect a Cloudflare zone |
 | New servers fail with an address pool error | `DOCKER_NETWORK_POOL` overlaps with another network or is full; pick another block |
 | Update rolled back | See the log on the Updates page or in `/var/lib/panel/upgrade` |
-| Port 80, 443 or 2022 in use | Stop the other service; the installer needs them |
+| Port 80, 443 or 2022 in use | Stop the other service; the installer needs them. On a remote node you can instead run HTTP(S) through a relay node (see Nodes) and pick another SFTP port |
+| Relay tunnel not connected | The card in Admin, Nodes shows the last error. `HTTP 401`/`403`: wrong or old secret, press Apply again; certificate error: the relay node has no valid certificate for its own domain yet; `journalctl -u panel-daemon` on both nodes |
+| Site behind a relay shows "unavailable" | The tunnel is down or Caddy on the node is not in relay mode (`--http-mode relay`) |
 
 More symptoms and fixes: [troubleshooting.md](troubleshooting.md).
