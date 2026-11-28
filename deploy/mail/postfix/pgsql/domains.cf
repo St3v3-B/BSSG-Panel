@@ -1,0 +1,7 @@
+# virtual_mailbox_domains: is this one of our domains?
+# __PLACEHOLDERS__ are filled in by the entrypoint (password from MAIL_DB_PASSWORD).
+hosts = __MAIL_DB_HOST__
+dbname = __MAIL_DB_NAME__
+user = mail_reader
+password = __MAIL_DB_PASSWORD__
+query = SELECT 1 FROM mail.v_domains WHERE domain = '%s'

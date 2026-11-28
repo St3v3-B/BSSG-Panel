@@ -1,0 +1,7 @@
+# virtual_alias_maps: alias or catch-all (@domain) to comma-separated targets.
+# __PLACEHOLDERS__ are filled in by the entrypoint (password from MAIL_DB_PASSWORD).
+hosts = __MAIL_DB_HOST__
+dbname = __MAIL_DB_NAME__
+user = mail_reader
+password = __MAIL_DB_PASSWORD__
+query = SELECT goto FROM mail.v_aliases WHERE address = '%s'

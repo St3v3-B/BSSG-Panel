@@ -1,0 +1,13 @@
+# Dovecot SQL lookups (passdb + userdb) on the views of the panel. Rendered by the entrypoint to
+# /etc/dovecot/dovecot-sql.conf.ext (0600 root) with the password from MAIL_DB_PASSWORD.
+driver = pgsql
+connect = host=__MAIL_DB_HOST__ dbname=__MAIL_DB_NAME__ user=mail_reader password=__MAIL_DB_PASSWORD__
+default_pass_scheme = ARGON2ID
+
+password_query = SELECT address AS user, password_hash AS password FROM mail.v_mailboxes WHERE address = '%Lu'
+
+# home = /var/vmail/<domain>/<local part>/ (maildir column = '<domain>/<local part>/'); 0M = unlimited.
+user_query = SELECT '/var/vmail/' || maildir AS home, 5000 AS uid, 5000 AS gid, \
+  '*:storage=' || quota_mb || 'M' AS quota_rule FROM mail.v_mailboxes WHERE address = '%Lu'
+
+iterate_query = SELECT address AS user FROM mail.v_mailboxes
