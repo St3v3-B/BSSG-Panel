@@ -290,6 +290,6 @@ describe("proxy", () => {
     expect(r.headers.get("location")).toBe("http://panel.test/login?redirectTo=%2Fservers%2Fx%3Ftab%3D1");
     expect(authProxy(req("/")).headers.get("location")).toBe("http://panel.test/login");
     expect(authProxy(req("/servers/x", "panel_session=abc")).headers.get("location")).toBeNull();
-    for (const p of ["/login", "/api/auth/discord/login", "/logo.png"]) expect(authProxy(req(p)).headers.get("location")).toBeNull();
+    for (const p of ["/login", "/api/auth/discord/login", "/logo.png", "/manifest.webmanifest"]) expect(authProxy(req(p)).headers.get("location")).toBeNull();
   });
 });

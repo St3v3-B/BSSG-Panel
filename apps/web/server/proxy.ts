@@ -5,7 +5,9 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PREFIXES = ["/login", "/api/", "/_next/", "/join", "/status/", "/verify-email"];
+// /manifest.webmanifest: de browser haalt het PWA-manifest ook zonder sessie op (de extensie is te lang voor de regex hieronder);
+// een redirect naar /login gaf in `next dev` een herlaadlus (elke manifest-aanvraag renderde /login opnieuw → HMR "restart").
+const PUBLIC_PREFIXES = ["/login", "/api/", "/_next/", "/join", "/status/", "/verify-email", "/manifest.webmanifest"];
 
 export function authProxy(req: NextRequest): NextResponse {
   if (process.env.PANEL_MOCK === "1") return NextResponse.next();
