@@ -284,7 +284,7 @@ func TestChecksAllGreen(t *testing.T) {
 			t.Errorf("%s not ok: %s (%v)", id, got[id].Detail, got[id].Data)
 		}
 	}
-	if got[CheckClock].Required || got[CheckDisk].Required || !got[CheckPTR].Required || !got[CheckBlacklists].Required {
+	if got[CheckClock].Required || got[CheckDisk].Required || got[CheckInboundPorts].Required || !got[CheckPTR].Required || !got[CheckBlacklists].Required {
 		t.Fatal("required flags")
 	}
 	if d := got[CheckCertificate].Data["days_left"].(int); d < 58 || d > 60 {

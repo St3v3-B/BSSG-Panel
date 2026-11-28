@@ -1276,7 +1276,7 @@ export interface paths {
          * Systeemcheck voor de mailserver (vereist voordat mail aangaat)
          * @description Alle checks lopen parallel, elk hoogstens 10 s, samen hoogstens 30 s. De ids staan vast (de UI vertaalt ze);
          *     `detail` is een korte technische uitleg (Engels), `hint` wat de beheerder kan doen, `data` de ruwe gegevens.
-         *     Verplicht (`required: true`) zijn alle checks behalve `clock` en `disk`.
+         *     Verplicht (`required: true`) zijn alle checks behalve `clock`, `disk` en `inbound_ports` (die test vanaf de server zelf en kan bereikbaarheid van buitenaf niet betrouwbaar bepalen; rood = waarschuwing).
          *
          *     | id | Hoe |
          *     |---|---|
@@ -1663,7 +1663,7 @@ export interface components {
             /** @enum {string} */
             id: "outbound_25" | "inbound_ports" | "ptr" | "fcrdns" | "helo" | "blacklists" | "certificate" | "ports_free" | "clock" | "disk";
             ok: boolean;
-            /** @description Verplicht voor het aanzetten van mail (alles behalve clock en disk) */
+            /** @description Verplicht voor het aanzetten van mail (alles behalve clock, disk en inbound_ports) */
             required: boolean;
             detail: string;
             /** @description Wat de beheerder kan doen */

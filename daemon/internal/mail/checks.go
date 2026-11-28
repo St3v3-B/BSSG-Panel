@@ -248,7 +248,9 @@ func (s *Service) RunChecks(ctx context.Context, req CheckRequest) (Report, erro
 		}()
 	}
 	pwg.Wait()
-	run(CheckInboundPorts, true, func(ctx context.Context) Check { return checkInbound(ctx, &e, ips, ipErrs) })
+	// Niet verplicht: vanaf de host zelf is bereikbaarheid van buitenaf niet betrouwbaar te bepalen (NAT/hairpin,
+	// eigen IP via lo); een rode uitslag is een waarschuwing, geen blokkade.
+	run(CheckInboundPorts, false, func(ctx context.Context) Check { return checkInbound(ctx, &e, ips, ipErrs) })
 	run(CheckPTR, true, func(context.Context) Check { return checkPTR(host, ips, ipErrs) })
 	run(CheckFCrDNS, true, func(ctx context.Context) Check { return checkFCrDNS(ctx, &e, host, ips, ipErrs) })
 	run(CheckHELO, true, func(ctx context.Context) Check { return s.checkHELO(ctx, host, ips, ipErrs) })
@@ -496,9 +498,11 @@ func checkInbound(ctx context.Context, e *CheckEnv, ips []ipInfo, ipErrs []strin
 			c.Detail += " (tested from this host; an external firewall at your provider is not visible from here)"
 		}
 	} else {
-		c.Detail = "not reachable: " + strings.Join(closed, ", ")
+		c.Detail = "not reachable from this host: " + strings.Join(closed, ", ") +
+			" (warning only: the test runs from the server itself and cannot see reachability from the internet reliably)"
 		c.Hint = "Open these ports in the firewall (and port-forward them to this machine when it is behind NAT). " +
-			"Behind NAT without hairpinning this test from the host itself can fail although the ports are open."
+			"Behind NAT without hairpinning this test from the host itself can fail although the ports are open; " +
+			"verify from outside, e.g. with an online port checker."
 	}
 	return c
 }
