@@ -118,7 +118,7 @@ export async function startBackup(b: ServerBundle, o: StartBackupOptions): Promi
   await db.update(schema.backups).set({ s3Key: key }).where(eq(schema.backups.id, row!.id));
   const frozen = await freezeWorld(b);
   try {
-    await call(() => daemonFor(b.node).createBackup(b.server.uuid, { backup_id: row!.id, s3: s3Credentials(target), key, ignore: [], databases }));
+    await call(() => daemonFor(b.node).createBackup(b.server.uuid, { backup_id: row!.id, s3: s3Credentials(target), key, ignore: ["/.panel-deploy"], databases }));
   } catch (e) {
     await db.update(schema.backups).set({ status: "failed", error: errText(e), completedAt: new Date() }).where(eq(schema.backups.id, row!.id));
     if (frozen) await thawWorld(b);
