@@ -3,6 +3,7 @@ import { verify } from "@node-rs/argon2";
 import { describe, expect, it } from "vitest";
 import type { DnsLookup } from "../lib/dns";
 import { fromDaemon, newlyFailed } from "./checks";
+import type { DaemonMailCheck } from "./daemon";
 import { buildRecords, dkimRecordValue, dnsStatusOf, generateDkimKey, hashMailPassword, judge, lookupRecords, nextSelector, toStored, verifyMailPassword, withStoredStatus, type RecordContext } from "./core";
 
 describe("mailwachtwoorden", () => {
@@ -116,7 +117,7 @@ describe("systeemcheck", () => {
       checks: [
         { id: "ptr", ok: false, required: true, detail: "x", hint: "set PTR" },
         { id: "clock", ok: false, required: false, detail: "1.5 s" },
-        { id: "something_new", ok: true, required: true, detail: "" },
+        { id: "something_new", ok: true, required: true, detail: "" } as unknown as DaemonMailCheck,
       ],
     });
     expect(r.checks.map((c) => c.id)).toEqual(["ptr", "clock"]);

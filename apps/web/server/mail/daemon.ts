@@ -1,53 +1,29 @@
 /**
  * Client voor `/api/mail/*` van de lokale daemon (zie INTERFACE van de mailmodule). Gebruikt de gewone
  * daemon-fetchlaag (DaemonClient: Bearer node-token, timeouts, DaemonUnreachableError/DaemonHttpError).
- *
- * TODO(mail): na de merge van de daemon-agent staan deze endpoints in packages/api/openapi.yaml; vervang de
- * lokaal gedefinieerde types hieronder dan door de gegenereerde (`DaemonSchemas["MailCheckReport"]` enz.).
+
+ * Types komen uit packages/api/openapi.yaml (gegenereerd).
  */
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { DaemonClient } from "../daemon";
 import { getEnv } from "../env";
 
-// ---------- TODO(mail): vervangen door DaemonSchemas[...] uit @panel/api ----------
-
-export interface DaemonMailCheckRequest {
-  mail_hostname: string;
-  public_ipv4?: string | null;
-  public_ipv6?: string | null;
-}
-export interface DaemonMailCheck {
-  id: string;
-  ok: boolean;
-  required: boolean;
-  detail: string;
-  hint?: string;
-  data?: Record<string, unknown>;
-}
-export interface DaemonMailCheckReport {
-  checked_at: string;
-  checks: DaemonMailCheck[];
-}
-export interface DaemonMailStatus {
-  enabled: boolean;
-  containers: Array<{ name: string; state: string; health?: string }>;
-  queue: { active: number; deferred: number; hold: number };
-  vmail_bytes?: number;
-}
-export interface DaemonMailQueueItem {
-  queue_id: string;
-  sender: string;
-  recipients: string[];
-  size: number;
-  arrival_time: string;
-  reason?: string;
-}
-export interface DaemonMailQuotaItem {
-  address: string;
-  used_bytes: number;
-  limit_bytes: number;
-}
+export type {
+  DaemonMailCheck,
+  DaemonMailCheckReport,
+  DaemonMailCheckRequest,
+  DaemonMailQueueItem,
+  DaemonMailQuotaItem,
+  DaemonMailStatus,
+} from "@panel/api";
+import type {
+  DaemonMailCheckReport,
+  DaemonMailCheckRequest,
+  DaemonMailQueueItem,
+  DaemonMailQuotaItem,
+  DaemonMailStatus,
+} from "@panel/api";
 
 // ---------- client ----------
 
