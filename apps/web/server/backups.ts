@@ -74,7 +74,7 @@ async function isOnline(b: ServerBundle): Promise<boolean> {
 }
 
 /** Zet autosave uit en schrijft alles weg, zodat de backup een consistente wereld ziet. Doet niets als de server uit staat. */
-async function freezeWorld(b: ServerBundle): Promise<boolean> {
+export async function freezeWorld(b: ServerBundle): Promise<boolean> {
   if (b.server.type !== "game" || !MINECRAFT_SLUGS.has(b.template.slug) || !(await isOnline(b))) return false;
   try {
     await daemonFor(b.node).sendCommands(b.server.uuid, ["save-off", "save-all flush"]);

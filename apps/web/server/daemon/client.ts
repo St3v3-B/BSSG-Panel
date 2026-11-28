@@ -32,6 +32,7 @@ export interface DaemonClientOptions {
 }
 
 const TRANSFER_TIMEOUT_MS = 4 * 60 * 60_000;
+const transferSignal = (extra?: AbortSignal) => (extra ? AbortSignal.any([AbortSignal.timeout(TRANSFER_TIMEOUT_MS), extra]) : AbortSignal.timeout(TRANSFER_TIMEOUT_MS));
 
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 
@@ -241,12 +242,12 @@ export class DaemonClient {
 
   // ---------- verplaatsen tussen nodes ----------
   /** Tar-stroom van de hele datamap (server moet gestopt zijn). De body moet volledig gelezen worden. */
-  async exportData(uuid: string): Promise<ReadableStream<Uint8Array>> {
+  async exportData(uuid: string, o: { live?: boolean; signal?: AbortSignal } = {}): Promise<ReadableStream<Uint8Array>> {
     let res: Response;
     try {
-      res = await fetch(`${this.baseUrl}/api/servers/${uuid}/transfer/export`, {
+      res = await fetch(`${this.baseUrl}/api/servers/${uuid}/transfer/export${o.live ? "?live=1" : ""}`, {
         headers: { authorization: `Bearer ${this.token}` },
-        signal: AbortSignal.timeout(TRANSFER_TIMEOUT_MS),
+        signal: transferSignal(o.signal),
         cache: "no-store",
       });
     } catch (e) {
@@ -256,7 +257,7 @@ export class DaemonClient {
     return res.body;
   }
   /** Pakt een tar-stroom uit in de datamap van de server. */
-  async importData(uuid: string, body: ReadableStream<Uint8Array>): Promise<void> {
+  async importData(uuid: string, body: ReadableStream<Uint8Array>, o: { signal?: AbortSignal } = {}): Promise<void> {
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}/api/servers/${uuid}/transfer/import`, {
@@ -265,7 +266,28 @@ export class DaemonClient {
         body,
         // @ts-expect-error duplex is verplicht voor een stream-body (Node/undici), ontbreekt in de DOM-types
         duplex: "half",
-        signal: AbortSignal.timeout(TRANSFER_TIMEOUT_MS),
+        signal: transferSignal(o.signal),
+        cache: "no-store",
+      });
+    } catch (e) {
+      throw new DaemonUnreachableError(this.nodeId, e);
+    }
+    if (!res.ok) throw await this.httpError(res);
+    await res.arrayBuffer().catch(() => undefined);
+  }
+
+  /**
+   * Kopie van de datamap van `sourceUuid` naar `uuid` op deze node (POST /transfer/copy); de data blijft op de node.
+   * Oudere daemons zonder dit pad: DaemonHttpError 404 met message "unknown path".
+   */
+  async copyData(uuid: string, sourceUuid: string, o: { live?: boolean; signal?: AbortSignal } = {}): Promise<void> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}/api/servers/${uuid}/transfer/copy`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${this.token}`, "content-type": "application/json" },
+        body: JSON.stringify({ source_uuid: sourceUuid, live: !!o.live }),
+        signal: transferSignal(o.signal),
         cache: "no-store",
       });
     } catch (e) {
@@ -365,12 +387,12 @@ export class DaemonClient {
     });
   }
   /** SQL-dump als stroom. */
-  async dbDump(name: string): Promise<ReadableStream<Uint8Array>> {
+  async dbDump(name: string, o: { signal?: AbortSignal } = {}): Promise<ReadableStream<Uint8Array>> {
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}/api/db/databases/${encodeURIComponent(name)}/dump`, {
         headers: { authorization: `Bearer ${this.token}` },
-        signal: AbortSignal.timeout(TRANSFER_TIMEOUT_MS),
+        signal: transferSignal(o.signal),
         cache: "no-store",
       });
     } catch (e) {
@@ -380,7 +402,7 @@ export class DaemonClient {
     return res.body;
   }
   /** Laadt een SQL-stroom in een bestaande (lege) database. */
-  async dbImport(name: string, body: ReadableStream<Uint8Array>): Promise<void> {
+  async dbImport(name: string, body: ReadableStream<Uint8Array>, o: { signal?: AbortSignal } = {}): Promise<void> {
     let res: Response;
     try {
       res = await fetch(`${this.baseUrl}/api/db/databases/${encodeURIComponent(name)}/import`, {
@@ -389,7 +411,7 @@ export class DaemonClient {
         body,
         // @ts-expect-error duplex is verplicht voor een stream-body (Node/undici), ontbreekt in de DOM-types
         duplex: "half",
-        signal: AbortSignal.timeout(TRANSFER_TIMEOUT_MS),
+        signal: transferSignal(o.signal),
         cache: "no-store",
       });
     } catch (e) {

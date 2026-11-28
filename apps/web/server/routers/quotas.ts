@@ -65,10 +65,10 @@ export async function lockQuota(tx: Tx, userId: number): Promise<QuotaRow | null
   return q ?? null;
 }
 
-const exceeded = (what: string) => new TRPCError({ code: "PRECONDITION_FAILED", message: `QUOTA_EXCEEDED: ${what}` });
+export const exceeded = (what: string) => new TRPCError({ code: "PRECONDITION_FAILED", message: `QUOTA_EXCEEDED: ${what}` });
 
 /** Controleert nieuwe totalen tegen het quotum; een resource die niet groeit mag altijd. */
-function checkLimits(q: QuotaRow, used: QuotaUsage, next: { ramMb: number; diskMb: number; cpuPct: number }, prev = { ramMb: 0, diskMb: 0, cpuPct: 0 }) {
+export function checkLimits(q: QuotaRow, used: QuotaUsage, next: { ramMb: number; diskMb: number; cpuPct: number }, prev = { ramMb: 0, diskMb: 0, cpuPct: 0 }) {
   if (next.ramMb > prev.ramMb && used.ramMb + next.ramMb > q.maxRamMb) throw exceeded("ram");
   if (next.diskMb > prev.diskMb && used.diskMb + next.diskMb > q.maxDiskMb) throw exceeded("disk");
   if (next.cpuPct > prev.cpuPct && used.cpuPct + next.cpuPct > q.maxCpuPct) throw exceeded("cpu");

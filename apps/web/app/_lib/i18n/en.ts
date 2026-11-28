@@ -1765,6 +1765,8 @@ export const en = {
       login_new_ip: "New sign-in from an unknown IP",
       node_offline: "Node offline (admin)",
       image_update: "Image update available (admin)",
+      usage_alarm: "Usage alarm (CPU, memory or disk)",
+      server_cloned: "Server copy ready or failed",
     },
     channels: { panel: "Panel", discord: "Discord", email: "E-mail" },
     prefsTitle: "Notifications",

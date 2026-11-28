@@ -30,6 +30,10 @@ export class FakeDaemon {
   diskFull = false;
   /** transfer/export geeft 500. */
   exportFails = false;
+  /** POST /transfer/copy bestaat niet (oudere daemon: 404 unknown path). */
+  copyUnsupported = false;
+  /** Wordt afgewacht vóór transfer/copy en transfer/import (om een lopende kopie te kunnen afbreken in tests). */
+  transferHold: (() => Promise<void>) | null = null;
   readonly routes = new Map<string, Record<string, unknown>>();
   /** Velocity-netwerken (PUT /api/servers/{proxy}/network): proxy-uuid → backend-uuids. */
   readonly proxyNetworks = new Map<string, string[]>();
@@ -147,6 +151,8 @@ export class FakeDaemon {
     this.proxyNetworkUnsupported = false;
     this.diskFull = false;
     this.exportFails = false;
+    this.copyUnsupported = false;
+    this.transferHold = null;
     this.dbs.clear();
     this.pmaUsers.clear();
     this.tunnelTarget = null;
@@ -283,17 +289,34 @@ export class FakeDaemon {
       else this.proxyNetworks.delete(proxy);
       return send(200, view());
     }
-    const tm = /^\/api\/servers\/([0-9a-f-]{36})\/transfer\/(export|import)$/.exec(path);
+    const tm = /^\/api\/servers\/([0-9a-f-]{36})\/transfer\/(export|import|copy)$/.exec(path);
     if (tm) {
       const s = this.servers.get(tm[1]!);
       if (!s) return send(404, { error: "not_found" });
-      if (s.state !== "offline" && s.state !== "install_failed") return send(409, { error: "invalid_state" });
+      const stopped = (st: string) => st === "offline" || st === "install_failed" || st === "sleeping";
+      const live = tm[2] === "export" && query.get("live") === "1";
+      if (!stopped(s.state) && !(live && s.state !== "installing")) return send(409, { error: "invalid_state" });
       const fs = this.fs(tm[1]!);
+      if (tm[2] === "copy") {
+        if (this.copyUnsupported) return send(404, { error: "not_found", message: "unknown path" });
+        const b = (body ?? {}) as { source_uuid?: string; live?: boolean };
+        const src = this.servers.get(b.source_uuid ?? "");
+        if (!src || b.source_uuid === tm[1]) return send(src ? 400 : 404, { error: src ? "bad_request" : "not_found" });
+        if (!stopped(src.state) && !(b.live && src.state !== "installing")) return send(409, { error: "invalid_state" });
+        if (this.exportFails) return send(500, { error: "internal", message: "copy kapot" });
+        if (this.diskFull) return send(507, { error: "disk_exceeded" });
+        if (this.transferHold) await this.transferHold();
+        const from = this.fs(b.source_uuid!);
+        for (const [p, c] of from.files) fs.files.set(p, c);
+        for (const d of from.dirs) fs.dirs.add(d);
+        return send(204);
+      }
       if (tm[2] === "export") {
         if (this.exportFails) return send(500, { error: "internal", message: "export kapot" });
         return send(200, new Raw(JSON.stringify({ files: [...fs.files], dirs: [...fs.dirs] })));
       }
       if (this.diskFull) return send(507, { error: "disk_exceeded" });
+      if (this.transferHold) await this.transferHold();
       const t = JSON.parse(raw) as { files: [string, string][]; dirs: string[] };
       for (const [p, c] of t.files) fs.files.set(p, c);
       for (const d of t.dirs) fs.dirs.add(d);
