@@ -21,6 +21,7 @@ import { statsTick } from "./stats-history";
 import { playerActivityTick } from "./player-activity";
 import { alarmsTick } from "./alarms";
 import { billingTick } from "./billing/core";
+import { mailTick } from "./mail/checks";
 
 type ScheduleRow = typeof schema.schedules.$inferSelect;
 export const TICK_MS = 15_000;
@@ -121,6 +122,7 @@ export async function tick(now: Date = new Date()): Promise<number> {
   if (!process.env.VITEST) await playerActivityTick(now).catch((e) => console.error("[scheduler] player activity:", e));
   // Na de stats: verbruiksalarmen op de verse metingen.
   if (!process.env.VITEST) await alarmsTick().catch((e) => console.error("[scheduler] alarms:", e));
+  if (!process.env.VITEST) await mailTick(now).catch((e) => console.error("[scheduler] mail:", e));
   if (!process.env.VITEST) {
     // Meldingen die nog (opnieuw) verstuurd moeten worden.
     await deliverDue().catch((e) => console.error("[scheduler] outbox:", e));

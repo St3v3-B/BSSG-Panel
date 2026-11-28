@@ -111,11 +111,19 @@ export const HOSTOPS = [
 ];
 /** Toegang voor ontwikkelaars: webterminal. */
 export const DEVACCESS = ["servers.terminalToken", "admin.servers.setTerminalAllowed"];
+/** Mailmodule (fase 1-3). */
+export const MAIL = [
+  "mail.status", "mail.checks.run", "mail.checks.last", "mail.enable", "mail.disable",
+  "mail.domains.list", "mail.domains.get", "mail.domains.create", "mail.domains.update", "mail.domains.delete", "mail.domains.dnsRecords", "mail.domains.checkDns", "mail.domains.rotateDkim", "mail.domains.applyDns",
+  "mail.mailboxes.list", "mail.mailboxes.create", "mail.mailboxes.update", "mail.mailboxes.setPassword", "mail.mailboxes.delete",
+  "mail.aliases.list", "mail.aliases.create", "mail.aliases.update", "mail.aliases.delete",
+  "mail.queue.list", "mail.queue.flush", "mail.queue.delete",
+];
 
 describe("dekking fase 1 + 2 + 3", () => {
   it("elke fase-1-procedure is geïmplementeerd en bestaat in het contract", () => {
     const contract = new Set(procedurePaths().map((p) => p.path));
-    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES, ...STATS, ...NOTIFY2, ...BILLING, ...PLAYERS, ...PLAYER_ACTIVITY, ...CLONE_ALARMS, ...HOSTOPS, ...DEVACCESS, ...DEPLOY, ...INCREMENTAL_BACKUPS, ...PUBLISH];
+    const all = [...PHASE1, ...PHASE2, ...PHASE3, ...PHASE4, ...AUTH_HARDENING, ...ADMIN2, ...QUOTA, ...CONTENT, ...APPS, ...NOTIFY, ...SITE_SETTINGS, ...NODE_JOIN, ...UPDATES, ...STATS, ...NOTIFY2, ...BILLING, ...PLAYERS, ...PLAYER_ACTIVITY, ...CLONE_ALARMS, ...HOSTOPS, ...DEVACCESS, ...DEPLOY, ...INCREMENTAL_BACKUPS, ...PUBLISH, ...MAIL];
     for (const p of all) expect(contract.has(p), p).toBe(true);
     expect(implementedPaths().sort()).toEqual(all.sort());
   });
