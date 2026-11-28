@@ -19,6 +19,8 @@ export function PermissionPicker({ value, onChange, idPrefix, disabled }: { valu
     // lezen hoort bij schrijven
     if (p === "files.write" && next.has("files.write")) next.add("files.read");
     if (p === "console.write" && next.has("console.write")) next.add("console.read");
+    // een shell kan alle bestanden lezen en schrijven
+    if (p === "terminal" && next.has("terminal")) (next.add("files.read"), next.add("files.write"));
     onChange(ALL_PERMISSIONS.filter((x) => next.has(x)));
   };
   return (

@@ -911,6 +911,10 @@ export interface operations {
                         /** Format: uuid */
                         server_uuid: string;
                         user_id: string;
+                        /**
+                         * @description Rechten van deze login op de server. `terminal` staat er alleen in als de admin de
+                         *     terminal globaal en voor deze server toestaat; dan mag de daemon een SSH-shell openen.
+                         */
                         permissions: string[];
                     };
                 };

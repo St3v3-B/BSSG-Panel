@@ -36,6 +36,8 @@ export interface BrowserJwtClaims {
   directory?: string;
   /** Alleen bij een archief-download (`/files/archive`): wat er ingepakt wordt. */
   archive?: { root: string; paths: string[]; format: "zip" | "tar.gz" };
+  /** Alleen bij de webterminal (`/terminal`): "terminal". Andere tokens worden daar geweigerd. */
+  purpose?: "terminal";
   jti: string;
   iat: number;
   exp: number;

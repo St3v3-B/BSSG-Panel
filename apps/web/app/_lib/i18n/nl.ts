@@ -328,6 +328,7 @@ export const nl: Dict = {
     "database.manage": { label: "Databases", hint: "Databases aanmaken en wachtwoorden zien" },
     "domain.manage": { label: "Domeinen", hint: "Domeinen koppelen en DNS controleren" },
     "schedule.manage": { label: "Schema's", hint: "Geplande taken beheren" },
+    terminal: { label: "Terminal (SSH)", hint: "Shell met volledige toegang tot de bestanden en de database" },
   },
   subusers: {
     ownerOnly: "Alleen de eigenaar van de server kan gebruikers toevoegen en rechten geven.",

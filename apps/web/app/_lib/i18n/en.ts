@@ -329,6 +329,7 @@ export const en = {
     "database.manage": { label: "Databases", hint: "Create databases and see passwords" },
     "domain.manage": { label: "Domains", hint: "Connect domains and check DNS" },
     "schedule.manage": { label: "Schedules", hint: "Manage scheduled tasks" },
+    terminal: { label: "Terminal (SSH)", hint: "Shell with full access to the files and the database" },
   },
   subusers: {
     ownerOnly: "Only the server owner can add users and grant permissions.",

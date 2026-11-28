@@ -19,7 +19,7 @@ export async function logActivity(a: ActivityInput): Promise<void> {
       action: a.action,
       userId: a.userId ?? null,
       serverId: a.serverId ?? null,
-      metadata: apiKeyOf(a.ctx) ? { ...a.metadata, method: "api_key", apiKeyId: apiKeyOf(a.ctx)!.id } : (a.metadata ?? {}),
+      metadata: apiKeyOf(a.ctx) ? { ...a.metadata, method: "api_key", apiKeyId: apiKeyOf(a.ctx)!.id, apiKeyName: apiKeyOf(a.ctx)!.name } : (a.metadata ?? {}),
       ip: a.ip ?? null,
     });
   } catch (e) {

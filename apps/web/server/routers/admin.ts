@@ -491,6 +491,12 @@ export const admin = {
       return ok;
     },
 
+    setTerminalAllowed: async ({ input, ctx }) => {
+      const b = await mustServer(input.uuid);
+      await getDb().update(schema.servers).set({ terminalAllowed: input.allowed }).where(eq(schema.servers.id, b.server.id));
+      await logActivity({ action: "admin.server.terminal", userId: uid(ctx), serverId: b.server.id, metadata: { allowed: input.allowed }, ip: ctx.ip, ctx });
+      return ok;
+    },
     setDomainsAllowed: async ({ input, ctx }) => {
       const b = await mustServer(input.uuid);
       if (b.server.type === "web") throw bad("NOT_A_GAME_SERVER");
@@ -753,6 +759,7 @@ export const admin = {
         pairs.push(["sleep_motd_promo", m.promo.trim()], ["sleep_motd_show_logo", m.showLogoIcon], ["sleep_motd_seed_logo", m.seedLogoIcon]);
       }
       if (input.activityRetentionDays !== undefined) pairs.push(["activity_retention_days", input.activityRetentionDays]);
+      if (input.terminalEnabled !== undefined) pairs.push(["terminal_enabled", input.terminalEnabled]);
       for (const [key, value] of pairs) {
         await getDb().insert(schema.settings).values({ key, value }).onConflictDoUpdate({ target: schema.settings.key, set: { value } });
       }

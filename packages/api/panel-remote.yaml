@@ -415,6 +415,9 @@ paths:
                   user_id: { type: string }
                   permissions:
                     type: array
+                    description: |
+                      Rechten van deze login op de server. `terminal` staat er alleen in als de admin de
+                      terminal globaal en voor deze server toestaat; dan mag de daemon een SSH-shell openen.
                     items: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403":
