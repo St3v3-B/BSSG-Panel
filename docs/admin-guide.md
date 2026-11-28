@@ -259,6 +259,10 @@ file from `TEMPLATES_DIR` is added when its slug is new and replaces the stored 
 when you change a template file, and keep in mind that a newer file version overwrites edits made in the editor. A template defines the image, the startup command (with `{{VARIABLES}}`),
 how to stop, the install script, config files the panel writes, user-editable variables and, for websites, the HTTP port.
 
+Allocations have a protocol (TCP, UDP or both, the default). Game templates can describe their ports (for example a UDP game port
+plus a Steam query port); then the template decides the protocol. Steam games (Valheim, Satisfactory, Palworld, Rust, CS2) and
+Terraria, their ports and what to open in the firewall: see [Steam games and Terraria](steam-games.md).
+
 ## Importing from Pterodactyl or Pelican
 
 **Admin, Import** brings users, servers and their files over from an existing Pterodactyl (1.x) or Pelican panel. The source is

@@ -230,6 +230,7 @@ The commented reference is [`deploy/panel.env.example`](deploy/panel.env.example
 | [Multi-node](docs/multi-node.md) | Join machines, transfer servers |
 | [Backups](docs/backups.md) | S3 targets, restores, schedules |
 | [Minecraft](docs/minecraft.md) | Sleep mode, Velocity, Bedrock, plugins and modpacks |
+| [Steam games and Terraria](docs/steam-games.md) | Valheim, Satisfactory, Palworld, Rust, CS2 and Terraria: ports (UDP), firewall, updates |
 | [Websites](docs/websites.md) | Domains and SSL, PHP, cron, apps, databases |
 | [Troubleshooting](docs/troubleshooting.md) | Logs and common problems |
 | [Building](docs/building.md) | Build from source on Ubuntu and Windows (WSL 2 or native) |
