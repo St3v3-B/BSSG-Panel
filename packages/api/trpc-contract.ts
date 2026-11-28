@@ -617,6 +617,73 @@ export const contract = {
     resume: mutation("user", byId, s.Subscription),
   },
 
+  /**
+   * Mailmodule (Postfix/Dovecot/Rspamd op de lokale node). Alles admin in deze ronde; `owner_user_id` staat alvast
+   * in het datamodel. Daemon-aanroepen gaan naar de lokale node; onbereikbaar → DAEMON_UNREACHABLE (behalve
+   * `status`, dat `reachable: false` geeft). Fouten: zie packages/api/mail-schemas.ts. Elke mutatie komt in het
+   * activiteitenlog (`admin.mail.<onderdeel>.<actie>`).
+   */
+  mail: {
+    status: query("admin", none, s.MailStatus),
+    checks: {
+      /** Draait de systeemcheck nu (daemon, ≤ 30 s) en bewaart het rapport. PRECONDITION_FAILED `MAIL_NOT_CONFIGURED`. */
+      run: mutation("admin", none, s.MailCheckReport),
+      /** Laatst bewaarde rapport (null = nooit). */
+      last: query("admin", none, s.MailCheckReport.nullable()),
+    },
+    /**
+     * Mailstack aanzetten. Gebruikt het laatste rapport als dat ≤ 1 uur oud is, anders eerst een nieuwe check;
+     * een rode verplichte check → PRECONDITION_FAILED `MAIL_CHECKS_FAILED`. MAIL_HOSTNAME leeg → `MAIL_NOT_CONFIGURED`.
+     */
+    enable: mutation("admin", none, s.Ok),
+    disable: mutation("admin", none, s.Ok),
+    domains: {
+      list: query("admin", none, z.array(s.MailDomain)),
+      get: query("admin", byId, s.MailDomainDetail),
+      /**
+       * Maakt het domein, een DKIM-sleutel (RSA-2048, selector `dkim`, naar de daemon) en de aliassen postmaster@ en
+       * abuse@ (naar `firstMailbox` als die meegegeven is, anders naar `postmasterTo`; geen van beide → BAD_REQUEST
+       * `MAIL_POSTMASTER_TARGET_REQUIRED`). Bestaat al → CONFLICT `MAIL_DOMAIN_EXISTS`.
+       */
+      create: mutation("admin", s.MailDomainCreateInput, s.MailDomainDetail),
+      /** Een lagere max_quota_mb/max_mailboxes dan nu in gebruik → PRECONDITION_FAILED `MAIL_DOMAIN_QUOTA` / `MAIL_MAILBOX_LIMIT`. */
+      update: mutation("admin", s.MailDomainUpdateInput, s.MailDomain),
+      /** Verwijdert domein, mailboxen (ook de Maildirs via de daemon), aliassen en DKIM. */
+      delete: mutation("admin", byId, s.Ok),
+      /** Te zetten records met de status van de laatste controle (geen live lookup). */
+      dnsRecords: query("admin", byId, s.MailDnsRecords),
+      /** Live controleren (1.1.1.1 + 8.8.8.8) en dns_status bijwerken. */
+      checkDns: mutation("admin", byId, s.MailDnsRecords),
+      /** Nieuwe DKIM-sleutel; `selector` weglaten = `dkim` + datum (yyyymmdd). Daarna moet het DKIM-record opnieuw. */
+      rotateDkim: mutation("admin", byId.extend({ selector: z.string().regex(/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/).optional() }), s.MailDnsRecords),
+      /**
+       * MX, SPF, DKIM en DMARC zetten via de Cloudflare-koppeling (alleen als een provider de zone beheert; anders
+       * PRECONDITION_FAILED `MAIL_NO_DNS_PROVIDER` of `MAIL_ZONE_NOT_FOUND`). Controleert daarna opnieuw.
+       */
+      applyDns: mutation("admin", byId, s.MailDnsRecords),
+    },
+    mailboxes: {
+      /** Met quotaverbruik van de daemon (best effort: onbereikbaar → usedBytes null). */
+      list: query("admin", z.object({ domainId: s.Id, search: z.string().trim().max(100).optional() }), z.array(s.MailMailbox)),
+      create: mutation("admin", s.MailMailboxCreateInput, s.MailMailbox),
+      update: mutation("admin", s.MailMailboxUpdateInput, s.MailMailbox),
+      setPassword: mutation("admin", byId.extend({ password: s.MailPassword }), s.Ok),
+      /** Verwijdert ook de Maildir (daemon). Aliassen die naar dit adres wezen blijven staan. */
+      delete: mutation("admin", byId, s.Ok),
+    },
+    aliases: {
+      list: query("admin", z.object({ domainId: s.Id }), z.array(s.MailAlias)),
+      create: mutation("admin", s.MailAliasCreateInput, s.MailAlias),
+      update: mutation("admin", s.MailAliasUpdateInput, s.MailAlias),
+      delete: mutation("admin", byId, s.Ok),
+    },
+    queue: {
+      list: query("admin", none, z.array(s.MailQueueItem)),
+      flush: mutation("admin", none, s.Ok),
+      delete: mutation("admin", z.object({ queueId: s.MailQueueId }), s.Ok),
+    },
+  },
+
   admin: {
     dashboard: query("admin", none, z.object({ nodes: z.array(s.NodeHealth), alerts: z.array(s.DashboardAlert), serverCount: z.number().int(), userCount: z.number().int() })),
 
