@@ -71,6 +71,10 @@ type Service struct {
 	DBImage string
 	// ProgressEvery is het interval van backup_progress (standaard 1 s).
 	ProgressEvery time.Duration
+	// ResticImage is de restic-image voor incrementele backups (standaard DefaultResticImage).
+	ResticImage string
+	// ResticLocalRepo (alleen tests): hostmap met per server een lokale repository in plaats van S3.
+	ResticLocalRepo string
 
 	mu   sync.Mutex
 	jobs map[string]*job

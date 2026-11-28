@@ -447,6 +447,11 @@ paths:
                 sha256: { type: [string, "null"] }
                 size_bytes: { type: [integer, "null"], format: int64 }
                 error: { type: [string, "null"], description: "`cancelled` als het panel de backup afbrak (POST .../cancel)" }
+                # Alleen incrementele backups (restic): in plaats van sha256.
+                snapshot_id: { type: [string, "null"], description: "restic-snapshot (64 hex)" }
+                added_bytes: { type: [integer, "null"], format: int64, description: "nieuw in de repository (gecomprimeerd); size_bytes = grootte van de snapshot" }
+                forgotten_snapshots: { type: array, items: { type: string }, description: "door het retentiebeleid verwijderde snapshots" }
+                pruned: { type: boolean, description: "restic prune is gedraaid" }
       responses:
         "204": { description: OK }
         "401": { $ref: "#/components/responses/Unauthorized" }

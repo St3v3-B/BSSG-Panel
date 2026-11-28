@@ -1057,6 +1057,106 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  # ---------- incrementele backups (restic) ----------
+  /api/servers/{uuid}/restic/backups:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [backups]
+      operationId: createResticBackup
+      summary: Incrementele backup (restic-snapshot) naar de repository van de server
+      description: |
+        restic draait in een kortlevende container (`panel.role=install`, naam `panel-<uuid>-restic-<hex>`, uid 1000,
+        geen capabilities, read-only rootfs, serverdata read-only op `/home/container`, netwerk `panel-site-<uuid>`).
+        Repository `s3:<endpoint>/<bucket>/restic/<uuid>` (bij de eerste backup aangemaakt). Dumps komen in de snapshot onder
+        `/_databases/{name}.sql`. Na de backup `restic forget` volgens `retention` (met `--prune` als `prune`).
+        Voortgang via `backup_progress` (preparing → dumping → archiving → finishing); resultaat via
+        `POST /api/remote/backups/{backup_id}` met `snapshot_id`. Eén backup/herstel tegelijk per server (ook met tar.zst);
+        een verweesde lock (afgebroken container) ruimt de daemon zelf op.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResticBackupRequest" }
+      responses:
+        "202": { description: Gestart }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/servers/{uuid}/restic/backups/{backup_id}/restore:
+    parameters:
+      - { $ref: "#/components/parameters/Uuid" }
+      - name: backup_id
+        in: path
+        required: true
+        schema: { type: integer }
+    post:
+      tags: [backups]
+      operationId: restoreResticBackup
+      summary: Snapshot terugzetten (heel, of losse paden naar hun plek of een submap)
+      description: |
+        Zonder `paths`: zoals het tar-herstel (server stoppen → `restic restore` naar een tijdelijke map → omwisselen →
+        databases); vóór het omwisselen afbreekbaar en de oude data blijft heel. Met `paths`: de server blijft draaien; de
+        paden (relatief aan /home/container, nooit erbuiten, ook niet via symlinks) worden overschreven op hun plek of in
+        `destination`. 507 `disk_exceeded` als de server al vol zit. Resultaat via `POST /api/remote/backups/{backup_id}/restore`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResticRestoreRequest" }
+      responses:
+        "202": { description: Gestart }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+
+  /api/servers/{uuid}/restic/ls:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [backups]
+      operationId: resticLs
+      summary: Eén map van een snapshot (niet recursief, zonder lock, hoogstens 5000 items)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResticLsRequest" }
+      responses:
+        "200":
+          description: OK (mappen eerst, dan op naam)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries, truncated]
+                properties:
+                  entries: { type: array, items: { $ref: "#/components/schemas/ResticEntry" } }
+                  truncated: { type: boolean }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/servers/{uuid}/restic/forget:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [backups]
+      operationId: resticForget
+      summary: Snapshots verwijderen (zonder prune; snapshots die al weg zijn tellen als verwijderd)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResticForgetRequest" }
+      responses:
+        "204": { description: Verwijderd }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /api/panel-upgrade/status:
     get:
       tags: [system]
@@ -1889,6 +1989,73 @@ components:
         access_key: { type: string }
         secret_key: { type: string }
         path_style: { type: boolean }
+
+    # ---------- incrementele backups (restic) ----------
+    ResticRepo:
+      type: object
+      required: [s3, password]
+      properties:
+        s3: { $ref: "#/components/schemas/S3Credentials" }
+        password: { type: string, minLength: 16, maxLength: 1024, description: "Repository-wachtwoord van de server (het panel bewaart het versleuteld); nooit in logs" }
+
+    ResticRetention:
+      type: object
+      required: [keep_last, keep_daily, keep_weekly]
+      description: "`restic forget --group-by ''` (alle snapshots van de server in één groep); 0 = regel niet gebruiken"
+      properties:
+        keep_last: { type: integer, minimum: 0, maximum: 1000 }
+        keep_daily: { type: integer, minimum: 0, maximum: 1000 }
+        keep_weekly: { type: integer, minimum: 0, maximum: 1000 }
+
+    ResticBackupRequest:
+      allOf:
+        - $ref: "#/components/schemas/ResticRepo"
+        - type: object
+          required: [backup_id, databases]
+          properties:
+            backup_id: { type: integer }
+            ignore: { type: array, items: { type: string }, description: "zoals BackupRequest.ignore (omgezet naar restic --exclude)" }
+            databases: { type: array, items: { $ref: "#/components/schemas/DatabaseCredentials" } }
+            retention: { oneOf: [{ $ref: "#/components/schemas/ResticRetention" }, { type: "null" }] }
+            prune: { type: boolean, description: "forget met --prune (het panel doet dat hooguit eens per dag)" }
+
+    ResticRestoreRequest:
+      allOf:
+        - $ref: "#/components/schemas/ResticRepo"
+        - type: object
+          required: [snapshot_id, databases]
+          properties:
+            snapshot_id: { type: string, pattern: "^[a-f0-9]{8,64}$" }
+            databases: { type: array, items: { $ref: "#/components/schemas/DatabaseCredentials" }, description: "alleen bij een volledig herstel" }
+            paths: { type: array, maxItems: 100, items: { type: string }, description: "leeg = de hele snapshot; anders paden relatief aan /home/container" }
+            destination: { type: string, description: "alleen met paths: submap (relatief) waarin de paden komen, bv. `restore-2026-11-28-1530`; leeg = oorspronkelijke plek" }
+
+    ResticLsRequest:
+      allOf:
+        - $ref: "#/components/schemas/ResticRepo"
+        - type: object
+          required: [snapshot_id, path]
+          properties:
+            snapshot_id: { type: string, pattern: "^[a-f0-9]{8,64}$" }
+            path: { type: string, description: "map relatief aan /home/container (`/` = de root)" }
+
+    ResticForgetRequest:
+      allOf:
+        - $ref: "#/components/schemas/ResticRepo"
+        - type: object
+          required: [snapshot_ids]
+          properties:
+            snapshot_ids: { type: array, minItems: 1, maxItems: 100, items: { type: string, pattern: "^[a-f0-9]{8,64}$" } }
+
+    ResticEntry:
+      type: object
+      required: [name, path, type, size, mtime]
+      properties:
+        name: { type: string }
+        path: { type: string, description: "relatief aan /home/container" }
+        type: { type: string, enum: [file, dir, symlink, other] }
+        size: { type: integer, format: int64 }
+        mtime: { type: string, format: date-time }
 
     DatabaseCredentials:
       type: object
