@@ -34,6 +34,12 @@ type Upstream struct {
 	Network string
 	// Port in de container.
 	Port int
+	// Dial: als gezet, levert Caddy rechtstreeks af op dit adres in plaats van
+	// Container:Port, met flush_interval -1 (streams en websockets). Vorm: "unix//pad"
+	// (absoluut pad, zoals Caddy het schrijft) of "host:poort". Network blijft leeg.
+	// Gebruikt voor de HTTP(S)-relay: routes van een andere node naar de relay-socket
+	// van de daemon (zie internal/relay).
+	Dial string
 }
 
 // DNSChallenge is nodig voor wildcard-certificaten.

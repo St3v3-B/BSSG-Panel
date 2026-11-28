@@ -337,7 +337,11 @@ export const contract = {
     /** Zet de records via de gekoppelde DNS-provider (Cloudflare). */
     applyDns: mutation("user", byId, s.DnsCheck),
     /** Voor het domeinscherm: het IP waar records naar moeten wijzen. */
-    target: query("user", server, z.object({ ip: z.string(), nodeFqdn: z.string() })),
+    /**
+     * ip: waar HTTP(S)-domeinen naar wijzen (bij een node achter een HTTP(S)-relay het IP van de relay-node).
+     * gameIp: waar Minecraft-domeinen (A + SRV) naar wijzen: altijd de node zelf. relayFqdn: de relay-node, anders null.
+     */
+    target: query("user", server, z.object({ ip: z.string(), nodeFqdn: z.string(), gameIp: z.string().optional(), relayFqdn: z.string().nullable().optional() })),
   },
 
   databases: {
@@ -469,6 +473,15 @@ export const contract = {
       /** De node haalt de huidige daemon-binary van het panel en herstart. */
       updateDaemon: mutation("admin", byId, s.Ok),
       uninstallCommand: query("admin", byId, z.object({ command: z.string() })),
+      /**
+       * HTTP(S)-relay: alle HTTP(S) van deze node (sites, domeinen, node-API, console) loopt via relayNodeId
+       * (null = eigen 80/443). Zet DNS-records via gekoppelde providers naar het nieuwe IP en meldt de rest in `dns`.
+       * Fouten: RELAY_NOT_ALLOWED (lokale node, relay zonder 80/443, relay die zelf via een relay loopt, of zichzelf),
+       * NODE_IS_RELAY (deze node is zelf relay voor andere nodes).
+       */
+      setHttpRelay: mutation("admin", byId.extend({ relayNodeId: s.Id.nullable() }), z.object({ node: s.Node, dns: z.array(s.RelayDnsRecord) })),
+      /** Relay-keuze, tunnelstatus (van beide kanten) en de DNS-records die naar de HTTP(S)-ingang moeten wijzen. */
+      relayStatus: query("admin", byId, s.NodeRelayStatus),
     },
 
     allocations: {

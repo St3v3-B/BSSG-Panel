@@ -10,7 +10,7 @@ export const users: s.UserPublic[] = [
 ];
 
 export const nodes: s.Node[] = [
-  { id: 1, name: "node1", fqdn: "node1.test", daemonPort: 8080, sftpPort: 2022, maxRamMb: 6144, maxDiskMb: 200_000, s3TargetId: 1, diskQuotaMode: "soft", isLocal: true, supportsDomains: true, publicPort: 443, publicIp: null, joinState: null },
+  { id: 1, name: "node1", fqdn: "node1.test", daemonPort: 8080, sftpPort: 2022, maxRamMb: 6144, maxDiskMb: 200_000, s3TargetId: 1, diskQuotaMode: "soft", isLocal: true, supportsDomains: true, publicPort: 443, publicIp: null, joinState: null, httpRelayNodeId: null },
 ];
 
 export const templates: s.TemplateDetail[] = [

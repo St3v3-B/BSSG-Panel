@@ -596,3 +596,29 @@ func (f fakeResolver) LookupIPAddr(_ context.Context, host string) ([]net.IPAddr
 	}
 	return out, nil
 }
+
+func TestDialUpstream(t *testing.T) {
+	ctx := context.Background()
+	f := newFakeAdmin(t)
+	c := newTestCaddy(t, f, CaddyOptions{})
+	if err := c.SetRoute(ctx, Route{Host: "relayed.test", Upstream: Upstream{Dial: "unix//run/panel/relay.sock", Container: "ignored", Network: "ignored", Port: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	js := mustJSON(f.find("panel-dyn-relayed.test"))
+	for _, want := range []string{`"dial":"unix//run/panel/relay.sock"`, `"flush_interval":-1`, `"stream_close_delay":3600000000000`, `502, 503, 504`} {
+		if !strings.Contains(js, want) {
+			t.Errorf("route mist %s: %s", want, js)
+		}
+	}
+	if strings.Contains(js, "panel_network") {
+		t.Errorf("dial-route koppelt geen netwerk: %s", js)
+	}
+	if err := c.SetRoute(ctx, Route{Host: "b.test", Upstream: Upstream{Dial: "127.0.0.1:8081"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range []string{"unix//run/panel/x sock", "unix/relative", "http://x", "a:b", `x:1"}`} {
+		if err := c.SetRoute(ctx, Route{Host: "c.test", Upstream: Upstream{Dial: d}}); err == nil {
+			t.Errorf("verwacht fout voor dial %q", d)
+		}
+	}
+}

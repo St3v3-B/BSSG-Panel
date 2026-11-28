@@ -58,6 +58,8 @@ export class FakeDaemon {
   private readonly tunnelSockets = new Set<Socket>();
   /** Antwoord van GET /players voor een server die online is. */
   players: { online: number | null; max: number | null; version: string | null } = { online: 2, max: 20, version: "Paper 1.21.4" };
+  /** Antwoord van GET /api/relay (HTTP(S)-relay). */
+  relayState: { http_mode: "direct" | "relay"; edge: Record<string, unknown> | null; clients: Array<Record<string, unknown>> } = { http_mode: "direct", edge: null, clients: [] };
   private server: Server | null = null;
   url = "";
 
@@ -158,6 +160,7 @@ export class FakeDaemon {
     this.mode = "ok";
     this.delayMs = 0;
     this.override = null;
+    this.relayState = { http_mode: "direct", edge: null, clients: [] };
   }
 
   private handleDb(kind: string, name: string | undefined, sub: string | undefined, r: RecordedRequest, query: URLSearchParams, raw: string, send: (status: number, b?: unknown) => void) {
@@ -226,6 +229,8 @@ export class FakeDaemon {
     const path = r.path.split("?")[0]!;
     const query = new URLSearchParams(r.path.split("?")[1] ?? "");
     if (r.method === "POST" && path === "/api/images/check") return send(202);
+    if (r.method === "GET" && path === "/api/relay") return send(200, query.get("ssl") === "1" ? this.relayState : { ...this.relayState, clients: this.relayState.clients.map(({ ssl: _ssl, ...c }) => c) });
+    if (r.method === "POST" && path === "/api/relay/refresh") return send(204);
     const pm = /^\/api\/db\/pma-users\/([^/]+)$/.exec(path);
     if (pm && r.method === "PUT") {
       const b = (body ?? {}) as { password?: string; databases?: string[] };

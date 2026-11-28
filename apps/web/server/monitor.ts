@@ -5,7 +5,8 @@
  * een node die dan al offline is opnieuw gemeld wordt).
  */
 import { and, eq, ne } from "drizzle-orm";
-import { call, daemonFor } from "./daemon";
+import { daemonFor } from "./daemon";
+import { sslStatuses } from "./relay";
 import { getDb, schema } from "./db";
 import { cfg, getNodeLive, isStale } from "./node-cache";
 import { notify, serverHookOf, targetForServer, type Target } from "./notify";
@@ -68,7 +69,8 @@ export async function checkNodes(probe: NodeProbe = defaultProbe): Promise<void>
 }
 
 type RouteStatuses = (n: NodeRow) => Promise<{ host: string; ssl_status: string }[]>;
-const defaultRoutes: RouteStatuses = (n) => call(() => daemonFor(n).routes(3000));
+// Bij een node achter een HTTP(S)-relay komen de certificaten (en dus de status) van de relay-node.
+const defaultRoutes: RouteStatuses = (n) => sslStatuses(n, 3000);
 
 /**
  * Werkt ssl_status van de webdomeinen bij met wat de daemon meldt en meldt de overgang naar

@@ -40,6 +40,30 @@ services:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
 
+  # Caddy voor een node waarvan het HTTP(S) via een andere node loopt (HTTP_MODE=relay, COMPOSE_PROFILES=caddy-relay):
+  # geen publieke poorten (80/443 mogen bezet zijn door andere software), geen certificaten. Luistert alleen op de unix-socket
+  # /run/panel/caddy-relay.sock zonder TLS; de daemon levert daar de sites af die via de tunnel van de relay-node binnenkomen
+  # (zie daemon/internal/relay). De dynamische routes zet de daemon zoals altijd via de admin-socket (server "panel").
+  # Hooguit één van de profielen caddy en caddy-relay tegelijk (zelfde containernaam).
+  caddy-relay:
+    image: caddy:2
+    container_name: ${CADDY_CONTAINER:-panel-caddy}
+    profiles: ["caddy-relay"]
+    restart: unless-stopped
+    labels: *labels
+    command: ["caddy", "run", "--config", "/etc/caddy/relay-client.json"]
+    volumes:
+      - ./caddy/relay-client.json:/etc/caddy/relay-client.json:ro
+      - caddy_config:/config
+      - type: bind
+        source: /run/panel
+        target: /run/panel
+        bind:
+          create_host_path: true
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
   # MariaDB voor de websites en databases op deze node (net als panel-mariadb in docker-compose.yml).
   # - Geen gepubliceerde poorten; 3306 alleen op het interne netwerk panel-db. De daemon koppelt sites met een
   #   database aan dit container (per site-netwerk) en beheert hem via `docker exec`: het rootwachtwoord

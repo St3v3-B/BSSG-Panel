@@ -10,6 +10,7 @@ import { call, daemonFor } from "../daemon";
 import { removeARecord } from "../lib/cloudflare";
 import { cloudflareFor, issueJoinCode, joinCommand, joinStatus, suggestFqdn, uninstallCommand } from "../join";
 import { nodeById, nodeOut, parsePorts } from "./admin";
+import { assertRelayCandidate, newRelaySecret, pokeRelay, relayStatus, setHttpRelay } from "../relay";
 
 type NodeRow = typeof schema.nodes.$inferSelect;
 const ok = { ok: true as const };
@@ -61,7 +62,16 @@ async function assertNoDomains(nodeId: number): Promise<void> {
 
 const RESERVED_PORTS = new Set([80, 22]);
 
-export const nodeMutations: Pick<Implementation["admin"]["nodes"], "create" | "update" | "delete" | "regenerateToken" | "createJoin" | "joinCommand" | "joinStatus" | "updateDaemon" | "uninstallCommand"> = {
+export const nodeMutations: Pick<Implementation["admin"]["nodes"], "create" | "update" | "delete" | "regenerateToken" | "createJoin" | "joinCommand" | "joinStatus" | "updateDaemon" | "uninstallCommand" | "setHttpRelay" | "relayStatus"> = {
+  setHttpRelay: async ({ input, ctx }) => {
+    const n = await nodeById(input.id);
+    const r = await setHttpRelay(n, input.relayNodeId);
+    await logActivity({ action: "admin.node.http_relay", userId: ctx.session!.userId, metadata: { id: n.id, from: r.previous, to: input.relayNodeId, dns: r.dns.map((d) => ({ name: d.name, value: d.value, applied: d.applied })) }, ip: ctx.ip, ctx });
+    return { node: nodeOut(r.node), dns: r.dns };
+  },
+
+  relayStatus: async ({ input }) => relayStatus(await nodeById(input.id)),
+
   createJoin: async ({ input, ctx }) => {
     const fqdn = (input.fqdn?.trim() || suggestFqdn(input.name)).toLowerCase();
     if (!/^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(fqdn)) throw new TRPCError({ code: "BAD_REQUEST", message: "INVALID_FQDN" });
@@ -69,6 +79,12 @@ export const nodeMutations: Pick<Implementation["admin"]["nodes"], "create" | "u
     if (!input.supportsDomains && (RESERVED_PORTS.has(publicPort) || publicPort === 443 || publicPort === input.daemonPort || publicPort === input.sftpPort)) throw new TRPCError({ code: "BAD_REQUEST", message: "INVALID_PUBLIC_PORT" });
     const ports = input.allocationPorts.trim();
     if (ports) parsePorts(ports);
+    const relayId = input.httpRelayNodeId ?? null;
+    if (relayId !== null) {
+      if (!input.supportsDomains) throw new TRPCError({ code: "BAD_REQUEST", message: "RELAY_NOT_ALLOWED: a node behind an HTTP(S) relay supports domains" });
+      const [a] = await getDb().select().from(schema.nodes).where(eq(schema.nodes.id, relayId));
+      assertRelayCandidate(a ?? null, null);
+    }
     const cf = await cloudflareFor(fqdn);
     if (!input.supportsDomains && !cf) throw new TRPCError({ code: "BAD_REQUEST", message: "NO_DNS_PROVIDER: a node without domain support gets its certificate through a connected Cloudflare zone that covers the node domain" });
     const t = newToken();
@@ -79,6 +95,7 @@ export const nodeMutations: Pick<Implementation["admin"]["nodes"], "create" | "u
         .values({
           name: input.name.trim(), fqdn, daemonPort: input.daemonPort, sftpPort: input.sftpPort, maxRamMb: input.maxRamMb, maxDiskMb: input.maxDiskMb, s3TargetId: input.s3TargetId,
           tokenHash: t.tokenHash, tokenEnc: t.tokenEnc, isLocal: false, supportsDomains: input.supportsDomains, publicPort,
+          httpRelayNodeId: relayId, relaySecretEnc: relayId !== null ? newRelaySecret() : null,
           joinState: "waiting", joinUpdatedAt: new Date(),
           joinOptions: { allocationIp: null, allocationPorts: ports, dnsMode: cf ? "cloudflare" : "manual", dnsDone: false, allocationsCreated: 0 },
         })
@@ -87,7 +104,9 @@ export const nodeMutations: Pick<Implementation["admin"]["nodes"], "create" | "u
       throw uniqueErr(e);
     }
     const { code, expiresAt } = await issueJoinCode(row.id);
-    await logActivity({ action: "admin.node.create", userId: ctx.session!.userId, metadata: { id: row.id, name: row.name, fqdn: row.fqdn, join: true, supportsDomains: row.supportsDomains }, ip: ctx.ip, ctx });
+    // De relay-node moet het node-domein al doorsturen voordat de node verbindt (certificaat, join-controle).
+    if (relayId !== null) void pokeRelay([relayId]);
+    await logActivity({ action: "admin.node.create", userId: ctx.session!.userId, metadata: { id: row.id, name: row.name, fqdn: row.fqdn, join: true, supportsDomains: row.supportsDomains, httpRelayNodeId: relayId }, ip: ctx.ip, ctx });
     return { node: nodeOut(row), joinCommand: joinCommand(code), expiresAt };
   },
 
@@ -134,6 +153,7 @@ export const nodeMutations: Pick<Implementation["admin"]["nodes"], "create" | "u
     const { id, ...rest } = input;
     const n = await nodeById(id);
     // De lokale node: fqdn en poorten komen bij elke start uit panel.env.
+    if (n.httpRelayNodeId && !rest.supportsDomains) throw new TRPCError({ code: "BAD_REQUEST", message: "RELAY_ACTIVE: switch the HTTP(S) relay off first" });
     if (!n.isLocal && n.supportsDomains && !rest.supportsDomains) await assertNoDomains(n.id);
     const publicPort = rest.supportsDomains ? 443 : rest.publicPort === 443 ? 8443 : rest.publicPort;
     const set = n.isLocal ? { name: rest.name, maxRamMb: rest.maxRamMb, maxDiskMb: rest.maxDiskMb, s3TargetId: rest.s3TargetId } : { ...rest, publicPort, fqdn: rest.fqdn.toLowerCase() };
@@ -153,6 +173,8 @@ export const nodeMutations: Pick<Implementation["admin"]["nodes"], "create" | "u
     if (n.isLocal) throw new TRPCError({ code: "FORBIDDEN", message: "LOCAL_NODE" });
     const [c] = await getDb().select({ n: count() }).from(schema.servers).where(eq(schema.servers.nodeId, n.id));
     if ((c?.n ?? 0) > 0) throw new TRPCError({ code: "CONFLICT", message: "NODE_HAS_SERVERS" });
+    const [client] = await getDb().select({ id: schema.nodes.id }).from(schema.nodes).where(eq(schema.nodes.httpRelayNodeId, n.id)).limit(1);
+    if (client) throw new TRPCError({ code: "CONFLICT", message: "NODE_IS_RELAY: other nodes relay their HTTP(S) through this node" });
     // Nette afmelding: het door het panel gemaakte A-record gaat weg; de rest (codes) verdwijnt met de rij.
     if (n.joinOptions?.dnsMode === "cloudflare") {
       try {
@@ -163,6 +185,7 @@ export const nodeMutations: Pick<Implementation["admin"]["nodes"], "create" | "u
       }
     }
     await getDb().delete(schema.nodes).where(eq(schema.nodes.id, n.id));
+    if (n.httpRelayNodeId) void pokeRelay([n.httpRelayNodeId]);
     await logActivity({ action: "admin.node.delete", userId: ctx.session!.userId, metadata: { id: n.id, name: n.name, fqdn: n.fqdn }, ip: ctx.ip, ctx });
     return ok;
   },

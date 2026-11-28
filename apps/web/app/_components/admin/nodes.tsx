@@ -19,6 +19,7 @@ import { Spinner } from "@/app/_components/ui/spinner";
 import { errorInfo, errorText } from "@/app/_lib/errors";
 import { formatBytes, formatMb } from "@/app/_lib/format";
 import { useT } from "@/app/_lib/i18n";
+import { NodeHttpRelay } from "./node-relay";
 
 /** Fouttekst; NOT_IMPLEMENTED (backend nog niet klaar) krijgt een eigen, rustige melding. */
 export function AdminError({ error }: { error: unknown }) {
@@ -72,7 +73,7 @@ export function TokenOnce({ title, token, installCommand, onDone }: { title: str
   );
 }
 
-const EMPTY = { name: "", fqdn: "", supportsDomains: true, publicPort: "8443", allocationPorts: "25565-25600", daemonPort: "8080", sftpPort: "2022", maxRamMb: "0", maxDiskMb: "0" };
+const EMPTY = { name: "", fqdn: "", supportsDomains: true, httpRelay: "", publicPort: "8443", allocationPorts: "25565-25600", daemonPort: "8080", sftpPort: "2022", maxRamMb: "0", maxDiskMb: "0" };
 
 export function NodesAdmin() {
   const t = useT();
@@ -92,6 +93,7 @@ export function NodesAdmin() {
   });
   const invalid = !form.name.trim() || (!!form.allocationPorts.trim() && !portsValid(form.allocationPorts));
   const num = (v: string) => Math.max(0, Math.trunc(Number(v) || 0));
+  const relayCandidates = (nodes.data ?? []).filter((x) => x.supportsDomains && x.publicPort === 443 && x.httpRelayNodeId === null);
   const suggestion = `${form.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "node"}.<panel domain>`;
 
   return (
@@ -131,6 +133,7 @@ export function NodesAdmin() {
                   fqdn: form.fqdn.trim() || undefined,
                   supportsDomains: form.supportsDomains,
                   publicPort: form.supportsDomains ? undefined : num(form.publicPort),
+                  httpRelayNodeId: form.supportsDomains && form.httpRelay ? Number(form.httpRelay) : null,
                   allocationPorts: form.allocationPorts.replace(/\s+/g, ""),
                   daemonPort: num(form.daemonPort),
                   sftpPort: num(form.sftpPort),
@@ -155,6 +158,18 @@ export function NodesAdmin() {
                 </label>
                 <p className="text-xs text-muted-foreground">{j.supportsHint}</p>
               </div>
+              {form.supportsDomains && relayCandidates.length > 0 && (
+                <Field id="node-httpRelay" label={n.relay.via} hint={n.relay.joinHint}>
+                  <Select id="node-httpRelay" value={form.httpRelay} onChange={(e) => setForm((f) => ({ ...f, httpRelay: e.target.value }))} data-testid="node-http-relay-select">
+                    <option value="">{n.relay.own}</option>
+                    {relayCandidates.map((c) => (
+                      <option key={c.id} value={String(c.id)}>
+                        {n.relay.viaNode(c.name, c.fqdn)}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              )}
               {!form.supportsDomains && (
                 <Field id="node-publicPort" label={j.publicPort} hint={j.publicPortHint}>
                   <Input id="node-publicPort" className="w-40" inputMode="numeric" value={form.publicPort} onChange={(e) => setForm((f) => ({ ...f, publicPort: e.target.value }))} />
@@ -208,7 +223,7 @@ export function NodesAdmin() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
           {nodes.data.map((node) => (
-            <NodeCard key={node.id} node={node} />
+            <NodeCard key={node.id} node={node} relayName={nodes.data.find((x) => x.id === node.httpRelayNodeId)?.name} />
           ))}
         </div>
       )}
@@ -311,7 +326,7 @@ export function JoinWizard({ nodeId, command, expiresAt }: { nodeId: number; com
   );
 }
 
-function NodeCard({ node }: { node: Node }) {
+function NodeCard({ node, relayName }: { node: Node; relayName?: string }) {
   const t = useT();
   const n = t.admin.nodes;
   return (
@@ -331,6 +346,7 @@ function NodeCard({ node }: { node: Node }) {
         <div className="flex gap-1.5">
           {node.isLocal && <Badge variant="info">{n.local}</Badge>}
           {!node.supportsDomains && <Badge variant="secondary">{n.join.noDomains}</Badge>}
+          {node.httpRelayNodeId !== null && <Badge variant="secondary" data-testid="node-relay-badge">{n.relay.badge(relayName ?? String(node.httpRelayNodeId))}</Badge>}
           {node.diskQuotaMode ? <Badge variant="secondary">{node.diskQuotaMode}</Badge> : <Badge variant="warning">{n.neverConnected}</Badge>}
         </div>
       </div>
@@ -407,7 +423,8 @@ export function NodeDetail({ id, onDeleted }: { id: number; onDeleted: () => voi
           </CardContent>
         </Card>
       )}
-      {!d.isLocal && <NodeDomainSupport node={d} />}
+      {!d.isLocal && d.httpRelayNodeId === null && <NodeDomainSupport node={d} />}
+      <NodeHttpRelay node={d} />
       <Card>
         <CardHeader>
           <CardTitle className="text-base">{n.health}</CardTitle>

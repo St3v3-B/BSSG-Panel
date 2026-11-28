@@ -674,8 +674,58 @@ export const Node = z.object({
   publicPort: z.number().int(),
   publicIp: z.string().nullable(),
   joinState: z.lazy(() => NodeJoinState).nullable(),
+  /** HTTP(S)-relay: null = eigen 80/443; anders loopt alle HTTP(S) (sites, domeinen, node-API) via deze node. */
+  httpRelayNodeId: Id.nullable(),
 });
 export type Node = z.infer<typeof Node>;
+
+/** Tunnel van een node via zijn relay-node, zoals de node hem zelf meldt. */
+export const NodeRelayTunnel = z.object({
+  connected: z.boolean(),
+  latencyMs: z.number().nullable(),
+  lastError: z.string().nullable(),
+  lastErrorAt: z.date().nullable(),
+  connectedAt: z.date().nullable(),
+  reconnects: z.number().int(),
+  /** HTTP_MODE van de node: "direct" = Caddy draait nog op 80/443 (omzetten op de node nodig). */
+  httpMode: z.enum(["direct", "relay"]).nullable(),
+  reportedAt: z.date(),
+});
+
+/** Een DNS-record dat naar de HTTP(S)-ingang van een node moet wijzen. */
+export const RelayDnsRecord = z.object({
+  name: z.string(),
+  type: z.literal("A"),
+  /** Het IP waar het record naar moet wijzen; null = onbekend. */
+  value: z.string().nullable(),
+  /** Kan het panel dit record via een gekoppelde DNS-provider zetten? */
+  managed: z.boolean(),
+  /** Bij setHttpRelay: gezet via de provider; null = niet geprobeerd. */
+  applied: z.boolean().nullable(),
+  error: z.string().nullable(),
+  /** Wijst het record (via 1.1.1.1/8.8.8.8) al naar value? null = niet gecontroleerd (wildcards, setHttpRelay). */
+  ok: z.boolean().nullable(),
+});
+export type RelayDnsRecord = z.infer<typeof RelayDnsRecord>;
+
+export const NodeRelayStatus = z.object({
+  relayNodeId: Id.nullable(),
+  /** Het IP waar de HTTP(S)-records van deze node naar moeten wijzen (eigen IP of dat van de relay-node). */
+  httpIp: z.string().nullable(),
+  /** Gemeld door deze node; null = nog niets gemeld. */
+  tunnel: NodeRelayTunnel.nullable(),
+  /** Live gezien vanaf de relay-node; null = relay-node niet bereikbaar of geen relay. */
+  edge: z.object({ connected: z.boolean(), latencyMs: z.number().nullable(), lastError: z.string().nullable(), hosts: z.array(z.string()) }).nullable(),
+  /** Records die naar httpIp moeten wijzen: het node-domein en de webdomeinen op deze node. */
+  dns: z.array(RelayDnsRecord),
+  /** Nodes die als relay kunnen dienen: eigen 80/443, zelf geen relay, niet deze node. */
+  candidates: z.array(z.object({ id: Id, name: z.string(), fqdn: z.string() })),
+  /** Nodes die via deze node lopen. */
+  clients: z.array(z.object({ id: Id, name: z.string(), fqdn: z.string() })),
+  /** Op de node (als root) uitvoeren om zijn Caddy in de juiste modus te zetten (relay: zonder 80/443); null voor de lokale node. */
+  modeCommand: z.string().nullable(),
+});
+export type NodeRelayStatus = z.infer<typeof NodeRelayStatus>;
 
 export const NodeJoinState = z.enum(["waiting", "docker", "download", "dns", "daemon", "certificate", "ready", "failed"]);
 export type NodeJoinState = z.infer<typeof NodeJoinState>;
@@ -695,6 +745,8 @@ export const NodeJoinInput = z.object({
   s3TargetId: Id.nullable().default(null),
   /** Standaard allocatiebereik op het publieke IP van de node, bijv. "25565-25600"; leeg = geen. */
   allocationPorts: z.string().max(100).default("25565-25600"),
+  /** HTTP(S) via deze node (die zelf 80/443 heeft): de nieuwe node heeft geen 80/443 nodig. Vereist supportsDomains. */
+  httpRelayNodeId: Id.nullable().default(null),
 });
 
 export const NodeJoinStatus = z.object({

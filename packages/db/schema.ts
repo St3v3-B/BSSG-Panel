@@ -22,6 +22,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
@@ -162,6 +163,15 @@ export const nodes = pgTable("nodes", {
   joinUpdatedAt: ts("join_updated_at"),
   /** Opties van de join (allocatiebereik, DNS-modus); null bij nodes die niet via join zijn gemaakt. */
   joinOptions: jsonb("join_options").$type<{ allocationIp: string | null; allocationPorts: string; dnsMode: "cloudflare" | "manual"; dnsDone: boolean; allocationsCreated: number }>(),
+  /**
+   * HTTP(S)-relay: null = eigen 80/443. Gezet = al het HTTP(S)-verkeer van deze node (sites, domeinen, node-API) loopt
+   * via de node met dit id (die zelf 80/443 heeft); DNS van de domeinen wijst naar die node. Gamepoorten en SFTP niet.
+   */
+  httpRelayNodeId: integer("http_relay_node_id").references((): AnyPgColumn => nodes.id, { onDelete: "restrict" }),
+  /** Gedeeld geheim van de tunnel naar de relay-node (versleuteld); nieuw bij elke relay-keuze. */
+  relaySecretEnc: text("relay_secret_enc"),
+  /** Laatste melding van de daemon over zijn tunnel (POST /api/remote/relay/status). */
+  relayStatus: jsonb("relay_status").$type<{ edgeNodeId: number; connected: boolean; latencyMs: number | null; lastError: string | null; lastErrorAt: string | null; connectedAt: string | null; reconnects: number; httpMode: "direct" | "relay" | null; reportedAt: string }>(),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex("nodes_one_local").on(t.isLocal).where(sql`${t.isLocal}`)]);
 

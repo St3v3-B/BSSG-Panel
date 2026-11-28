@@ -71,7 +71,7 @@ describe("admin: server beheren", () => {
       ...admin,
       patch: (m) => {
         const list = m.admin.nodes.list;
-        (m.admin.nodes as { list: unknown }).list = (async (o: never) => [...(await list(o)), { id: 2, name: "node2", fqdn: "node2.test", daemonPort: 8080, sftpPort: 2023, maxRamMb: 0, maxDiskMb: 0, s3TargetId: null, diskQuotaMode: "soft", isLocal: false, supportsDomains: true, publicPort: 443, publicIp: null, joinState: null }]) as never;
+        (m.admin.nodes as { list: unknown }).list = (async (o: never) => [...(await list(o)), { id: 2, name: "node2", fqdn: "node2.test", daemonPort: 8080, sftpPort: 2023, maxRamMb: 0, maxDiskMb: 0, s3TargetId: null, diskQuotaMode: "soft", isLocal: false, supportsDomains: true, publicPort: 443, publicIp: null, joinState: null, httpRelayNodeId: null }]) as never;
       },
     });
     const sel = (await screen.findByLabelText("Target node")) as HTMLSelectElement;

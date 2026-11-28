@@ -50,6 +50,10 @@ type Routes struct {
 
 	mu     sync.Mutex
 	routes map[string]Route
+	// extra: routes die niet van deze node zijn (HTTP(S)-relay voor andere nodes); bij Sync erbij.
+	extra func() []proxy.Route
+	// relayed: true als deze node via een HTTP(S)-relay loopt; de certificaten staan dan bij de relay-node.
+	relayed func() bool
 
 	refreshMu sync.Mutex
 }
@@ -147,14 +151,41 @@ func (r *Routes) toProxy(rt Route) (proxy.Route, bool) {
 	return pr, true
 }
 
+// SetRelayed: zolang fn true geeft, controleert withStatus geen TLS op deze node (de relay-node heeft de
+// certificaten; het panel vraagt de SSL-status daar op).
+func (r *Routes) SetRelayed(fn func() bool) {
+	r.mu.Lock()
+	r.relayed = fn
+	r.mu.Unlock()
+}
+
+// SetExtra zet de bron van routes voor andere nodes (relay). Eigen routes gaan voor bij gelijke host.
+func (r *Routes) SetExtra(fn func() []proxy.Route) {
+	r.mu.Lock()
+	r.extra = fn
+	r.mu.Unlock()
+}
+
 // All geeft de proxy-routes voor Sync.
 func (r *Routes) All() []proxy.Route {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	extra := r.extra
 	out := make([]proxy.Route, 0, len(r.routes))
 	for _, rt := range r.routes {
 		if pr, ok := r.toProxy(rt); ok {
 			out = append(out, pr)
+		}
+	}
+	r.mu.Unlock()
+	if extra != nil {
+		own := make(map[string]bool, len(out))
+		for _, pr := range out {
+			own[pr.Host] = true
+		}
+		for _, pr := range extra() {
+			if !own[pr.Host] {
+				out = append(out, pr)
+			}
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Host < out[j].Host })
@@ -192,6 +223,14 @@ func (r *Routes) withStatus(ctx context.Context, rt Route) RouteWithStatus {
 		rt.DNSChallenge = &DNSChallenge{Provider: rt.DNSChallenge.Provider}
 	}
 	out := RouteWithStatus{Route: rt, SSLStatus: string(proxy.SSLPending)}
+	r.mu.Lock()
+	relayed := r.relayed
+	r.mu.Unlock()
+	if relayed != nil && relayed() {
+		e := "certificate managed by the HTTP(S) relay node"
+		out.SSLError = &e
+		return out
+	}
 	st, err := r.router.Status(ctx, rt.Host)
 	switch {
 	case err == nil:

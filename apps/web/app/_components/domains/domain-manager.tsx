@@ -36,7 +36,13 @@ export function DomainManager({ uuid, isWeb = true }: { uuid: string; isWeb?: bo
       {target.data && (
         <p className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
           {t.domains.pointTo} <code className="font-mono text-foreground">{target.data.ip}</code>
-          <CopyButton value={target.data.ip} label={t.domains.copyIp} /> {t.domains.node(target.data.nodeFqdn)}
+          <CopyButton value={target.data.ip} label={t.domains.copyIp} /> {target.data.relayFqdn ? t.domains.viaRelay(target.data.nodeFqdn, target.data.relayFqdn) : t.domains.node(target.data.nodeFqdn)}
+          {target.data.gameIp && target.data.gameIp !== target.data.ip && !isWeb && (
+            <span data-testid="domain-game-ip">
+              {" "}
+              {t.domains.gameIp} <code className="font-mono text-foreground">{target.data.gameIp}</code>
+            </span>
+          )}
         </p>
       )}
       {domains.error ? (

@@ -335,3 +335,33 @@ type ImageUpdateResult struct {
 func (c *Client) ACMEDNS(ctx context.Context, action, value string) error {
 	return c.do(ctx, http.MethodPost, "/api/remote/acme/dns", map[string]string{"action": action, "value": value}, nil)
 }
+
+// RelayConfig haalt GET /api/remote/relay op en decodeert hem in out. Een leeg antwoord (204) of 404
+// (ouder panel) laat out ongewijzigd en geeft found=false.
+func (c *Client) RelayConfig(ctx context.Context, out any) (found bool, err error) {
+	var raw json.RawMessage
+	err = c.do(ctx, http.MethodGet, "/api/remote/relay", nil, &raw)
+	if se, ok := err.(*StatusError); ok && se.Code == http.StatusNotFound {
+		return false, nil
+	}
+	if err == io.EOF || (err == nil && len(raw) == 0) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, json.Unmarshal(raw, out)
+}
+
+// ReportRelay meldt de toestand van de relay-tunnel (POST /api/remote/relay/status); één poging, best effort.
+func (c *Client) ReportRelay(st any) {
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := c.do(ctx, http.MethodPost, "/api/remote/relay/status", st, nil); err != nil {
+			c.Log.Debug("relay status to panel failed", "err", err)
+		}
+	}()
+}

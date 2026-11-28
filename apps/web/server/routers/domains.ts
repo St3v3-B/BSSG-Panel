@@ -14,6 +14,7 @@ import { decrypt } from "../lib/crypto";
 import { CloudflareError, setARecord, setSrvRecord, zoneFor } from "../lib/cloudflare";
 import { checkDomain, checkMinecraftDomain, dns } from "../lib/dns";
 import { zonesOrThrow } from "./dns-providers";
+import { domainsChanged, httpEntry, httpIp, nodeIp, sslStatuses } from "../relay";
 import { isFullAdmin, requireServer, type ServerAccess } from "../servers-data";
 
 type DomainRow = typeof schema.domains.$inferSelect;
@@ -62,19 +63,11 @@ export function nameAllowed(name: string, d: Pick<DomainRow, "hostname" | "wildc
   return inZone && (name === d.hostname || (d.wildcard && name === `*.${d.hostname}`) || name === `_minecraft._tcp.${d.hostname}`);
 }
 
-/** IP waar de records naar moeten wijzen: NODE_PUBLIC_IP (lokale node) of het A-record van de node. */
-const ipCache = new Map<number, { ip: string; until: number }>();
-export async function nodeIp(node: NodeRef): Promise<string> {
-  const env = getEnv();
-  if (node.isLocal && env.NODE_PUBLIC_IP) return env.NODE_PUBLIC_IP;
-  const c = ipCache.get(node.id);
-  if (c && c.until > Date.now()) return c.ip;
-  const [ip] = await dns().a(node.fqdn);
-  if (!ip) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "NODE_IP_UNKNOWN: set NODE_PUBLIC_IP" });
-  ipCache.set(node.id, { ip, until: Date.now() + 10 * 60_000 });
-  return ip;
-}
-export const resetNodeIpCache = () => ipCache.clear();
+/**
+ * IP's: `nodeIp` = het directe IP van de node (gamepoorten, Minecraft A/SRV); `httpIp` = de HTTP(S)-ingang
+ * (webdomeinen): het IP van de relay-node als de node via een relay loopt, anders hetzelfde als nodeIp.
+ */
+export { httpIp, nodeIp, resetNodeIpCache } from "../relay";
 
 export const isMc = (d: Pick<DomainRow, "protocol">) => d.protocol === "minecraft";
 const primaryPort = (a: ServerAccess) => a.bundle.allocations[0]?.port ?? null;
@@ -96,7 +89,8 @@ export async function mcPort(d: Pick<DomainRow, "hostname">, a: ServerAccess): P
 }
 
 async function runCheck(d: DomainRow, a: ServerAccess): Promise<DnsCheck> {
-  const ip = await nodeIp(a.bundle.node);
+  // Minecraft gaat direct naar de node; HTTP(S) naar de ingang (relay-node of de node zelf).
+  const ip = isMc(d) ? await nodeIp(a.bundle.node) : await httpIp(a.bundle.node);
   const port = isMc(d) ? await mcPort(d, a) : null;
   const r = isMc(d) && port ? await checkMinecraftDomain(d.hostname, ip, port) : await checkDomain(d.hostname, ip);
   const checkedAt = new Date();
@@ -116,7 +110,7 @@ export const domains: Implementation["domains"] = {
     // SSL-status live uit de daemon; onbereikbaar → laatst bekende.
     if (rows.some((d) => !isMc(d))) {
       try {
-        const routes = await daemonFor(a.bundle.node).routes(2000);
+        const routes = await sslStatuses(a.bundle.node, 2000);
         const ssl = new Map(routes.map((r) => [r.host, r.ssl_status as SslStatus]));
         for (const d of rows.filter((d) => !isMc(d))) {
           const st = ssl.get(routeHost(d));
@@ -168,6 +162,8 @@ export const domains: Implementation["domains"] = {
       .insert(schema.domains)
       .values({ serverId: a.bundle.server.id, ...fields, sslStatus: (res?.ssl_status as SslStatus) ?? "pending" })
       .returning();
+    // Loopt de node via een relay, dan moet die de nieuwe hostnaam doorsturen (en het certificaat halen).
+    if (!mc) await domainsChanged(a.bundle.node);
     await logActivity({ action: "server.domain.add", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname, redirectTo: input.redirectTo, protocol: input.protocol }, ip: ctx.ip, ctx });
     return toDomain(row!, input.uuid);
   },
@@ -198,6 +194,7 @@ export const domains: Implementation["domains"] = {
       }
     }
     await getDb().delete(schema.domains).where(eq(schema.domains.id, d.id));
+    if (!isMc(d)) await domainsChanged(a.bundle.node);
     await logActivity({ action: "server.domain.remove", userId: ctx.session!.userId, serverId: a.bundle.server.id, metadata: { hostname: d.hostname }, ip: ctx.ip, ctx });
     return ok;
   },
@@ -235,7 +232,7 @@ export const domains: Implementation["domains"] = {
       zone = zoneFor(zones, d.hostname);
     }
     if (!zone) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "ZONE_NOT_FOUND" });
-    const ip = await nodeIp(a.bundle.node);
+    const ip = isMc(d) ? await nodeIp(a.bundle.node) : await httpIp(a.bundle.node);
     const names = d.wildcard ? [d.hostname, `*.${d.hostname}`] : [d.hostname];
     const srvName = `_minecraft._tcp.${d.hostname}`;
     // Alleen records met precies deze namen, in een zone die de hostnaam bevat.
@@ -255,7 +252,11 @@ export const domains: Implementation["domains"] = {
 
   target: async ({ input, ctx }) => {
     const a = await requireServer(ctx, input.uuid, "any");
-    return { ip: await nodeIp(a.bundle.node), nodeFqdn: a.bundle.node.fqdn };
+    // Websites/HTTP-domeinen: de HTTP(S)-ingang (bij een relay het IP van de relay-node); Minecraft direct.
+    const entry = await httpEntry(a.bundle.node);
+    const ip = await httpIp(a.bundle.node);
+    if (entry.id === a.bundle.node.id) return { ip, nodeFqdn: a.bundle.node.fqdn };
+    return { ip, nodeFqdn: a.bundle.node.fqdn, gameIp: await nodeIp(a.bundle.node).catch(() => undefined), relayFqdn: entry.fqdn };
   },
 };
 
@@ -263,4 +264,6 @@ export const domains: Implementation["domains"] = {
 export async function removeServerRoutes(serverId: number, node: NodeRef): Promise<void> {
   const rows = await getDb().select().from(schema.domains).where(eq(schema.domains.serverId, serverId));
   for (const d of rows.filter((d) => !isMc(d))) await daemonFor(node).deleteRoute(routeHost(d)).catch(() => {});
+  // De rijen gaan daarna weg met de server; de relay haalt de nieuwe set zelf binnen een minuut op.
+  if (rows.some((d) => !isMc(d))) void domainsChanged(node).catch(() => {});
 }

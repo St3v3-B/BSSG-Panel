@@ -1,0 +1,17 @@
+{
+  "admin": {"listen": "unix//run/panel/caddy-admin.sock"},
+  "apps": {
+    "http": {
+      "servers": {
+        "panel": {
+          "listen": ["unix//run/panel/caddy-relay.sock"],
+          "automatic_https": {"disable": true},
+          "trusted_proxies_unix": true,
+          "routes": [
+            {"@id": "relay-placeholder", "match": [{"host": ["relay.invalid"]}], "handle": [{"handler": "static_response", "status_code": 404}], "terminal": true}
+          ]
+        }
+      }
+    }
+  }
+}
