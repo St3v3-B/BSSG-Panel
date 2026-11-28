@@ -55,7 +55,7 @@ export function BedrockManager({ server }: { server: ServerDetail }) {
               <CardTitle className="text-base">{b.title}</CardTitle>
               <Badge variant={s.enabled ? "default" : "outline"} data-testid="bedrock-state">{s.enabled ? b.on : b.off}</Badge>
             </div>
-            <CardDescription>{bedrockPlatform(server.templateName.toLowerCase()) === "fabric" ? b.whatFabric : b.what}</CardDescription>
+            <CardDescription>{bedrockPlatform(server.templateSlug) === "fabric" ? b.whatFabric : b.what}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {s.enabled && address && (

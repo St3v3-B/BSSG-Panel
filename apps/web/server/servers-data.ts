@@ -84,6 +84,7 @@ export function toSummary(b: ServerBundle, viewerId: number, status?: ServerStat
     type: b.server.type,
     status: status ?? b.server.status,
     templateName: b.template.name,
+    templateSlug: b.template.slug,
     nodeName: b.node.name,
     primaryAddress: b.server.type === "web" ? (b.domains[0] ?? null) : primary ? `${primary.ip}:${primary.port}` : null,
     limits: limitsOf(b.server),

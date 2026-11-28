@@ -92,6 +92,9 @@ describe("FileManager: rechten", () => {
     expect(octal.value).toBe("744");
     expect(within(dialog).getByTestId("file-mode-string").textContent).toBe("rwxr--r--");
 
+    fireEvent.change(octal, { target: { value: "64" } });
+    fireEvent.blur(octal);
+    expect(within(dialog).getByText(/octale cijfers|octal digits/i)).toBeTruthy(); // zichtbaar zonder submit (Apply staat uit)
     fireEvent.change(octal, { target: { value: "4755" } });
     expect(within(dialog).getByTestId("chmod-special")).toBeTruthy();
     const apply = within(dialog).getByRole("button", { name: "Toepassen" }) as HTMLButtonElement;

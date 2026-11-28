@@ -229,6 +229,8 @@ export const ServerSummary = z.object({
   type: ServerType,
   status: ServerStatus,
   templateName: z.string(),
+  /** Slug van de template (bv. "paper"); voor logica in de UI, `templateName` is alleen weergave. */
+  templateSlug: z.string(),
   nodeName: z.string(),
   primaryAddress: z.string().nullable(), // "ip:poort" (game) of eerste domein (web)
   limits: Limits,

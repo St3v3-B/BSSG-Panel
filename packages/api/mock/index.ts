@@ -85,7 +85,7 @@ export function createMock(): Implementation {
   };
   const mockBedrock = (uuid: string) => {
     const x = srv(uuid);
-    const slug = x.templateName.toLowerCase();
+    const slug = x.templateSlug;
     const mode = slug === "velocity" ? ("proxy" as const) : ("standalone" as const);
     const a = db.allocations.find((a) => a.serverUuid === uuid && a.role === "bedrock");
     return {
@@ -222,7 +222,7 @@ export function createMock(): Implementation {
       const t = db.templates.find((x) => x.id === o.templateId) ?? notFound("template");
       const base = db.servers.find((x) => x.type === t.type) ?? db.servers[0]!;
       const uuid = crypto.randomUUID();
-      const x = { ...clone(base), uuid, shortId: uuid.slice(0, 8), name: o.name, ownerId: o.ownerId, owner: user(o.ownerId), templateName: t.name, status: "installing" as const, limits: o.limits, suspended: null };
+      const x = { ...clone(base), uuid, shortId: uuid.slice(0, 8), name: o.name, ownerId: o.ownerId, owner: user(o.ownerId), templateName: t.name, templateSlug: t.slug, status: "installing" as const, limits: o.limits, suspended: null };
       db.servers.push(x);
       return x;
     },
@@ -371,7 +371,7 @@ export function createMock(): Implementation {
       bedrock: ({ input }) => mockBedrock(input.uuid),
       setBedrock: ({ input }) => {
         const x = srv(input.uuid);
-        if (!bedrockPlatform(x.templateName.toLowerCase())) throw new TRPCError({ code: "BAD_REQUEST", message: "BEDROCK_NOT_SUPPORTED" });
+        if (!bedrockPlatform(x.templateSlug)) throw new TRPCError({ code: "BAD_REQUEST", message: "BEDROCK_NOT_SUPPORTED" });
         if (!input.enabled) {
           const a = db.allocations.find((a) => a.serverUuid === x.uuid && a.role === "bedrock");
           if (a) Object.assign(a, { serverUuid: null, role: "game" });
@@ -737,7 +737,7 @@ export function createMock(): Implementation {
           const allocs = input.allocationIds.map((aid) => db.allocations.find((a) => a.id === aid)).filter((a): a is s.Allocation => !!a);
           allocs.forEach((a, i) => Object.assign(a, { serverUuid: uuid, primary: i === 0 }));
           const x = {
-            uuid, shortId: uuid.slice(0, 8), name: input.name, type: t.type, status: "installing" as const, templateName: t.name, nodeName: "node1",
+            uuid, shortId: uuid.slice(0, 8), name: input.name, type: t.type, status: "installing" as const, templateName: t.name, templateSlug: t.slug, nodeName: "node1",
             primaryAddress: allocs[0] ? `${allocs[0].ip}:${allocs[0].port}` : null, limits: input.limits, isOwner: false, owner, ownerId: owner.id,
             permissions: [], allocations: allocs,
             variables: t.variables.map((v) => ({ ...v, value: input.variables[v.key] ?? v.default })),

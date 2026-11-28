@@ -48,7 +48,7 @@ export function ServerTabs({ server }: { server: ServerDetail }) {
   }, [pathname]);
   const hasFiles = server.type === "game" && server.permissions.includes("files.read");
   const info = trpc.content.info.useQuery({ uuid: server.uuid }, { enabled: hasFiles, staleTime: 5 * 60_000, retry: false });
-  const tabs = serverTabs({ ...server, content: info.data?.supported ? info.data.kind : null, bedrock: server.type === "game" && !!bedrockPlatform(server.templateName.toLowerCase()) });
+  const tabs = serverTabs({ ...server, content: info.data?.supported ? info.data.kind : null, bedrock: server.type === "game" && !!bedrockPlatform(server.templateSlug) });
   return (
     <nav ref={nav} className="scrollbar-none -mx-4 flex snap-x gap-1 overflow-x-auto border-b border-border px-4 sm:mx-0 sm:px-0" aria-label={t.server.tabsLabel}>
       {tabs.map((t) => {

@@ -110,6 +110,9 @@ const SPECIAL = [
 export function ModeEditor({ label, idPrefix, value, onChange, invalid }: { label?: string; idPrefix: string; value: string; onChange: (v: string) => void; invalid?: boolean }) {
   const t = useT();
   const octalLabel = label ? `${label}: ${t.files.chmodOctal}` : t.files.chmodOctal;
+  // Apply staat uit zolang de modus ongeldig is; toon de uitleg daarom al bij het verlaten van het veld.
+  const [blurred, setBlurred] = useState(false);
+  const showInvalid = invalid || (blurred && !isValidMode(value));
   return (
     <fieldset className="space-y-3">
       {label && <legend className="mb-2 text-sm font-medium">{label}</legend>}
@@ -122,13 +125,14 @@ export function ModeEditor({ label, idPrefix, value, onChange, invalid }: { labe
           maxLength={4}
           value={value}
           onChange={(e) => onChange(e.target.value.replace(/[^0-7]/g, ""))}
-          aria-invalid={invalid || undefined}
+          onBlur={() => setBlurred(true)}
+          aria-invalid={showInvalid || undefined}
         />
         <code className="text-sm text-muted-foreground" data-testid={`${idPrefix}-mode-string`}>
           {modeToString(value)}
         </code>
       </div>
-      {invalid && <p className="text-xs text-destructive">{t.files.chmodInvalid}</p>}
+      {showInvalid && <p className="text-xs text-destructive">{t.files.chmodInvalid}</p>}
       <table className="text-sm">
         <thead>
           <tr className="text-xs text-muted-foreground">
