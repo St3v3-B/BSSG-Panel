@@ -15,6 +15,7 @@ import * as data from "./data";
 import { mockHistory, mockSparkline } from "./stats";
 import { createNotifyMock } from "./notify";
 import { createBillingMock } from "./billing";
+import { createCloneMock } from "./clone";
 
 const MOCK_HITS: s.ContentHit[] = [
   { source: "modrinth", projectId: "fabric-api", name: "Fabric API", description: "Core API for Fabric mods", author: "modmuss50", downloads: 100000000, iconUrl: null, url: "https://modrinth.com/mod/fabric-api" },
@@ -227,6 +228,18 @@ export function createMock(): Implementation {
       return x;
     },
   });
+  const cm = createCloneMock({
+    servers: () => db.servers,
+    addServer: (from, o) => {
+      const base = db.servers.find((x) => x.uuid === from.uuid)!;
+      db.servers.push({ ...clone(base), uuid: o.uuid, shortId: o.uuid.slice(0, 8), name: o.name, ownerId: o.ownerId, owner: user(o.ownerId), status: "installing" as const, limits: o.limits, suspended: null });
+    },
+    removeServer: (uuid) => void (db.servers = db.servers.filter((x) => x.uuid !== uuid)),
+    user,
+    id,
+    freeAllocations: () => db.allocations.filter((a) => a.serverUuid === null).length,
+    quota: overview,
+  });
   return {
     auth: {
       me: ({ ctx }) => (ctx.session ? me(ctx.session) : null),
@@ -410,6 +423,7 @@ export function createMock(): Implementation {
           ],
         };
       },
+      ...cm.servers,
     },
     content: {
       info: ({ input }) => {
@@ -625,6 +639,7 @@ export function createMock(): Implementation {
     billing: billing.user,
     admin: {
       ...billing.admin,
+      ...cm.admin,
       dashboard: () => ({
         nodes: db.nodes.map(nodeHealth),
         alerts: [{ kind: "install_failed", message: "Installation of blokgenoten.test is still running", at: new Date(), serverUuid: data.servers[2]!.uuid, nodeId: 1 }],

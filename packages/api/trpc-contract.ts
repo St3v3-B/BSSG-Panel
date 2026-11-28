@@ -237,6 +237,29 @@ export const contract = {
       }),
       s.NetworkUpdateResult,
     ),
+    /** Dupliceren: wat de kopie krijgt en wat kan (eigenaar of volledige admin, geen API-sleutel). */
+    cloneOptions: query("user", server, s.CloneOptions),
+    /**
+     * Server dupliceren (eigenaar of volledige admin, geen API-sleutel): nieuwe server met dezelfde template,
+     * variabelen en limieten, nieuwe poorten (game) en zonder domeinen (web; optioneel `domain`), en een kopie
+     * van de bestanden (zelfde node: lokaal in de daemon; andere node: via het panel, zoals verplaatsen).
+     * Een draaiende bron blijft draaien (Minecraft: save-off tijdens het kopiëren). Loopt op de achtergrond;
+     * `cloneJob` geeft de voortgang. Gebruikers: binnen hun quotum (FORBIDDEN `NO_QUOTA`, PRECONDITION_FAILED
+     * `QUOTA_EXCEEDED: <resource>`, `NO_FREE_ALLOCATIONS`); alleen admins kiezen `ownerId`/`nodeId`/`allocationIds`
+     * (anders FORBIDDEN `ADMIN_ONLY`). Eén kopie tegelijk per bron (CONFLICT `CLONE_IN_PROGRESS`).
+     * Gekopieerde databases krijgen een nieuwe naam en gebruiker; configbestanden worden NIET aangepast.
+     */
+    clone: mutation("user", server.extend(s.CloneInput.shape), s.CloneJob),
+    /** Voortgang; wie de bron of het doel mag beheren. */
+    cloneJob: query("user", byId, s.CloneJob),
+    /** Kopieeropdrachten waar deze server bron of doel van is (nieuwste eerst, max 10). */
+    clones: query("user", server, z.array(s.CloneJob)),
+    /** Lopende kopie afbreken; de half gemaakte server en databases worden verwijderd. CONFLICT `CLONE_NOT_RUNNING`. */
+    cancelClone: mutation("user", byId, s.Ok),
+    /** Verbruiksalarmen van de server (eigenaar of volledige admin). */
+    alarms: query("user", server, s.ServerAlarms),
+    /** `config: null` = de standaard van de admin gebruiken. `notifyOffline` = crashmelding aan/uit. */
+    updateAlarms: mutation("user", server.extend({ config: s.AlarmConfig.nullable(), notifyOffline: z.boolean() }), s.ServerAlarms),
   },
 
   files: {
@@ -672,6 +695,13 @@ export const contract = {
     billing: {
       get: query("admin", none, s.BillingSettings),
       update: mutation("admin", s.BillingSettingsInput, s.BillingSettings),
+    },
+
+    /** Verbruiksalarmen: standaard voor servers zonder eigen instelling, en wat er nu actief is. */
+    alarms: {
+      defaults: query("admin", none, s.AlarmDefaults),
+      setDefaults: mutation("admin", s.AlarmDefaults, s.AlarmDefaults),
+      active: query("admin", none, z.array(s.ActiveAlarm)),
     },
 
     settings: {

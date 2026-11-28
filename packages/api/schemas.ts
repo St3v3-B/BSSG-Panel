@@ -1154,6 +1154,8 @@ export const NotificationEvent = z.enum([
   "login_new_ip",
   "node_offline",
   "image_update",
+  "usage_alarm",
+  "server_cloned",
 ]);
 export type NotificationEvent = z.infer<typeof NotificationEvent>;
 export const ADMIN_NOTIFICATION_EVENTS: readonly NotificationEvent[] = ["node_offline", "image_update"];
@@ -1177,6 +1179,8 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   login_new_ip: { panel: true, discord: false, email: true },
   node_offline: { panel: true, discord: true, email: true },
   image_update: { panel: true, discord: false, email: false },
+  usage_alarm: { panel: true, discord: true, email: false },
+  server_cloned: { panel: true, discord: false, email: false },
 };
 
 export const EmailAddress = z.string().trim().toLowerCase().max(254).pipe(z.email());
@@ -1304,5 +1308,115 @@ export const PublicStatus = z.object({
   updatedAt: z.date(),
 });
 export type PublicStatus = z.infer<typeof PublicStatus>;
+// ---------- server dupliceren ----------
+
+export const CloneStepKey = z.enum(["create", "files", "databases", "domain", "finish"]);
+export type CloneStepKey = z.infer<typeof CloneStepKey>;
+export const CloneStepStatus = z.enum(["pending", "running", "done", "failed", "skipped"]);
+export const CloneStatus = z.enum(["running", "succeeded", "failed", "canceled"]);
+export type CloneStatus = z.infer<typeof CloneStatus>;
+export const CloneJob = z.object({
+  id: Id,
+  status: CloneStatus,
+  /** `exists: false` = die server is (inmiddels) verwijderd. */
+  source: z.object({ uuid: Uuid, name: z.string(), exists: z.boolean() }),
+  target: z.object({ uuid: Uuid, name: z.string(), exists: z.boolean() }),
+  steps: z.array(z.object({ key: CloneStepKey, status: CloneStepStatus })),
+  /** Zelfde node: de daemon kopieert lokaal; anders via het panel (zoals verplaatsen). */
+  sameNode: z.boolean(),
+  /** De bron draaide tijdens het kopiëren (Minecraft: wereld bevroren met save-off). */
+  live: z.boolean(),
+  bytesCopied: z.number().int(),
+  /** Laatst gemeten schijfgebruik van de bron (schatting); null = onbekend. */
+  bytesTotal: z.number().int().nullable(),
+  /** Gekopieerde databases: oude naam → nieuwe naam + gebruiker. Configbestanden wijzen nog naar de oude! */
+  databases: z.array(z.object({ from: z.string(), to: z.string(), username: z.string() })),
+  domain: z.string().nullable(),
+  warnings: z.array(z.string()),
+  errorCode: z.string().nullable(),
+  error: z.string().nullable(),
+  startedAt: z.date(),
+  finishedAt: z.date().nullable(),
+});
+export type CloneJob = z.infer<typeof CloneJob>;
+
+/** Wat het dupliceerformulier moet weten over de bron (servers.cloneOptions). */
+export const CloneOptions = z.object({
+  type: ServerType,
+  limits: Limits,
+  /** Aantal poorten dat de kopie krijgt (game; Bedrock telt mee). */
+  ports: z.number().int(),
+  /** Databases van de bron; `copyable` = op een door de daemon beheerde MariaDB (dump/restore kan). */
+  databases: z.array(z.object({ name: z.string(), copyable: z.boolean() })),
+  /** Quotum van de eigenaar (gebruikers) met wat er nog vrij is; null voor admins of zonder quotum. */
+  quota: z.object({ ramMb: z.number().int(), diskMb: z.number().int(), cpuPct: z.number().int(), servers: z.number().int(), databases: z.number().int() }).nullable(),
+  /** Gebruiker zonder quotum kan niet dupliceren (FORBIDDEN NO_QUOTA). */
+  allowed: z.boolean(),
+  /** Admin: mag eigenaar en node kiezen. */
+  isAdmin: z.boolean(),
+  /** Vrije allocations op de node van de bron. */
+  freeAllocations: z.number().int(),
+  /** Waarschuwingen die vooraf al vaststaan (Velocity-netwerk, Bedrock, …), als codes. */
+  notes: z.array(z.enum(["proxy_members_not_cloned", "backend_not_in_network", "bedrock_new_port", "live_copy", "domains_not_cloned", "subusers_not_cloned", "external_databases"])),
+  /** Lopende kopie van deze bron (dan kan er geen tweede bij). */
+  running: CloneJob.nullable(),
+});
+export type CloneOptions = z.infer<typeof CloneOptions>;
+
+export const CloneInput = z.object({
+  name: z.string().trim().min(1).max(100),
+  /** Weggelaten = dezelfde limieten als de bron (gebruikers: binnen het quotum). */
+  limits: OwnLimits.optional(),
+  /** Databases op de MariaDB van de node meekopiëren naar nieuwe databases met nieuwe gebruikers. */
+  copyDatabases: z.boolean().default(false),
+  /** Alleen websites: meteen dit (nieuwe) domein koppelen. */
+  domain: Hostname.nullable().default(null),
+  /** Na het kopiëren starten. */
+  startAfter: z.boolean().default(false),
+  /** Alleen admins: andere eigenaar / node / allocations (eerste = primair). */
+  ownerId: Id.optional(),
+  nodeId: Id.optional(),
+  allocationIds: z.array(Id).optional(),
+});
+
+// ---------- verbruiksalarmen ----------
+
+export const AlarmMetric = z.enum(["cpu", "ram", "disk"]);
+export type AlarmMetric = z.infer<typeof AlarmMetric>;
+const AlarmPct = z.number().int().min(10).max(100);
+/** Drempels in procent van de limiet van de server; null = dat alarm uit. CPU en RAM moeten `durationMinutes` aanhouden. */
+export const AlarmConfig = z.object({
+  enabled: z.boolean(),
+  cpuPct: AlarmPct.nullable(),
+  ramPct: AlarmPct.nullable(),
+  durationMinutes: z.number().int().min(1).max(120),
+  diskPct: AlarmPct.nullable(),
+});
+export type AlarmConfig = z.infer<typeof AlarmConfig>;
+/** Standaard voor servers zonder eigen instelling, plus de cooldown (geldt voor alle servers). */
+export const AlarmDefaults = AlarmConfig.extend({ cooldownMinutes: z.number().int().min(5).max(1440) });
+export type AlarmDefaults = z.infer<typeof AlarmDefaults>;
+export const ActiveAlarm = z.object({
+  server: z.object({ uuid: Uuid, name: z.string() }),
+  owner: UserPublic,
+  metric: AlarmMetric,
+  /** Laatst gemeten waarde in procent van de limiet. */
+  valuePct: z.number(),
+  thresholdPct: z.number().int(),
+  since: z.date(),
+});
+export type ActiveAlarm = z.infer<typeof ActiveAlarm>;
+export const ServerAlarms = z.object({
+  /** true = geen eigen instelling, de standaard van de admin geldt. */
+  useDefaults: z.boolean(),
+  /** Wat nu geldt (eigen of standaard). */
+  config: AlarmConfig,
+  defaults: AlarmDefaults,
+  /** Crashmelding (server_crashed) voor deze server; staat los van de drempels. */
+  notifyOffline: z.boolean(),
+  active: z.array(ActiveAlarm.omit({ server: true, owner: true })),
+});
+export type ServerAlarms = z.infer<typeof ServerAlarms>;
+
 // ---------- pakketten en facturatie ----------
 export * from "./billing-schemas";
