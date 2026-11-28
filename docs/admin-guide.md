@@ -34,6 +34,9 @@ Then sign in with Discord, enable 2FA under **Account**, open **Admin, Nodes**, 
 server. Requirements, all options (`--non-interactive`, `--dry-run`, `--daemon-bin`) and the configuration variables are in
 [installation.md](installation.md).
 
+Optional: an own mail server (Postfix, Dovecot, Rspamd, ClamAV) on the panel machine, off by default. Requirements,
+DNS, ports and troubleshooting: [mail.md](mail.md) (Dutch).
+
 ## The admin area
 
 The admin area lives under `/admin`. It is only reachable for accounts that are in the admin list **and**
