@@ -1,0 +1,38 @@
+schema: 1
+slug: fabric
+name: Fabric
+description: Alpine-nep met slug fabric, zodat de Mods- en Bedrock-tab (Fabric) verschijnen. Alleen e2e.
+type: game
+version: 1
+image: alpine:3.20
+startup: 'echo ready; while read -r c; do [ "$c" = stop ] && exit 0; sh -c "$c"; done'
+stop:
+  type: command
+  value: stop
+ready_pattern: "^ready$"
+variables:
+  - key: MINECRAFT_VERSION
+    name: Minecraft version
+    description: e2e
+    default: "1.21.4"
+    user_editable: true
+    pattern: "^[0-9a-z.-]+$"
+  - key: VELOCITY_FORWARDING
+    name: Velocity forwarding
+    description: e2e
+    default: "false"
+    user_editable: true
+    pattern: "^(true|false)$"
+  - key: VELOCITY_SECRET
+    name: Velocity secret
+    description: e2e
+    default: ""
+    user_editable: true
+    pattern: "^[A-Za-z0-9_-]*$"
+install:
+  image: alpine:3.20
+  script: |
+    #!/bin/sh
+    mkdir -p /home/container/mods
+    echo hallo > /home/container/readme.txt
+config_files: []

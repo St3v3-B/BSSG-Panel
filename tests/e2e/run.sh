@@ -6,6 +6,9 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
 IT_KIND=e2e
+# phpMyAdmin-koppeling aan (de spec start zelf een phpMyAdmin-container uit deploy/phpmyadmin, zie fakes.ts).
+export PMA_SHARED_SECRET=$(openssl rand -hex 32)
+export PMA_BLOWFISH_SECRET=$(openssl rand -hex 32)
 source "$root/tests/lib/env.sh"
 daemon_pid=""
 cleanup_all() {
@@ -21,6 +24,13 @@ export PLAYWRIGHT_BROWSERS_PATH="$root/tests/e2e/.browsers"
 export LD_LIBRARY_PATH="$root/tests/e2e/.libs/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 if ldd "$PLAYWRIGHT_BROWSERS_PATH"/chromium_headless_shell-*/*/chrome-headless-shell | grep -q 'not found'; then
   bash tests/e2e/setup-libs.sh
+fi
+
+echo "== phpMyAdmin-image (deploy/phpmyadmin) bouwen"
+if docker build -q --label panel.test=true -t panel-phpmyadmin:e2e deploy/phpmyadmin >"$work/pma-build.log" 2>&1; then
+  export IT_PMA_IMAGE=panel-phpmyadmin:e2e
+else
+  echo "phpMyAdmin-image niet gebouwd (zie $work/pma-build.log): de phpMyAdmin-spec wordt overgeslagen"
 fi
 
 echo "== daemon starten"
