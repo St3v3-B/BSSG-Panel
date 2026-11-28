@@ -142,6 +142,7 @@ func (a *API) Handler() http.Handler {
 	mux.Handle("POST /api/servers/{uuid}/files/chmod", p(a.withServer(a.chmodFiles)))
 	mux.Handle("GET /api/servers/{uuid}/transfer/export", p(a.withServer(a.exportData)))
 	mux.Handle("PUT /api/servers/{uuid}/transfer/import", p(a.withServer(a.importData)))
+	mux.Handle("POST /api/servers/{uuid}/transfer/copy", p(a.withServer(a.copyData)))
 	mux.HandleFunc("POST /api/servers/{uuid}/files/upload", a.cors(a.upload))
 	mux.HandleFunc("GET /api/servers/{uuid}/files/download", a.cors(a.download))
 	mux.HandleFunc("OPTIONS /api/servers/{uuid}/files/upload", a.cors(preflight))

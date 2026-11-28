@@ -754,6 +754,10 @@ paths:
         blijven symlinks, speciale bestanden worden overgeslagen). De server moet gestopt zijn
         (`offline`, `sleeping` of `install_failed`), anders 409 `invalid_state`. Alleen met het node-token;
         het panel stuurt de stroom door naar `importServerData` van de doelnode.
+        Met `live=1` (kopie maken) mag de server ook draaien (niet `installing`); het panel bevriest de
+        wereld zelf als dat nodig is. Een bestand dat tijdens het lezen krimpt breekt de stroom af.
+      parameters:
+        - { name: live, in: query, required: false, schema: { type: string, enum: ["0", "1"] } }
       responses:
         "200":
           description: tar-stroom
@@ -782,6 +786,35 @@ paths:
             schema: { type: string, format: binary }
       responses:
         "204": { description: Uitgepakt }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "507": { $ref: "#/components/responses/DiskFull" }
+
+  /api/servers/{uuid}/transfer/copy:
+    parameters: [{ $ref: "#/components/parameters/Uuid" }]
+    post:
+      tags: [transfer]
+      operationId: copyServerData
+      summary: Datamap van een andere server op deze node naar deze (gestopte) server kopiëren
+      description: |
+        Voor "server dupliceren" op dezelfde node: zelfde inhoud als `exportServerData` → `importServerData`,
+        maar de data blijft op de node. Het doel moet gestopt zijn; de bron ook, tenzij `live`.
+        Respecteert de schijfquotum van het doel (507). Het verzoek afbreken stopt de kopie; de gedeeltelijke
+        inhoud blijft staan (de aanroeper verwijdert dan de server). Oudere daemons: 404 `not_found` (unknown path).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_uuid]
+              properties:
+                source_uuid: { type: string, format: uuid }
+                live: { type: boolean, default: false }
+      responses:
+        "204": { description: Gekopieerd }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
