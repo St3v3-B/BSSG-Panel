@@ -78,6 +78,13 @@ elif [ -n "$ROOT" ]; then
 fi
 
 run() { if [ "$DRY_RUN" = 1 ]; then printf '[dry-run]'; printf ' %q' "$@"; printf '\n'; else "$@"; fi; }
+fetch_verified() { # fetch_verified <url> <dest> <sha256-url>
+  local want got
+  want="$(curl -fsS -m 30 "$3" | awk '{print $1}')" || die "could not fetch $3"
+  [[ "$want" =~ ^[0-9a-f]{64}$ ]] || die "the panel served an invalid checksum ($3)"
+  curl -fsS -m 600 -o "$2" "$1" || die "download of $1 failed"
+  got="$(sha256sum "$2" | awk '{print $1}')"
+  [ "$got" = "$want" ] || { rm -f "$2"; die "sha256 mismatch for $1"; }
 
 # Questions: from the terminal (stdin is the script when piped from curl). --yes answers yes.
 confirm() {
@@ -124,6 +131,23 @@ if [ -n "$SET_MODE" ]; then
   { [ -f "$ENV_FILE" ] && grep -q "^$MARKER" "$ENV_FILE"; } || die "$ENV_FILE is missing or was not written by the join script"
   grep -q '^CADDY_ADMIN_URL=' "$ENV_FILE" || die "this node has no domain support (no Caddy); enable domains in the panel and join again"
   log "switching this node to HTTP mode: $SET_MODE"
+  # Eerst daemon en node-bestanden van het panel verversen: een node van vóór de relay-functie mist anders
+  # het compose-profiel caddy-relay en de relay-client in de daemon.
+  MODE_URL="$PANEL_URL"
+  [[ "$MODE_URL" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]] || MODE_URL="$(sed -n 's/^PANEL_URL=//p' "$ENV_FILE" | head -1)"
+  case "$(uname -m)" in x86_64|amd64) M_ARCH=amd64 ;; aarch64|arm64) M_ARCH=arm64 ;; *) M_ARCH="" ;; esac
+  if [ "$DRY_RUN" = 0 ] && [ -n "$M_ARCH" ] && [[ "$MODE_URL" =~ ^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$ ]]; then
+    TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+    fetch_verified "$MODE_URL/join/daemon/$M_ARCH" "$TMP/panel-daemon" "$MODE_URL/join/daemon/$M_ARCH.sha256"
+    fetch_verified "$MODE_URL/join/files.tar.gz" "$TMP/files.tar.gz" "$MODE_URL/join/files.tar.gz.sha256"
+    chmod 755 "$TMP/panel-daemon" && mv -f "$TMP/panel-daemon" "$BIN_DST"
+    tar -xzf "$TMP/files.tar.gz" -C "$INSTALL_DIR"
+    install -m 0644 "$INSTALL_DIR/systemd/panel-daemon.service" "$UNIT_DST"
+    systemctl daemon-reload
+    log "daemon and node files updated from $MODE_URL"
+  elif [ "$DRY_RUN" = 0 ]; then
+    warn "could not determine the panel URL or architecture: keeping the installed daemon and node files"
+  fi
   ENV_TMP="$(mktemp "$(dirname "$ENV_FILE")/.panel.env.XXXXXX")"; chmod 600 "$ENV_TMP"
   { grep -v '^HTTP_MODE=' "$ENV_FILE"; echo "HTTP_MODE=$SET_MODE"; } > "$ENV_TMP"
   mv -f "$ENV_TMP" "$ENV_FILE"
@@ -224,13 +248,6 @@ elif ! resolves; then
 fi
 
 # ------------------------------------------------------------------ files from the panel
-fetch_verified() { # fetch_verified <url> <dest> <sha256-url>
-  local want got
-  want="$(curl -fsS -m 30 "$3" | awk '{print $1}')" || die "could not fetch $3"
-  [[ "$want" =~ ^[0-9a-f]{64}$ ]] || die "the panel served an invalid checksum ($3)"
-  curl -fsS -m 600 -o "$2" "$1" || die "download of $1 failed"
-  got="$(sha256sum "$2" | awk '{print $1}')"
-  [ "$got" = "$want" ] || { rm -f "$2"; die "sha256 mismatch for $1"; }
 }
 
 progress download "downloading the daemon"

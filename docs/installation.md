@@ -10,7 +10,7 @@ its databases, Caddy and the node daemon. You can add more machines later, see
 |---|---|
 | OS | Linux with systemd. Developed and tested on Ubuntu 24.04. |
 | Docker | Docker Engine with the Compose plugin. |
-| Go | Go 1.23 or newer, to build the daemon. Alternatively pass a prebuilt binary with `--daemon-bin`. |
+| Go | Go 1.26 or newer, to build the daemon. Alternatively pass a prebuilt binary with `--daemon-bin`. |
 | Free ports | `80`, `443` (TCP and UDP) and `2022` (SFTP). Game servers use extra ports of your choice. |
 | DNS | Two A records pointing to the machine, for example `panel.example.com` and `node1.example.com`. |
 | Discord | A Discord application (OAuth2) and your own Discord user ID. |

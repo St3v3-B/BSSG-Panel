@@ -50,7 +50,7 @@ pnpm --filter @panel/api gen        # TS-types opnieuw genereren na een wijzigin
 pnpm --filter @panel/db generate    # nieuwe migratie na een wijziging in schema.ts
 ```
 
-Toolchain: Go 1.27 (module vereist 1.23+), Node 22, pnpm 12, TypeScript 5.9
+Toolchain: Go 1.27 (module vereist 1.26+), Node 22, pnpm 12, TypeScript 5.9
 (niet 7: openapi-typescript en Next hebben de TS-JS-API nodig). Next.js 16: lees
 `apps/web/AGENTS.md` en de docs in `node_modules/next/dist/docs/` voordat je Next-code schrijft
 (bijvoorbeeld: `middleware.ts` heet nu `proxy.ts`).
