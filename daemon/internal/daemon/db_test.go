@@ -149,6 +149,12 @@ func TestRealDockerDBAdmin(t *testing.T) {
 		t.Fatal(st)
 	}
 
+	// /api/db/status gaat via de socket; tijdens de eerste init draait MariaDB even zonder netwerk
+	// (--skip-networking). De tunnel gaat over TCP: wachten tot 3306 echt luistert.
+	waitFor(t, "MariaDB op TCP", 90*time.Second, func() bool {
+		_, code := as("root", rootpw, "", "SELECT 1")
+		return code == 0
+	})
 	// Databasetunnel (phpMyAdmin voor remote nodes): na 101 spreekt de echte MariaDB (begroetingspakket met versie).
 	tunnelGreeting(t, h.base)
 
