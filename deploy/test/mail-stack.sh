@@ -186,13 +186,21 @@ rlog="$(docker logs "$INSTANCE-rspamd" 2>&1)"
 grep -q '^rspamd: DNS resolver unbound (' <<<"$rlog" || fail "rspamd does not use unbound as resolver"
 pass "rspamd up, resolver = unbound"
 
-# What the daemon does for PUT /api/mail/dkim/{domain}: key + selectors.map in the mail-dkim volume, then reload.
-docker exec -i "$INSTANCE-rspamd" sh -c 'umask 027 && cat > /var/lib/rspamd/dkim/panel.test.dkim.key' < "$WORK/dkim.key"
-docker exec "$INSTANCE-rspamd" sh -c 'printf "panel.test dkim\n" > /var/lib/rspamd/dkim/selectors.map.tmp && mv /var/lib/rspamd/dkim/selectors.map.tmp /var/lib/rspamd/dkim/selectors.map'
+# What the daemon does for PUT /api/mail/dkim/{domain}: `docker exec -u 0 panel-rspamd tee`, owner/mode like the
+# directory, selectors.map, then `rspamadm control reload`.
+D=/var/lib/rspamd/dkim
+docker exec -u 0 -i "$INSTANCE-rspamd" tee "$D/panel.test.dkim.key.tmp" < "$WORK/dkim.key" >/dev/null || fail "tee DKIM key"
+docker exec -u 0 "$INSTANCE-rspamd" sh -c "chown --reference=$D $D/panel.test.dkim.key.tmp && chmod 0640 $D/panel.test.dkim.key.tmp && mv $D/panel.test.dkim.key.tmp $D/panel.test.dkim.key" \
+  || fail "chown/chmod/mv DKIM key"
+printf 'panel.test dkim\n' | docker exec -u 0 -i "$INSTANCE-rspamd" tee "$D/selectors.map.tmp" >/dev/null
+docker exec -u 0 "$INSTANCE-rspamd" sh -c "chown --reference=$D $D/selectors.map.tmp && chmod 0640 $D/selectors.map.tmp && mv $D/selectors.map.tmp $D/selectors.map && ls -1A $D" \
+  | grep -qx 'panel.test.dkim.key' || fail "DKIM files not in $D"
+[ "$(docker exec "$INSTANCE-rspamd" stat -c %U "$D/panel.test.dkim.key")" = _rspamd ] || fail "DKIM key not owned by rspamd"
+docker exec "$INSTANCE-rspamd" rspamadm control reload >/dev/null || fail "rspamadm control reload"
 docker exec "$INSTANCE-rspamd" mail-reload || fail "rspamd mail-reload"
 sleep 3
 docker exec "$INSTANCE-rspamd" rspamc stat >/dev/null 2>&1 || fail "rspamd not back after reload"
-pass "DKIM key for panel.test (selector dkim) written via docker exec, rspamd reloaded"
+pass "DKIM key for panel.test (selector dkim) written like the daemon (exec -u 0 tee, chown --reference), rspamadm control reload + mail-reload"
 
 # ------------------------------------------------------------------ checks
 step "SMTP / IMAP"
@@ -226,6 +234,23 @@ wait_banner postfix "$P25" "220 $MAIL_HOSTNAME ESMTP"
 wait_banner dovecot "$P993" "* OK" tls
 pass "mail-reload in postfix and dovecot (certificate from caddy_data), both still answer"
 docker exec "$INSTANCE-postfix" postqueue -j >/dev/null || fail "postqueue -j"
-pass "postqueue -j works (queue listing for the daemon)"
+[ "$(docker exec "$INSTANCE-postfix" postconf -h myhostname)" = "$MAIL_HOSTNAME" ] || fail "postconf -h myhostname"
+docker exec "$INSTANCE-postfix" postsuper -d ALL >/dev/null 2>&1 || fail "postsuper -d"
+docker exec "$INSTANCE-postfix" postfix reload >/dev/null 2>&1 || fail "postfix reload"
+pass "postfix: postqueue -j, postconf -h myhostname = $MAIL_HOSTNAME, postsuper -d, postfix reload"
+qj="$(docker exec "$INSTANCE-dovecot" doveadm -f json quota get -u alice@panel.test || true)"
+grep -q '"limit" *: *"51200"' <<<"$qj" || fail "doveadm -f json quota get: $qj"
+docker exec "$INSTANCE-dovecot" doveadm reload || fail "doveadm reload"
+# Note: in Dovecot 2.3 -f is a global option (`doveadm -f json quota get`), not `doveadm quota get -f json`.
+pass "dovecot as root: doveadm -f json quota get -u, doveadm reload"
+# The daemon queries blacklists from the host via the container IP of unbound (source = network gateway).
+UB_IP="$(docker inspect -f "{{(index .NetworkSettings.Networks \"$INSTANCE-mail\").IPAddress}}" "$INSTANCE-unbound")"
+ans="$(python3 -I -c '
+import socket,sys,struct
+q=struct.pack(">HHHHHH",0x1234,0x0100,1,0,0,0)+b"".join(bytes([len(p)])+p.encode() for p in "localhost.".rstrip(".").split("."))+b"\0"+struct.pack(">HH",1,1)
+s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.settimeout(5);s.sendto(q,(sys.argv[1],53))
+r=s.recv(512);print(r[3]&15)' "$UB_IP" 2>&1)" || true
+[ "$ans" != 5 ] && [[ "$ans" =~ ^[0-9]+$ ]] || fail "unbound refuses queries from the host (gateway): rcode $ans"
+pass "unbound answers the host via its container IP $UB_IP (rcode $ans, not REFUSED)"
 
 printf '\nmail stack: all checks passed\n'

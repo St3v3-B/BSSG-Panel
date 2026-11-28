@@ -20,7 +20,7 @@ x-labels: &labels
 # `docker exec` into these containers and start/stop the profile (deploy/mail.sh). See docs/mail.md.
 x-mail-labels: &mail-labels
   panel.managed: "true"
-  panel.instance: "main"
+  panel.instance: "${PANEL_INSTANCE:-main}"
   panel.role: "mail"
 
 x-logging: &logging
