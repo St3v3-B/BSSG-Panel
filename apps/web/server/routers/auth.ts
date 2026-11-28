@@ -37,7 +37,7 @@ export const TOTP_WINDOW_SECONDS = 600;
  * Controleert een TOTP-code met een limiet per gebruiker en per IP (5 fouten per 10 minuten, daarna
  * TOO_MANY_REQUESTS) en weigert hergebruik van dezelfde code binnen zijn geldigheid.
  */
-async function checkCode(ctx: Ctx, userId: number, secretEnc: string | null, code: string): Promise<boolean> {
+export async function checkCode(ctx: Ctx, userId: number, secretEnc: string | null, code: string): Promise<boolean> {
   const l = getLimiter();
   const keys = failKeys(ctx, userId);
   await assertNotLocked(keys);
@@ -80,7 +80,7 @@ async function rotate(ctx: Ctx): Promise<void> {
   ctx.resHeaders.append("set-cookie", await rotateSession(ctx.session!.sessionId, secureFor(ctx)));
 }
 
-const invalidCode = () => new TRPCError({ code: "BAD_REQUEST", message: "INVALID_CODE" });
+export const invalidCode = () => new TRPCError({ code: "BAD_REQUEST", message: "INVALID_CODE" });
 
 export const auth: Pick<Implementation["auth"], "me" | "branding" | "discordLoginUrl" | "verifyTotp" | "emergencyLogin" | "logout"> = {
   me: async ({ ctx }) => (ctx.session ? meFor(ctx.session) : null),

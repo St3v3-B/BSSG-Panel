@@ -212,6 +212,7 @@ async function adminUsers(where: SQL | undefined, opts: { cursor?: number | null
     createdAt: r.u.createdAt,
     lastLoginAt: r.u.lastLoginAt,
     serverCount: Number(r.servers ?? 0),
+    passwordLogin: r.u.loginUsername !== null && r.u.passwordHash !== null,
   }));
 }
 
