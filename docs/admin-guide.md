@@ -141,6 +141,11 @@ it instead of next to it. NPM keeps the ports and the certificates; the panel ma
 the panel machine, the panel domain. Switch it on per node in **Admin, Nodes, <node>, Nginx Proxy Manager**. It cannot be combined
 with an HTTP(S) relay (in either direction).
 
+**Only needed when NPM shares the IP address with the node.** If NPM runs on its own machine or its own IP address, leave the node on
+**direct**: Caddy then takes 80 and 443 on the node's IP, NPM keeps 80 and 443 on its own IP, and both get their own DNS records.
+The same holds for the HTTP(S) relay: it is meant for nodes without a usable public IP or without free ports 80/443. A node with its
+own IP needs neither.
+
 How it works:
 
 - Caddy on the node runs **without TLS and without ACME**, and publishes its port 80 only on `NPM_CADDY_ADDR` (default
