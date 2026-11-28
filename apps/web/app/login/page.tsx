@@ -1,5 +1,5 @@
 "use client";
-import { Ban, CircleAlert, KeyRound, LogOut } from "lucide-react";
+import { Ban, CircleAlert, KeyRound, LogOut, UserRound } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
@@ -15,7 +15,7 @@ import { Label } from "@/app/_components/ui/label";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { useDocumentTitle } from "@/app/_hooks/use-document-title";
 import { safeRedirect } from "@/app/_lib/auth-routing";
-import { errorText } from "@/app/_lib/errors";
+import { errorInfo, errorText } from "@/app/_lib/errors";
 import { useT } from "@/app/_lib/i18n";
 
 export default function LoginPage() {
@@ -59,7 +59,7 @@ function LoginFlow() {
   const redirectTo = safeRedirect(params.get("redirectTo"));
   const callbackError = params.get("error");
   const me = trpc.auth.me.useQuery(undefined, { retry: false });
-  const [emergency, setEmergency] = useState(false);
+  const [step, setStep] = useState<"discord" | "password" | "emergency">("discord");
   const done = !!me.data && (!me.data.totpEnabled || me.data.totpVerified);
 
   useEffect(() => {
@@ -92,13 +92,22 @@ function LoginFlow() {
           </div>
         </Alert>
       )}
-      {emergency ? <EmergencyStep redirectTo={redirectTo} onBack={() => setEmergency(false)} /> : <DiscordStep redirectTo={redirectTo} />}
-      {!emergency && (
-        <p className="text-center">
-          <button type="button" data-testid="emergency-link" className="text-xs text-muted-foreground underline-offset-4 hover:underline" onClick={() => setEmergency(true)}>
+      {step === "emergency" ? (
+        <EmergencyStep redirectTo={redirectTo} onBack={() => setStep("discord")} />
+      ) : step === "password" ? (
+        <PasswordStep redirectTo={redirectTo} onBack={() => setStep("discord")} />
+      ) : (
+        <DiscordStep redirectTo={redirectTo} />
+      )}
+      {step === "discord" && (
+        <div className="flex flex-col items-center gap-1.5">
+          <button type="button" data-testid="password-link" className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline" onClick={() => setStep("password")}>
+            {t.login.passwordLink}
+          </button>
+          <button type="button" data-testid="emergency-link" className="text-xs text-muted-foreground underline-offset-4 hover:underline" onClick={() => setStep("emergency")}>
             {t.login.emergencyLink}
           </button>
-        </p>
+        </div>
       )}
     </div>
   );
@@ -132,6 +141,66 @@ function DiscordStep({ redirectTo }: { redirectTo: string }) {
           </Button>
         )}
         <p className="text-center text-xs text-muted-foreground">{t.login.noAccount}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Backup-login met eigen gebruikersnaam + wachtwoord. Met 2FA aan is de sessie daarna pending: LoginFlow toont dan TotpStep. */
+function PasswordStep({ redirectTo, onBack }: { redirectTo: string; onBack: () => void }) {
+  const router = useRouter();
+  const utils = trpc.useUtils();
+  const t = useT();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const login = trpc.auth.passwordLogin.useMutation({
+    onSuccess: async () => {
+      await utils.invalidate();
+      const me = await utils.auth.me.fetch().catch(() => null);
+      // zonder 2FA meteen door; met 2FA neemt LoginFlow het over (TotpStep)
+      if (me && (!me.totpEnabled || me.totpVerified)) router.replace(redirectTo);
+    },
+    onError: () => setPassword(""),
+  });
+  const err = login.error ? (errorInfo(login.error).message.startsWith("INVALID_CREDENTIALS") ? t.login.passwordInvalid : errorText(login.error)) : null;
+  const valid = username.trim() !== "" && password !== "";
+  return (
+    <Card data-testid="password-step" className="bg-card/70 backdrop-blur-xl">
+      <CardHeader className="text-center">
+        <span className="mx-auto mb-2 grid size-10 place-items-center rounded-full bg-primary/15 text-primary">
+          <UserRound className="size-5" />
+        </span>
+        <CardTitle className="text-lg">{t.login.passwordTitle}</CardTitle>
+        <CardDescription>{t.login.passwordText}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="space-y-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (valid) login.mutate({ username: username.trim().toLowerCase(), password });
+          }}
+        >
+          <div className="space-y-2">
+            <Label htmlFor="login-username">{t.login.username}</Label>
+            <Input id="login-username" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoFocus value={username} onChange={(e) => setUsername(e.target.value)} disabled={login.isPending} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="login-password">{t.login.password}</Label>
+            <Input id="login-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={login.isPending} aria-invalid={!!err || undefined} />
+            {err && (
+              <p className="text-center text-sm text-destructive" data-testid="password-error">
+                {err}
+              </p>
+            )}
+          </div>
+          <Button type="submit" className="w-full" disabled={!valid || login.isPending}>
+            {login.isPending && <Spinner />} {t.login.passwordSubmit}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={onBack}>
+            {t.login.backToDiscord}
+          </Button>
+        </form>
       </CardContent>
     </Card>
   );

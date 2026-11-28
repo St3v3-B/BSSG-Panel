@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { RecoveryCodesCard, RecoveryCodesList } from "@/app/_components/account/recovery-codes";
 import { SessionsCard } from "@/app/_components/account/sessions-card";
 import { ApiKeysCard } from "@/app/_components/account/api-keys-card";
+import { PasswordLoginCard } from "@/app/_components/account/password-login-card";
 import { AccountWebhookCard } from "@/app/_components/notifications/webhook-card";
 import { NotificationSettingsCards } from "@/app/_components/notifications/notification-center";
 import { CopyButton } from "@/app/_components/copy-button";
@@ -52,6 +53,7 @@ export default function AccountPage() {
           </CardContent>
         </Card>
         <TotpCard enabled={me.totpEnabled} isAdmin={me.isAdmin} />
+        {!me.isEmergency && <PasswordLoginCard totpEnabled={me.totpEnabled} />}
         <SessionsCard />
         <ApiKeysCard />
         <NotificationSettingsCards isAdmin={me.isAdmin} />

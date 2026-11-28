@@ -1,7 +1,8 @@
 "use client";
-import { ArrowLeft, Ban, KeyRound, LogOut, ShieldCheck, ShieldPlus, ShieldMinus } from "lucide-react";
+import { ArrowLeft, Ban, CircleAlert, KeyRound, LogOut, ShieldCheck, ShieldPlus, ShieldMinus, UserRound } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { LoginUsername } from "@panel/api/schemas";
 import { trpc } from "@/lib/trpc";
 import { metadataText } from "@/app/_components/admin/activity";
 import { AdminError } from "@/app/_components/admin/nodes";
@@ -9,9 +10,12 @@ import { CopyButton } from "@/app/_components/copy-button";
 import { QuotaEditor } from "@/app/_components/quota/quota-editor";
 import { QueryError } from "@/app/_components/query-error";
 import { StatusBadge } from "@/app/_components/status-badge";
+import { Alert, AlertDescription, AlertTitle } from "@/app/_components/ui/alert";
 import { Badge } from "@/app/_components/ui/badge";
 import { Button } from "@/app/_components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/app/_components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/app/_components/ui/card";
+import { Input } from "@/app/_components/ui/input";
+import { Label } from "@/app/_components/ui/label";
 import { Skeleton } from "@/app/_components/ui/skeleton";
 import { Spinner } from "@/app/_components/ui/spinner";
 import { displayName, UserAvatar } from "@/app/_components/user-avatar";
@@ -140,6 +144,8 @@ export function UserDetail({ id }: { id: number }) {
             </CardContent>
           </Card>
 
+          <PasswordLoginSection id={id} name={u.name} />
+
           <QuotaEditor userId={id} />
 
           <Card>
@@ -200,5 +206,158 @@ export function UserDetail({ id }: { id: number }) {
         </>
       )}
     </div>
+  );
+}
+
+/** Voorstel voor een loginnaam op basis van de Discord-naam: kleine letters, zonder accenten, alleen a-z 0-9 . _ -. */
+export function suggestUsername(name: string | null, id: number): string {
+  const base = (name ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, ".")
+    .replace(/[^a-z0-9._-]/g, "")
+    .replace(/^[._-]+/, "")
+    .slice(0, 32)
+    .replace(/[._-]+$/, "");
+  return base.length >= 3 ? base : `user${id}`;
+}
+
+function PasswordLoginSection({ id, name }: { id: number; name: string | null }) {
+  const t = useT();
+  const p = t.admin2.user.pw;
+  const utils = trpc.useUtils();
+  const me = trpc.auth.me.useQuery(undefined, { retry: false });
+  const status = trpc.admin.users.getPasswordLogin.useQuery({ id });
+  const [mode, setMode] = useState<null | "edit" | "disable">(null);
+  const [username, setUsername] = useState("");
+  const [generated, setGenerated] = useState<string | null>(null);
+  const after = () => {
+    setMode(null);
+    void utils.admin.users.list.invalidate();
+    void utils.admin.users.get.invalidate({ id });
+    void utils.admin.activity.search.invalidate();
+  };
+  const set = trpc.admin.users.setPasswordLogin.useMutation({
+    onSuccess: (r) => {
+      utils.admin.users.getPasswordLogin.setData({ id }, r.status);
+      setGenerated(r.password);
+      after();
+    },
+  });
+  const disable = trpc.admin.users.disablePasswordLogin.useMutation({
+    onSuccess: (r) => {
+      utils.admin.users.getPasswordLogin.setData({ id }, r);
+      setGenerated(null);
+      after();
+    },
+  });
+  const s = status.data;
+  const usernameOk = LoginUsername.safeParse(username).success;
+  const isSelf = me.data?.user.id === id;
+  const openEdit = () => {
+    set.reset();
+    setUsername(s?.username ?? suggestUsername(name, id));
+    setGenerated(null);
+    setMode("edit");
+  };
+
+  return (
+    <Card data-testid="user-password-login">
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <UserRound className={s?.enabled ? "size-5 text-success" : "size-5 text-muted-foreground"} />
+            {p.title}
+          </CardTitle>
+          {s && <Badge variant={s.enabled ? "success" : "secondary"}>{s.enabled && s.username ? p.onAs(s.username) : p.off}</Badge>}
+        </div>
+        <CardDescription>{p.text}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {status.error ? (
+          <QueryError error={status.error} />
+        ) : !s ? (
+          <Skeleton className="h-10 rounded-lg" />
+        ) : (
+          <>
+            {generated && (
+              <Alert variant="warning" data-testid="user-password-generated">
+                <KeyRound />
+                <div className="min-w-0 space-y-2">
+                  <AlertTitle>{p.generatedTitle}</AlertTitle>
+                  <AlertDescription>{p.generatedText}</AlertDescription>
+                  <div className="flex items-center gap-1 rounded-md border border-border bg-background px-3 py-2 text-foreground">
+                    <code className="flex-1 break-all font-mono text-sm" data-testid="user-password-value">
+                      {generated}
+                    </code>
+                    <CopyButton value={generated} label={p.copy} />
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setGenerated(null)} data-testid="user-password-saved">
+                    {p.saved}
+                  </Button>
+                </div>
+              </Alert>
+            )}
+            {s.enabled && (
+              <div className="space-y-1 text-sm text-muted-foreground">
+                {s.updatedAt && <p>{p.updated(formatDate(s.updatedAt))}</p>}
+                {s.setByAdmin && <p>{p.setByAdmin}</p>}
+              </div>
+            )}
+            {(set.error ?? disable.error) && <AdminError error={set.error ?? disable.error} />}
+            {mode === "edit" ? (
+              <form
+                className="space-y-3"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (usernameOk) set.mutate({ id, username: username.trim().toLowerCase() });
+                }}
+              >
+                <div className="space-y-2">
+                  <Label htmlFor="user-pw-username">{p.username}</Label>
+                  <Input id="user-pw-username" autoComplete="off" autoCapitalize="none" spellCheck={false} value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} aria-invalid={(!!username && !usernameOk) || undefined} disabled={set.isPending} className="font-mono sm:max-w-xs" />
+                  <p className={username && !usernameOk ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>{username && !usernameOk ? p.invalidUsername : p.usernameHint}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="submit" disabled={!usernameOk || set.isPending} data-testid="user-pw-submit">
+                    {set.isPending && <Spinner />} {p.generate}
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={() => setMode(null)}>
+                    {t.common.cancel}
+                  </Button>
+                </div>
+              </form>
+            ) : mode === "disable" ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-muted-foreground">{p.disableSure}</span>
+                <Button variant="destructive" disabled={disable.isPending} onClick={() => disable.mutate({ id })} data-testid="user-pw-disable-confirm">
+                  {disable.isPending && <Spinner />} {p.disable}
+                </Button>
+                <Button variant="ghost" onClick={() => setMode(null)}>
+                  {t.common.cancel}
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={openEdit} data-testid="user-pw-edit">
+                  <KeyRound /> {s.enabled ? p.reset : p.enable}
+                </Button>
+                {s.enabled && (
+                  <Button variant="outline" className="text-destructive" onClick={() => (disable.reset(), setMode("disable"))} data-testid="user-pw-disable">
+                    {p.disable}
+                  </Button>
+                )}
+              </div>
+            )}
+            {isSelf && (
+              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <CircleAlert className="mt-px size-3.5 shrink-0" /> {p.self}
+              </p>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

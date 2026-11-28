@@ -134,6 +134,11 @@ function UserRow({ user }: { user: AdminUser }) {
               <ShieldCheck /> {u.totp}
             </Badge>
           )}
+          {user.passwordLogin && (
+            <Badge variant="outline" title={u.passwordLoginTitle} data-testid="user-password-badge">
+              <KeyRound /> {u.passwordLogin}
+            </Badge>
+          )}
         </div>
       </td>
       <td className="px-4 py-3">{user.serverCount}</td>
