@@ -1,0 +1,17 @@
+# Shell scripts, Dockerfiles and config must keep LF line endings, also on Windows checkouts.
+* text=auto eol=lf
+*.sh text eol=lf
+*.bash text eol=lf
+Dockerfile* text eol=lf
+*.Dockerfile text eol=lf
+Caddyfile* text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.service text eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
+*.zst binary
+*.gz binary
+*.jar binary

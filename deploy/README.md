@@ -22,7 +22,7 @@ git clone <repo> /opt/panel && cd /opt/panel
 sudo deploy/install.sh
 ```
 
-Requires: Docker with the compose plugin, systemd, and Go 1.23+ (or `--daemon-bin PATH` with a
+Requires: Docker with the compose plugin, systemd, and Go 1.26+ (or `--daemon-bin PATH` with a
 prebuilt `panel-daemon`). The script
 
 1. asks for the required values (domains, ACME email, Discord ID of the owner, Discord

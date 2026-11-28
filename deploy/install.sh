@@ -138,7 +138,7 @@ check_requirements() {
     elif [ "$DRY_RUN" = 1 ]; then
       warn "go is missing; skipping the daemon build (dry-run)"
     else
-      die "go is missing: install Go 1.23+ or pass --daemon-bin PATH"
+      die "go is missing: install Go 1.26+ or pass --daemon-bin PATH"
     fi
   fi
   [ -f "$REPO/deploy/caddy/Caddyfile" ] || warn "deploy/caddy/Caddyfile is still missing (comes from web-hosting)"
@@ -384,7 +384,7 @@ install_daemon() {
   elif [ "$NODE_ONLY" = 1 ] && [ "$DRY_RUN" = 0 ]; then
     log "building daemon in a golang container (go is not installed)"
     docker run --rm -v "$REPO/daemon":/src:ro -v "$(dirname "$tmp")":/out -w /src -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false \
-      golang:1.23 go build -trimpath -ldflags "-s -w -X main.commit=$PANEL_COMMIT" -o "/out/$(basename "$tmp")" ./cmd/panel-daemon
+      golang:1.26 go build -trimpath -ldflags "-s -w -X main.commit=$PANEL_COMMIT" -o "/out/$(basename "$tmp")" ./cmd/panel-daemon
   else
     rm -f "$tmp"; warn "daemon not built"; return 0
   fi

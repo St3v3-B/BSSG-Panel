@@ -16,8 +16,10 @@ tests/             integration, multi-node and browser (Playwright) tests
 
 ## Toolchain
 
-Node 22, pnpm, Go 1.23 or newer, TypeScript 5.9 and Docker (for the database tests and the Docker-backed daemon tests).
+Node 22, pnpm, Go 1.26 or newer, TypeScript 5.9 and Docker (for the database tests and the Docker-backed daemon tests).
 Next.js 16 differs from older versions (for example `middleware.ts` is now `proxy.ts`); see `apps/web/AGENTS.md`.
+
+For step-by-step setup of the toolchain on Ubuntu or Windows, see [building.md](building.md).
 
 ## Running it locally
 

@@ -9,7 +9,7 @@
 ![Status](https://img.shields.io/badge/status-active%20development-orange)
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?logo=typescript&logoColor=white)
-![Go](https://img.shields.io/badge/Go-1.23%2B-00add8?logo=go&logoColor=white)
+![Go](https://img.shields.io/badge/Go-1.26%2B-00add8?logo=go&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white)
 ![Caddy](https://img.shields.io/badge/Caddy-2-1f88c0?logo=caddy&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-required-2496ed?logo=docker&logoColor=white)
@@ -160,7 +160,7 @@ flowchart LR
 > [!IMPORTANT]
 > The installer targets a **dedicated Linux machine** (tested on Ubuntu 24.04) with Docker and systemd. Ports **80, 443 and 2022** must be free.
 
-**You need:** Docker with the Compose plugin, Go 1.23+ (or a prebuilt daemon via `--daemon-bin`), two DNS A records
+**You need:** Docker with the Compose plugin, Go 1.26+ (or a prebuilt daemon via `--daemon-bin`), two DNS A records
 (for example `panel.example.com` and `node1.example.com`), and a Discord application with the redirect URI
 `https://panel.example.com/api/auth/discord/callback`.
 
@@ -222,6 +222,7 @@ The commented reference is [`deploy/panel.env.example`](deploy/panel.env.example
 | [Minecraft](docs/minecraft.md) | Sleep mode, Velocity, Bedrock, plugins and modpacks |
 | [Websites](docs/websites.md) | Domains and SSL, PHP, cron, apps, databases |
 | [Troubleshooting](docs/troubleshooting.md) | Logs and common problems |
+| [Building](docs/building.md) | Build from source on Ubuntu and Windows (WSL 2 or native) |
 | [Development](docs/development.md) | Monorepo, `make check`, contracts, tests |
 | [Template format](templates/SCHEMA.md) | Write your own templates |
 
