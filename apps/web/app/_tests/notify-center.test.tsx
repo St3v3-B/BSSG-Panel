@@ -51,7 +51,7 @@ describe("meldingsinstellingen op het account", () => {
       ...en("user"),
       patch: (m) => {
         const orig = m.account.setNotificationPrefs;
-        m.account.setNotificationPrefs = async (a) => (await gate, orig(a));
+        Object.assign(m.account, { setNotificationPrefs: async (a: Parameters<typeof orig>[0]) => (await gate, orig(a)) });
       },
     });
     const box = (await screen.findByLabelText("Backup completed: Panel")) as HTMLInputElement;
@@ -132,7 +132,7 @@ describe("statuspagina's", () => {
       ...en(),
       patch: (m) => {
         const orig = m.statusPages.serverPage;
-        m.statusPages.serverPage = (a) => (first ? ((first = false), null) : orig(a));
+        Object.assign(m.statusPages, { serverPage: (a: Parameters<typeof orig>[0]) => (first ? ((first = false), null) : orig(a)) });
       },
     });
     const slug = (await screen.findByLabelText("Address")) as HTMLInputElement;

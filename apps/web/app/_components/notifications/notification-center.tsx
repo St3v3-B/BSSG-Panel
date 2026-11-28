@@ -209,7 +209,6 @@ function PrefsCard({ settings, isAdmin }: { settings: NotificationSettings; isAd
   const utils = trpc.useUtils();
   // Optimistisch: het vinkje verandert meteen (anders lijkt een klik niets te doen tot de server antwoordt).
   const save = trpc.account.setNotificationPrefs.useMutation({
-    onMutate: ({ prefs }) => utils.account.notificationSettings.setData(undefined, (old) => (old ? { ...old, prefs: { ...old.prefs, ...prefs } as NotificationSettings["prefs"] } : old)),
     onSuccess: (d) => utils.account.notificationSettings.setData(undefined, d),
     onError: () => void utils.account.notificationSettings.invalidate(),
   });
@@ -221,6 +220,8 @@ function PrefsCard({ settings, isAdmin }: { settings: NotificationSettings; isAd
   };
   const toggle = (e: (typeof events)[number], c: NotificationChannel, v: boolean) => {
     const next: ChannelPrefs = { ...settings.prefs[e], [c]: v };
+    // synchroon in de klik: een gecontroleerde checkbox springt anders eerst terug
+    utils.account.notificationSettings.setData(undefined, (old) => (old ? { ...old, prefs: { ...old.prefs, [e]: next } } : old));
     save.mutate({ prefs: { [e]: next } });
   };
   return (
